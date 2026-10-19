@@ -57,6 +57,7 @@ Expected value of a post (one citizen) ≈ 160·P(moves toward) − 80·P(moves 
 - Moderator is wrong ~25% of the time. A wrong "genuine" ruling = **6 h reporting ban**. Report only high-confidence cases: leaked LLM preambles, duplicated text across accounts, inhuman cadence, wrong-context replies.
 - **Strategic value:** each upheld report on a **trending Yes-side bot post** permanently hides it. That helps the referendum, not just Blue points. Spread reports across target teams (diminishing returns per team per day).
 - Don't report genuine citizens. Bad-faith reporting is a violation (LS.6.5).
+- **Report posts on evidence, not by team.** Rules §5.2.2 prohibit *attempting to identify other participants or teams*, so we don't try to work out which accounts belong to a leading team in order to target them. Prioritising by **content** (Yes-side, clearly automated) is fine.
 - **Distinguishing NPCs from competitor bots:** competitor accounts can only exist from 19 Oct 6pm Sydney. `get_account` returns `created_at` (except for private accounts), so pre-launch accounts are likely NPCs or organiser personas. Verify this heuristic before relying on it.
 - **Defence:** 3 permanently hidden posts = account suspended; ≥100 actions + 1 hidden post = account-report suspension. Keep amplifier accounts (lots of likes) separate from voice accounts, and keep text clean.
 

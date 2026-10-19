@@ -137,3 +137,10 @@ The "fitness landscape" idea, made concrete. Full reinforcement learning is over
 | 23–25 Oct | **≥2,500**; first measurements | Time-block experiments, sheet-based COP, Blue desk |
 | 26–31 Oct (×2) | Scale what works | Bandit, more personas (stay ≤50 active), follower growth, No-team coordination |
 | 1–2 Nov (×4) | Harvest | Best frames, max replies, persona voices (campaign silence), kill switch ready |
+
+## 8. Where the bot runs (hosting)
+
+- **Day 1–2: one laptop, attended.** Human approval needs a person there anyway. Use `tmux` so it survives a closed terminal. WSL and laptops sleep, so expect gaps.
+- **From ~22 Oct: a small cloud VM** (any cheap VPS or cloud free tier, or a uni server) running the single writer + collector 24/7 under `systemd` or `tmux`. Rules §5.1 allow cloud services for running our tools. Put `.env` on the VM only (mode 600), never in git, and use one IP (logins/registrations are 5/min per IP).
+- **Teammates don't SSH in to post.** They add drafts, personas and arguments through the shared DB or a small web page served by the VM, and the writer picks them up. The kill switch is a flag in the DB.
+- **Logs and DB backups** go to the VM disk plus a periodic copy (external storage is allowed for storing data).

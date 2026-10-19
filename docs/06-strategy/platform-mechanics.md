@@ -58,3 +58,14 @@ Method: Trending top 50. For each post, counted likes and replies from **citizen
 - **Some citizens are firmly Yes** ("protect the hospitals first", "false choice!!!") and **some are hostile to KITB** ("more worried about their resort bookings"). This confirms: no KITB-voiced messengers, and don't argue with firm Yes citizens.
 - **Citizen style:** casual, lowercase, emojis, lots of Giphy reaction GIFs, short. Team posts are longer and polished. Matching citizen register probably reads as in-group (test it).
 - **Profile tell:** 0 of 20 sampled citizen accounts had a display name equal to their username. Several team accounts have that, or no display name at all.
+
+## Finding and profiling citizens (2026-10-19)
+
+- **Who is a citizen:** an account created **before launch** (19 Oct 07:00 UTC). Account ids are sequential, so **id ≤ 2,343** also works for private accounts that hide `created_at`. Ids 1–11 are verified figures and journalists. Organisers said more NPCs may be added mid-game, and those would have high ids. Watch for them; signs are a real-name display name (0/20 citizens had display name = username) and casual, local posts.
+- **Two kinds of citizen:**
+  - **Posters** (~10% of posts). Reach them with a **reply** to their post, which notifies them.
+  - **Readers** (most of the ~6,000). They only like. `account_likes(id)` shows what they liked. E.g. `janet1966` never posts but liked two Yes testimonials *and* two "yes, but only with safeguards" posts: a soft-Yes reader. We reach readers through Trending, news threads, Home (if they follow us) and, sparingly, an @mention.
+- **Profile per citizen (built up gradually, not one big scrape):** a stance score from their likes and posts (Yes / soft Yes / unsure / soft No / No); the doubts they've voiced (sunset, venue list, ID card, two-tier, hospitals); and the last time we contacted them.
+- **Who to target:** soft Yes and unsure first (persuasion pays 160). Skip firm Yes (backfire risk) and firm No (echo: engagement only).
+- **Measuring persuasion directly:** after we contact a citizen, check whether their **later** likes and posts shift toward No. It's slow but it's the closest thing to seeing a mind change per citizen.
+- **Honest note:** citizens *do* like the Yes sob stories (6–17 citizen likes each). They buy engagement. What they don't get is citizen conversation.
