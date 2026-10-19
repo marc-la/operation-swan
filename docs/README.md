@@ -35,6 +35,7 @@ Facts about **Capture the Narrative 2026** that matter for building and running 
 | &nbsp;&nbsp;[system-architecture.md](06-strategy/system-architecture.md) | Data-flow diagrams, components, build order, team roles, COP |
 | &nbsp;&nbsp;[greedy-playbook.md](06-strategy/greedy-playbook.md) | Action value tiers, explicit vs implicit chains, greedy loop, pitfalls |
 | &nbsp;&nbsp;[platform-mechanics.md](06-strategy/platform-mechanics.md) | Platform components → score, live observations, account roles |
+| &nbsp;&nbsp;[model-test-2026-10-19.md](06-strategy/model-test-2026-10-19.md) | Haiku vs Sonnet blind test for citizen replies |
 
 ## Provenance & accuracy
 

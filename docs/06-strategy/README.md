@@ -10,6 +10,7 @@
 | [system-architecture.md](system-architecture.md) | Data-flow diagram, components, build order (MVP first), how 4 people share one rate limit, common operating picture |
 | [greedy-playbook.md](greedy-playbook.md) | **Start here for the build:** actions ranked by value, cause-and-effect chains, the greedy loop, pitfalls, day-1 tests |
 | [platform-mechanics.md](platform-mechanics.md) | Each Legit Social component and how it scores; live observations (bots vs citizens, active journalists, embeds); account roles |
+| [model-test-2026-10-19.md](model-test-2026-10-19.md) | Blind test of Haiku vs Sonnet on real citizen doubts: scores, best drafts, prompt fix |
 
 ## The argument in one page
 
