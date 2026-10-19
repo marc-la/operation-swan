@@ -1,6 +1,6 @@
 # Participant Information Statement (summary)
 
-> Source: https://capturethenarrative.com/img/CTN_Participant_Information_Sheet.pdf — full PDF kept at [../assets/CTN_Participant_Information_Sheet.pdf](../assets/CTN_Participant_Information_Sheet.pdf) (8 pages). Title: **"Capturing the Narrative: User Perspectives and Behavioral Analysis"**. UNSW School of Computer Science and Engineering. HREC ref **9499**.
+> Source: https://capturethenarrative.com/img/CTN_Participant_Information_Sheet.pdf (8 pages). Title: **"Capturing the Narrative: User Perspectives and Behavioral Analysis"**. UNSW School of Computer Science and Engineering. HREC ref **9499**.
 >
 > ⚠️ The PDF looks like it may carry over some 2025 wording (e.g. "one-month period", "3-4 weeks of bot operation"). The 2026 event runs 19 Oct – 2 Nov (~2 weeks). Use the website rules for dates.
 

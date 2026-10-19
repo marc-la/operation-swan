@@ -32,8 +32,6 @@ Everything about **Capture the Narrative 2026** (UNSW / DLCL), consolidated from
 | &nbsp;&nbsp;[privacy-policy-summary.md](05-reference/privacy-policy-summary.md) | Privacy policy summary |
 | &nbsp;&nbsp;[links-and-contacts.md](05-reference/links-and-contacts.md) | Every URL and contact in one table |
 | &nbsp;&nbsp;[discrepancies-and-open-questions.md](05-reference/discrepancies-and-open-questions.md) | Stale text, rule tensions, questions for organisers, **answers log** |
-| assets/ | Official screenshots and the PIS PDF |
-| _source-pasted/ | Your original copy-pasted `.txt` files (verbatim; kept as the raw record) |
 
 ## Provenance & accuracy
 

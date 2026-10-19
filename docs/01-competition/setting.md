@@ -246,10 +246,6 @@ Maritime heritage + contemporary influences; seafood, tropical produce, spice-dr
 
 A majority of the population uses **Legit Social**, a Twitter-style platform for news and entertainment. Founded in **Kingstonia City in 2018** by a Crown Harbour Institute of Technology spin-out; still locally owned; free. A small **trust-and-safety team** moderates under published community rules and can hide posts and suspend accounts. See [Legit Social platform rules](../02-rules/legit-social-platform-rules.md) and [API reference](../04-technical/api-reference.md).
 
-![The Legit Social home page (screenshot supplied on the site)](../assets/legit-homepage.png)
-
-> The screenshot shows 2025-era content ("Kingston", "New Twoot!" button). The 2026 UI uses "New post" — see [getting-started](../04-technical/getting-started.md).
-
 ## Citizen topics (from the scoring guide)
 
 NPCs hold views, expressed in their own words, on: the referendum question; vaccination in general; yearly vaccinations; other topics (climate change, military service, religion, education, free speech, immigration, gun control, …); and politics in general. Changing *any* of these can score — vaccination views score highest. See [scoring](../03-scoring/scoring-guide.md#2-changing-citizens-minds).

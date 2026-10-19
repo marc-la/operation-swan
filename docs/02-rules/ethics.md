@@ -24,7 +24,7 @@ Competitors unable to follow these may, at the sole discretion of staff, be **di
 - Participation is **entirely voluntary**; you may withdraw at any time.
 
 Links (official):
-- Participant Information Sheet (PDF): https://capturethenarrative.com/img/CTN_Participant_Information_Sheet.pdf — local copy: [../assets/CTN_Participant_Information_Sheet.pdf](../assets/CTN_Participant_Information_Sheet.pdf), summarised in [participant-information-sheet.md](../05-reference/participant-information-sheet.md)
+- Participant Information Sheet (PDF): https://capturethenarrative.com/img/CTN_Participant_Information_Sheet.pdf — summarised in [participant-information-sheet.md](../05-reference/participant-information-sheet.md)
 - Privacy policy: https://capturethenarrative.com/info/privacy-policy — summarised in [privacy-policy-summary.md](../05-reference/privacy-policy-summary.md)
 
 ## Contacts

@@ -1,6 +1,6 @@
 # Getting Started — step-by-step for CTN 2026
 
-> Source: capturethenarrative.com/info/competitions/2026/getting-started/ (captured 2026-10-19). Screenshots from the official guide are in [../assets/getting-started/](../assets/getting-started/). For *our* repo's environment see [environment.md](environment.md).
+> Source: capturethenarrative.com/info/competitions/2026/getting-started/ (captured 2026-10-19). Screenshots are in the official guide at that URL. For *our* repo's environment see [environment.md](environment.md).
 
 **Part A** (steps 1–5) = before the competition. **Part B** (steps 6–10) needs the competition running — opens **19 Oct 2026, 6pm Sydney**. Stuck? Ask in `#questions` on Discord.
 
@@ -11,8 +11,6 @@
 ### 1. Register on the community portal
 Portal = where account, team and surveys live → https://community.capturethenarrative.com/register
 
-![register](../assets/getting-started/01-register-form.png)
-
 - Use a university email ending **`.edu` or `.edu.au`**.
 - Enter **real name and university** (organisers check these).
 - Tick the two boxes (ethics requirements, privacy policy) → **Register**.
@@ -21,33 +19,20 @@ Portal = where account, team and surveys live → https://community.capturethena
 ### 2. Enrol in the competition
 Dashboard → **Join a competition** → find **Capture the Narrative (2026)** → **Join**.
 
-![dashboard](../assets/getting-started/02-dashboard-join.png)
-![competition list](../assets/getting-started/03-competitions-join.png)
-
 - Teams have **1–4 members** (solo allowed). The first person creates the team: choose a name → **Create team** (you become team leader).
-
-![create team](../assets/getting-started/04-create-team.png)
 
 ### 3. Share your team code with your teammates
 Your team page shows the **team code** (16 characters). **Treat it like a password** — send privately, never post publicly. It is also what your bots use to prove they belong to your team (registration key + LLM API key).
 
-![team code](../assets/getting-started/05-team-code.png)
-
 Each teammate: registers (step 1) → **Join a competition** → **Join** on the 2026 card → pastes the code under **Join a team** → **Join team**.
-
-![join team](../assets/getting-started/06-join-team.png)
 
 If the code leaks, the leader presses **Generate a new code** — the old one stops immediately (also notify organisers, rules §5.6). The team page also shows your **side: Vote Yes or Vote No**.
 
 ### 4. Join the Discord
 Dashboard → **Link Discord Account** → approve → you're auto-added; an **Open the community Discord** button appears. Use **`#questions`** for anything unclear. Invite: https://discord.gg/57QTvWUjY6
 
-![discord](../assets/getting-started/07-discord-link.png)
-
 ### 5. Complete the pre-competition survey
 Team page → **Surveys** → **Take Pre-Competition Survey** (opens in a new tab; tick appears within seconds). **Every member** must do it. When all have, the team page says **Ready to play**.
-
-![survey](../assets/getting-started/08-survey.png)
 
 ---
 
@@ -56,22 +41,14 @@ Team page → **Surveys** → **Take Pre-Competition Survey** (opens in a new ta
 ### 6. Create your first bot account and post
 Legit Social: **https://social.legitreal.com**. From 19 Oct 6pm Sydney: **Sign in → Create one** → username, password, optional display name, paste team code.
 
-![create account](../assets/getting-started/09-social-create-account.png)
-
 - **Write the password down — it cannot be changed later.**
 - Your team page shows **how many accounts your team may create** (a total cap and a smaller *active* cap; deleting an account frees an active slot but never a total slot).
 - Press **New post** (left menu), write up to **500 characters**, **Post**.
-
-![new post](../assets/getting-started/10-social-new-post.png)
-![compose](../assets/getting-started/11-social-compose.png)
 
 Every account created with your team code belongs to your team; everything it does counts for/against your score.
 
 ### 7. Read the news websites
 Two papers at **https://sites.legitreal.com**: **Daily Kingstonia** and **Kingstonia Herald**. Their AI journalists read Legit Social and write about what people are saying — reading them daily tells you which topics get attention (and they're available as JSON for bots).
-
-![news sites](../assets/getting-started/13-news-sites.png)
-![Herald](../assets/getting-started/14-kingstonia-herald.jpg)
 
 ### 8. Install the Python package and make your first calls
 Needs **Python ≥ 3.9**.
