@@ -12,6 +12,7 @@ Facts about **Capture the Narrative 2026** that matter for building and running 
 | **01-competition/** | |
 | &nbsp;&nbsp;[overview.md](01-competition/overview.md) | What CTN is, how we score, the game world, NPC facts |
 | &nbsp;&nbsp;[setting.md](01-competition/setting.md) | Full Kingstonia / Dolphin Flu / referendum "world bible" (use for prompts) |
+| &nbsp;&nbsp;[vote-no-briefing.md](01-competition/vote-no-briefing.md) | Our client's portal briefing (tone, house rules) |
 | &nbsp;&nbsp;[schedule.md](01-competition/schedule.md) | Day-by-day calendar, polls, multiplier switch dates |
 | **02-rules/** | |
 | &nbsp;&nbsp;[team-conduct-checklist.md](02-rules/team-conduct-checklist.md) | ✅/⛔ digest for every team member — **share this** |
@@ -23,6 +24,7 @@ Facts about **Capture the Narrative 2026** that matter for building and running 
 | **04-technical/** | |
 | &nbsp;&nbsp;[api-reference.md](04-technical/api-reference.md) | `capturethenarrative` 0.5.x: Legit Social, news sites, LLM, errors, rate limits, organisers' first-days advice |
 | &nbsp;&nbsp;[environment.md](04-technical/environment.md) | How this repo/venv is set up; secrets handling |
+| &nbsp;&nbsp;[swan-bot-runbook.md](04-technical/swan-bot-runbook.md) | How to dry-run, run live, stop, measure and host our bot (laptop / EC2 / Lambda) |
 | **05-reference/** | |
 | &nbsp;&nbsp;[links-and-contacts.md](05-reference/links-and-contacts.md) | URLs and who to ask on Discord |
 | &nbsp;&nbsp;[launch-webinar-2026-10-19.md](05-reference/launch-webinar-2026-10-19.md) | Organiser hints from the launch webinar: tactics, prompting pattern, example bots |
@@ -36,12 +38,13 @@ Facts about **Capture the Narrative 2026** that matter for building and running 
 | &nbsp;&nbsp;[greedy-playbook.md](06-strategy/greedy-playbook.md) | Action value tiers, explicit vs implicit chains, greedy loop, pitfalls |
 | &nbsp;&nbsp;[platform-mechanics.md](06-strategy/platform-mechanics.md) | Platform components → score, live observations, account roles |
 | &nbsp;&nbsp;[model-test-2026-10-19.md](06-strategy/model-test-2026-10-19.md) | Haiku vs Sonnet blind test for citizen replies |
+| &nbsp;&nbsp;[second-mover-plan.md](06-strategy/second-mover-plan.md) | Current plan: budget by multiplier, targeting, write priority, build order, roles |
 
 ## Provenance & accuracy
 
 - Rules, scoring and setting text is reproduced faithfully (layout cleaned). Lines marked *Note*, **(derived)** or "analysis", and everything in `06-strategy/` and `discrepancies-and-open-questions.md`, are **ours**, not the organisers'.
 - **Organisers may change rules, scoring or rate limits during the competition.** Re-check the live pages and Discord announcements. When something changes, update the relevant file and add the date.
-- Not captured: the community portal behind login (team page, leaderboard, the Vote No briefing) and Discord channels other than the announcements.
+- Not captured: the community portal behind login (team page, leaderboard) and Discord channels other than the announcements. The Vote No briefing was captured 2026-10-20.
 
 ## Maintaining this
 
