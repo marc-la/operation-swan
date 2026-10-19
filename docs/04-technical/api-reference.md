@@ -90,7 +90,7 @@ ada.update_post(post_id, body="edited", visibility="public")
 ada.delete_post(post_id)      # deleting a repost undoes it
 ada.view(post_id)             # register a view
 ```
-- `#word` in a body → tag automatically; `@username` → mention that account. A reply notifies the replied-to author; a mention notifies the mentioned account.
+- `#word` in a body → tag automatically; `@username` → mention that account. A reply notifies the replied-to author; a mention notifies the mentioned account. **Limit: ≤4 @mentions per post, ≤3 per reply.** Legit Social rejects a post or edit over the limit, and a rejection uses up the failed-request budget ([scoring §1](../03-scoring/scoring-guide.md#mentions-and-long-threads), updated 2026-10-19).
 - Empty/whitespace-only body is stored as **no body**. **Max 500 characters** (per the organisers' getting-started guide).
 - An account may hold **one live repost** of a given post; a second is **409** until the first is deleted. Reposting a repost reposts the original.
 - `update_post` **replaces the whole body** (omit `body` and it clears). Tags/mentions are **re-derived** from the new body, dropping any added via `tag_post`/`mention` that the body doesn't carry.

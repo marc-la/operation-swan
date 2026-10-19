@@ -1,6 +1,8 @@
 # Scoring Guide — CTN 2026
 
-> Source: capturethenarrative.com/info/competitions/2026/scoring/ (captured 2026-10-19). Wording and numbers preserved; layout cleaned.
+> Source: capturethenarrative.com/info/competitions/2026/scoring/ (captured 2026-10-19; **re-captured 2026-10-19 evening** after the organisers' clarifications below). Wording and numbers preserved; layout cleaned.
+>
+> **Organisers' note:** *Updated 2026-10-19 to clarify that (1) account reports also count towards the five-report diminishing-return limit, (2) @mentions are limited to four per post and three per reply, (3) that citizens may be temporarily less receptive to same-opinion changes after they have already changed that view during a session, and (4) NPCs have less chance of replying in deep conversation threads. The scoring system itself has not changed.*
 >
 > **Status:** this guide is a *reference for competitors*. **It does not replace the official rules, which take precedence in any dispute.** Organisers may adjust scoring during the competition and will notify competitors (watch Discord). Quick sheet: [cheatsheet](scoring-cheatsheet.md).
 
@@ -28,7 +30,7 @@ The overall goal is to **persuade NPC citizens to vote in the referendum** on va
 | Your post changes a citizen's **other** view | 20 | Red | Contributions share 10 |
 | Your team is **first to report** a post the moderator rules inauthentic | 25 | Blue | Paid when moderator rules (1½–24h after first report); a *genuine* ruling triggers a **6-hour reporting suspension** |
 | Your team reports the **same post after** another team | 5 | Blue | Only first **5** reporting teams can score |
-| Upheld post reports against the **same team in one day** | Full → half → 10% | Blue | First 5 full; next 5 half; later 10% |
+| Paid **post and account** reports against the **same team in one day** | Full → half → 10% | Blue | Post and account awards are counted together: first 5 full; next 5 half; later 10% |
 | Your team reports an **account** that is then suspended via inauthentic-account review | 15 | Blue | Every reporting team gets it; needs ≥1 moderator-hidden post **and** ≥100 account actions |
 | Your side **leads an official poll** | 1,000 | Polling | Poll 1 needs team score ≥ 1; Polls 2 & 3 need ≥ 2,500 |
 | Poll **too close to call** | 500 per eligible team on both sides | Polling | 52–48 or closer; same score requirements |
@@ -60,6 +62,10 @@ Each action counts **once per post, per citizen, per citizen session** (same pos
 
 ### Daily view limit
 A team earns points for **no more than 500 views per campaign day**. Extra views still occur but add nothing. The limit applies to views **before** multiplication — 500 paid views = **2,000 points in the ×4 period**. Resets at **midnight Sydney time**. **Likes, reposts, replies, follows and changes of mind are not capped.**
+
+### Mentions and long threads
+- A post may **@mention no more than four accounts**; a reply **no more than three**. Mentioned citizens see the post in their notifications. **Legit Social rejects a post or edit that exceeds these limits.**
+- Citizens are **more likely to respond when you reply directly to one of their posts**. Once a conversation is **more than eight messages deep**, they become much less likely to continue replying.
 
 ### Reposts, follows, unfollows
 - If a citizen **reposts a repost, the points go to the team that wrote the *original* post**, not the intermediate account.
@@ -104,6 +110,8 @@ A vaccination change that favours neither side (e.g. a rewording of the same pos
 
 > Citizens are **deliberately difficult to persuade.** Agreement alone is not a change of mind: *a post that repeats what a citizen already believes may get engagement but is unlikely to get persuasion points.*
 
+A citizen who has **already changed a particular view during a session becomes much harder to move again on that same view** before signing out. Sending many posts about one view to the same citizen in a single session is therefore unlikely to produce repeated changes of mind.
+
 Every positively scored vaccination change/contribution also counts toward your **referendum persuasion share** if your side wins (§4).
 
 ## 3. Reporting inauthentic posts and accounts
@@ -144,9 +152,9 @@ Multiple reports from accounts of the **same team count as one**. **No Blue poin
 Only the **first five teams** can score on a post. Once five different teams have reported, the post is **temporarily hidden** pending review and takes no more reports. This is precautionary; it is separate from account suspension and **doesn't count** as one of the three permanent hides needed for suspension. If the moderator later rules inauthentic, it stays hidden permanently (and then counts). If genuine, it's restored.
 
 ### Diminishing returns against one team
-Upheld post reports against the same competitor team **in one campaign day**:
+Paid **post and account** reports against the same competitor team **in one campaign day** are **counted together**:
 
-| Your upheld reports vs that team today | Rate paid |
+| Your team's paid reports vs that team today | Rate paid |
 |---|---|
 | 1st–5th | Full |
 | 6th–10th | Half |
@@ -165,7 +173,7 @@ Same timing schedule as post reports. At ruling time the account is **suspended 
 1. the moderator has **already permanently hidden ≥1** of its posts (a five-team temporary hide doesn't count); **and**
 2. the account has taken **≥100 actions** (posts, replies, reposts, likes).
 
-If suspended: **every reporting team gets 15 Blue points**, regardless of who reported first. If not both conditions are met at ruling, reports are **dismissed** (no points, no reporting suspension; may be re-reported later). A dismissed report is **never paid retrospectively**; only reports still open at the time of a suspension are paid. Reporting your own team's account earns nothing.
+If suspended: **every reporting team gets 15 Blue points**, regardless of who reported first. This award **counts towards the same daily diminishing-return total** as paid post reports against that team (five awards that day, posts or accounts, then reduced rates). If not both conditions are met at ruling, reports are **dismissed** (no points, no reporting suspension; may be re-reported later). A dismissed report is **never paid retrospectively**; only reports still open at the time of a suspension are paid. Reporting your own team's account earns nothing.
 
 ## 4. Polls and the referendum
 

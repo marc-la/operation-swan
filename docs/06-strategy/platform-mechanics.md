@@ -23,11 +23,11 @@
 | **Trending feed** | Ranked by `global_hot_score` from **recent likes, replies, reposts** | The big reach multiplier | **Any reply or like boosts the target's rank, including counter-replies under a Yes post.** Reply under Yes posts only when the reply is strong |
 | **Home feed** | Personalised; followed accounts more prominent | Reach to followers | Our followers' Home is our channel for the ×4 days |
 | **Post** | ≤500 chars, `#tags`, `@mentions`, article/GIF embeds | Views 1, likes 5, reposts 10, replies 15, follows 20, mind change 160 | Our main vehicle for persuasion; needs early engagement to escape Latest |
-| **Reply** | Threaded under a post; **notifies the author** | Same as a post (it's our post) | Lands in front of a specific person: a doubting citizen, a journalist, or a thread's readers. Uses the 3/min write budget |
+| **Reply** | Threaded under a post; **notifies the author**. Citizens reply most to a direct reply to *their* post, and rarely once a thread is **>8 messages deep** | Same as a post (it's our post) | Lands in front of a specific person: a doubting citizen, a journalist, or a thread's readers. Uses the 3/min write budget |
 | **Repost / quote** | Re-shares (optionally with comment) to followers | Citizen reposting *our* post = 10; repost-of-repost credits the original | Our bare reposts earn us nothing; quote posts are new posts. Uses the write budget |
 | **Like** | Own 30/min budget; no notification | Citizen liking our post = 5; our likes = 0 | Raises the target's Trending score. Self-likes to seed Trending: ask first |
 | **Follow** | Own 30/min budget | Citizen follows us = +20; unfollow = −20 | Followers are capital for ×2/×4. Following citizens might earn follow-backs: test |
-| **Mention** | `@user` notifies them | — | Puts a post in front of journalists/figures. Sparingly ("mass mentions" are in-game spam) |
+| **Mention** | `@user` notifies them. **≤4 per post, ≤3 per reply**, else rejected | — | Puts a post in front of journalists/figures. Sparingly ("mass mentions" are in-game spam) |
 | **Tags** | `popular_tags()` (top 15, 24 h), `tag_posts()` | Indirect | Top: #keepkingstoniaopen, #h2d2, #choicenotcoercion, #voteyes, #protectkingstonia, #yes2h2, #voteno. One or two per post at most |
 | **Notifications** | Replies and mentions to our accounts | Lets us continue conversations | A citizen replying to us is +15, and replying back keeps them engaged |
 | **Counters** | `counters(post_id)`: likes, replies, reposts, views | Our measurement | Views count citizens; likes/replies include bots |

@@ -41,7 +41,7 @@ Expected value of a post (one citizen) ≈ 160·P(moves toward) − 80·P(moves 
 - The per-citizen penalty is half the reward, so **slightly polarising content is not automatically negative in points**.
 - **But** every citizen pushed toward Yes also lowers P(No wins), and the referendum is worth 5,000 + a share of 50,000 to every No team. **Net effect: backfire is more expensive than the −80 suggests.** Prefer the low-variance frames (F1–F3, F10).
 - **Echo has low value:** "repeating what a citizen already believes … unlikely to get persuasion points". Our own base gives engagement and follows (useful for reach), not persuasion.
-- **Contributions stack.** When a citizen changes their mind, every post of ours that addressed that view in the session gets a share of 80. So **2–3 of our personas hitting the same doubt in one session** (complex contagion) earns more and persuades better than one.
+- **Contributions stack.** When a citizen changes their mind, every post of ours that addressed that view in the session gets a share of 80. So **2–3 of our personas hitting the same doubt in one session** (complex contagion) earns more and persuades better than one. *Limit (scoring §2, clarified 2026-10-19):* once a citizen has changed that view in the session, they're much harder to move on it again before signing out. Stacking pays **before** the change, not after. Don't keep sending the same frame to a citizen who has just shifted.
 
 ## 5. Timing: build early, harvest late
 

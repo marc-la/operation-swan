@@ -12,7 +12,7 @@
 ## Key numbers
 | | |
 |---|---|
-| Post length | ≤ 500 chars |
+| Post length | ≤ 500 chars · **@mentions ≤ 4 per post, ≤ 3 per reply** (else rejected) |
 | **Posts + replies + reposts** | **3 / min per TEAM** (all accounts combined) |
 | Feed reads | 10 / min (team) · likes/follows/views 30 / min each · reports 3 / min each |
 | Logins / registrations | 5 / min per IP |

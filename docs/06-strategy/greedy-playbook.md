@@ -82,10 +82,12 @@ every ~20 s, while writes are on and the PAUSE flag is off:
       reply_to_news        if a news post (or No-friendly article) is < 60 min old
       reply_to_trending    if a Yes post in top-10 trending without our reply yet
       second_voice         if one of our doubt replies is 10–30 min old and the thread is live
+                           (thread ≤ 8 messages deep: citizens rarely reply beyond that)
       persona_post         filler when nothing above qualifies (rotate personas/frames)
   pick the highest-priority action whose persona hasn't posted in the last N min
   draft with LLM (persona + frame card + target text + setting facts)
-  validate (length, artefacts, duplicates, injection-like strings, voting logistics)
+  validate (length, artefacts, duplicates, injection-like strings, voting logistics,
+            @mentions ≤ 4 per post / ≤ 3 per reply)
   if APPROVAL_MODE: ask a human (y/n/edit) in the terminal
   send via the single writer (pace from rate_limit; jitter; back off on 429)
   log: action, account, persona, frame, target, owner, timestamp

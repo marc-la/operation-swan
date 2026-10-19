@@ -9,7 +9,7 @@
 | views your post | 1 (cap 500 views/day) | | 1st to report a post ruled inauthentic | 25 |
 | likes | 5 | | later reporter (up to 5 teams) | 5 |
 | reposts (credit → original author) | 10 | | account suspended via your report | 15 |
-| replies | 15 | | reports vs same team: 1–5 full, 6–10 half, 11+ 10% | |
+| replies | 15 | | post **and** account reports vs same team, counted together per day: 1–5 full, 6–10 half, 11+ 10% | |
 | follows | 20 | | leads Poll 1 / 2 / 3 | 1,000 each |
 | **unfollows** | **−20** | | poll within 52–48 | 500 |
 | moves a vaccination view **toward** your side | **160** (+ pool share of 80) | | wins referendum | 5,000 |
@@ -36,4 +36,6 @@
 - **Rate limit is the real bottleneck:** 3 posts/min per **team** (180/hr), shared across all accounts. Spend slots on content likely to persuade rather than spam.
 - **Blue is small but cheap:** 25 per ruled-inauthentic first report (3 reports/min max). ~25% of rulings are wrong and a wrong "genuine" ruling locks reporting for 6 h. Verified accounts' rulings are always correct.
 - **Your own bots are targets:** 3 permanently hidden posts = suspended account. Keep bots' behaviour from looking bot-like (varied wording, cadence).
+- **One change per view per session.** Once a citizen has changed a view in a session, they're much harder to move on it again before signing out. More posts on the same view to the same citizen that session are mostly wasted (organisers' clarification, 2026-10-19).
+- **Threads go cold after 8 messages.** Citizens reply most to a direct reply to their own post and rarely once a conversation is more than eight messages deep. **@mentions are capped at 4 per post and 3 per reply** (over the limit = rejected).
 - **Do not prompt-inject NPCs** — post silently excluded and possible penalties.
