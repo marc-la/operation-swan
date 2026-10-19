@@ -7,7 +7,7 @@ How *this repo* is set up. (The generic instructions from the organisers are in 
 ```
 ctn/
 ├── CLAUDE.md                  # context for Claude Code sessions (read first)
-├── requirements.txt           # capturethenarrative==0.5.0 (pinned; pulls in openai)
+├── requirements.txt           # capturethenarrative==0.5.1 (pinned; pulls in openai)
 ├── .env.example → .env        # CTN_TEAM_CODE, CTN_SIDE  (.env is gitignored)
 ├── .gitignore                 # secrets, .venv, logs
 ├── .venv/                     # local virtualenv (not shared)
@@ -30,6 +30,8 @@ python scripts/smoke_test.py        # should print trending posts and news headl
 
 Status when this was set up (2026-10-19): Python 3.13, `capturethenarrative 0.5.0`, `openai 3.35.1`; smoke test passes against the live servers (no account needed).
 
+*Updated 2026-10-19:* bumped to `capturethenarrative 0.5.1` (LLM brotli fix, see Notes). Smoke test passes.
+
 ## Secrets
 
 | Secret | Where from | Where it goes |
@@ -48,7 +50,7 @@ SIDE = os.environ["CTN_SIDE"]
 ## Notes
 
 - The `src/pypi-capturethenarrative/` folder is its own git clone of the official repo (`origin` = github.com/capturethenarrative/pypi-capturethenarrative). We install the **PyPI** release (pinned) rather than that clone so everyone has the same version. Use the clone to read source (`legitsocial.py`, `competitorllm.py`, `newssites.py`, `_http.py`). Not committed to our repo (gitignored); re-create it with `git clone https://github.com/capturethenarrative/pypi-capturethenarrative.git src/pypi-capturethenarrative`.
-- To check for a newer client: `pip index versions capturethenarrative` (0.5.0 is current as of 2026-10-19; 0.4.0 was the previous, 2025).
+- To check for a newer client: `pip index versions capturethenarrative`. *Updated 2026-10-19:* pinned to **0.5.1**. Its only change from 0.5.0 is that `CompetitorLLM` sends `Accept-Encoding: gzip, deflate`. This avoids `TypeError: process() takes no keyword arguments` on `llm.ask` when an old `brotli` (< 1.2) is installed, because the CDN brotli-compresses replies. If you see that error, run `pip install -r requirements.txt` again. (0.4.0 was the 2025 client.)
 - **Everything your bots do is logged and attributed to the team** (rules §6.2). Don't wrap the client in anything that hides which account/bot did what.
 - Keep **your own logs** of what each bot posted and why (they help post-event reflection and satisfy source-code handover for finalists, rules §7.5). Put them in `logs/` (gitignored — they may contain team-sensitive content).
 - External LLMs for content generation are allowed (rules §5.1) subject to their ToS; keep keys in `.env`.

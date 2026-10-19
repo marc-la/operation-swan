@@ -41,6 +41,8 @@
 | Purpose | Contact |
 |---|---|
 | Rules questions / approvals | `#questions` on Discord |
+| Support tickets | `#create-support-ticket` on Discord |
+| Organisers on Discord (launch webinar) | **@Rahat Masood** (rules, ethics, moderation) · **@hammond**, Dr Hammond Pearce, hammond.pearce@unsw.edu.au (tech, rules, moderation) · **@ollie_xu**, Oliver Xu, Legit Social "CTO" (platform/API problems) |
 | Confidential ethics concerns; research team | Dr Rahat Masood — rahat.masood@unsw.edu.au, +61-2-9065 9916 |
 | Privacy | Privacy Officer — privacy@capturethenarrative.com |
 | Research ethics complaints | UNSW Human Research Ethics Coordinator — humanethics@unsw.edu.au, +61 2 9385 6222 (ref 9499) |

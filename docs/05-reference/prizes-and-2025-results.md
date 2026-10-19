@@ -23,7 +23,7 @@ All **finalist** teams (top 3 by score): certificate of achievement; **one night
 The official page https://capturethenarrative.com/info/competitions/2026/prizegiving/ currently says:
 > *"Placeholder. This page still carries the 2025 content and is being reused while the 2026 competition is written. Nothing here is final."*
 
-and the rules text still says "31 October 2025". **Treat the 2026 date, venue and judges as TBC** — watch Discord. Plan on **Sydney, shortly after 2 Nov 2026**.
+and the rules text still says "31 October 2025". **Treat the 2026 date, venue and judges as TBC** — watch Discord. *Updated 2026-10-19:* the launch webinar (slide 6) says **prizegiving is in December**, in Sydney. The exact date is still TBC.
 
 ## 2025 prizegiving (for reference — format likely repeats)
 

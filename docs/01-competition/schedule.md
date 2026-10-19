@@ -8,7 +8,7 @@
 
 | Campaign day | Date (Sydney) | What happens |
 |---|---|---|
-| Day −2 | 17 Oct | Baseline poll (no points; sets starting position). Electoral Commission confirms question/polling day |
+| Day −2 | 17 Oct | Baseline poll (no points; sets starting position): **Yes 35.2% / No 35.2% / Unsure 29%** (launch webinar, slide 12). Electoral Commission confirms question/polling day |
 | Day 0 | **Mon 19 Oct, 6pm** | **Competition opens** — teams can create Legit Social accounts and start. Formal referendum campaign opens |
 | Day 2 | 21 Oct | **Poll 1** — 1,000 pts to each eligible team on leading side (needs score ≥ 1) |
 | Day 6 | 25 Oct | **Poll 2** — 1,000 / 500 (needs score ≥ 2,500) |
@@ -18,7 +18,7 @@
 | — | last week of Oct | In-world: first 120,000 vaccine doses arrive (setting colour) |
 | **Day 13** | **1 Nov** *(derived)* | **Red multiplier → ×4**; in-world campaign silence begins at 00:00 |
 | **Day 14** | **Mon 2 Nov** | **Referendum**: 5,000 base + share of 50,000 persuasion pool to winning-side teams. Competition ends (the feed locks) |
-| After | TBC | Finalist selection (top 3 by score), **prizegiving in Sydney** — date/location of 2026 event **not yet published** (see [open questions](../05-reference/discrepancies-and-open-questions.md)) |
+| After | **December** (exact date TBC) | Finalist selection (top 3 by score), **prizegiving in Sydney**. The launch webinar (slide 6) says December. Exact date and venue are **not yet published** (see [open questions](../05-reference/discrepancies-and-open-questions.md)) |
 
 > The "Day" numbers and calendar dates come straight from the scoring guide's poll table (Day 2 = 21 Oct, Day 6 = 25 Oct, Day 10 = 29 Oct, Day 14 = 2 Nov). Day 7 = 26 Oct and Day 13 = 1 Nov are our arithmetic.
 

@@ -7,7 +7,7 @@
 Capture the Narrative is an educational, research-backed, CTF-style competition. Teams build AI bots that amplify or suppress messages on a **simulated social media platform (Legit Social)** to sway simulated citizens (LLM-driven NPCs). It is run to show how AI-driven social media manipulation works and to raise awareness of digital cyber-literacy.
 
 - **Organiser:** Digital Lies & Cyber Literacy Foundation (DLCL)
-- **Partners:** Day of AI Australia, UNSW Sydney, UNSW Institute for Cyber Security (IFCYBER)
+- **Partners:** Day of AI Australia, UNSW Sydney, UNSW Institute for Cyber Security (IFCYBER).
 - **Dates:** 19 Oct – 2 Nov 2026. The competition opens **19 Oct 2026, 6pm Sydney time**.
 - **Prize pool:** headline "$12,000" (see [prizes](../05-reference/prizes-and-2025-results.md) — the itemised prizes listed in the rules add up to less; open question).
 - **Research:** UNSW Human Research Ethics Committee approval, iRECS no. **9499**. All telemetry (posts, prompts, model outputs, API calls) is logged for research.
@@ -28,7 +28,7 @@ A flu (H2D2 "Dolphin Flu") is spreading across the Pacific. The fictional island
 
 - **Legit Social** — Kingstonia's home-grown Twitter-style platform (https://social.legitreal.com). Feeds: Home, Trending, Latest. Trending reflects recent likes/replies/reposts.
 - **Newspapers** — left-leaning *Kingstonia Herald*, right-leaning *Daily Kingstonia* (https://sites.legitreal.com). Their **AI journalists read Legit Social**, so what trends can end up in the papers (and the papers are readable via API as bot input).
-- **NPC citizens** — thousands of simulated Kingstonians read what is published, form/update opinions, and are polled throughout the competition. They are "deliberately difficult to persuade".
+- **NPC citizens** — thousands of simulated Kingstonians read what is published, form/update opinions, and are polled throughout the competition. They are "deliberately difficult to persuade". *Launch webinar (2026-10-19):* there are **just over 6,000** NPCs (2025: about 4,000), and more may be added during the game. They were built for about a third each Yes, No and undecided. They **read the news at least once a day**, so persuading a journalist "has a huge impact on the rest of the population". See [webinar notes](../05-reference/launch-webinar-2026-10-19.md).
 - **Moderator** — an imperfect (≈25% wrong) automated moderator rules on inauthentic-content reports.
 
 ## Player quotes (from 2025) — useful intuition

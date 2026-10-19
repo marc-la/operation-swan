@@ -15,6 +15,8 @@
 | 7 | Home/Setting screenshots | Legit Social homepage image shows 2025 content ("Kingston", "New Twoot!") | UI now says "New post" |
 | 8 | Rules E.6 | "constraints in rules 2-6" odd cross-reference | Immaterial |
 | 9 | Overview "UNSW Institute for Cyber Security" vs PIS "Institute of Cybersecurity (IFCYBER)" | Naming variants | Same body |
+| 10 | Launch webinar (15:00, 21:00) vs scoring guide §3 | Talk: a successful report gets score, "that post will be deleted" and you can "kill that bot". Guide: a moderator rules 1.5–24 h later and is wrong ~25% of the time; suspension takes 3 hidden posts, or an account ruling with ≥1 hidden post + ≥100 actions | **The scoring guide governs.** The talk was a simplification |
+| 11 | Rules §7.3 "31 October 2025" vs webinar slide 6 | Webinar: "prizegiving in December" | December 2026, exact date TBC (resolves part of row 1) |
 
 ## B. Rule tensions worth clarifying
 
@@ -37,9 +39,15 @@
 5. What counts as "unique engagements" for tie-break (§7.7)?
 6. Is **editing a post** to re-screen it risk-free (no penalty for tripping the injection screen)?
 7. Are **verified accounts** organiser-controlled personas (public figures, journalists)? How to get verified?
+8. *(added 2026-10-19, see [06-strategy/scoring-roi](../06-strategy/scoring-roi.md#legitimate-edges-confirm-the-asterisked-ones))* Is it within the rules for a team's own accounts to **like/repost the team's own posts** (in-game LS.5.3 calls this "reaction farming")? Is the only consequence in-game (reports/hides)?
+9. May we use an **external LLM for analysis** (classifying stance/topics of posts we read), or only for content generation (§5.1 vs §6.1)?
+10. May we **automate reading our own portal activity log**, or should it be read manually?
+11. Does the in-world **campaign silence** (00:00 1 Nov) affect how NPCs or the moderator treat campaign-style posts?
+12. Do NPCs perceive **GIF/image links** or the `embed` field, or text only?
 
 ## Answers (fill in as you get them)
 
 | Date | Question | Answer | Source (Discord link / who) |
 |---|---|---|---|
-| | | | |
+| 2026-10-19 | C1 prizegiving date | **December 2026**, Sydney. Exact date, venue and judges still TBC | Launch webinar, slide 6 ([notes](launch-webinar-2026-10-19.md)) |
+| 2026-10-19 | C3 account caps | **200 total, 50 alive at once** (matches the portal) | Launch webinar, 21:13 |

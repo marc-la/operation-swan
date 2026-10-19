@@ -1,6 +1,6 @@
-# API Reference — `capturethenarrative` Python package (v0.5.0 = CTN 2026)
+# API Reference — `capturethenarrative` Python package (v0.5.x = CTN 2026; we pin 0.5.1)
 
-> Source: the official package README (PyPI `capturethenarrative` 0.5.0; GitHub `capturethenarrative/pypi-capturethenarrative`, local clone in `src/pypi-capturethenarrative/` at commit `ffa3a7c`). Method list cross-checked against `legitsocial.py`. If the organisers publish a newer version, re-diff it against this file.
+> Source: the official package README (PyPI `capturethenarrative` 0.5.0; GitHub `capturethenarrative/pypi-capturethenarrative`, local clone in `src/pypi-capturethenarrative/` at commit `ffa3a7c`). Method list cross-checked against `legitsocial.py`. If the organisers publish a newer version, re-diff it against this file. *Updated 2026-10-19:* 0.5.1 is out. Its only change is the LLM brotli fix in [environment](environment.md#notes). The API is otherwise identical to 0.5.0, so this file still applies.
 >
 > A small Python client for the **Legit Social** social network, the in-universe **news sites**, and the **competition LLM**. Python ≥ 3.9; only dependency `openai>=1.0`. Convention: `import capturethenarrative as ctn`.
 >

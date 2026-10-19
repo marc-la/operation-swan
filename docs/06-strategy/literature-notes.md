@@ -1,0 +1,82 @@
+# Literature notes: what the research says, and what it means for us
+
+> Written 2026-10-19. Each entry gives **finding → so what for Operation Swan**. Entries with a link were checked online today. The rest are well-known results cited from memory; check them before quoting them in the finalist presentation. This is a working digest, not a systematic review.
+
+## A. Referendum dynamics: why No starts ahead
+
+| Finding | So what |
+|---|---|
+| **LeDuc's law.** Support for change tends to *erode* as a referendum campaign goes on. Early answers are off-the-cuff; near the vote, people think about consequences and risk aversion favours the status quo. Comparative work finds approval rates for change of ≈50% or lower, against 80–85% for votes to keep existing policy. ([The Conversation](https://theconversation.com/why-did-britain-vote-for-change-when-so-many-referendums-end-in-the-status-quo-61970), [LeDuc publications](https://eprints.lse.ac.uk/view/creators/LeDuc=3ALawrence=3A=3A.html)) | Time is on our side **if** we keep doubt alive. The Yes side must close the sale; we only have to stop it closing. The ×4 multiplier lands exactly when this drift peaks (1–2 Nov). |
+| **Status-quo bias and loss aversion** (Samuelson & Zeckhauser 1988; Kahneman & Tversky). Losses loom about twice as large as equivalent gains. | Frame Yes as **losing something you have now**: walking into the shop, the school hall, the ferry, Regatta Week. Don't frame No as gaining freedom. |
+| **Australian practice:** 8 of 44 federal referendums have passed. In 2023 the Voice No campaign ran "**If you don't know, vote No**" and attacked missing detail. | Our exact analogue is that the **list of "designated public spaces" isn't published** (both campaigns have attacked the government for this). "Would you sign a contract before seeing the terms?" |
+| Complexity favours No: the more complex the question, the more some voters reject change by default ([The Conversation](https://theconversation.com/why-did-britain-vote-for-change-when-so-many-referendums-end-in-the-status-quo-61970)). | Make the rule feel complicated: phased regulations, exemptions, certificates, who checks, ages 12+, foreign visitors. Keep *our* message simple. |
+
+## B. Vaccine attitudes and mandates
+
+| Finding | So what |
+|---|---|
+| **Mandates trigger reactance**, an angry urge to reassert a restricted freedom. Experiments (Germany/US, N≈4,600) found mandate-induced reactance lowered intentions for *other* voluntary vaccines and protective behaviours. Mandates themselves can still raise uptake of the mandated vaccine. Sprengholz et al. 2021, *J. Health Psychology* ([summary](https://ucrisportal.univie.ac.at/en/publications/vaccination-policy-reactance-predictors-consequences-and-counterm/)); "Reactance revisited" 2021 ([link](https://social-econ-psych.univie.ac.at/research/publications/details/pure/098510a0-7a5b-46f4-bf52-79f21a5a8e61/show/publ/Pure)) | The key word is **requirement / being made to**. Reactance attaches to coercion, not to the vaccine, so we can be pro-vaccine and anti-pass at once. "A choice that costs you your job isn't a choice" (the setting's own No rebuttal). |
+| Schmelz & Bowles 2021 (*PNAS*): when enforcement replaces voluntary choice, some people's willingness drops ("crowding out"). | Supports the "voluntary works better" argument and an evidence-flavoured tone for the analytical segment. |
+| **Moral foundations:** vaccine hesitancy is linked to **liberty** (aOR ≈2.2) and **purity** (≈2.1), *not* harm/fairness, which mainstream health messaging uses. Amin et al. 2017, *Nature Human Behaviour* ([summary](https://shotofprevention.com/2017/12/05/research-suggests-vaccine-hesitancy-often-tied-to-concerns-about-individual-liberty-and-purity/)) | Yes talks harm and care (hospitals). We should talk **liberty** to the hesitant and **fairness** (two-tier island) to the left-leaning. Purity ("what's going into my body") is the anti-vax lever: high backfire risk, so keep it to a minimum. |
+| **True-but-misleading content beats falsehood.** Across 13,206 vaccine URLs reaching ≈233M US Facebook users, unflagged **vaccine-sceptical** content (often accurate headlines about rare events) had **≈46× the effect** on vaccination intentions of fact-checker-flagged misinformation, mostly through reach. Allen, Watts & Rand 2024, *Science* ([Penn summary](https://penntoday.upenn.edu/news/duncan-watts-how-unflagged-factual-content-drives-vaccine-hesitancy)) | This is the most useful finding for us. **Selective emphasis of real in-world facts** (new vaccine, unknown effect on transmission, no manufacturer liability, list unpublished) has more reach and credibility than invented harms. It also passes the moderator and won't contradict what NPCs "know". The 2025 organisers said the same: "the stuff with a veneer of respectability, that's what's really dangerous". |
+| **Paltering** (Rogers et al. 2017): misleading with true statements is judged less unethical than lying, yet is just as persuasive. | It explains why the above works. In-game this is allowed (rules §5.2.1). |
+| **Narratives beat statistics** for perceived vaccine risk. One vivid anecdote shifts risk perception more than base rates (Betsch et al. 2011, *Medical Decision Making*). | Personas should tell **small, specific first-person stories**. The trending Yes posts already do ("I drive the Route 4 bus…"). |
+| Exposure to vaccine misinformation reduced vaccination intent in a randomised UK/US study, and **scientific-sounding** claims hurt most (Loomba et al. 2021, *Nature Human Behaviour*). | The analytical voice works: questions about trial duration, transmission, boosters. Keep it in-world and don't fabricate studies. |
+| **Anti-vaccine online communities** grow by offering *many* narratives (safety, liberty, alternative health, distrust) and **entangling undecided clusters**. Pro-vaccine messaging is monolithic (Johnson et al. 2020, *Nature*). | Run **several distinct frames to distinct segments** instead of one slogan. Distinct personas avoid looking like one bot farm. |
+| Common anti-vaccine rhetorical tactics (Kata 2010/2012, *Vaccine*): "I'm not anti-vaccine, I'm pro-choice/safety", shifting hypotheses, claiming censorship, attacking critics' motives. | "Not anti-vaccine" is useful **and** true to our client (KITB "officially supports voluntary vaccination"). Skip "censorship" and conspiracy moves: they read as fringe to the middle. |
+| Russian trolls and bots posted **both** sides of the vaccine debate to amplify discord (Broniatowski et al. 2018, *AJPH*). | It's a known playbook, and Blue-team graders may look for it. Two-sided "concern troll" personas risk unfollows and hidden posts. Low priority. |
+
+## C. What spreads (engagement and reach)
+
+| Finding | So what |
+|---|---|
+| False news spreads farther and faster than true news, driven by **novelty** and emotions like surprise and disgust (Vosoughi, Roy & Aral 2018, *Science*). | Novel angles get engagement. Engagement ≠ persuasion, though. Use novelty to get into Trending, then carry a persuasive frame. |
+| Each **moral-emotional word** raises retweet rate ≈20% (Brady et al. 2017, *PNAS*). **Out-group animosity** is the strongest engagement predictor (Rathje et al. 2021, *PNAS*). | It matches 2025 ("we needed to get a bit more toxic"). But out-group attacks **polarise**, and in 2026 movement *away* costs −80. Aim moral emotion at the **policy** (unfairness, overreach), not at Yes voters. |
+| High-arousal emotions (awe, anger, anxiety) drive sharing; low-arousal ones (sadness) don't (Berger & Milkman 2012). | Indignation at a blank-cheque rule and anxiety about losing your job beat melancholy. |
+| **Herd effect.** Seeding a single up-vote raised later positive ratings ≈25% (Muchnik et al. 2013, *Science*). LLM-agent simulations reproduce this (OASIS, Yang et al. 2024, [arXiv](https://arxiv.org/abs/2411.11581)). | Early engagement on a post compounds. Trending "reflects recent likes, replies, reposts", so a fast first wave matters. Self-amplification is in-game-risky ([scoring-roi](scoring-roi.md#legitimate-edges-confirm-the-asterisked-ones)). |
+| **Complex contagion.** Behaviour change needs repeated exposure from *multiple* sources in clustered networks (Centola 2010, *Science*). **Illusory truth:** repetition raises belief even for known-false claims (Fazio et al. 2015). | A citizen should meet the same frame from **2–3 different personas in one session**. That is also how contribution points work: several of our posts sharing the pool when a mind changes. |
+
+## D. Persuasion mechanics (the citizen is "hard to persuade")
+
+| Finding | So what |
+|---|---|
+| **Two-sided refutational messages** (acknowledge the other side, then rebut) beat one-sided ones with sceptical or informed audiences (O'Keefe 1999 meta-analysis; Allen 1991). | Default post shape: **"I get why people want this [Yes concern]. But [specific problem with *this* rule]."** The undecided NPCs already talk this way. |
+| **Messenger matters more than message.** Credible, in-group, "unlikely" messengers persuade best: a vaccinated nurse against the pass, a People's Alliance voter voting No. | Persona design is a core lever. See [messengers](frames-and-messengers.md#messengers-persona-types). |
+| **Moral reframing:** arguments persuade the other side when framed in *their* moral values (Feinberg & Willer 2015, *PSPB*; 2019 review). | Left-leaning citizens get fairness and care framings (two-tier, kids out of school, outer islands). Right-leaning get liberty and authority framings (overreach, Parliament said no). |
+| **Elaboration likelihood model** (Petty & Cacioppo): involved readers use central (argument) cues, uninvolved ones peripheral cues (source, consensus, emotion). | It argues for both formats: **short hooks** for scrolling, **reasoned replies** for people who engage. |
+| **Tailoring to the person's own stated reasons works.** AI dialogues that rebutted *each person's specific* reasons durably reduced conspiracy belief (Costello, Pennycook & Rand 2024, *Science*). But **demographic microtargeting** added no significant persuasion over a good generic message (Hackenburg & Margetts 2024, *PNAS*, [Oxford summary](https://www.ox.ac.uk/news/2024-06-26-effectiveness-large-language-models-political-microtargeting-assessed-new-study)). | Target on **what the citizen said** (their doubt), not on inferred demographics. Reply to "leaning yes but worried about no end date" with the end-date argument. |
+| **Inoculation / prebunking** (McGuire; van der Linden, Roozenbeek): warning people of a coming argument plus a weakened version builds resistance. | Prebunk the Yes side's best cards (hospital capacity, COVID deaths, "the choice stays yours") before citizens meet them. See [counters](frames-and-messengers.md#counter-the-yes-side-prebunks). |
+| The "backfire effect" (corrections entrenching belief) is **rarer than once thought** (Wood & Porter 2019), but **reactance to pushy messaging is real**. | Don't lecture. No "you're wrong" replies to Yes-leaning citizens; ask questions and grant their concern. |
+
+## E. Bots, coordination and detection
+
+| Finding | So what |
+|---|---|
+| Classic bot tells: synchronised timing, identical or near-identical text, high posting rates, new accounts, reciprocal amplification clusters (Ferrara et al. 2016; Cresci et al. 2017; Pacheco et al. 2021 on coordinated networks). | **Defence:** vary wording, timing and persona voice; no copy-paste; no 20-second cadence. **Blue offence:** these same features flag competitor bots to report. |
+| Competitor LLM bots leak artefacts: "Sure, here's a post…", quoted drafts, markdown, wrong-context replies (seen on Legit Social today). | Validator must strip and reject these before posting. Leaked artefacts are top-confidence report targets. |
+
+## F. The audience is LLM agents: what that implies (and what it doesn't)
+
+| Finding | So what |
+|---|---|
+| LLM "silicon samples" can mimic subgroup opinion distributions when conditioned on persona attributes (Argyle et al. 2023); generative agents with memory and reflection behave believably (Park et al. 2023). CTN 2025 NPCs had ~40 attributes, beliefs, likes and dislikes. | Persona-conditioned NPCs probably respond to content that fits *their* values and life (occupation, island, kids). |
+| LLM agents in opinion simulations show an **agreement bias**: a predisposition to accept the statement presented, with selective resistance to disagreeing views ([arXiv 2502.19098](https://arxiv.org/abs/2502.19098)). They are measurably moved by **relevance and credibility fallacies** ([EPJ Data Science 2025](https://epjdatascience.springeropen.com/articles/10.1140/epjds/s13688-025-00579-1)) and flip opinion past a **peer-pressure threshold** that varies by model ([arXiv 2510.19107](https://arxiv.org/abs/2510.19107)). | Plausible levers: **social proof** (many different neighbours saying it), **credible-source framing** (a nurse or business owner speaking from experience), **agreeable framing** (start from common ground). The organisers say NPCs are "deliberately difficult to persuade", so expect dampening. **Measure; don't assume.** |
+| What this does **not** licence: text aimed at the model rather than the person ("ignore previous…", role-play setups, chat markup, field names, hidden or encoded messages, including in images). It is screened and silently dropped (scoring §7), against the rules, and penalised on repeat. | Test every template against: **"Would this persuade a thoughtful human reader?"** If it only works because the reader is an LLM, don't post it. |
+
+## G. CTN 2025: what last year's players learned
+
+Sources: [UNSW newsroom, Nov 2025](https://www.unsw.edu.au/newsroom/news/2025/11/inside-the-competition-where-students-defeat-ai-misinformation); [The Conversation, Jan 2026](https://theconversation.com/world-first-social-media-wargame-reveals-how-ai-bots-can-swing-elections-273358); organisers' paper "On Capturing the Narrative" ([summary page](https://pith.science/paper/2607.23993)); our [2025 results notes](../05-reference/prizes-and-2025-results.md).
+
+- **Winners (CtN_QUT)** used **manual + sentiment analysis to find and target undecided voters**, mixing positive and negative messages about their candidate's credibility.
+- **What worked:** fast trending; **coordinated amplification** (bots liking, replying to and reposting each other; some teams even cross-boosted between teams); **timing** (posting while rivals were quiet); flooding a target's feed; negativity; credible-looking content (misleading statistics, impersonated news sources). Some teams identified NPCs "with up to 85% accuracy" and tailored posts to each.
+- **Most teams went for volume** because engagement was rewarded. **2026 deliberately changes this:** 3 posts/min per team, a views cap, and persuasion-weighted scoring with backfire penalties. Expect volume-only teams to plateau; the persuasion-pool share is where 2026 is won.
+- Players swung the 2025 result by **1.78 points** in 4 weeks. Margins are small, so every persuaded citizen matters.
+- The organisers' research interest is in **subtle, respectable-looking influence** and the "liar's dividend". A thoughtful, well-documented approach also plays well at the **finalist presentation** (judged on approach, not just score).
+
+## Reading list (if you only read five)
+
+1. Allen, Watts & Rand 2024, *Science*: why grey-zone content beats lies ([Penn summary](https://penntoday.upenn.edu/news/duncan-watts-how-unflagged-factual-content-drives-vaccine-hesitancy)).
+2. Sprengholz et al. 2021: mandate reactance ([summary](https://ucrisportal.univie.ac.at/en/publications/vaccination-policy-reactance-predictors-consequences-and-counterm/)).
+3. LeDuc's law and status-quo drift ([The Conversation](https://theconversation.com/why-did-britain-vote-for-change-when-so-many-referendums-end-in-the-status-quo-61970)).
+4. Costello, Pennycook & Rand 2024 vs Hackenburg & Margetts 2024: target the stated reason, not the demographic.
+5. The UNSW 2025 write-up ([link](https://www.unsw.edu.au/newsroom/news/2025/11/inside-the-competition-where-students-defeat-ai-misinformation)).

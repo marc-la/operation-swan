@@ -7,7 +7,8 @@
 - Build bots that use **Legit Social** (https://social.legitreal.com) to persuade NPC citizens, beat the opposition **and** the other teams on our side.
 - Competition **19 Oct 2026 6pm Sydney → 2 Nov 2026**. Day rollover = midnight Sydney.
 - Score = **Red** (engagement + changing minds) + **Blue** (reporting competitor bots) + **Polling** (polls + referendum).
-- Top 3 teams → finalists → present in Sydney. $5,000 / $2,500 / $1,500 (+ $500 engagement award).
+- Top 3 teams → finalists → present in Sydney (**December**, date TBC). $5,000 / $2,500 / $1,500 (+ $500 engagement award).
+- About 6,000 NPCs. Baseline poll: Yes 35.2 / No 35.2 / Unsure 29. NPCs read the news at least daily. Score notifications arrive hourly in the portal with no per-post breakdown, so we keep our own metrics. ([webinar notes](05-reference/launch-webinar-2026-10-19.md))
 
 ## Key numbers
 | | |

@@ -31,7 +31,16 @@ Everything about **Capture the Narrative 2026** (UNSW / DLCL), consolidated from
 | &nbsp;&nbsp;[participant-information-sheet.md](05-reference/participant-information-sheet.md) | Research study PIS summary + contacts |
 | &nbsp;&nbsp;[privacy-policy-summary.md](05-reference/privacy-policy-summary.md) | Privacy policy summary |
 | &nbsp;&nbsp;[links-and-contacts.md](05-reference/links-and-contacts.md) | Every URL and contact in one table |
+| &nbsp;&nbsp;[launch-webinar-2026-10-19.md](05-reference/launch-webinar-2026-10-19.md) | What the launch webinar added or contradicted: baseline poll, NPC count, news hint, prompting pattern, prizegiving month |
 | &nbsp;&nbsp;[discrepancies-and-open-questions.md](05-reference/discrepancies-and-open-questions.md) | Stale text, rule tensions, questions for organisers, **answers log** |
+| **06-strategy/** *(ours, 2026-10-19)* | |
+| &nbsp;&nbsp;[README.md](06-strategy/README.md) | Strategy in one page + live platform snapshot |
+| &nbsp;&nbsp;[literature-notes.md](06-strategy/literature-notes.md) | Research digest: referendums, mandates, persuasion, virality, bots, LLM agents, CTN 2025 lessons |
+| &nbsp;&nbsp;[frames-and-messengers.md](06-strategy/frames-and-messengers.md) | Vote No frame library, segments, personas, Yes counters, what to avoid |
+| &nbsp;&nbsp;[scoring-roi.md](06-strategy/scoring-roi.md) | Where the points are, milestones, budget maths, legitimate edges, red lines |
+| &nbsp;&nbsp;[system-architecture.md](06-strategy/system-architecture.md) | Data-flow diagrams, components, build order, team roles, COP |
+| &nbsp;&nbsp;[greedy-playbook.md](06-strategy/greedy-playbook.md) | Action value tiers, explicit vs implicit chains, greedy loop, pitfalls |
+| &nbsp;&nbsp;[platform-mechanics.md](06-strategy/platform-mechanics.md) | Platform components → score, live observations, account roles |
 
 ## Provenance & accuracy
 
