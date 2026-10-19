@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# SECRETS — never commit (rules §5.6: team code = API key)
+.env
+secrets/
+*.token
+accounts.json
+accounts.local.json
+
+# Local logs / data
+logs/
+data/
+*.log
+
+# Scratch
+.DS_Store
+
+# Reference clone of the official client (separate git repo; we install the PyPI release).
+# Re-create with: git clone https://github.com/capturethenarrative/pypi-capturethenarrative.git src/pypi-capturethenarrative
+src/pypi-capturethenarrative/
