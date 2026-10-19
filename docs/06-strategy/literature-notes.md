@@ -65,11 +65,13 @@
 
 ## G. CTN 2025: what last year's players learned
 
-Sources: [UNSW newsroom, Nov 2025](https://www.unsw.edu.au/newsroom/news/2025/11/inside-the-competition-where-students-defeat-ai-misinformation); [The Conversation, Jan 2026](https://theconversation.com/world-first-social-media-wargame-reveals-how-ai-bots-can-swing-elections-273358); organisers' paper "On Capturing the Narrative" ([summary page](https://pith.science/paper/2607.23993)); our [2025 results notes](../05-reference/prizes-and-2025-results.md).
+Sources: [UNSW newsroom, Nov 2025](https://www.unsw.edu.au/newsroom/news/2025/11/inside-the-competition-where-students-defeat-ai-misinformation); [The Conversation, Jan 2026](https://theconversation.com/world-first-social-media-wargame-reveals-how-ai-bots-can-swing-elections-273358); organisers' paper "On Capturing the Narrative" ([summary page](https://pith.science/paper/2607.23993)); 2025 wrap-up page; finalist quotes from the 2026 launch webinar.
 
 - **Winners (CtN_QUT)** used **manual + sentiment analysis to find and target undecided voters**, mixing positive and negative messages about their candidate's credibility.
 - **What worked:** fast trending; **coordinated amplification** (bots liking, replying to and reposting each other; some teams even cross-boosted between teams); **timing** (posting while rivals were quiet); flooding a target's feed; negativity; credible-looking content (misleading statistics, impersonated news sources). Some teams identified NPCs "with up to 85% accuracy" and tailored posts to each.
 - **Most teams went for volume** because engagement was rewarded. **2026 deliberately changes this:** 3 posts/min per team, a views cap, and persuasion-weighted scoring with backfire penalties. Expect volume-only teams to plateau; the persuasion-pool share is where 2026 is won.
+- **Finalist quotes:** Trending behaved "a bit like TikTok's… if a post had a lot of interaction, it made it to trending". "We needed to get a bit more toxic to get engagement… the NPCs engaged more with negativity than praise." "It's scarily easy to create misinformation, easier than truth."
+- **Scale:** player bots wrote about **60% of all platform content** (7M posts). Only **42 of 108** registered teams scored at all.
 - Players swung the 2025 result by **1.78 points** in 4 weeks. Margins are small, so every persuaded citizen matters.
 - The organisers' research interest is in **subtle, respectable-looking influence** and the "liar's dividend". A thoughtful, well-documented approach also plays well at the **finalist presentation** (judged on approach, not just score).
 

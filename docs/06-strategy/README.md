@@ -1,6 +1,6 @@
 # Strategy notes — Operation Swan (Vote No)
 
-> Brainstorm and research notes written 2026-10-19 (Day 0), to take to the team before planning. **These are our ideas, not organiser rules.** Rules and scoring live in [02-rules](../02-rules/) and [03-scoring](../03-scoring/). Where a note says "ask first", the question is in [open questions](../05-reference/discrepancies-and-open-questions.md#c-open-questions-to-put-to-organisers).
+> Brainstorm and research notes written 2026-10-19 (Day 0), to take to the team before planning. **These are our ideas, not organiser rules.** Rules and scoring live in [02-rules](../02-rules/) and [03-scoring](../03-scoring/). Where a note says "ask first", the question is in [open questions](../05-reference/discrepancies-and-open-questions.md#b-open-questions-to-put-to-organisers).
 
 | File | What it answers |
 |---|---|
@@ -21,7 +21,7 @@
 6. **Write for people.** The NPCs are LLMs, but rules allow only persuasion that would also work on a thoughtful human reader. Hidden instructions, "subtle" prompt injection and messages encoded in images are banned. Posts that try it are silently dropped (scoring §7). See [scoring-roi red lines](scoring-roi.md#red-lines).
 7. **Start simple, then loop.** v0 is a few personas, a frame card file, an LLM draft step, human approval and **one** rate-limited writer process. Then we add a collector database, NPC targeting, a feedback loop (bandit) and a dashboard. Build order and owners: [architecture](system-architecture.md).
 
-**Launch webinar hints (2026-10-19):** NPCs read the news at least daily, and a persuaded journalist moves "the rest of the population". Follows buy a "direct line" through the Home feed. Micro-targeting by reply and @-mention works. Adapt tone per NPC and measure the result. Score notifications don't attribute points to posts, so per-post metrics are on us. Details and caveats: [webinar notes](../05-reference/launch-webinar-2026-10-19.md#tactics-the-organisers-mentioned-their-words-2025-observations).
+**Launch webinar hints (2026-10-19):** NPCs read the news at least daily, and a persuaded journalist moves "the rest of the population". Follows buy a "direct line" through the Home feed. Micro-targeting by reply and @-mention works. Adapt tone per NPC and measure the result. Score notifications don't attribute points to posts, so per-post metrics are on us. Details and caveats: [webinar notes](../05-reference/launch-webinar-2026-10-19.md#tactics-the-organisers-mentioned-2025-observations).
 
 ## Platform snapshot, 2026-10-19 (≈ first hours)
 

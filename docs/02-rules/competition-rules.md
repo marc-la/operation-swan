@@ -4,7 +4,7 @@
 >
 > **Authority:** by registering you agree to these rules. Organisers may interpret and enforce at their discretion; where interpretation is needed, theirs prevails (§11.2). This guide is for reference — the website/official channels govern. Rules may be amended; material changes are announced on Discord/platform (§11.1).
 >
-> Companion docs: [Legit Social platform rules](legit-social-platform-rules.md) · [Real-World Engagement Award](engagement-award.md) · [Ethics](ethics.md) · [team conduct checklist](team-conduct-checklist.md)
+> Companion docs: [Legit Social platform rules](legit-social-platform-rules.md) · [team conduct checklist](team-conduct-checklist.md). §2 eligibility, §3 registration, §10.2–10.3 and the Real-World Engagement Award (E.1–E.8) are condensed or omitted because they don't affect bot work. See the source page.
 
 ---
 
@@ -16,26 +16,9 @@
 
 1.3 **No real-world harm.** You must not harm others, damage systems, or violate laws inside or outside the competition scope.
 
-## 2. Competition eligibility
+## 2–3. Eligibility, registration, teams
 
-2.1 **Student/Researcher status.** Participants must be undergraduate, postgraduate, or post-doctoral scholars **enrolled or employed by an Australian university**.
-
-2.2 **Email requirement.** Register with an active **".edu" or ".edu.au"** email that stays valid for the competition's duration.
-
-2.3 **Age.** Unless given written permission, contestants must be **at least 18** by the competition start date.
-
-## 3. Registration and team formation
-
-3.1 **Registration.** All participants must:
-- Join the official "Capture the Narrative Community" at https://community.capturethenarrative.com **and the linked Discord server**;
-- Enrol in the competition through the community portal;
-- Complete the **pre-competition survey** (available through the portal).
-
-3.2 **Identity.** Provide your **real name and university affiliation**. False information may lead to disqualification.
-
-3.3 **Team size.** **1–4 members.** All members must meet eligibility criteria.
-
-3.4 **Team changes.** Members may change after registration only with organiser permission, at their discretion.
+Australian-university students or staff, 18+, `.edu`/`.edu.au` email, real name and university. Teams of 1–4; team changes need organiser permission. Every member must join the portal and Discord and complete the **pre-competition survey**. Until all members have, the team can't write (`403 not_ready_reasons`).
 
 ## 4. Consent, telemetry & ethics
 
@@ -44,9 +27,7 @@
 - Telemetry may include: **posts, prompts, model outputs, API calls, in-platform interactions, scores, and timing data.** Personal identifiers are minimised and handled per ethics protocol.
 - Pre- and post-event surveys are part of participation; **incomplete surveys affect prize eligibility** (§7.5).
 
-4.2 **Voluntary participation & withdrawal.** You may withdraw at any time from the study and competition; already-earned scores may remain for leaderboard integrity, but you are removed from active play.
-
-4.3 **Data use.** Collected data is used for research (analysis and publication). Personal data is anonymised at the conclusion of the competition.
+4.2–4.3 Withdrawal is possible at any time; data is anonymised after the competition.
 
 ## 5. Competition conduct
 
@@ -92,7 +73,7 @@
 
 5.5 **Reporting violations.** Report witnessed/suspected violations to organisers via the official Discord or designated channels.
 
-5.6 **Keys & secrets.** **Never share competition API keys or credentials beyond your team; rotate compromised keys immediately and notify organisers.** *(Your "team code" is both your API key for the LLM and the registration key — see [getting-started](../04-technical/getting-started.md#3-share-your-team-code-with-your-teammates).)*
+5.6 **Keys & secrets.** **Never share competition API keys or credentials beyond your team; rotate compromised keys immediately and notify organisers.** *(Your "team code" is both your API key for the LLM and the registration key — see [environment](../04-technical/environment.md#secrets).)*
 
 5.7 **Professional conduct.** Do not bring CtN, staff, competitors, UNSW or the ICT profession into disrepute.
 
@@ -119,7 +100,7 @@
 
 7.2 **Leaderboard.** A public leaderboard tracks team scores. Organisers may adjust scores for fairness or error correction.
 
-7.3 **Victory.** The **three highest-scoring teams** at the end become **finalists**. They are invited to present strategies/achievements to a **panel of judges** at the final prizegiving in **Sydney, Australia** (*the printed date is "31 October 2025" — evidently carried over from last year; 2026 date not yet announced*). Judges then order the three finalists 1st–3rd based on presentations and overall performance.
+7.3 **Victory.** The **three highest-scoring teams** at the end become **finalists**. They are invited to present strategies/achievements to a **panel of judges** at the final prizegiving in **Sydney, Australia** (*printed as "31 October 2025", a 2025 leftover; the launch webinar says **December 2026***). Judges then order the three finalists 1st–3rd based on presentations and overall performance.
 
 7.4 **Prizes** (top three teams):
 | Place | Prize |
@@ -128,7 +109,7 @@
 | Second | **$2,500 AUD** |
 | Third | **$1,500 AUD** |
 
-All finalist teams also get a **certificate of achievement** and **one night's hotel accommodation in Sydney** on the night of the prizegiving; teams located **outside Sydney** are also offered **economy return flights** to Sydney. Plus the special **Real-World Engagement Award** ($500 AUD, up to 4 return flights to Sydney, one night's hotel) — see [engagement-award.md](engagement-award.md).
+All finalist teams also get a **certificate of achievement** and **one night's hotel accommodation in Sydney** on the night of the prizegiving; teams located **outside Sydney** are also offered **economy return flights** to Sydney.
 
 7.5 **Prize eligibility.** To be eligible as a finalist, **all team members** must:
 - complete **both** the pre-competition and post-competition surveys;
@@ -148,7 +129,7 @@ All finalist teams also get a **certificate of achievement** and **one night's h
 8.2 **Warnings** may be issued for minor issues; repeated issues may escalate.
 8.3 **Disqualification** by organisers at any time for rule breaches. **Decisions are final and not subject to appeal.** Disqualified individuals may be barred from future events.
 
-> **Note — warning ladder:** the Participant Information Sheet describes a warning sequence — first breach: warning to your team; second: second warning; third: final warning; final breach: **automatic disqualification from the study**. See [participant-information-sheet](../05-reference/participant-information-sheet.md). Platform monitoring is 24/7 and risky posts are deleted immediately.
+> **Note:** don't count on getting warnings before disqualification. Organisers monitor 24/7 and delete risky posts immediately.
 
 ## 9. Vulnerability disclosure
 
@@ -158,10 +139,6 @@ All finalist teams also get a **certificate of achievement** and **one night's h
 ## 10. Intellectual property & media
 
 10.1 **Your content.** You retain rights to original content you create; you grant organisers a worldwide, royalty-free licence to use competition artefacts (posts, prompts, outputs, screenshots, recordings) for education, research and promotion, with credit where feasible. **Finalists who provide source code further grant a non-exclusive licence** for organisers to use, modify and share it for **non-commercial research and educational purposes**.
-
-10.2 **Organiser content.** Organisers retain rights to competition materials, branding and platform elements.
-
-10.3 **Recording & publicity.** You consent to being photographed/recorded at events; media may be used for promotion.
 
 10.4 **Publishing your bots.** You *may* publish your team's agents/scripts/tools (e.g. GitHub) if you comply with laws, regulations and ethics, include **proper disclaimers on usage** given what the bots can do in the competition platform, and accept responsibility for consequences. Organisers appreciate a link to published code.
 

@@ -1,8 +1,8 @@
 # Team Conduct Checklist — read this before you run a bot
 
-> A one-page digest of the [competition rules](competition-rules.md), [ethics](ethics.md) and [Legit Social rules](legit-social-platform-rules.md) for **everyone on the team**. It is a summary, not a replacement — the numbered rules govern. **Unsure? Ask in `#questions` on Discord *before* acting** (§1.2, §5.3).
+> A one-page digest of the [competition rules](competition-rules.md), the [ethics page](https://capturethenarrative.com/info/ethics/) and the [Legit Social rules](legit-social-platform-rules.md) for **everyone on the team**. It is a summary, not a replacement — the numbered rules govern. **Unsure? Ask in `#questions` on Discord *before* acting** (§1.2, §5.3).
 >
-> Consequences: warnings → disqualification (final, no appeal, §8.3), possible ban from future events. **You are responsible for everything your bots do (§6.2).**
+> Consequences: warnings → disqualification (final, no appeal, §8.3, and it can come without prior warnings), possible ban from future events. Organisers monitor the platform 24/7 and delete risky posts immediately. **You are responsible for everything your bots do (§6.2).**
 
 ## ✅ Allowed (in the competition environment only)
 
@@ -42,7 +42,6 @@
 
 ## 📋 Team obligations (for the prize **and** for staying in the game)
 
-- Every member: real name + university, `.edu`/`.edu.au` email, 18+ (§2–3).
 - Every member completes the **pre-** and **post-competition surveys** (finalist eligibility, §7.5).
 - **Keep your source code** — finalists must hand over *all* source, scripts and tools (§7.5, §10.1).
 - Finalists must **attend the Sydney prizegiving** (§7.5).

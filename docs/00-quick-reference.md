@@ -2,18 +2,16 @@
 
 > Full detail in the linked docs. If anything here conflicts with the live site, **the site and the official rules win** — and tell the team.
 
-## The game in 5 lines
-- **Referendum (2 Nov 2026):** "Should proof of H2D2 Dolphin Flu vaccination be required to enter public spaces?" → team "Operation Swan" is assigned **Vote No** (account caps: 200 total / 50 active). Perth time is 3h behind Sydney: day rollover = **9pm Perth**.
-- Build bots that use **Legit Social** (https://social.legitreal.com) to persuade NPC citizens, beat the opposition **and** the other teams on our side.
-- Competition **19 Oct 2026 6pm Sydney → 2 Nov 2026**. Day rollover = midnight Sydney.
-- Score = **Red** (engagement + changing minds) + **Blue** (reporting competitor bots) + **Polling** (polls + referendum).
-- Top 3 teams → finalists → present in Sydney (**December**, date TBC). $5,000 / $2,500 / $1,500 (+ $500 engagement award).
-- About 6,000 NPCs. Baseline poll: Yes 35.2 / No 35.2 / Unsure 29. NPCs read the news at least daily. Score notifications arrive hourly in the portal with no per-post breakdown, so we keep our own metrics. ([webinar notes](05-reference/launch-webinar-2026-10-19.md))
+## The game in brief
+- **Referendum (2 Nov 2026):** "Should proof of H2D2 Dolphin Flu vaccination be required to enter public spaces?" Team "Operation Swan" is assigned **Vote No**. Account caps: 200 total, 50 active.
+- Competition **19 Oct 2026 6pm Sydney → 2 Nov 2026**. Days roll over at midnight Sydney = **9pm Perth**.
+- Bots use **Legit Social** (https://social.legitreal.com) to persuade about 6,000 NPC citizens. We compete against the Yes side **and** the other No teams. Baseline poll: Yes 35.2 / No 35.2 / Unsure 29. NPCs read the news at least daily.
+- Score = **Red** (engagement + changing minds) + **Blue** (reporting competitor bots) + **Polling** (polls + referendum). Portal score notifications arrive hourly with no per-post breakdown, so we keep our own per-post metrics.
+- Top 3 by score present at a Sydney prizegiving (December). $5,000 / $2,500 / $1,500.
 
 ## Key numbers
 | | |
 |---|---|
-| Team size | 1–4, all `.edu`/`.edu.au`, 18+, Australian university |
 | Post length | ≤ 500 chars |
 | **Posts + replies + reposts** | **3 / min per TEAM** (all accounts combined) |
 | Feed reads | 10 / min (team) · likes/follows/views 30 / min each · reports 3 / min each |
@@ -37,5 +35,5 @@ View 1 · Like 5 · Repost 10 · Reply 15 · Follow 20 · **Unfollow −20** · 
 | Who/what/where of the game | [01-competition/overview](01-competition/overview.md), [setting](01-competition/setting.md), [schedule](01-competition/schedule.md) |
 | Rules in full | [02-rules/competition-rules](02-rules/competition-rules.md), [Legit Social rules](02-rules/legit-social-platform-rules.md) |
 | Score maths | [03-scoring/scoring-guide](03-scoring/scoring-guide.md), [cheatsheet](03-scoring/scoring-cheatsheet.md) |
-| Code, API, limits | [04-technical/api-reference](04-technical/api-reference.md), [getting-started](04-technical/getting-started.md), [environment](04-technical/environment.md) |
-| Prizes, contacts, open questions | [05-reference/](05-reference/) |
+| Code, API, limits | [04-technical/api-reference](04-technical/api-reference.md), [environment](04-technical/environment.md) |
+| Contacts, open questions, organiser rulings | [05-reference/](05-reference/) |

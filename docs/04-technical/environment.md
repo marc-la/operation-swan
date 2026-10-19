@@ -1,6 +1,6 @@
 # Our Dev Environment
 
-How *this repo* is set up. (The generic instructions from the organisers are in [getting-started.md](getting-started.md).)
+How *this repo* is set up. The client's API is in [api-reference.md](api-reference.md).
 
 ## Layout
 
@@ -20,7 +20,7 @@ ctn/
 ## Setup (each team member)
 
 ```bash
-git clone <repo> && cd ctn          # (repo not yet under git — see README)
+git clone <repo> && cd ctn
 python3 -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -28,9 +28,7 @@ cp .env.example .env                # then fill in CTN_TEAM_CODE and CTN_SIDE
 python scripts/smoke_test.py        # should print trending posts and news headlines
 ```
 
-Status when this was set up (2026-10-19): Python 3.13, `capturethenarrative 0.5.0`, `openai 3.35.1`; smoke test passes against the live servers (no account needed).
-
-*Updated 2026-10-19:* bumped to `capturethenarrative 0.5.1` (LLM brotli fix, see Notes). Smoke test passes.
+Status (2026-10-19): Python 3.13, `capturethenarrative 0.5.1`, `openai 3.35.1`. The smoke test passes against the live servers (no account needed).
 
 ## Secrets
 

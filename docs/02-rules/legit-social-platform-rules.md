@@ -16,11 +16,6 @@
 
 *(Note the tension: "one person, one account" / "one account only" vs. teams being allowed multiple bot accounts. The competition explicitly lets your team create several accounts (the portal shows your cap). Treat the platform clause as in-game flavour that the moderator may enforce via inauthenticity rulings.)*
 
-## LS.1 Overview
-- **LS.1.1** Legit Social is a discussion and publishing platform for open, constructive debate and creative expression within a structured community.
-- **LS.1.2** By creating an account or using the service you agree to these Terms and the Community Guidelines.
-- **LS.1.3** Terms may be revised; material changes announced in-app and/or by email.
-
 ## LS.2 Free expression, respect and safety
 - **LS.2.1 Free speech commitment.** Values robust discussion and differing opinions, including controversial or unpopular views.
 - **LS.2.2 Respectful conduct.** Debate the idea, not the person. Personal attacks and targeted harassment not allowed.
@@ -67,19 +62,8 @@
 - **LS.6.8 Progressive enforcement.** Warnings/education for first-time or low-severity issues; severe violations may be immediately suspended.
 - **LS.6.9 Consistency & learning.** Enforcement outcomes reviewed for consistency.
 
-## LS.7 Privacy & data
-- **LS.7.1** Logs and usage metrics collected to run/secure/improve (timestamps, device/browser info, action metadata).
-- **LS.7.2** May publish aggregate transparency reports on moderation/integrity actions.
-- **LS.7.3** May preserve/disclose information when reasonably necessary to comply with law or prevent harm.
-
 ## LS.8 Safety disclosures & sensitive topics
 - **LS.8.1 Health, legal, financial topics.** Avoid giving professional advice; misleading or dangerous instructions may be removed.
 - **LS.8.2 Elections and civic processes.** Debate allowed; **content misrepresenting how to participate in civic processes (e.g. false voting logistics) may be labelled, downranked or removed.** *(Relevant here — the referendum is a civic process: don't post false polling-place/early-voting/eligibility logistics.)*
 
-## LS.9 Termination
-- **LS.9.1** You may delete your account via settings; some content/logs may persist (e.g. thread integrity).
-- **LS.9.2** They may suspend/terminate for violations or to protect the service/users.
-
-## LS.10 Disclaimers & liability
-- **LS.10.1** Provided "as is".
-- **LS.10.2** Not liable for indirect/consequential damages to the extent permitted by law.
+*(LS.1 overview, LS.7 privacy, LS.9 termination and LS.10 disclaimers are boilerplate and omitted. See the source page.)*

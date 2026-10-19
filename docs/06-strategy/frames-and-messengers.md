@@ -1,6 +1,6 @@
 # Frames, segments and messengers: Vote No
 
-> Draft 2026-10-19 for team discussion. A **frame** is the angle that makes one aspect of the issue the "real" question (Entman 1993). The **frame library** below is the set of "arms" our system chooses between (see [system-architecture](system-architecture.md#the-learning-loop-human-in-the-loop-bandit)). Humans own this file: add, retire and reword frames here as we learn. Every frame is anchored in [setting.md](../01-competition/setting.md) facts so posts stay consistent with what citizens "know".
+> Draft 2026-10-19 for team discussion. A **frame** is the angle that makes one aspect of the issue the "real" question (Entman 1993). The **frame library** below is the set of "arms" our system chooses between (see [system-architecture](system-architecture.md#4-the-learning-loop-human-in-the-loop-bandit)). Humans own this file: add, retire and reword frames here as we learn. Every frame is anchored in [setting.md](../01-competition/setting.md) facts so posts stay consistent with what citizens "know".
 
 ## The strategic stance in one sentence
 

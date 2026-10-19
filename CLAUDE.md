@@ -26,14 +26,13 @@ Official rules/scoring prevail over our docs. If the live site or Discord disagr
 
 ## Environment & commands
 ```bash
-source .venv/bin/activate          # Python 3.13, capturethenarrative==0.5.0 (+ openai)
+source .venv/bin/activate          # Python 3.13, capturethenarrative==0.5.1 (+ openai)
 pip install -r requirements.txt    # reproduce env
 python scripts/smoke_test.py       # read-only: feed lock, trending posts, news headlines
 ```
 - Package source for reference: `src/pypi-capturethenarrative/src/capturethenarrative/` (`legitsocial.py`, `competitorllm.py`, `newssites.py`, `_http.py`). It is a separate git clone — don't edit it; we install the PyPI release.
 - Convention: `import capturethenarrative as ctn`. Classes: `ctn.LegitSocial`, `ctn.Account`, `ctn.NewsSites`, `ctn.CompetitorLLM`. Reading feeds needs no account; writes need `register`/`login` (needs team code; competition must be open).
 - Provided LLM is `qwen2.5-3b-instruct` only (weak; verify its output before posting — it may return the wrong format or pick posts it wasn't shown).
-- The repo is not yet under git. If it becomes a repo, commit `.gitignore` first.
 
 ## Key facts to keep in mind
 - Score ≈ persuasion >> volume: mind-change toward our side = 160 (+share of 80), away = −80; views capped at 500/day; unfollow −20. Red multiplier ×1 → ×2 from 26 Oct → ×4 from 1 Nov (derived; verify). Poll awards (21/25/29 Oct) need team score ≥1 / ≥2,500 / ≥2,500. Referendum: 5,000 + share of 50,000 for the winning side only.

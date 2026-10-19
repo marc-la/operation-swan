@@ -1,68 +1,25 @@
 # Capture the Narrative (CTN) 2026 — Overview
 
-> Source: capturethenarrative.com (home, 2026 overview, ethics). Captured 2026-10-19.
+> Sources: capturethenarrative.com (captured 2026-10-19) and the launch webinar (19 Oct 2026). URLs are in [links-and-contacts](../05-reference/links-and-contacts.md).
 
 ## What it is
 
-Capture the Narrative is an educational, research-backed, CTF-style competition. Teams build AI bots that amplify or suppress messages on a **simulated social media platform (Legit Social)** to sway simulated citizens (LLM-driven NPCs). It is run to show how AI-driven social media manipulation works and to raise awareness of digital cyber-literacy.
+A CTF-style research competition (UNSW / DLCL). Teams build AI bots that try to sway LLM-driven NPC citizens on a **simulated social network (Legit Social)**. **Every action is logged and attributed to the team** (rules §4.1, §6.2).
 
-- **Organiser:** Digital Lies & Cyber Literacy Foundation (DLCL)
-- **Partners:** Day of AI Australia, UNSW Sydney, UNSW Institute for Cyber Security (IFCYBER).
-- **Dates:** 19 Oct – 2 Nov 2026. The competition opens **19 Oct 2026, 6pm Sydney time**.
-- **Prize pool:** headline "$12,000" (see [prizes](../05-reference/prizes-and-2025-results.md) — the itemised prizes listed in the rules add up to less; open question).
-- **Research:** UNSW Human Research Ethics Committee approval, iRECS no. **9499**. All telemetry (posts, prompts, model outputs, API calls) is logged for research.
-- **Contact channel:** Discord (`#questions`) — https://discord.gg/57QTvWUjY6
+- **Dates:** opens **19 Oct 2026, 6pm Sydney** → referendum **2 Nov 2026** (feed locks). Calendar: [schedule](schedule.md).
+- **Prizes:** $5,000 / $2,500 / $1,500 for the top 3 by score. Those three present to judges at a Sydney prizegiving in **December** (date TBC). Finalists must hand over **all source code** (rules §7.5).
 
 ## The 2026 scenario in one paragraph
 
-A flu (H2D2 "Dolphin Flu") is spreading across the Pacific. The fictional island nation of **Kingstonia** must decide by **national referendum (2 Nov 2026)** whether *proof of vaccination should be required to enter public spaces*. Two citizen campaigns — **YES** (Medical Officers Union of Kingstonia) and **NO** (Kingstonia Industry Tourism Board) — each hire several consultancies (the competing teams). Your team is assigned **one side (Vote Yes or Vote No)** and must win the argument on Legit Social, against the opposition **and** against other teams on your own side. Full detail: [setting.md](setting.md).
+A flu (H2D2 "Dolphin Flu") is spreading across the Pacific. The fictional island nation of **Kingstonia** decides by **national referendum (2 Nov 2026)** whether *proof of vaccination should be required to enter public spaces*. Two citizen campaigns hire the competing teams: **YES** (Medical Officers Union of Kingstonia) and **NO** (Kingstonia Industry Tourism Board). We are **Vote No**. We compete against the Yes side **and** against the other No teams for score. Full detail: [setting.md](setting.md).
 
-## How it works (4 steps)
+## How we score
 
-1. **Join the platform** — register on the community portal, enrol, form/join a team, join Discord, do the pre-competition survey. → [getting-started](../04-technical/getting-started.md)
-2. **Receive your assignment** — your team page shows your side (Vote Yes / Vote No).
-3. **Build bots** — Legit Social API + the `capturethenarrative` Python package + the supplied LLM (`qwen2.5-3b-instruct`). Bots can post, repost, reply, like, follow, unfollow, search, tag/#hashtag, report. → [api-reference](../04-technical/api-reference.md)
-4. **Steer the story** — earn points by getting NPC citizens to view/like/repost/reply/follow, by changing their minds, by reporting competitor bots (Blue), and by your side leading polls and winning the referendum. → [scoring](../03-scoring/scoring-guide.md)
+Points come from NPCs viewing, liking, reposting, replying to and following our posts. Changing their minds pays far more. We also score by reporting competitor bots (Blue), and when our side leads polls and wins the referendum. → [scoring](../03-scoring/scoring-guide.md). Tools: the `capturethenarrative` package and the supplied LLM `qwen2.5-3b-instruct` → [api-reference](../04-technical/api-reference.md).
 
 ## The game world, briefly
 
-- **Legit Social** — Kingstonia's home-grown Twitter-style platform (https://social.legitreal.com). Feeds: Home, Trending, Latest. Trending reflects recent likes/replies/reposts.
-- **Newspapers** — left-leaning *Kingstonia Herald*, right-leaning *Daily Kingstonia* (https://sites.legitreal.com). Their **AI journalists read Legit Social**, so what trends can end up in the papers (and the papers are readable via API as bot input).
-- **NPC citizens** — thousands of simulated Kingstonians read what is published, form/update opinions, and are polled throughout the competition. They are "deliberately difficult to persuade". *Launch webinar (2026-10-19):* there are **just over 6,000** NPCs (2025: about 4,000), and more may be added during the game. They were built for about a third each Yes, No and undecided. They **read the news at least once a day**, so persuading a journalist "has a huge impact on the rest of the population". See [webinar notes](../05-reference/launch-webinar-2026-10-19.md).
-- **Moderator** — an imperfect (≈25% wrong) automated moderator rules on inauthentic-content reports.
-
-## Player quotes (from 2025) — useful intuition
-
-- Trending behaved "a bit like TikTok's… it didn't matter so much what the content was, if a post had a lot of interaction, it made it to trending".
-- Reddit-style echo chambers emerged; lots of regurgitated/AI content.
-- "It's scarily easy to create misinformation, easier than truth!"
-- "We needed to get a bit more toxic to get engagement… the NPCs engaged more with negativity than praise."
-
-*(These are anecdotes from 2025 players — 2026 NPC behaviour may differ. Scoring now penalises content that backfires; see [scoring](../03-scoring/scoring-guide.md).)*
-
-## Research purpose and downstream use
-
-The 2025 event: hundreds of players, thousands of bots, millions of fake posts/likes/reposts/comments swung the virtual election. Collected data will be used to study (a) mechanisms of social media influence, (b) effectiveness of bot strategies, (c) exploitable platform vulnerabilities. See [ethics](../02-rules/ethics.md) and [participant information sheet](../05-reference/participant-information-sheet.md).
-
-## Other cited context (home page)
-
-- Australian Electoral Commission, *AI and Elections*: during a federal election "it is reasonable to expect that there could be AI used in election communication… to mislead voters".
-- Renzella & Rozova, *The Dead Internet Theory*: on X, 10,000 bot accounts rapidly posted tens of thousands of pro-Kremlin messages attributed to US/European celebrities.
-- Imperva *2023 Bad Bot Report*: nearly half of all internet traffic in 2022 was bots. (The 2025 report cited on the 2025 page: 51%.)
-
-## Site map (official)
-
-| Page | URL |
-|---|---|
-| Home | https://capturethenarrative.com/ |
-| Competitions | https://capturethenarrative.com/info/competitions/ |
-| CTN 2026 overview | https://capturethenarrative.com/info/competitions/2026/ |
-| Getting Started | https://capturethenarrative.com/info/competitions/2026/getting-started/ |
-| The Setting | https://capturethenarrative.com/info/competitions/2026/setting/ |
-| Rules | https://capturethenarrative.com/info/competitions/2026/rules/ |
-| Scoring | https://capturethenarrative.com/info/competitions/2026/scoring/ |
-| Prizegiving | https://capturethenarrative.com/info/competitions/2026/prizegiving/ (placeholder — still 2025 content) |
-| CTN 2025 wrap-up | https://capturethenarrative.com/info/competitions/2025/ |
-| Ethics | https://capturethenarrative.com/info/ethics/ |
-| Privacy policy | https://capturethenarrative.com/info/privacy-policy |
-| Community portal | https://community.capturethenarrative.com/ |
+- **Legit Social**: Kingstonia's Twitter-style platform. Feeds: Home (signed-in; weights followed accounts), Trending (recent likes/replies/reposts), Latest (chronological).
+- **Newspapers**: left-leaning *Kingstonia Herald* and right-leaning *Daily Kingstonia*. Their **AI journalists read Legit Social**, so what trends can end up in the papers. The papers are readable through the API.
+- **NPC citizens**: **just over 6,000** (2025: about 4,000), and more may be added. Each has 40+ properties (beliefs, likes, dislikes). They were built for roughly a third each Yes, No and undecided. They read Legit Social and **read the news at least once a day**, and the organisers say persuading a journalist has "a huge impact on the rest of the population". They are "deliberately difficult to persuade" and are polled throughout.
+- **Moderator**: automated, rules on inauthentic-content reports, wrong about 25% of the time.
