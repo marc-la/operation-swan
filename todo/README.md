@@ -16,6 +16,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | [10](10-organiser-questions.md) | Post our rule questions in Discord `#questions` | Blue lead | **today** | — |
 | [07](07-blue-desk.md) | Blue desk: find ring bots, report them | Blue lead | **today → 21 Oct** | 08 helps but not needed for v0 |
 | [03](03-throughput-single-writer.md) | One writer using all 3 writes/min; paid LLM key; spare like/follow/view budgets | Marc (ops) | 21 Oct | 01 |
+| [12](12-batched-drafting.md) | Batched drafting: fix `batch.py`, A/B vs single (≥95% quality), wire into the draft pool | Marc (ops) | 21 Oct | — (part of 03) |
 | [04](04-reach-amplification.md) | Reach: own-team amplification into Trending, made to look organic (decided 2026-10-20) | Ops + narrative | **21 Oct** | 03 |
 | [05](05-content-v2.md) | Content v2: emotive conversion stories, closing question, hashtags | Narrative lead | 21 Oct | — |
 | [08](08-intel-collector.md) | Collector into Mongo: snapshots, team clusters, our per-post metrics | Data lead | 21 Oct | — |
@@ -26,7 +27,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 
 ## Ops leftovers (small, Marc)
 Done 2026-10-20 and deleted from this folder: bot on EC2 under systemd, plus auto-deploy from `main` with alerts and CI ([hosting](../docs/04-technical/hosting.md)). Still open:
-- [ ] **Top up Gemini prepaid credit** at https://ai.studio/projects. Both the old and new keys get `402 prepayment credits are depleted`, so the bot is on qwen until then. Details in [03](03-throughput-single-writer.md).
+- [x] 2026-10-20: Gemini project upgraded to **paid Tier 1** (flash-lite 150K requests/day). Chain re-ranked in `deploy/llm_chain.txt`; qwen 3B fallback removed. Watch the monthly spend cap: when the billing account hits it, Gemini pauses until the 1st and the bot falls back to Groq.
 - [ ] AWS: Elastic IP (then update `~/.ssh/config` + hosting.md), termination protection, SSH from team IPs only, budget alert.
 - [ ] Teammates' public SSH keys → `~ec2-user/.ssh/authorized_keys` (don't share the PEM).
 - [ ] GitHub branch protection on `main`: require the `checks` job and PRs (today a direct push goes live in 2 min).
