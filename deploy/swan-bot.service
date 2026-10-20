@@ -3,7 +3,9 @@ Description=Operation Swan bot (Vote No): the team's single live writer
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=1800
-StartLimitBurst=5
+# Counts every start (deploys and manual restarts too), so the burst must be well above normal use.
+# A crash loop restarts every 60 s, so it trips this after ~20 min.
+StartLimitBurst=20
 OnFailure=swan-alert@%n.service
 
 [Service]

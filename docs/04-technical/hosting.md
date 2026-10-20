@@ -23,7 +23,7 @@ Host swan-ec2
 ## What runs (systemd; unit files in `deploy/`)
 | Unit | What | When |
 |---|---|---|
-| `swan-bot.service` | `deploy/run.sh`: the live bot. Restarts 60 s after a crash; gives up after 5 crashes in 30 min | always (enabled at boot) |
+| `swan-bot.service` | `deploy/run.sh`: the live bot. Restarts 60 s after a crash; gives up after 20 starts in 30 min (a crash loop) | always (enabled at boot) |
 | `swan-update.timer` | `deploy/update.sh`: if `origin/main` moved, pull, run `deploy/check.sh`, restart the bot. A failed check rolls back | every 2 min |
 | `swan-health.timer` | `deploy/healthcheck.sh`: alerts if the bot is down, logs nothing for 20 min, or makes no live write for 90 min | every 10 min |
 | `swan-sync.timer` | `scripts/swan_sync_mongo.py`: copies our records to the team MongoDB | every 15 min |
