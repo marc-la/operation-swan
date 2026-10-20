@@ -23,10 +23,10 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, humanize, quality
+from . import batch, config, content, experiment, humanize, quality
 from .amplify import Amplifier
 from .llm import Generator
-from .targeting import Targeter, classify, messengers
+from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
 
 
 def now_iso():
@@ -183,6 +183,19 @@ def reply_back_jobs(social, accounts, targeter, limit=3):
         except ctn.APIError as e:
             print("notifications:", rec["username"], e.status, e.message)
     return jobs
+
+
+# the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
+ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "block_id")
+REJECT_ARMS = ("shape", "voice", "lever", "ask_kind", "length_band", "reply_mode")
+
+
+def experiment_fields(target):
+    """Run version and the target's stance class (H3), for the experiments report. Target text only: no reads."""
+    body = (target or {}).get("body") or ""
+    return {"exp": experiment.VERSION, "git_sha": experiment.git_sha(),
+            **({"target_stance": stance(body), "target_class": target_class(body), "soft_yes": soft_yes(body),
+                "yes_reason": bool(YES_REASON.search(body))} if target else {})}
 
 
 def second_frame(frame):
@@ -497,7 +510,7 @@ def main():
                     break
                 stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
                 log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
-                     "backend": backend, "raw": raw, **{k: (job.get("meta") or {}).get(k) for k in ("shape", "voice")}})
+                     "backend": backend, "raw": raw, **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
                 print(f"  rejected [{mode}] ({why}): {raw[:160]!r}")
             if not text and mode != "repost":
                 if mode == "reply_back" and job.get("tries", 0) < 2:
@@ -580,8 +593,8 @@ def main():
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
                  "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
                  "amp_post": job.get("amp_post"), "style": job.get("style"),
-                 **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
-                                             "lever", "concede", "rebuttal")},
+                 **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener")},
+                 **{k: meta.get(k) for k in ARMS}, **experiment_fields(target),
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
                  "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
                  **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})

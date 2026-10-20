@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 
 import capturethenarrative as ctn
 
-from . import config, content
+from . import config, content, experiment
 from .targeting import FIRM_NO, FIRM_YES, REFERENDUM
 
 NO_TAGS = re.compile(r"#(voteno|keepkingstoniaopen|choicenotcoercion|nomandate|protectchoice)\b", re.I)
@@ -180,13 +180,18 @@ class Amplifier:
             styles[-1] = "pushback"
         threads = [dict(kind="thread", post_id=post_id, due=t + delay_s(config.THREAD_DELAY) * self.scale, style=s,
                         author=rec["persona"], frame=frame) for s in styles]
+        # H5 (todo/13): heavy posts get 4, 6 or 8 reposts at random, to find the dose that reaches Trending
+        reposts = experiment.draw("amp_reposts", experiment.AMP_REPOSTS) if level == "heavy" else \
+            random.randint(*spec["reposts"])
+        self.state["amp_posts"][str(post_id)]["reposts_arm"] = reposts if level == "heavy" else None
         threads += [dict(kind="repost", post_id=post_id, due=t + delay_s(config.REPOST_DELAY) * self.scale,
                          author=rec["persona"])
-                    for _ in range(min(random.randint(*spec["reposts"]), len(voices)))]
+                    for _ in range(min(reposts, len(voices)))]
         self.state["amp_threads"] += threads
         self.log({"act": "amp_plan", "live": self.live, "post_id": post_id, "level": level,
                   "username": rec["username"], "likes": len(likes),
-                  "replies": [s for s in styles], "reposts": sum(th["kind"] == "repost" for th in threads)})
+                  "replies": [s for s in styles], "reposts": sum(th["kind"] == "repost" for th in threads),
+                  "reposts_arm": self.state["amp_posts"][str(post_id)]["reposts_arm"]})
         print(f"  amplify #{post_id} [{level}]: {len(likes)} likes over "
               f"{(max([a['due'] for a in likes], default=t) - t) / 60:.0f} min, "
               f"{n_rep} thread replies {styles}, {sum(th['kind'] == 'repost' for th in threads)} reposts")
@@ -426,6 +431,7 @@ class Amplifier:
                   "likes": c.get("like_count"), "replies": c.get("reply_count"), "reposts": c.get("repost_count"),
                   "views": c.get("view_count"), "own_likes": meta.get("likes", 0), "own_views": meta.get("own_views", 0),
                   "citizen_likes": len(cit_likers), "citizen_replies": len(cit_replies), "best_rank": meta.get("best_rank"),
+                  "reposts_arm": meta.get("reposts_arm"),
                   "reward": reward})
         if first:
             s = self.state["amp_stats"].setdefault(meta["level"], [0, 0.0])

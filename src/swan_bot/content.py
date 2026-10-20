@@ -11,6 +11,8 @@ import itertools
 import random
 import re
 
+from . import experiment
+
 try:
     from .playbook import craft as _craft
 except ImportError:
@@ -455,14 +457,21 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
     tag = random.choice(pillar["tags"])
     catch = (random.choice(pillar["catchphrases"])
              if pillar["catchphrases"] and random.random() < CATCHPHRASE_SHARE else None)
-    question = random.choice(f["asks"]) if f["asks"] else None
     arc = (persona or {}).get("arc") if key == "conversion" else None
-    lever = random.choice(list(LEVERS))
-    concede = random.random() < 0.35          # 7 of 12 drafts shared one concession formula (2026-10-20 sample)
+    # the experiment arms (todo/13): drawn independently per draft and logged from meta
+    arms = {}
+    lever = experiment.draw("lever", list(LEVERS), arms)
+    concede = experiment.draw("concede", {True: 0.35, False: 0.65}, arms)   # 7 of 12 shared one formula (20 Oct)
+    # no "none" for posts until quality.check may skip the closing-question rule for them (todo/14 wires it)
+    ask_kind = experiment.draw("ask_kind", {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "none"}, arms)
+    sentences, lo, hi = experiment.length_line("post", arms)
+    question = random.choice(f["asks"]) if f["asks"] and ask_kind == "frame" else None
+    ending = ("End with one real question that readers answer from their own life, never a rhetorical one" +
+              (f", along the lines of this one but in your own words: {question}" if question else ".")
+              if ask_kind == "frame" else experiment.ASK_KINDS[ask_kind])
     beats = [
-        "Write one new post of 4 to 6 short sentences, between 240 and 420 characters (never over 460: count "
-        "them), as one flowing post (no "
-        "numbers or labels). Build it in this order.",
+        f"Write one new post of {sentences} short sentences, between {lo} and {hi} characters (never over "
+        f"{hi + 30}: count them), as one flowing post (no numbers or labels). Build it in this order.",
         text.format(headline=headline),
         f"Your own turning point: {arc}" if arc else "",
         (f"Make that loss this one, told about your own person (gist only, never these words): {stake}"
@@ -476,12 +485,11 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
         "Then grant the other side in 8 words or fewer, without repeating their reasons." if concede else "",
         "Then say plainly that you're voting No.",
         f"Right after that, add this line word for word: {catch}" if catch else "",
-        "End with one real question that readers answer from their own life, never a rhetorical one" +
-        (f", along the lines of this one but in your own words: {question}" if question else "."),
-        f"After the question, finish with exactly one hashtag, {tag}, and nothing after it.",
+        ending,
+        f"Then finish with exactly one hashtag, {tag}, and nothing after it.",
     ]
     _fill(meta, frame=frame_key, shape=key, hook=HOOKS.get(key, key), pillar=f["pillar"], stake=stake, tag=tag,
-          catchphrase=catch, ask=question, lever=lever, concede=concede)
+          catchphrase=catch, ask=question, **arms)
     return " ".join(b for b in beats if b)
 
 
@@ -559,23 +567,35 @@ def _reply_voice(persona):
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back."""
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
-    # The reason they lean Yes comes first, whatever the frame: arguing with their conditions only got them to
-    # restate a conditional Yes (the "neither side" changes in the 2026-10-20 activity log).
-    reb = rebuttal_for(target_text)
-    asks = f"The conditions they mention: {', '.join(wants)}. Don't argue about these.\n" if wants else ""
+    arms = {}
+    # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
+    # only got them to restate a conditional Yes (the "neither side" changes in the 2026-10-20 activity log).
+    # conditions_first is the pre-20-Oct reply (the frame's point, in their terms), kept as the switchback's control.
+    reason_first = experiment.draw("reply_mode", experiment.REPLY_MODES, arms) == "reason_first"
+    if reason_first:
+        reb = rebuttal_for(target_text)
+        asks = f"The conditions they mention: {', '.join(wants)}. Don't argue about these.\n" if wants else ""
+    else:
+        reb = None if frame_key in CORE_FRAMES else rebuttal_for(target_text)
+        asks = f"The specific thing they raised: {', '.join(wants)}. Use their terms.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
     # with their reason known, it replaces the frame's angle (one instruction, not two that pull apart)
-    lever = random.choice([k for k in LEVERS if not (reb and k == "fear_answer")])
-    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), lever=lever)
-    point = "answer the reason above" if reb else FRAMES[frame_key]["angle"]
-    reb = f"{reb}\n" if reb else ""
+    lever = experiment.draw("lever", [k for k in LEVERS if not (reb and reason_first and k == "fear_answer")], arms)
+    ask_kind = experiment.draw("ask_kind", {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"}, arms)
+    sentences, lo, hi = experiment.length_line("reply", arms)
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), **arms)
+    if reason_first:
+        point = "answer the reason above" if reb else FRAMES[frame_key]["angle"]
+        why = "Answer WHY they lean Yes (the fear or hope underneath, not the conditions they list). "
+        reb = f"{reb}\n" if reb else ""
+    else:
+        point, why = FRAMES[frame_key]["angle"], ""
+        reb = f"Note: {reb}\n" if reb else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
-        f"They haven't fully decided. Answer WHY they lean Yes (the fear or hope underneath, not the conditions "
-        f"they list). Reply in 2 or 3 short sentences, between 120 and 260 characters. {opener} Then a short moment "
-        f"from your own life or one dense fact; the point: {point}. Make it land through this: {LEVERS[lever]} End "
-        f"with one question back about their own life (who it touches, or what they'd lose). "
-        f"{_reply_voice(persona)}{REPLY_RULES}"
+        f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} characters. "
+        f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
+        f"through this: {LEVERS[lever]} {experiment.ASK_KINDS[ask_kind]} {_reply_voice(persona)}{REPLY_RULES}"
     )
 
 
@@ -583,12 +603,14 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
     ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
-    lever = random.choice(list(LEVERS))
-    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, lever=lever)
+    arms = {}
+    lever = experiment.draw("lever", list(LEVERS), arms)
+    sentences, lo, hi = experiment.length_line("second_voice", arms)
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, **arms)
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
-        f"Someone else has already replied to them. Add a different angle, as yourself, in 1 or 2 short sentences, "
-        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. {opener} Make it land through this: "
+        f"Someone else has already replied to them. Add a different angle, as yourself, in {sentences} short "
+        f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} characters: {FRAMES[frame_key]['angle']}. {opener} Make it land through this: "
         f"{LEVERS[lever]} Don't mention the other reply or repeat its argument. {_reply_voice(persona)}{REPLY_RULES}"
     )
 

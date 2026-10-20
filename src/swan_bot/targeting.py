@@ -114,6 +114,29 @@ def classify(text):
     return None, None
 
 
+def stance(text):
+    """Where a post stands on the vote, by the keyword rules: "no" (firm or leaning), "yes" (firm, unhedged),
+    "unsure" (hedged or undecided, incl. a Yes-but), "unclear" (on the referendum, no stance), None (off topic).
+    Used to label targets and the follow-up reads (todo/13)."""
+    text = text or ""
+    if not REFERENDUM.search(text):
+        return None
+    if FIRM_NO.search(text) or LEAN_NO.search(text):
+        return "no"
+    if FIRM_YES.search(text) and not SOFT.search(text):
+        return "yes"
+    return "unsure" if SOFT.search(text) else "unclear"
+
+
+def target_class(text):
+    """The experiment's target class (H3): yes_reason (they voice the fear behind a Yes), conditions (only the
+    conditions they want), unsure / unclear, or lean_no / firm_yes / off_topic (which targeting should skip)."""
+    s = stance(text)
+    if s in ("no", "yes", None):
+        return {"no": "lean_no", "yes": "firm_yes", None: "off_topic"}[s]
+    return "yes_reason" if YES_REASON.search(text) else ("conditions" if WANTS.search(text) else s)
+
+
 def soft_yes(text):
     return bool(FIRM_YES.search(text or "") and SOFT.search(text or ""))
 

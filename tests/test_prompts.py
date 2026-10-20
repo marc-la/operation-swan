@@ -10,7 +10,7 @@ import sys
 import types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
-from swan_bot import batch, content  # noqa: E402
+from swan_bot import batch, content, experiment  # noqa: E402
 from swan_bot.playbook import craft, voices  # noqa: E402
 
 try:
@@ -145,13 +145,15 @@ def test_post_meta_valid_and_in_prompt():
         assert meta["shape"] in content.POST_SHAPE_KEYS and meta["hook"] == content.HOOKS[meta["shape"]]
         assert meta["pillar"] == f["pillar"] and meta["frame"] == fk
         assert meta["tag"] in pillar["tags"] and u.rstrip().endswith(f"{meta['tag']}, and nothing after it.")
-        assert meta["stake"] in f["stakes"] and meta["ask"] in f["asks"]
+        assert meta["stake"] in f["stakes"] and (meta["ask"] in f["asks"]) == (meta["ask_kind"] == "frame")
         assert meta["catchphrase"] is None or (meta["catchphrase"] in pillar["catchphrases"]
                                                and meta["catchphrase"] in u)
         catches += meta["catchphrase"] is not None
-        assert "voting No" in u and "240 and 420" in u
+        _, lo, hi = experiment.LENGTH_BANDS["post"][meta["length_band"]]
+        assert "voting No" in u and f"{lo} and {hi}" in u
         assert ("8 words or fewer" in u) == meta["concede"] and content.LEVERS[meta["lever"]] in u
-        assert u.index("voting No") < u.index("real question") < u.index("hashtag")
+        end = "real question" if meta["ask_kind"] == "frame" else experiment.ASK_KINDS[meta["ask_kind"]]
+        assert u.index("voting No") < u.index(end) < u.index("hashtag")
     assert 0.2 < catches / 300 < 0.45                                    # about one post in three
 
 
@@ -262,7 +264,8 @@ def test_replies_new_shape():
         meta = {}
         r = content.reply_prompt("only if they publish the list", "F14_no_yes_but", ["list"], meta=meta,
                                  persona=content.PERSONAS[i % 12])
-        assert "want the same thing" not in r and "question back about their own life" in r
+        assert "want the same thing" not in r and experiment.ASK_KINDS[meta["ask_kind"]] in r
+        assert meta["reply_mode"] in experiment.REPLY_MODES and meta["length_band"] in ("short", "medium", "long")
         assert content.VOICES[content.PERSONAS[i % 12]["register"]]["reply_instruction"] in r
         assert meta["opener"] in content.OPENERS and meta["pillar"] == "A"
         meta = {}

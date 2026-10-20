@@ -4,9 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 install -m 644 swan-bot.service swan-alert@.service swan-update.service swan-update.timer \
-  swan-health.service swan-health.timer swan-sync.service swan-sync.timer /etc/systemd/system/
+  swan-health.service swan-health.timer swan-sync.service swan-sync.timer \
+  swan-followup.service swan-followup.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now swan-update.timer swan-health.timer swan-sync.timer
+systemctl enable --now swan-update.timer swan-health.timer swan-sync.timer swan-followup.timer
 [ "${1:-}" = "--units-only" ] && exit 0
 systemctl enable swan-bot      # starts at boot; start it by hand the first time: sudo systemctl start swan-bot
 echo "installed. sudo systemctl start swan-bot to go live"

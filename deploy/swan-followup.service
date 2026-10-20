@@ -1,0 +1,9 @@
+[Unit]
+Description=Read what happened after the bot's writes (experiments, todo/13): read-only
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/home/ec2-user/ctn/.venv/bin/python scripts/swan_followup.py
+TimeoutStartSec=25min

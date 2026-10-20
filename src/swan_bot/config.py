@@ -57,6 +57,18 @@ REPOST_MIN_GAP_S = 60               # a voice may repost a minute after its last
 MEASURE_AT_S = (3600, 6 * 3600)
 FOLLOW_BACK_MAX = 3                 # per measurement, the author follows up to 3 citizens who liked the post
 
+# ---- experiments (todo/13-overnight-experiments.md; swan_bot/experiment.py) ----
+PIN = {}                            # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
+# One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).
+SWITCHBACK = [("reply_mode", ["reason_first", "conditions_first"], 2 * 3600)]
+ARM_WEIGHTS = {}                    # {dim: {arm: weight}}: reweight arms (the bandit, from night 2). Empty = as drawn
+FOLLOWUPS_LOG = LOGS / "swan_followups.jsonl"   # scripts/swan_followup.py: citizens' stance after we replied
+OUTCOMES_LOG = LOGS / "swan_outcomes.jsonl"     # ...and per-post citizen engagement at OUTCOME_AT_S
+FOLLOWUP_STATE = DATA / "swan_followup_state.json"
+FOLLOWUP_AT_S = (2 * 3600, 12 * 3600)  # re-read a citizen we replied to this long after the reply
+OUTCOME_AT_S = (3600, 6 * 3600)        # read each of our posts' likes, replies and views this long after
+FOLLOWUP_MAX_READS = 600               # per run (every 30 min); the read budgets are 300/min per endpoint
+
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 

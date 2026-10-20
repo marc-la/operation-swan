@@ -1,0 +1,9 @@
+[Unit]
+Description=Experiment follow-up reads every 30 minutes
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target
