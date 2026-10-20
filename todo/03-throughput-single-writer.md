@@ -25,7 +25,8 @@ Marc's idea of "three concurrent scripts" works only if they share **one** rate 
 **Don't rotate teammates' free keys** to add up quotas. Using several accounts to get around a provider's limits is against Google's terms, and rules §5.1 requires us to use outside services within their terms. A teammate running their *own* experiments on their own key is fine; the production bot uses one key.
 
 **Paid (recommended).**
-1. AI Studio → API keys → our key's project → **Set up billing**. This links a Google Cloud billing account and moves the project to paid Tier 1, with far higher per-minute limits and no small daily cap. It's pay-as-you-go, billed to the card monthly; you don't need to buy credits up front. *(Check what the billing page offers: some accounts see prepaid credit options.)*
+0. **Seen 2026-10-20 10:22 UTC on EC2:** Gemini returns `402 Your prepayment credits are depleted. Please go to AI Studio…`. Our key's project is already on **prepaid** billing and the balance is zero, so the bot is running on qwen. **Top up the prepaid credit in AI Studio (Billing) now.** That's the whole fix; no code change. The bot re-tries Gemini every 5 min (`llm.py` parks a model for 300 s on other API errors), so it switches back by itself.
+1. AI Studio → API keys → our key's project → **Billing**. Paid Tier 1 has far higher per-minute limits and no small daily cap. This project uses **prepaid credits**: buy a balance (e.g. $40, per the cost estimate below) and turn on auto-reload if offered, so it never runs dry overnight.
 2. **Free credit:** new Google Cloud accounts usually get a free-trial credit. Check on the billing page whether it applies to Gemini API usage for that account before paying anything.
 3. Billing → **Budgets & alerts**: set an alert at ~$40.
 4. Nothing to change in the code: same `GEMINI_API_KEY`. Daily 429s just stop happening.
