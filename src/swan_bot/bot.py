@@ -23,7 +23,7 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, quality
+from . import batch, config, content, humanize, quality
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import Targeter, classify, messengers
@@ -242,6 +242,8 @@ def main():
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --live")
     ap.add_argument("--batch", type=int, default=0, help=f"draft up to N replies / second voices / persona posts per LLM "
                     f"call (2-{batch.MAX_SIZE}; 0 = one per call). docs/04-technical/llm-batching.md")
+    ap.add_argument("--no-humanize", action="store_true", help="send drafts exactly as the gate passed them, without "
+                    "the personas' typing habits (humanize.py)")
     args = ap.parse_args()
 
     config.load_env()
@@ -502,6 +504,9 @@ def main():
                     job["tries"] = job.get("tries", 0) + 1      # a citizen who answered us is worth another try
                     queue.append(job)
                 continue
+            clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
+            if text and not args.no_humanize:
+                text, hand = humanize.apply(text, persona["key"], mode)
 
             # ---- send ----
             post_id = None
@@ -563,7 +568,7 @@ def main():
                 state["journalist_any"] = time.time()
                 state["journalist_last"][str(target["author_id"])] = time.time()
             if text:
-                state["recent_texts"] = (state["recent_texts"] + [text])[-300:]
+                state["recent_texts"] = (state["recent_texts"] + [clean])[-300:]
             meta = job.get("meta") or {}
             if mode == "post" and meta.get("shape"):
                 state["recent_shapes"] = (state["recent_shapes"] + [meta["shape"]])[-30:]
@@ -573,7 +578,8 @@ def main():
                  "frame": job["frame"], "backend": backend, "source": job.get("source"),
                  "target_post": target and target["post_id"], "target_author": target and target["author_id"],
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
-                 "text": text, "amp_level": job.get("level"), "amp_post": job.get("amp_post"), "style": job.get("style"),
+                 "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
+                 "amp_post": job.get("amp_post"), "style": job.get("style"),
                  **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
                                              "lever", "concede", "rebuttal")},
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
