@@ -135,3 +135,9 @@ def test_tick_runs_own_and_filler_likes_never_on_yes():
     assert len(filler) >= len(own), "at least half of all likes go to posts that aren't ours"
     yes_ids = {p["post_id"] for p in Stub.feed_posts if "#voteyes" in p["body"]}
     assert not any(r["post_id"] in yes_ids for r in filler)
+
+
+def test_every_mode_has_a_length():
+    for mode in ("post", "reply", "second_voice", "reply_back", "journalist", "thread", "thread_answer"):
+        assert mode in quality.LENGTHS
+    assert quality.LENGTHS["post"][1] <= 500
