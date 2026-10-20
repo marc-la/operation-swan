@@ -44,6 +44,12 @@ Two things to check before paying:
 
 - Make the model list configurable (`GEMINI_MODEL`) and add an Anthropic/OpenAI fallback behind the same `Generator.complete` interface if anyone has credits.
 
+### State on 2026-10-20 evening
+- **Done and live:** a ranked model chain in `deploy/llm_chain.txt`: Gemini flash → flash-lite → Groq gpt-oss-120b → Groq qwen3.8-27b → OpenRouter free models. Edit and push to re-rank; add a provider = key in `.env` on EC2 + one line. qwen 3B fallback removed (42% of its drafts were rejected). Daily calls per model: `data/llm_usage.json` on the box.
+- **OpenRouter:** the key's "$100" is a spending cap, not credit; the account can afford ~$0.04 (Marc confirmed: dead end unless credit is bought). Its `:free` models stay at the bottom of the chain (≈50 requests/day).
+- **Bake-off** (`scripts/llm_compare.py`, read-only, small samples): flash-lite best and fastest (~3 s per 6-draft batch, mostly 6/6 through the gate, one empty answer); gpt-oss-120b solid (4–6/6, ~10 s); qwen3.8-27b terser; nemotron-ultra:free slow (~50 s); minimax:free returned nothing.
+- **Not yet wired in:** batching. `src/swan_bot/batch.py` has the prompt builder, the JSON parser and the mix-up guard; `bot.py` still drafts one per call. Next step: the ready-draft pool described below.
+
 ### Batch drafts: several per LLM call (Marc's idea, 2026-10-20)
 More output per request beats dropping to a weaker model. Today every draft is one call: a long system prompt (persona + frame + facts) for ~60 words out. Instead:
 - **Persona posts:** one call returns **4–6 posts as a JSON array**, each for a named persona and shape (`[{"persona": "...", "shape": "...", "text": "..."}]`). Queue them and post over the next ~30 min.
