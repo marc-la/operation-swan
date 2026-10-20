@@ -200,8 +200,8 @@ def system_prompt(persona, frame_key):
     )
 
 
-def post_prompt(frame_key, headline=None):
-    shape = random.choice(POST_SHAPES if headline else POST_SHAPES[:-1])
+def post_prompt(frame_key, headline=None, shape=None):
+    shape = shape or random.choice(POST_SHAPES if headline else POST_SHAPES[:-1])
     return (
         f"Write one new post of 3 to 4 sentences, between 250 and 420 characters. {shape.format(headline=headline)} "
         f"The point to make, in your own words: {FRAMES[frame_key]['angle']}. Mention a real local detail from your "
@@ -238,7 +238,7 @@ def exempt_note(target_text):
     return EXEMPT_NOTE if re.search(r"exempt", target_text or "", re.I) else ""
 
 
-def reply_prompt(target_text, frame_key, wants, context=None):
+def reply_prompt(target_text, frame_key, wants, context=None, opener=None):
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
     reb = None if frame_key in CORE_FRAMES else rebuttal_for(target_text)
     reb = f"Note: {reb}\n" if reb else ""
@@ -246,17 +246,17 @@ def reply_prompt(target_text, frame_key, wants, context=None):
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{reb}{exempt_note(target_text)}"
         f"They haven't fully decided. Reply in 2 or 3 short sentences, between 120 and 260 characters. "
-        f"{random.choice(OPENERS)} Then make this point: {FRAMES[frame_key]['angle']}. {REPLY_RULES}"
+        f"{opener or random.choice(OPENERS)} Then make this point: {FRAMES[frame_key]['angle']}. {REPLY_RULES}"
     )
 
 
-def second_voice_prompt(target_text, frame_key, wants, context=None):
+def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None):
     ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
         f"Someone else has already replied to them. Add a different angle, as yourself, in 1 or 2 short sentences, "
-        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. {random.choice(OPENERS)} Don't mention the "
+        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. {opener or random.choice(OPENERS)} Don't mention the "
         f"other reply. {REPLY_RULES}"
     )
 

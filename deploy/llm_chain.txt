@@ -1,0 +1,12 @@
+# Model fallback chain for swan_bot, best first. The bot tries each in order and moves on when one is out of
+# quota or erroring (each model is parked until its quota resets). Edit and push to main: live in ~2 minutes.
+# Format: provider:model   (providers and the .env key each needs are listed in src/swan_bot/llm.py PROVIDERS)
+# A line whose provider has no key in .env is skipped. LLM_CHAIN in .env, if set, overrides this file.
+#
+# Bake-off 2026-10-20 (scripts/llm_compare.py, small samples): flash-lite best and fastest; gpt-oss-120b solid.
+gemini:gemini-3.5-flash
+gemini:gemini-3.5-flash-lite
+groq:openai/gpt-oss-120b
+groq:qwen/qwen3.8-27b
+openrouter:google/gemma-4-31b-it:free
+openrouter:nvidia/nemotron-3-ultra-550b-a55b:free
