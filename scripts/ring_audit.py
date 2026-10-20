@@ -1,4 +1,4 @@
-"""Read-only ring audit: how much does a post look like coordinated amplification? (todo/04 self-check, todo/07 evidence)
+"""Read-only ring audit: how much does a post look like coordinated amplification? (our self-check, docs/06-strategy/amplification.md; Blue evidence, todo/07)
 
 Scores each post on the tells Blue teams and the literature use (CopyCatch lockstep, like-farm timing, QUT
 coordination toolkit's 60 s co-action window, Legit Social's consecutive-id reply rings):

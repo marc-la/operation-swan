@@ -211,7 +211,7 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False):
     )
 
 
-# Own-thread replies under our amplified posts (todo/04). Each is a real neighbour's reaction, readable on its own:
+# Own-thread replies under our amplified posts (docs/06-strategy/amplification.md). Each is a real neighbour's reaction, readable on its own:
 # varied in length and kind, never a chorus of the same line.
 THREAD_STYLES = {
     "one_liner": "React in ONE short sentence, between 20 and 90 characters, the way people react in a thread. "
