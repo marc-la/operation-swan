@@ -51,7 +51,7 @@ FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|
 LOCAL = re.compile(r"Crown Harbour|New Haven|Kingstonia City|outer island|wharf|ferry|market|harbour|reef|beach|"
                    r"regatta|lagoon|ward|clinic|bus|loop|campus|KU\b|counter|shop|cafe|boat|tuna|school|K\$|"
                    r"grandkids?|grandson|granddaughter|residents|Year 8|sailing", re.I)
-LENGTHS = {"post": (200, 470), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
+LENGTHS = {"post": (200, 495),        # platform max 500 "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
            "journalist": (90, 290), "thread": (18, 250), "thread_answer": (50, 250)}
 
 
