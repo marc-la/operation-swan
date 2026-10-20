@@ -14,7 +14,8 @@ import time
 
 from . import config
 
-VERSION = 1             # bump when the arms or their wording change, so reports don't pool unlike drafts
+VERSION = 2             # bump when the arms or their wording change, so reports don't pool unlike drafts
+                        # 2: lengths in words, one post beat (todo/14)
 
 # How each draft ends (H7). `frame` (posts only) is the curated question from the frame's craft `asks`.
 ASK_KINDS = {
@@ -27,15 +28,22 @@ ASK_KINDS = {
 }
 ASK_WEIGHTS = {"frame": 0.18, "people": 0.18, "loss": 0.18, "switching": 0.18, "status_quo": 0.18, "none": 0.10}
 
-# Target length per mode: (sentences, lo, hi) characters. Every band sits inside quality.LENGTHS.
+# Target length per mode: (sentences, lo, hi) in WORDS (todo/14: flash-lite ignores character counts, so posts ran
+# 554-657 characters against the 495 cap; it keeps to sentences and words). At WORDS_TO_CHARS (about 5.4 characters a
+# word with the space, measured on the voices' gold posts) every band sits inside quality.LENGTHS with room to spare.
+WORDS_TO_CHARS = 5.4
 LENGTH_BANDS = {
-    "post": {"short": ("3 or 4", 200, 280), "medium": ("4 or 5", 280, 380), "long": ("5 or 6", 380, 460)},
-    "reply": {"short": ("1 or 2", 90, 160), "medium": ("2 or 3", 160, 230), "long": ("3", 220, 280)},
-    "second_voice": {"short": ("1", 60, 130), "medium": ("1 or 2", 130, 200), "long": ("2", 190, 260)},
+    "post": {"short": ("3", 40, 50), "medium": ("4", 45, 60), "long": ("5", 55, 70)},
+    "reply": {"short": ("1 or 2", 18, 28), "medium": ("2", 25, 38), "long": ("3", 32, 45)},
+    "second_voice": {"short": ("1", 12, 22), "medium": ("1 or 2", 20, 32), "long": ("2", 28, 40)},
 }
 
 # H1: answer the reason they lean Yes (v2, 20 Oct) or argue with their conditions (v1, before 20 Oct).
 REPLY_MODES = ("reason_first", "conditions_first")
+
+# How a post ends (todo/14): most put the question last, ~1 in 4 put it before the verdict, so 12 accounts don't share
+# one "question? #Tag" ending. (ask_kind "none" has no question at all.)
+CLOSES = {"question_last": 0.75, "verdict_last": 0.25}
 
 # H5: reposts on a heavy-amplified post (dose-response for the Trending cutoff).
 AMP_REPOSTS = (4, 6, 8)

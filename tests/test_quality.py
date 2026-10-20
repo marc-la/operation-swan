@@ -498,3 +498,33 @@ def test_reply_trailing_tags_are_cut_not_rejected():
     assert why is None and "#" not in clean
     assert quality.check("We #VoteNo here, the list isn't published and there's no end date on the ballot at all.",
                          "reply")[1] == "tag_in_reply"
+
+
+# ---- todo/14: repair notes, spelled numbers ----
+def test_repair_notes():
+    copied = ("Lani's cafe sits by the Crown Harbour wharf, and half her trade walks off the morning boats. Keep Kingstonia open: the ordinary island life you love "
+              "shouldn't need papers at the door. I'm voting No. What would you miss? #VoteNo")
+    assert quality.check(copied, "post")[1] == "copied_fact"
+    note = quality.repair_note("copied_fact", copied, "post", "#VoteNo")
+    assert "«keep kingstonia open the ordinary island life you love" in note
+    assert "4 sentences" in quality.repair_note("length_600", "", "post")
+    assert "2 sentences" in quality.repair_note("length_340", "", "reply")
+    assert quality.repair_note("length_50", "", "reply") is None          # too short: fresh draft
+    assert "#VoteNo" in quality.repair_note("too_many_tags", "", "post", "#VoteNo")
+    assert quality.repair_note("tag_in_reply", "", "reply") == "Remove every hashtag."
+    assert quality.repair_note("near_duplicate", "", "post") is None
+
+
+def test_spelled_numbers_rejected():
+    post = ("Twelve thousand doses land at the Crown Harbour clinic for health workers first, and the shop door "
+            "check adds no nurse to the ward, where Ana works nights short-staffed. I'm voting No. Who on your street works a till?")
+    assert quality.check(post, "post")[1] == "spelled_number"
+    assert quality.check(post.replace("Twelve thousand", "Thousands of"), "post")[0]
+
+
+def test_prompt_notes_dont_trip_the_copy_check():
+    """Gists and fact notes are what the prompts show: a draft that reuses one must not be rejected as copied."""
+    c = quality.content
+    for text in [f["gist"] for f in c.FRAMES.values()] + list(c.FACT_NOTES.values()):
+        assert not quality.copied_runs(text) & quality._SOURCE_SHINGLES, text
+    assert set(c.FACT_NOTES) == set(c.FACTS)

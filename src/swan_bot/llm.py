@@ -115,18 +115,21 @@ class Generator:
         except OSError:
             pass
 
-    def complete(self, system, user, max_tokens=220, json_mode=False, models=None, schema=None, reasoning=None):
+    def complete(self, system, user, max_tokens=None, json_mode=False, models=None, schema=None, reasoning=None,
+                 temperature=0.9):
         """Return (text, model) or (None, None) when no model is available right now.
 
         json_mode asks for a JSON object (batches), schema for that exact shape where the model supports it;
-        reasoning sets reasoning_effort (e.g. "low"); models restricts the chain (for comparisons)."""
+        reasoning sets reasoning_effort (e.g. "low"); models restricts the chain (for comparisons).
+        max_tokens caps the answer (None: 4096, 8192 in JSON mode); a cut-off answer sets last_finish "length"."""
         for prov, model in self.chain:
             if models and model not in models:
                 continue
             if time.time() < self.parked.get(model, 0):
                 continue
             try:
-                return self._call(prov, model, system, user, json_mode, schema, reasoning), model
+                return self._call(prov, model, system, user, json_mode, schema, reasoning, max_tokens,
+                                  temperature), model
             except openai.RateLimitError as e:
                 wait = _retry_seconds(e)
                 daily = _is_daily(e, wait)
@@ -154,7 +157,7 @@ class Generator:
             time.sleep(wait)
         self.qwen_last = time.time()
         r = self.qwen.chat.completions.create(
-            model=ctn.competitorllm.MODEL, max_tokens=max_tokens, temperature=0.9,
+            model=ctn.competitorllm.MODEL, max_tokens=max_tokens or 220, temperature=temperature,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return (r.choices[0].message.content or "").strip(), "qwen"
 
@@ -166,9 +169,11 @@ class Generator:
         if wait > 0:
             time.sleep(wait)
 
-    def _call(self, prov, model, system, user, json_mode, schema=None, reasoning=None):
+    def _call(self, prov, model, system, user, json_mode, schema=None, reasoning=None, max_tokens=None,
+              temperature=0.9):
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        kw = dict(model=model, max_tokens=8192 if json_mode else 4096, temperature=0.9, messages=msgs)
+        kw = dict(model=model, max_tokens=max_tokens or (8192 if json_mode else 4096), temperature=temperature,
+                  messages=msgs)
         if reasoning and model not in self.no_reasoning:
             kw["reasoning_effort"] = reasoning
         formats = []
@@ -186,7 +191,7 @@ class Generator:
                     self.no_reasoning.add(model)
                     kw.pop("reasoning_effort")
                     print(f"{prov} {model}: no reasoning_effort {reasoning!r}; using its default")
-                    return self._call(prov, model, system, user, json_mode, schema, None)
+                    return self._call(prov, model, system, user, json_mode, schema, None, max_tokens, temperature)
                 if fmt is None or ("json" not in msg and "schema" not in msg and "response_format" not in msg):
                     raise
                 if fmt["type"] == "json_schema":          # cache the refusal, as with JSON mode

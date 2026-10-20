@@ -48,71 +48,108 @@ FACTS = {
     "bill_failed": "Last week: Assembly voted the bill down; several of the President's own People's Alliance members joined the Democratic-Republicans.",
 }
 
+# The same facts as terse notes, which is how prompts show them (todo/14): facts written as polished sentences got
+# pasted into drafts word for word. quality.py still checks copying against the full FACTS sentences.
+FACT_NOTES = {
+    "list_later": "venue list: decided after the vote, by regulation; unpublished",
+    "no_end": "no end date or review in the question; a Yes is binding",
+    "phased": "brought in by regulation, in stages",
+    "exemptions": "medical exemptions in; under-12s exempt; no end date, no venue list",
+    "free_either_way": "jab free and voluntary either way; a No blocks nobody's jab",
+    "first_doses": "first 120,000 doses, last week of October, for health workers and the high-risk",
+    "age12": "covers 12 and over: school, work, buses",
+    "nurses": "Central: 40 nursing posts unfilled; pay about double in Australia or NZ",
+    "no_spread": "no community spread yet",
+    "islands": "outer islands: nurse-led clinics, GP weekly, K$14 ferry",
+    "childhood": "childhood jabs free, most kids have them, no certificate check",
+    "visitors": "foreign visitors covered too",
+    "covid_business": "COVID years: tourism gone, small shops shut, families apart",
+    "id_card": "certificate separate from the biometric ID card; law keeps health records off it (laws change)",
+    "no_binds": "after a No: no pass this Assembly term without a new referendum",
+    "bill_failed": "Assembly voted the bill down last week, some of the President's own party too",
+}
+
 # Each frame: the point to make, the facts it may lean on, its weight for persona posts,
 # and the frame(s) a second persona uses on the same doubt (a different angle, never a repeat; a list = pick one).
+# `gist` is the angle as a short note, which is what the prompts show (todo/14: the full angle got copied); quality.py
+# checks copying against the full angle.
 FRAMES = {
     "F14_no_yes_but": dict(
         angle="the conditions people want before saying yes (an end date, the list of places, someone independent "
               "reviewing it) are not in the question (medical exemptions are, but only bring that up if they mentioned "
               "exemptions); so a Yes can't carry anyone's 'but'",
+        gist="what people want before a Yes (end date, venue list, a review) isn't in the question, so a Yes can't "
+             "carry their 'but' (exemptions are in: raise them only if they did)",
         facts=["no_end", "list_later"], weight=3,     # "exemptions" out: posts volunteered "under-12s exempt"
         second=["F1_blank_cheque", "F3_provax_antipass", "F2_no_end"]),
     "F1_blank_cheque": dict(
         angle="the list of places the rule covers is only decided after the vote, so a Yes means agreeing before "
               "anyone can see what was agreed; if you don't know, it's fine to say No",
+        gist="places are picked after the vote: a Yes is signing before you see it; unsure means No",
         facts=["list_later", "phased"], weight=3, second="F14_no_yes_but"),
     "F2_no_end": dict(
         angle="nothing in the question says when the rule ends, and 'temporary' only counts if it is written down",
+        gist="no end date in the question; temporary only counts on paper",
         facts=["no_end", "no_binds"], weight=2, second="F1_blank_cheque"),
     "F3_provax_antipass": dict(
         angle="whether and when you get the jab is your own business, and it stays free either way; this vote is "
               "only about papers at the door, and a choice that costs you your bus, your shift or your kid's school "
               "isn't a choice (don't praise vaccines: that's not the argument)",
+        gist="your jab, your call, free either way; the vote is only the pass, and a choice that costs your job or "
+             "bus is no choice (don't praise vaccines)",
         facts=["free_either_way", "age12"], weight=1, second="F1_blank_cheque"),
     "F8_powers": dict(
         angle="the certificate is meant to stay separate from the new biometric ID card, and today's law says so, "
               "but laws change and once a check is at every door it is easy to join things up later",
+        gist="kept off the ID card by today's law, but laws change once every door has a check",
         facts=["id_card", "no_end"], weight=1, second="F14_no_yes_but"),
     "F10_staff_and_livelihoods": dict(
         angle="hospitals matter, and the real pressure is staff: a certificate check at a shop door does not fill one "
               "of Kingstonia Central's 40 empty nursing posts; meanwhile the door check lands on ordinary jobs "
               "(name one from your own life)",
+        gist="the hospital gap is staff, and a door check fills no nursing post; it lands on ordinary jobs (name one)",
         facts=["nurses", "first_doses"], weight=2, second="F3_provax_antipass"),
     "F13_age12": dict(
         angle="the rule covers everyone from age 12, at school and on the bus, and nobody can yet say which "
               "places will count",
+        gist="everyone from 12, school and bus, and nobody knows which places yet",
         facts=["age12", "list_later", "childhood"], weight=1, second="F1_blank_cheque"),
     "F6_islands": dict(
         angle="a free choice that comes with a certificate is harder for some people than others: on the outer "
               "islands the clinic is nurse-led with a GP once a week and the ferry costs K$14",
+        gist="a free choice plus a certificate costs more out on the islands (weekly GP, K$14 ferry)",
         facts=["islands", "list_later"], weight=1, second="F14_no_yes_but"),
     "F7_livelihoods": dict(
         angle="shop, cafe and ferry staff would end up checking papers at the door, visitors would need one too, "
               "and we all remember what the last restrictions did to small businesses",
+        gist="shop, cafe and ferry staff end up on the door, visitors too; remember what COVID did to small shops",
         facts=["visitors", "covid_business", "list_later"], weight=1, second="F1_blank_cheque"),
     "F5_not_here_yet": dict(
         angle="there is no community spread here yet and the first doses already go to health workers and people "
               "at high risk, so a certificate at every shop and park is a big step for now",
+        gist="not here yet, the at-risk get the first doses: a pass at every shop is too big a step for now",
         facts=["no_spread", "first_doses"], weight=1, second="F14_no_yes_but"),
     "F9_parliament": dict(
         angle="the Assembly already said no last week, with some of the President's own party voting it down; "
               "this isn't a party thing, plenty of people who voted Hawthorne are voting No",
+        gist="the Assembly already said no, the President's own people too; not a party thing",
         facts=["bill_failed", "no_binds"], weight=1, second="F1_blank_cheque"),
     "F12_open_island": dict(
         angle="keep Kingstonia open: the ordinary island life you love (name it) shouldn't need papers at the door, "
               "and the vaccine is free and yours to choose either way",
+        gist="everyday island life (name it) shouldn't come with papers; the jab's yours to choose",
         facts=["free_either_way", "covid_business", "no_spread"], weight=2, second="F1_blank_cheque"),
 }
 
 # Yes arguments citizens repeat, and our answer (grant the concern first). Added to reply prompts when matched.
 REBUTTALS = [
     (re.compile(r"hospital|ward|icu|overwhelm|surge|capacity|frontline|vulnerable|protect", re.I),
-     "Their reason is fear for the hospitals and the vulnerable. Answer that fear, warmly: the people H2D2 puts in "
-     "hospital are mostly older or already ill, and they get the first 120,000 doses; a pass at the shop door adds "
-     "no nurse and no bed (Central already has 40 empty nursing posts)."),
+     "Their reason is fear for the hospitals and the vulnerable. Answer that fear, warmly, with ONE of these: H2D2 "
+     "puts mostly older or already-ill people in hospital, and they get the first doses / a pass at the shop door "
+     "adds no nurse and no bed / Central already has 40 empty nursing posts."),
     (re.compile(r"last time|covid|1,?000|died|deaths", re.I),
-     "Their reason is the memory of COVID. Honour it in a few words. Then: this time the jab arrives before the "
-     "virus, free, for the most at-risk first, and a No doesn't stop a single dose; this vote is only the pass at the door."),
+     "Their reason is the memory of COVID. Honour it in a few words. Then ONE of these: this time the jab arrives "
+     "before the virus, at-risk first / a No doesn't stop a single dose / this vote is only the pass at the door."),
     (re.compile(r"choice stays|still (a|your) choice|voluntary", re.I),
      "They say the choice stays yours. A choice that costs you your job, your bus or your kid's school isn't much of a choice."),
     (re.compile(r"before it (gets|arrives)|act now|prepare|ready", re.I),
@@ -136,7 +173,7 @@ PERSONAS = [
          details=["gets asked about H2D2 at the counter every day", "is vaccinated and will get this one too"],
          frames=["F3_provax_antipass", "F14_no_yes_but"]),
     dict(key="isla", name="Isla Park", handle="isla_park_ku", role="university student who works weekends in a cafe",
-         place="Kingstonia City", voice="casual, lowercase is fine, a bit dry",
+         place="Kingstonia City", voice="casual, a bit dry",       # humanize.py types her drafts in lowercase
          details=["studies law at KU", "catches the city loop bus to campus", "works weekend shifts at a cafe near campus"],
          frames=["F14_no_yes_but", "F8_powers", "F2_no_end"]),
     dict(key="josh", name="Josh Kendall", handle="josh_k_sparky", role="electrician who works all over the island",
@@ -329,20 +366,18 @@ LOGISTICS_RULE = "Never name a day or date for the vote or say how or where to v
 TAG_RULE = "No hashtags, except the one tag a new post is given, at the very end."
 STYLE_RULES = (
     "First person, everyday words, British spelling, contractions. No emojis, links, @mentions, quotation marks, "
-    "greetings or sign-offs. Never insult anyone or mention Marina Castillo, the tourism board or resorts. Don't "
-    "open with agreement or comfort (Exactly, Spot on, Fair point, I hear you, I understand). Facts in your own "
-    "words, never the wording above."
+    "greetings or sign-offs. Numbers as digits. Never insult anyone or mention Marina Castillo, the tourism board or "
+    "resorts. Don't open with agreement or comfort (Exactly, Spot on, Fair point, I hear you, I understand). Facts in "
+    "your own words, never the wording above."
 )
-# The situation, first in every system prompt (every number in it is in setting.md and quality.ALLOWED_NUMBERS).
-# Why: replies argued with citizens' conditions, not their reason for leaning Yes, and the activity log shows ~14
-# "towards neither side" changes to 2 towards No (todo/13-overnight-experiments.md, "Evidence").
+# The situation, first in every system prompt. Why: replies argued with citizens' conditions, not their reason for
+# leaning Yes, and the activity log shows ~14 "towards neither side" changes to 2 towards No (todo/13, "Evidence").
+# No numbers and labelled as background (todo/14): with seven figures in it, drafts packed in every one. The figures
+# reach prompts through the frame's facts and the hospital/COVID rebuttals.
 WORLD = (
-    "The situation: Kingstonia holds a binding referendum on requiring proof of H2D2 (Dolphin Flu) vaccination to "
-    "enter public spaces. The last poll was dead level: 35.2% Yes, 35.2% No, 29% unsure, so the unsure decide it. "
-    "People lean Yes out of fear: COVID killed over 1,000 here, the hospitals overflowed, and there are only about 30 "
-    "ICU beds. What answers that fear: H2D2 hits older and already-ill people hardest, and they get the first 120,000 "
-    "doses this month; a pass at the shop door adds no nurse and no bed. A No keeps life as it is and the jab stays "
-    "free and voluntary. A Yes has no end date, and the list of places is only picked after the vote."
+    "Background (don't restate it): Kingstonia votes in a binding referendum on requiring proof of H2D2 (Dolphin "
+    "Flu) vaccination to enter public spaces. The polls are level and the unsure will decide it. Most who lean Yes "
+    "are afraid, after what COVID did to the hospitals; a No keeps life as it is, with the jab free either way."
 )
 # One persuasion lever per draft, logged as meta["lever"] so the experiments (todo/13) can compare them.
 LEVERS = {
@@ -370,13 +405,13 @@ def _fill(meta, **kw):
         meta.update(kw)
 
 
-SYSTEM_BUDGET = 3400     # characters; over it, optional profile lines go (see the drop order in system_prompt). +600 for WORLD
+SYSTEM_BUDGET = 3200     # characters; over it, optional profile lines go (see the drop order in system_prompt). +300 for WORLD
 
 
 def system_prompt(persona, frame_key, meta=None):
     """Who is speaking (character + voice), the facts they may use, and the rules."""
     f, register = FRAMES[frame_key], register_of(persona)
-    facts = "\n".join(f"- {FACTS[k]}" for k in f["facts"][:3])
+    facts = "; ".join(FACT_NOTES[k] for k in f["facts"][:3])
     age = f", {persona['age']}" if persona.get("age") else ""
     people = random.sample(usable(persona.get("people")), k=min(2, len(usable(persona.get("people")))))
     now = random.choice(usable(persona.get("now"), now=True)) if usable(persona.get("now"), now=True) else None
@@ -389,7 +424,8 @@ def system_prompt(persona, frame_key, meta=None):
                                                if heat else "")
     jab = JAB_FIRST_LOT if persona["key"] in HEALTH_WORKERS else JAB_WAIT
     rest = (f"The referendum asks: \"{QUESTION}\" {STANCE_RULE} {voice}\n"
-            f"Facts you may use (one to three; invent no other facts, numbers, names or health claims):\n{facts}\n"
+            f"Facts you may use, as notes (two at most, in your own words; invent no other facts, numbers, names or "
+            f"health claims): {facts}.\n"
             f"Rules: money is K$. {LOGISTICS_RULE} {SAFETY_RULE} {JAB_RULE} {jab} {TAG_RULE} {STYLE_RULES} "
             f"Output only the text you would post.")
 
@@ -445,51 +481,72 @@ def pick_shape(frame_key, headline=None, shape=None, persona=None):
     return key, POST_SHAPES[POST_SHAPE_KEYS.index(key)]
 
 
+# A post gets at most 4 content beats before its fixed close (todo/14: the model includes every beat it is given, so
+# drafts with all of them ran long and read stitched): the opening, ONE of stake / lever / turning point, the point,
+# and a fact or a concession. These openings already carry their own fact, so they get no extra facts beat.
+NO_FACT_SHAPES = {"conversion", "defiance", "number", "did_you_know"}
+CONCEDE_SHARE = 0.35        # 7 of 12 drafts shared one concession formula (20 Oct)
+
+
 def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, persona=None):
-    """One new post along the playbook §5 anatomy: opening -> stake -> facts -> short concession -> "I'm voting No"
-    -> catchphrase (about 1 in 3) -> a question from the reader's life -> one tag. `ask` is kept for old callers
-    (every post now ends on a question); pass `persona` to unlock the fed-up hook and the conversion arc."""
+    """One new post along the playbook §5 anatomy: opening -> one beat (stake, lever or turning point) -> the point
+    -> one fact or a short concession -> "I'm voting No" -> catchphrase (about 1 in 3, never with a concession) -> a
+    question from the reader's life (before the verdict in ~1 in 4) -> one tag. `ask` is kept for old callers; pass
+    `persona` to unlock the fed-up hook and the conversion arc."""
     f = FRAMES[frame_key]
     key, text = pick_shape(frame_key, headline, shape, persona)
     pillar = PILLARS.get(f["pillar"]) or _PILLARS_V1[PILLAR_OF[frame_key]]
     stakes = usable(f["stakes"])
     stake = random.choice(stakes) if stakes else None
     tag = random.choice(pillar["tags"])
-    catch = (random.choice(pillar["catchphrases"])
-             if pillar["catchphrases"] and random.random() < CATCHPHRASE_SHARE else None)
     arc = (persona or {}).get("arc") if key == "conversion" else None
     # the experiment arms (todo/13): drawn independently per draft and logged from meta
     arms = {}
-    lever = experiment.draw("lever", list(LEVERS), arms)
-    concede = experiment.draw("concede", {True: 0.35, False: 0.65}, arms)   # 7 of 12 shared one formula (20 Oct)
-    # no "none" for posts until quality.check may skip the closing-question rule for them (todo/14 wires it)
-    ask_kind = experiment.draw("ask_kind", {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "none"}, arms)
+    if arc:
+        arms["beat"] = "turn"
+    elif key == "named_loss" and stake:
+        arms["beat"] = "stake"
+    else:
+        experiment.draw("beat", ["stake", "lever"] if stake else ["lever"], arms)
+    lever = experiment.draw("lever", list(LEVERS), arms) if arms["beat"] == "lever" else arms.setdefault("lever", None)
+    concede = experiment.draw("concede", {True: CONCEDE_SHARE, False: 1 - CONCEDE_SHARE}, arms)
+    # the catchphrase replaces the concession, never joins it: drawn only without one, so still ~1 post in 3
+    catch = (random.choice(pillar["catchphrases"]) if pillar["catchphrases"] and not concede
+             and random.random() < CATCHPHRASE_SHARE / (1 - CONCEDE_SHARE) else None)
+    ask_kind = experiment.draw("ask_kind", experiment.ASK_WEIGHTS, arms)
+    close = experiment.draw("close", experiment.CLOSES, arms) if ask_kind != "none" else arms.setdefault("close", None)
     sentences, lo, hi = experiment.length_line("post", arms)
     question = random.choice(f["asks"]) if f["asks"] and ask_kind == "frame" else None
     ending = ("End with one real question that readers answer from their own life, never a rhetorical one" +
               (f", along the lines of this one but in your own words: {question}" if question else ".")
               if ask_kind == "frame" else experiment.ASK_KINDS[ask_kind])
+    verdict = ["Then say plainly that you're voting No.",
+               f"Right after that, add this line word for word: {catch}" if catch else ""]
+    if close == "verdict_last":                 # the question moves before the verdict; the post ends on the No
+        closing = [ending.replace("End with one", "Then ask one", 1)] + verdict
+    else:
+        closing = verdict + [ending]
+    beat = {
+        "turn": f"Your own turning point: {arc}",
+        "stake": (f"Make that loss this one, told about your own person (gist only, never these words): {stake}"
+                  if key == "named_loss" else
+                  f"Then the stake: someone from your own life (name them) loses something ordinary under a Yes. "
+                  f"Take the gist only, never these words: {stake}"),
+        "lever": f"Then make it land through this: {LEVERS[lever]}" if lever else "",
+    }[arms["beat"]]
     beats = [
-        f"Write one new post of {sentences} short sentences, between {lo} and {hi} characters (never over "
-        f"{hi + 30}: count them), as one flowing post (no numbers or labels). Build it in this order.",
+        f"Write one new post of {sentences} short sentences, between {lo} and {hi} words in all, as one flowing post "
+        f"(no numbers or labels). Use contractions (I'm, don't, it's). Build it in this order.",
         text.format(headline=headline),
-        f"Your own turning point: {arc}" if arc else "",
-        (f"Make that loss this one, told about your own person (gist only, never these words): {stake}"
-         if stake and key == "named_loss" else
-         f"Then the stake: someone from your own life (name them) loses something ordinary under a Yes. Take the "
-         f"gist only, never these words: {stake}" if stake else
-         "Then mention a real local detail from your own life that shows what a Yes would cost."),
-        f"The point underneath it: {f['angle']}.",
-        f"Make it land through this: {LEVERS[lever]}",
-        "Use one fact (two at most), in plain words. Appeal to feeling, not to the fine print.",
-        "Then grant the other side in 8 words or fewer, without repeating their reasons." if concede else "",
-        "Then say plainly that you're voting No.",
-        f"Right after that, add this line word for word: {catch}" if catch else "",
-        ending,
+        beat,
+        f"The point underneath it, in your own words: {f['gist']}.",
+        "Then grant the other side in 8 words or fewer, without repeating their reasons." if concede else
+        "" if key in NO_FACT_SHAPES else "Use one fact, in plain words. Appeal to feeling, not to the fine print.",
+        *closing,
         f"Then finish with exactly one hashtag, {tag}, and nothing after it.",
     ]
     _fill(meta, frame=frame_key, shape=key, hook=HOOKS.get(key, key), pillar=f["pillar"], stake=stake, tag=tag,
-          catchphrase=catch, ask=question, **arms)
+          catchphrase=catch, ask=question, closing_question=close == "question_last", **arms)
     return " ".join(b for b in beats if b)
 
 
@@ -516,7 +573,7 @@ THREAD_STYLES = {
 
 
 def thread_reply_prompt(post_text, frame_key, style):
-    task = THREAD_STYLES[style].format(angle=FRAMES[frame_key]["angle"])
+    task = THREAD_STYLES[style].format(angle=FRAMES[frame_key]["gist"])
     return (f"A neighbour posted:\n<<<{post_text[:600]}>>>\nYou're replying under their post. {task} "
             f"Speak from your own life (your job, your place), never from theirs, and don't pick up names or phrases they "
             f"made up. Don't repeat their words back, don't praise the post, don't open with agreement words. {REPLY_RULES}")
@@ -585,15 +642,15 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
     sentences, lo, hi = experiment.length_line("reply", arms)
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), **arms)
     if reason_first:
-        point = "answer the reason above" if reb else FRAMES[frame_key]["angle"]
+        point = "answer the reason above" if reb else FRAMES[frame_key]["gist"]
         why = "Answer WHY they lean Yes (the fear or hope underneath, not the conditions they list). "
         reb = f"{reb}\n" if reb else ""
     else:
-        point, why = FRAMES[frame_key]["angle"], ""
+        point, why = FRAMES[frame_key]["gist"], ""
         reb = f"Note: {reb}\n" if reb else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
-        f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} characters. "
+        f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} words. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
         f"through this: {LEVERS[lever]} {experiment.ASK_KINDS[ask_kind]} {_reply_voice(persona)}{REPLY_RULES}"
     )
@@ -610,8 +667,9 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
         f"Someone else has already replied to them. Add a different angle, as yourself, in {sentences} short "
-        f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} characters: {FRAMES[frame_key]['angle']}. {opener} Make it land through this: "
-        f"{LEVERS[lever]} Don't mention the other reply or repeat its argument. {_reply_voice(persona)}{REPLY_RULES}"
+        f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} words: {FRAMES[frame_key]['gist']}. "
+        f"{opener} Make it land through this: {LEVERS[lever]} Don't mention the other reply or repeat its argument. "
+        f"{_reply_voice(persona)}{REPLY_RULES}"
     )
 
 

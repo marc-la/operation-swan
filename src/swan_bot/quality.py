@@ -115,6 +115,10 @@ TAG = re.compile(r"#\w+")
 TAG_AT_END = re.compile(r"\s*#\w+[.!]?$")
 TRAILING_TAGS = re.compile(r"(\s*#\w+[.!]?)+\s*$")   # replies: tags the model tacks on at the end are cut, not rejected
 NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
+# a figure written in words dodges the number check ("Twelve thousand doses" for 120,000): numbers go as digits.
+# Plurals ("hundreds of", "thousands of") are vague, not figures, and pass, and so does a digit before the word
+# ("K$18 million", checked as 18 by the number rules)
+SPELLED_NUMBER = re.compile(r"(?<![\d.] )\b(hundred|thousand|million)\b", re.I)
 # true in-game numbers only, each checked in docs/01-competition/setting.md (whole numbers 0-12 always pass):
 # Supply: 120,000 first doses, K$18 million for the rest. COVID legacy: >1,000 deaths. Health system: Central ≈450
 # beds, Crown Harbour ≈220, ≈30 ICU beds, ≈40 ventilators, ≈1,600 nurses, 420 doctors, 40 unfilled nursing posts,
@@ -201,6 +205,24 @@ def similar(a, b, n=5):
 _SOURCE_SHINGLES = set().union(*(_shingles(s, 7) for s in SOURCES))
 
 
+def copied_phrases(text, n=7):
+    """The copied runs of text (see copied_runs) merged into the longest phrases, in order: what a repair quotes."""
+    words = re.findall(r"[a-z']+", strip_tag(normalise(text)).lower())
+    hit = copied_runs(" ".join(words), n) & _SOURCE_SHINGLES
+    covered = [False] * len(words)
+    for i in range(len(words) - n + 1):
+        if " ".join(words[i:i + n]) in hit:
+            covered[i:i + n] = [True] * n
+    phrases, cur = [], []
+    for w, c in zip(words + [""], covered + [False]):
+        if c:
+            cur.append(w)
+        elif cur:
+            phrases.append(" ".join(cur))
+            cur = []
+    return phrases
+
+
 def copied_runs(text, n=7):
     """The n-word runs of text, leaving out any run with 3+ words inside a catchphrase or REPEATABLE line."""
     words = re.findall(r"[a-z']+", text.lower())
@@ -247,8 +269,9 @@ def strip_tag(t):
     return TAG_AT_END.sub("", t)
 
 
-def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=()):
-    """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'."""
+def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True):
+    """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
+    closing_question=False lets a post end on its verdict instead (a draft told to end without a question)."""
     t = normalise(text)
     if kind != "post":
         t = TRAILING_TAGS.sub("", t).strip()
@@ -282,6 +305,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
         return None, "generic_phrase"
     if any(RHETORICAL.search(q) for q in re.findall(r"[^.!?]*\?", t)):
         return None, "rhetorical_question"
+    if SPELLED_NUMBER.search(t):
+        return None, "spelled_number"
     for num in NUMBER.findall(LIFE_SPAN.sub(" ", HISTORY_DATES.sub(" ", t))):
         bare = num.rstrip("%").rstrip(",")
         if num.endswith("%"):
@@ -295,7 +320,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
     if kind == "post" and not (LOCAL.search(t) or (LOCAL_NAME and LOCAL_NAME.search(t))):
         return None, "no_local_detail"
     body = strip_tag(t)                            # a shared tag is not a shared sentence
-    if kind == "post" and REQUIRE_CLOSING_QUESTION and not CLOSING_QUESTION.search(body):
+    if kind == "post" and REQUIRE_CLOSING_QUESTION and closing_question and not CLOSING_QUESTION.search(body):
         return None, "no_closing_question"
     if copied_runs(body) & _SOURCE_SHINGLES:
         return None, "copied_fact"
@@ -314,3 +339,33 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
         if similar(body, strip_tag(old.strip())) > 0.25:
             return None, "near_duplicate"
     return t, None
+
+
+# Repair-on-reject (todo/14): for these reasons the second call sends the draft back with what to fix (the smallest
+# edit), instead of a fresh roll that repeats the failure. Sentence counts, not characters: this model ignores counts.
+REPAIR_SENTENCES = {"post": 4, "reply": 2, "second_voice": 1, "journalist": 2, "reply_back": 2}
+
+
+def repair_note(why, raw, kind, tag=None):
+    """What to tell the model to fix in a rejected draft, or None (then the retry is a fresh draft)."""
+    why = why or ""
+    if why.startswith("length_") and kind in REPAIR_SENTENCES:
+        n = int(why.split("_")[1])
+        if n <= LENGTHS[kind][1]:
+            return None                            # too short: a fresh draft does better than padding
+        k = REPAIR_SENTENCES[kind]
+        return (f"Too long ({n} characters). Cut it to {k} sentence{'s' if k > 1 else ''}, keeping the opening"
+                + (", the line saying you're voting No and the last line." if kind == "post" else " and the ending."))
+    if why == "copied_fact":
+        quoted = "; ".join(f"«{p}»" for p in copied_phrases(raw)) or "a phrase"
+        return f"This copies the brief word for word: {quoted}. Say it in your own words."
+    if why in ("hashtag", "tag_in_reply", "too_many_tags", "tag_not_allowed", "tag_not_at_end"):
+        return f"Use exactly one hashtag, {tag}, as the very last word." if kind == "post" and tag else \
+            "Remove every hashtag."
+    if why == "no_closing_question":
+        return "End with one question the reader answers from their own life."
+    if why == "no_vote_statement":
+        return "Say plainly that you're voting No."
+    if why == "spelled_number":
+        return "Write every number as digits, and only the numbers you were given."
+    return None

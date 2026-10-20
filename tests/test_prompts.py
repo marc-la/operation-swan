@@ -6,6 +6,7 @@ logging meta, replies and journalist storylines. Offline: prompts are rendered, 
 import copy
 import pathlib
 import random
+import re
 import sys
 import types
 
@@ -136,7 +137,7 @@ def test_shape_selection_rules():
 
 def test_post_meta_valid_and_in_prompt():
     random.seed(2)
-    catches = 0
+    catches, beats, closes = 0, {}, {}
     for i in range(300):
         fk = FRAME_KEYS[i % 12]
         meta = {}
@@ -150,11 +151,27 @@ def test_post_meta_valid_and_in_prompt():
                                                and meta["catchphrase"] in u)
         catches += meta["catchphrase"] is not None
         _, lo, hi = experiment.LENGTH_BANDS["post"][meta["length_band"]]
-        assert "voting No" in u and f"{lo} and {hi}" in u
-        assert ("8 words or fewer" in u) == meta["concede"] and content.LEVERS[meta["lever"]] in u
-        end = "real question" if meta["ask_kind"] == "frame" else experiment.ASK_KINDS[meta["ask_kind"]]
-        assert u.index("voting No") < u.index(end) < u.index("hashtag")
+        assert "voting No" in u and f"between {lo} and {hi} words" in u and "characters" not in u
+        assert ("8 words or fewer" in u) == meta["concede"]
+        assert not (meta["concede"] and meta["catchphrase"])               # the catchphrase replaces the concession
+        # one beat of stake / lever / turning point (todo/14); the lever is logged only when it is in the prompt
+        assert (meta["lever"] is not None) == (meta["beat"] == "lever")
+        assert meta["lever"] is None or content.LEVERS[meta["lever"]] in u
+        assert ("turning point" in u) == (meta["beat"] == "turn") and ("never these words" in u) == (meta["beat"] == "stake")
+        beats[meta["beat"]] = beats.get(meta["beat"], 0) + 1
+        assert ("Use one fact" in u) == (not meta["concede"] and meta["shape"] not in content.NO_FACT_SHAPES)
+        if meta["ask_kind"] == "none":
+            assert meta["close"] is None and not meta["closing_question"] and "real question" not in u
+            continue
+        end = "real question" if meta["ask_kind"] == "frame" else experiment.ASK_KINDS[meta["ask_kind"]][len("End with one "):]
+        if meta["close"] == "verdict_last":
+            assert not meta["closing_question"] and u.index(end) < u.index("say plainly") < u.index("hashtag")
+        else:
+            assert meta["closing_question"] and u.index("say plainly") < u.index(end) < u.index("hashtag")
+        closes[meta["close"]] = closes.get(meta["close"], 0) + 1
     assert 0.2 < catches / 300 < 0.45                                    # about one post in three
+    assert set(beats) == {"stake", "lever", "turn"} and beats["lever"] > 60, beats
+    assert 0.1 < closes["verdict_last"] / sum(closes.values()) < 0.4, closes
 
 
 def test_resort_stake_never_offered():
@@ -298,3 +315,21 @@ def test_shared_meta_dict_collects_both():
     content.post_prompt("F9_parliament", meta=meta, persona=P["josh"])
     content.system_prompt(P["josh"], "F9_parliament", meta=meta)
     assert {"shape", "hook", "voice", "pillar", "stake", "tag", "catchphrase", "now", "heat"} <= set(meta)
+
+
+def test_one_length_and_ending_instruction_per_prompt():
+    """todo/14 contradiction audit: the voices carry no sentence counts, fact counts or endings, so the prompt's own
+    length band and ending are the only ones (the fed-up reply said "two or three", second voices 1 or 2)."""
+    counts = re.compile(r"\b(one|two|three|four|1|2|3|4) (or \w+ )?(short )?sentences?\b|\bone or two more\b", re.I)
+    for name, v in content.VOICES.items():
+        for field in ("instruction", "reply_instruction"):
+            assert not counts.search(v[field]), (name, field)
+            assert "question" not in v[field].lower(), (name, field)
+    assert not re.search(r"\d", content.WORLD.replace("H2D2", ""))
+    for p in content.PERSONAS[:12]:
+        s = content.system_prompt(p, p["frames"][0])
+        u = content.reply_prompt("not sure, the hospitals scare me", p["frames"][0], [], persona=p)
+        v = content.second_voice_prompt("not sure, the hospitals scare me", p["frames"][0], [], persona=p)
+        for prompt in (u, v):
+            assert len(counts.findall(prompt)) == 1, (p["key"], counts.findall(prompt))
+        assert "characters" not in u + v and "one to three" not in s

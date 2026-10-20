@@ -58,16 +58,16 @@ def test_reply_modes_differ_only_in_the_reason(monkeypatch):
     assert "Answer WHY they lean Yes" in out["reason_first"] and "Don't argue about these" in out["reason_first"]
     assert "Answer WHY" not in out["conditions_first"] and "Use their terms" in out["conditions_first"]
     assert "answer the reason above" in out["reason_first"]
-    assert content.FRAMES["F14_no_yes_but"]["angle"] in out["conditions_first"]
+    assert content.FRAMES["F14_no_yes_but"]["gist"] in out["conditions_first"]
 
 
 def test_length_bands_fit_the_quality_gate():
     from swan_bot import quality
     for mode, bands in experiment.LENGTH_BANDS.items():
         lo, hi = quality.LENGTHS[mode]
-        for _, a, b in bands.values():
-            assert lo <= a < b <= hi, (mode, a, b)
-    assert experiment.LENGTH_BANDS["post"]["long"][2] + 30 <= quality.LENGTHS["post"][1]
+        for _, a, b in bands.values():                  # words, at the gold posts' characters per word
+            assert lo <= a * experiment.WORDS_TO_CHARS and a < b, (mode, a, b)
+            assert b * experiment.WORDS_TO_CHARS * 1.15 <= hi, (mode, a, b)     # room for a 15% overshoot
 
 
 def test_no_ask_drops_the_question(monkeypatch):
@@ -75,11 +75,16 @@ def test_no_ask_drops_the_question(monkeypatch):
     meta = {}
     u = content.reply_prompt("not sure about the mandate", "F1_blank_cheque", [], meta=meta)
     assert meta["ask_kind"] == "none" and experiment.ASK_KINDS["none"] in u
-    # posts never end without a question yet: quality.check would reject them (no_closing_question)
-    for _ in range(200):
-        meta = {}
-        content.post_prompt("F1_blank_cheque", meta=meta, persona=content.PERSONAS[0])
-        assert meta["ask_kind"] != "none"
+    # a post told to end without a question passes the gate without one (bot.draft_checked reads closing_question)
+    meta = {}
+    u = content.post_prompt("F1_blank_cheque", meta=meta, persona=content.PERSONAS[0])
+    assert meta["ask_kind"] == "none" and meta["closing_question"] is False and meta["close"] is None
+    assert experiment.ASK_KINDS["none"] in u and "real question" not in u
+    from swan_bot import quality
+    post = ("Tavita runs the Crown Harbour wharf cafe and nobody can tell her if her door needs a checker. They pick "
+            "the places after the vote, so her two student staff could end up checking papers. That's not a deal I'd sign. I'm voting No. #VoteNo")
+    assert quality.check(post, "post", closing_question=False)[0]
+    assert quality.check(post, "post")[1] == "no_closing_question"
 
 
 def test_stance_and_target_class():

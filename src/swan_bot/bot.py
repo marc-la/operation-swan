@@ -186,8 +186,8 @@ def reply_back_jobs(social, accounts, targeter, limit=3):
 
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
-ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "block_id")
-REJECT_ARMS = ("shape", "voice", "lever", "ask_kind", "length_band", "reply_mode")
+ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "block_id")
+REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close")
 
 
 def experiment_fields(target):
@@ -238,6 +238,41 @@ def build_prompt(job, targeter, recent_shapes=()):
     else:
         user = content.reply_back_prompt(job["our_text"], body)
     return persona, content.system_prompt(persona, job["frame"], meta=meta), user
+
+
+# Drafts at 0.7 keep to their shape and length better; own-thread reactions keep 0.9 for variety (todo/14)
+TEMPERATURE = {"thread": 0.9, "thread_answer": 0.9}
+# A 70-word post is ~100 tokens. Flash-lite spends no thinking tokens out of the cap (2026-10-21: max_tokens=120
+# finished "stop" at 73), so this only stops a runaway answer
+MAX_TOKENS = 600
+
+
+def repair_prompt(user, raw, note):
+    return (f"{user}\n\nYour draft was:\n<<<{raw}>>>\nFix only this: {note} Change as little as you can and keep "
+            f"the rest. Output only the fixed text.")
+
+
+def draft_checked(gen, job, system, user, recent_texts, on_reject=None):
+    """Draft and gate, two calls at most. A reject the gate can name a fix for (quality.repair_note) sends the draft
+    back with that fix (the smallest edit); any other reject gets a fresh draft. Returns (text, backend, repair):
+    text is None when both failed, backend None when no model answered, repair the reject reason the last draft
+    was repaired from. on_reject(why, raw, backend, repair) is called for each reject."""
+    mode, meta = job["mode"], job.get("meta") or {}
+    target_text = (job.get("target") or {}).get("body") or ""
+    prompt, repair, backend = user, None, None
+    for _ in range(2):
+        raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7))
+        if raw is None:
+            break
+        text, why = quality.check(raw, mode, recent_texts, prompt_text=user, target_text=target_text,
+                                  wants=job.get("wants") or (), closing_question=meta.get("closing_question", True))
+        if text:
+            return text, backend, repair
+        if on_reject:
+            on_reject(why, raw, backend, repair)
+        note = quality.repair_note(why, raw, mode, meta.get("tag"))
+        prompt, repair = (repair_prompt(user, raw, note), why) if note else (user, None)
+    return None, backend, repair
 
 
 def main():
@@ -493,25 +528,22 @@ def main():
             # ---- draft and check (batched drafts were checked when drafted) ----
             rec, mode, target = job["rec"], job["mode"], job.get("target")
             persona = content.PERSONA_BY_KEY[rec["persona"]]
-            text = backend = user = None
+            text = backend = user = repair = None
             if mode == "repost":
                 text, backend = "", "none"
             elif drafted:
                 text, backend = drafted["text"], drafted["backend"]
             else:
                 persona, system, user = build_prompt(job, targeter, state["recent_shapes"])
-            for _ in range(0 if mode == "repost" or drafted else 2):
-                raw, backend = gen.complete(system, user)
-                if raw is None:
-                    break
-                text, why = quality.check(raw, mode, state["recent_texts"][-300:], prompt_text=user,
-                                          target_text=(target or {}).get("body") or "", wants=job.get("wants") or ())
-                if text:
-                    break
-                stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
-                log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
-                     "backend": backend, "raw": raw, **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
-                print(f"  rejected [{mode}] ({why}): {raw[:160]!r}")
+
+                def rejected(why, raw, backend, repaired):
+                    stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
+                    log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
+                         "backend": backend, "raw": raw, "repair": repaired,
+                         **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
+                    print(f"  rejected [{mode}] ({why}{', after repair' if repaired else ''}): {raw[:160]!r}")
+
+                text, backend, repair = draft_checked(gen, job, system, user, state["recent_texts"][-300:], rejected)
             if not text and mode != "repost":
                 if mode == "reply_back" and job.get("tries", 0) < 2:
                     job["tries"] = job.get("tries", 0) + 1      # a citizen who answered us is worth another try
@@ -592,7 +624,7 @@ def main():
                  "target_post": target and target["post_id"], "target_author": target and target["author_id"],
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
                  "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
-                 "amp_post": job.get("amp_post"), "style": job.get("style"),
+                 "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
                  **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener")},
                  **{k: meta.get(k) for k in ARMS}, **experiment_fields(target),
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
