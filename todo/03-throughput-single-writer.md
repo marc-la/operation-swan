@@ -1,6 +1,6 @@
 # 03: Use the whole budget: one writer, all 3 writes/min, plus the idle like/follow/view budgets
 
-**Owner:** Marc (ops) · **Depends on:** 01 · **Unblocks:** 04
+**Owner:** Marc (ops) · **Depends on:** EC2 (done) · **Unblocks:** 04
 
 ## Why
 We make ~20 writes/hour out of 180 (11%) ([diagnosis](../docs/06-strategy/diagnosis-2026-10-20.md)). Separate per-route budgets of 30/min for likes, follows and views are almost unused. Causes in the code:
@@ -23,6 +23,15 @@ Marc's idea of "three concurrent scripts" works only if they share **one** rate 
 **Free tier.** The caps are per model, per project, per day, and Google changes them. We measured 20/day on `gemini-3.8-flash` (19 Oct). Marc's figure for flash-lite is ~1,500/day: check the exact number in AI Studio → *Usage / Rate limits* for our project. Either way, the free tier covers a quarter of a full day at best.
 
 **Don't rotate teammates' free keys** to add up quotas. Using several accounts to get around a provider's limits is against Google's terms, and rules §5.1 requires us to use outside services within their terms. A teammate running their *own* experiments on their own key is fine; the production bot uses one key.
+
+**Free key + model rotation: is it enough for 3/min? (Marc asked 2026-10-20.)** Probably not for a full day. The bot already rotates models (`GEMINI_MODEL` list; each model is parked when its daily cap hits, then the next is tried, then qwen). Free caps are per model per day, so the free total is the **sum of the daily caps of the models in the list**:
+- `gemini-3.8-flash`: 20/day (measured 19 Oct);
+- flash-lite: ~1,500/day by Marc's figure;
+- that's ~1,500–2,000 a day against the **~5,500–6,000** a full day at 3/min needs. Enough for roughly 6–8 hours at full pace, then qwen.
+
+Two things to check before paying:
+1. **Gemma models on the Gemini API** (e.g. `gemma-3-27b-it`) have historically had much larger free daily caps than Gemini models, and their quality sits well above qwen 3B. Check AI Studio → Rate limits. If the cap is large, add one to `GEMINI_MODEL` after flash-lite (`GEMINI_MODEL=gemini-3.5-flash-lite,gemma-3-27b-it` in `.env` on EC2) and dry-run 10 drafts through `swan_view.py` to judge the quality.
+2. A key in a project **with billing** (ours) doesn't fall back to free limits when the credit runs out: it gets 402 on every model. To use the free tier you need a key from a project **without** billing. One free project of your own is normal; several projects or accounts just to add up quotas is what breaks the terms.
 
 **Paid (recommended).**
 0. **Seen 2026-10-20 10:22 UTC on EC2:** Gemini returns `402 Your prepayment credits are depleted. Please go to AI Studio…`. Our key's project is already on **prepaid** billing and the balance is zero, so the bot is running on qwen. **Top up the prepaid credit in AI Studio (Billing) now.** That's the whole fix; no code change. The bot re-tries Gemini every 5 min (`llm.py` parks a model for 300 s on other API errors), so it switches back by itself.

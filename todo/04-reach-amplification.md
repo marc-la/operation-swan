@@ -10,6 +10,30 @@ Own-team likes and replies on our own posts, built to look organic.
 - **Rule status:** Legit Social rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and says such accounts "may be restricted or removed". We read that as an **in-game** rule enforced by in-game moderation (reports → hidden posts → suspended accounts). The top teams do it openly, and the organisers' 20 Oct response was to strengthen Blue reporting, not to penalise anyone. The Q1 in [10](10-organiser-questions.md) is now a confirmation, not a gate. If the organisers say it breaches the *competition* rules, switch `--amplify` off that day.
 - **What "look organic" means here:** hard to tell apart from real users *for other teams and the in-game moderator*. That is the Red/Blue game. It does **not** mean hiding anything from the organisers. Every like, reply and follow is still logged in `logs/swan_actions.jsonl` with account, persona and owner (CLAUDE.md rule 6). No rate-limit evasion, no IP tricks, no extra accounts beyond our allowance.
 
+## Doing it strongly with minimum penalty risk: split the accounts by role
+Under the published rules ([scoring §3](../docs/03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts)), an account can only lose its life in two ways:
+1. **3 of its posts permanently hidden** (each needs a moderator "inauthentic" ruling on a reported post); or
+2. an upheld **account report**, which needs **≥ 1 permanently hidden post *and* ≥ 100 actions** at ruling time.
+
+Both routes need a hidden **post**. That gives the design:
+
+| Role | Does | Can it be suspended under the published rules? | Share |
+|---|---|---|---|
+| **Booster** | Only likes, follows and views. **Never posts, replies or reposts** | **No.** It has no posts, so nothing can be hidden, so route 1 is impossible and route 2's first condition is never met, however many likes it makes | ~40–50% of active accounts |
+| **Voice** | Original posts and replies (personas with history) | Yes: protect it with content quality + hidden-post parking | the rest |
+
+- **Boosters carry the likes.** The 30/min like budget, spread across 15–25 boosters, gives each new Voice post 6–20 likes. Boosters also like plenty of non-own content (citizen posts, other No posts, news) so their like history looks like a real reader's. Give boosters plausible display names, but they need no persona.
+- **Voices carry the words.** Each Voice's posts are what a reporter can hit, so: (a) content that reads as genuine, since a "genuine" ruling also locks the reporter out for 6 h and makes our posts an expensive target; (b) spread posts across many Voices so no account piles up hides; (c) **park a Voice at 2 hidden posts** (hidden-post watch, 03). Own-thread replies (B below) come from Voices, so keep them as strong as the main post.
+- **Reporters have a cap on us too:** each reporting team gets full points for only 5 paid reports per day against one team. A smaller, cleaner ring than the leaders' 60–90-like rings is the less attractive target.
+- **Account budget:** boosters use *active* slots (50 at once) and *total* slots (200). E.g. 20 boosters + 20–30 voices by 26 Oct is well inside both.
+
+**Residual risk (not zero):**
+- The organisers can change the mechanics. They changed the Blue timers twice on 20 Oct.
+- They can act on LS.5.3 / rules §5.3 directly. A like-only account class is exactly the kind of edge they might call "against the spirit".
+- We don't know whether the moderator looks at a post's likers when ruling.
+
+So: log everything (it's all attributed anyway), watch for an organiser comment, and keep `--amplify` one line away from off in `deploy/run.sh`.
+
 ## Fingerprints to avoid (we see them in the leaders' rings; Blue teams will too)
 | Ring tell (observed 20 Oct) | Our rule |
 |---|---|

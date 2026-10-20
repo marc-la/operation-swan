@@ -1,6 +1,6 @@
 # 11: Where bot alerts go (future work)
 
-**Owner:** anyone · **Depends on:** 01 (done) · **Effort:** 15 min for option A
+**Owner:** anyone · **Depends on:** EC2 (done) · **Effort:** 15 min for option A
 
 The alert plumbing is built ([hosting: Alerts](../docs/04-technical/hosting.md#alerts)). `deploy/alert.sh` posts one-line messages to `ALERT_WEBHOOK_URL` from `~/ctn/.env` on the EC2 box. Today the URL is empty, so alerts only go to `logs/alerts.log`. Pick a channel:
 

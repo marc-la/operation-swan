@@ -34,7 +34,7 @@ Host swan-ec2
 `~/ctn/.env` (600), `~/ctn/secrets/swan_accounts.json` (600), `~/ctn/data/swan_state.json`, `~/ctn/logs/` (`swan_actions.jsonl` = the attribution log, `deploys.jsonl`, `alerts.log`). Back up `secrets/` and `logs/` now and then: `scp -r swan-ec2:ctn/secrets swan-ec2:ctn/logs ./backup/`.
 
 ## Alerts
-`deploy/alert.sh` posts to `ALERT_WEBHOOK_URL` in `.env` (a Discord or Slack incoming webhook) and always writes `logs/alerts.log`. Alerts fire on: crash, systemd giving up, bot hung, no writes, deploy done, deploy failed, and recovery. `HEALTHCHECK_PING_URL` (optional, e.g. healthchecks.io) is pinged while healthy, so the whole VM dying is caught too. **Neither is set yet.** Options: [todo/11](../../todo/11-alert-channel.md).
+`deploy/alert.sh` posts to `ALERT_WEBHOOK_URL` in `.env` (a Discord or Slack incoming webhook) and always writes `logs/alerts.log`. Alerts fire on: crash, systemd giving up, bot hung, no writes, deploy done, deploy failed, and recovery. `HEALTHCHECK_PING_URL` (optional, e.g. healthchecks.io) is pinged while healthy, so the whole VM dying is caught too. **Neither is set yet.** Options: [todo/11](../../todo/11-alert-channel.md). Open AWS/GitHub items: [todo/README](../../todo/README.md#ops-leftovers-small-marc).
 
 ## Everyday commands
 ```bash

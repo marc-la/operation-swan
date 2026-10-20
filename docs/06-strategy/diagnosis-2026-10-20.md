@@ -36,7 +36,7 @@ Compared with 2025: the 2025 winners (CtN_QUT; QUT leads again as Vertex_CTN) fo
 | **Targets** | Reply targeting starves: citizens rarely post | 0 citizen news-thread replies/hour in recent refreshes; 0/300 Latest posts by citizens | [04](../../todo/04-reach-amplification.md) |
 | **Content** | Calm, consoling, process-heavy ("blank cheque", "list nobody's seen") | Rejects dominated by near-duplicate/same-opening; trending No posts are emotive stories | [05](../../todo/05-content-v2.md), [06](../../todo/06-npc-simulator.md) |
 | **Blue track** | Not used at all, while the organisers just made it cheaper (cap 25 pending, 3 h base timer) | 0 reports filed | [07](../../todo/07-blue-desk.md) |
-| **Infra** | Laptop + tmux; no auto-deploy; no shared picture | WSL sleeps; teammates can't see state | [01](../../todo/01-ec2-deploy.md), [02](../../todo/02-auto-deploy.md), [09](../../todo/09-dashboard-cop.md) |
+| **Infra** | Laptop + tmux; no auto-deploy; no shared picture | WSL sleeps; teammates can't see state | Done 2026-10-20: [hosting](../04-technical/hosting.md). Dashboard: [09](../../todo/09-dashboard-cop.md) |
 | **Data** | No snapshots of the platform; no team clusters; per-post metrics only on demand | `swan_measure.py` is manual; Mongo holds only our own log | [08](../../todo/08-intel-collector.md) |
 
 ## Rules check (needs a ruling before we copy it)

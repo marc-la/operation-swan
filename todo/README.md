@@ -12,8 +12,6 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
-| [01](01-ec2-deploy.md) | ✅ 2026-10-20: bot on EC2 under systemd ([hosting](../docs/04-technical/hosting.md)); AWS-side leftovers listed | Marc (ops) | done | — |
-| [02](02-auto-deploy.md) | ✅ 2026-10-20: push to `main` → live in ~2 min; branch protection + tests still open | Marc (ops) | done | — |
 | [11](11-alert-channel.md) | Pick the alert channel (Discord webhook recommended) + dead-man switch | anyone | today | — |
 | [10](10-organiser-questions.md) | Post our rule questions in Discord `#questions` | Blue lead | **today** | — |
 | [07](07-blue-desk.md) | Blue desk: find ring bots, report them | Blue lead | **today → 21 Oct** | 08 helps but not needed for v0 |
@@ -25,6 +23,14 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | [06](06-npc-simulator.md) | NPC simulator as a fitness landscape for drafts | Narrative lead | 22–23 Oct | 05, 10 |
 
 **Critical path to catch up:** 03 (paid Gemini + full pace) → 04 (amplification), with 07 (Blue) running in parallel from today. Blue needs no new bot infrastructure and is the fastest points.
+
+## Ops leftovers (small, Marc)
+Done 2026-10-20 and deleted from this folder: bot on EC2 under systemd, plus auto-deploy from `main` with alerts and CI ([hosting](../docs/04-technical/hosting.md)). Still open:
+- [ ] **Top up Gemini prepaid credit** at https://ai.studio/projects. Both the old and new keys get `402 prepayment credits are depleted`, so the bot is on qwen until then. Details in [03](03-throughput-single-writer.md).
+- [ ] AWS: Elastic IP (then update `~/.ssh/config` + hosting.md), termination protection, SSH from team IPs only, budget alert.
+- [ ] Teammates' public SSH keys → `~ec2-user/.ssh/authorized_keys` (don't share the PEM).
+- [ ] GitHub branch protection on `main`: require the `checks` job and PRs (today a direct push goes live in 2 min).
+- [ ] `tests/` for `quality.check` and `targeting.classify` (CI and the deploy checks run them when present). Log the git sha in each action record. Graceful stop via a signal flag instead of KeyboardInterrupt.
 
 ## Rules for every item
 - CLAUDE.md guardrails apply. Anything that writes to Legit Social is **dry-run by default** and needs an explicit `--live`.

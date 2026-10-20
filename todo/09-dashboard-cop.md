@@ -1,6 +1,6 @@
 # 09: Common operating picture: a team dashboard on EC2
 
-**Owner:** data lead · **Depends on:** 01 (EC2), 08 (data) · **When:** 22 Oct
+**Owner:** data lead · **Depends on:** EC2 (done), 08 (data) · **When:** 22 Oct
 
 ## Why
 Four people need one view: is the bot up, what is it writing, is it working, are we under attack, and what are the rivals doing. The screen list is in [system-architecture §6](../docs/06-strategy/system-architecture.md#6-common-operating-picture-what-the-dashboard-shows).
