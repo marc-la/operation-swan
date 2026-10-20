@@ -1,0 +1,8 @@
+[Unit]
+Description=Pull origin/main, check, restart swan-bot
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/home/ec2-user/ctn/deploy/update.sh

@@ -1,6 +1,7 @@
 # TODO — Operation Swan
 
 > Started 2026-10-20. Tick items off and add the date. Strategy: [docs/06-strategy](docs/06-strategy/README.md) · Bot: [runbook](docs/04-technical/swan-bot-runbook.md).
+> **2026-10-20 evening:** the priority work now lives in [`todo/`](todo/README.md) (one handoff per session), based on the [Day-1 diagnosis](docs/06-strategy/diagnosis-2026-10-20.md). Items below still stand unless a `todo/` file supersedes them.
 
 ## Now (before Poll 1, 21 Oct)
 - [ ] Go live overnight: `python scripts/run_swan.py --live --accounts 8 --hours 8` (type GO)

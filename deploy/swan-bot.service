@@ -1,0 +1,22 @@
+[Unit]
+Description=Operation Swan bot (Vote No): the team's single live writer
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=1800
+StartLimitBurst=5
+OnFailure=swan-alert@%n.service
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/home/ec2-user/ctn/deploy/run.sh
+ExecStopPost=/home/ec2-user/ctn/deploy/on_stop.sh
+# SIGINT = KeyboardInterrupt: the bot saves its state and pending reply-backs before exiting
+KillSignal=SIGINT
+TimeoutStopSec=90
+Restart=always
+RestartSec=60
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

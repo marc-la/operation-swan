@@ -1,0 +1,7 @@
+[Unit]
+Description=Alert the team that %i failed
+
+[Service]
+Type=oneshot
+User=ec2-user
+ExecStart=/home/ec2-user/ctn/deploy/alert.sh "BOT DOWN: %i failed and systemd gave up restarting (5 crashes in 30 min). ssh swan-ec2, then journalctl -u swan-bot -n 100"

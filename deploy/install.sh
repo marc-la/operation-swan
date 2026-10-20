@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# One-time setup on the EC2 box (run as ec2-user with sudo): sudo deploy/install.sh
+# --units-only: just (re)install the systemd units (update.sh calls this when a unit file changes).
+set -euo pipefail
+cd "$(dirname "$0")"
+install -m 644 swan-bot.service swan-alert@.service swan-update.service swan-update.timer \
+  swan-health.service swan-health.timer swan-sync.service swan-sync.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now swan-update.timer swan-health.timer swan-sync.timer
+[ "${1:-}" = "--units-only" ] && exit 0
+systemctl enable swan-bot      # starts at boot; start it by hand the first time: sudo systemctl start swan-bot
+echo "installed. sudo systemctl start swan-bot to go live"
