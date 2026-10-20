@@ -20,7 +20,9 @@ main() {
     exit 1
   fi
   if grep -qE '^deploy/.*\.(service|timer)$' <<< "$changed"; then sudo deploy/install.sh --units-only; fi
-  sudo systemctl try-restart swan-bot       # restarts only if running: a deliberate stop stays stopped
+  if grep -qE '^(src/|scripts/|deploy/|requirements\.txt)' <<< "$changed"; then
+    sudo systemctl try-restart swan-bot     # restarts only if running: a deliberate stop stays stopped
+  fi                                        # docs/todo-only pushes don't restart the bot
   record "$old" "$new" ok
   deploy/alert.sh "deployed $subject"
 }

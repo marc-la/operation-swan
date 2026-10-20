@@ -44,6 +44,18 @@ Two things to check before paying:
 
 - Make the model list configurable (`GEMINI_MODEL`) and add an Anthropic/OpenAI fallback behind the same `Generator.complete` interface if anyone has credits.
 
+### Batch drafts: several per LLM call (Marc's idea, 2026-10-20)
+More output per request beats dropping to a weaker model. Today every draft is one call: a long system prompt (persona + frame + facts) for ~60 words out. Instead:
+- **Persona posts:** one call returns **4–6 posts as a JSON array**, each for a named persona and shape (`[{"persona": "...", "shape": "...", "text": "..."}]`). Queue them and post over the next ~30 min.
+- **Replies:** one call takes **3–5 targets** (each with an id, the citizen's text, the thread headline and the assigned persona/frame) and returns `[{"target_id": ..., "text": ...}]`. Check every item's `target_id` matches one we sent and that the text names *that* citizen's point (the quality gate already checks "names the citizen's point"). Drop any mismatch: weak models mix targets up (organisers' warning).
+- **Saving:** ~3–5× fewer calls. ~5,500/day becomes ~1,200–1,800/day, about the free flash-lite cap by Marc's figure, and fewer input tokens on paid since the shared prompt is sent once.
+- **Costs to manage:**
+  - drafts written in one call sound alike, so ask for different openings and shapes and keep the near-duplicate gate;
+  - queued drafts go stale, so drop reply drafts after ~20 min (threads move on);
+  - one bad JSON response loses the whole batch, so parse leniently and retry once with a smaller batch;
+  - ask for JSON (`response_format={"type": "json_object"}` on the OpenAI-compatible endpoint, if Gemini accepts it there; otherwise parse the first `[...]` block).
+- Fits the producer/writer split above: a batch producer fills the job queue, and the single writer drains it at 3/min.
+
 ### Accounts
 - Account gap: 8 min → **3–4 min**. More accounts: grow to ~20 by 25 Oct, one every 15–30 min. Raise `MAX_ACCOUNTS` from 15 accordingly; the 200 lifetime allowance is plenty. [Second-mover plan](../docs/06-strategy/second-mover-plan.md#account-and-write-budget-red-multiplier-by-day) says to save accounts for ×2/×4. The hidden-post watch in `TODO.md` is the real safety limit, so build it now.
 - **Hidden-post watch** (from `TODO.md`): per account, count our logged post ids that `get_post` reports as hidden or 404. Park an account at 2 hidden posts, or at 1 hidden post plus ≥100 actions.
