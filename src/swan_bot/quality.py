@@ -38,16 +38,20 @@ GENERIC = re.compile(r"^(exactly|absolutely|great point|good point|well said|i h
                      r"it'?s important to|at the end of the day|in today'?s|food for thought|tapestry|testament|"
                      r"fellow (citizens|kingstonians)|dear neighbours|let'?s be clear|make no mistake|"
                      r"slippery slope|fundamental rights?)\b", re.I)
+# connector phrases the model leans on; one is fine, the same one in consecutive posts is a template fingerprint
+STOCK = re.compile(r"the (trouble|catch|problem|thing) is|as (it'?s )?written|as it stands|set in stone|strictly|locks? (it|this|that|the \w+) in|"
+                   r"(makes|is) sense|at the end of|which is why|the reality is|here'?s the (thing|catch)|i get (wanting|why)", re.I)
 NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
 ALLOWED_NUMBERS = {"12", "40", "120,000", "120000", "14", "5.50", "2"}
 # a reply must touch the target's point or one in-world fact; a post must carry a local detail
-FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|sunset|review|exemption|binding|"
+FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|sunset|review|exemption|binding|certificate|"
+                          r"\bjab|vaccinat|vaxx|papers at|finish date|stop date|expiry|temporary|permanent|"
                           r"stages|120,000|40 empty|nurs|ferry|K\$|age 12|12 and over|school gate|free|voluntary|"
                           r"ID card|biometric|Assembly|community spread|visitors|in writing|written down", re.I)
 LOCAL = re.compile(r"Crown Harbour|New Haven|Kingstonia City|outer island|wharf|ferry|market|harbour|reef|beach|"
                    r"regatta|lagoon|ward|clinic|bus|loop|campus|KU\b|counter|shop|cafe|boat|tuna|school|K\$|"
                    r"grandkids?|grandson|granddaughter|residents|Year 8|sailing", re.I)
-LENGTHS = {"post": (200, 470), "reply": (80, 290), "second_voice": (60, 240), "reply_back": (25, 240),
+LENGTHS = {"post": (200, 470), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
            "journalist": (90, 290)}
 
 
@@ -102,7 +106,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
         bare = num.rstrip("%").rstrip(",")
         if num.endswith("%") or (bare not in ALLOWED_NUMBERS and not (bare.isdigit() and int(bare) <= 12)):
             return None, f"unapproved_number_{num}"
-    if kind in ("reply", "second_voice", "journalist"):
+    if kind in ("reply", "journalist"):            # second voices always carry a set angle, so not checked
         if not (FACT_ANCHORS.search(t) or any(w.lower() in t.lower() for w in wants)):
             return None, "not_specific"
     if kind == "post" and not LOCAL.search(t):
@@ -113,7 +117,14 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
         return None, "copied_prompt"
     if target_text and similar(t, target_text, n=4) > 0.35:
         return None, "parrots_target"
+    opening = " ".join(re.findall(r"[a-z']+", t.lower())[:4])
+    if any(" ".join(re.findall(r"[a-z']+", o.lower())[:4]) == opening for o in list(recent_texts)[-30:]):
+        return None, "same_opening"
+    for m in STOCK.finditer(t):
+        phrase = re.sub(r"\s+", " ", m.group(0).lower())
+        if any(phrase in old.lower() for old in list(recent_texts)[-6:]):
+            return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     for old in recent_texts:
-        if similar(t, old) > 0.4:
+        if similar(t, old) > 0.25:
             return None, "near_duplicate"
     return t, None

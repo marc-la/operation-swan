@@ -13,33 +13,33 @@ QUESTION = ("Should proof of H2D2 Dolphin Flu vaccination be required to enter p
             "such as shops, schools, workplaces, public transport, and parks?")
 
 FACTS = {
-    "list_later": "Which places count as 'designated public spaces' is decided after the vote, by regulation. The list has not been published.",
-    "no_end": "The ballot question has no end date and nothing about who reviews the rule. A Yes is binding.",
-    "phased": "After a Yes the government must bring the requirement in by regulation, in stages.",
-    "exemptions": "Medical exemptions are in the plan and under-12s are exempt. An end date and the list of places are not.",
-    "free_either_way": "The vaccine is free and voluntary either way, so voting No stops nobody getting vaccinated.",
-    "first_doses": "The first 120,000 doses arrive in the last week of October and go to health workers and people at high risk.",
-    "age12": "The requirement would cover everyone aged 12 and over, at school, at work and on public transport.",
-    "nurses": "Kingstonia Central Hospital has 40 empty nursing posts; nurses can earn about double in Australia or New Zealand.",
-    "no_spread": "There is no community spread of H2D2 in Kingstonia yet.",
-    "islands": "Outer islands rely on nurse-led clinics with a GP visiting once a week, and the ferry costs K$14.",
-    "childhood": "Childhood vaccines are free here and most kids get them, without any certificate check at the school gate.",
-    "visitors": "Foreign visitors would need a certificate too.",
-    "covid_business": "Under COVID, tourism collapsed, small businesses closed and families were kept apart.",
-    "id_card": "The certificate would be separate from the new biometric ID card, and today's law keeps health records off the card. Laws can be changed.",
-    "no_binds": "A No means no access requirement for the life of this Assembly unless there is a fresh referendum.",
-    "bill_failed": "Last week the Assembly voted the bill down when several of the President's own People's Alliance members joined the Democratic-Republicans.",
+    "list_later": "Designated public spaces: list set by regulation after the vote; not published yet.",
+    "no_end": "Ballot question: no end date; no mention of any review or reviewer. A Yes result is binding.",
+    "phased": "After a Yes: requirement brought in by regulation, in stages.",
+    "exemptions": "Medical exemptions: yes, in the plan. Under-12s: exempt. End date and venue list: not in the plan.",
+    "free_either_way": "Vaccine: free, voluntary, available whatever the result. A No stops nobody getting it.",
+    "first_doses": "First 120,000 doses: last week of October; earmarked for health workers and high-risk people.",
+    "age12": "Requirement covers ages 12 and up: school, work, public transport.",
+    "nurses": "Kingstonia Central Hospital: 40 unfilled nursing posts. Nurses earn about double in Australia/NZ.",
+    "no_spread": "H2D2 in Kingstonia: no community spread so far.",
+    "islands": "Outer islands: nurse-led clinics, GP visits weekly, ferry K$14.",
+    "childhood": "Childhood vaccines: free, most kids get them, no certificate check needed.",
+    "visitors": "Foreign visitors: covered by the requirement too.",
+    "covid_business": "COVID years: tourism collapsed, small businesses closed, families kept apart.",
+    "id_card": "Certificate: separate from the new biometric ID card; current law keeps health records off the card (laws can change).",
+    "no_binds": "After a No: no access requirement for the life of this Assembly without a fresh referendum.",
+    "bill_failed": "Last week: Assembly voted the bill down; several of the President's own People's Alliance members joined the Democratic-Republicans.",
 }
 
 # Each frame: the point to make, the facts it may lean on, its weight for persona posts,
-# and the frame a second persona uses on the same doubt (a different angle, never a repeat).
+# and the frame(s) a second persona uses on the same doubt (a different angle, never a repeat; a list = pick one).
 FRAMES = {
     "F14_no_yes_but": dict(
         angle="the conditions people want before saying yes (an end date, the list of places, someone independent "
               "reviewing it) are not in the question (medical exemptions are, but only bring that up if they mentioned "
-              "exemptions); a Yes vote is the "
-              "question exactly as written, so it can't carry anyone's 'but'",
-        facts=["no_end", "list_later", "exemptions"], weight=3, second="F1_blank_cheque"),
+              "exemptions); so a Yes can't carry anyone's 'but'",
+        facts=["no_end", "list_later", "exemptions"], weight=3,
+        second=["F1_blank_cheque", "F3_provax_antipass", "F2_no_end"]),
     "F1_blank_cheque": dict(
         angle="the list of places the rule covers is only decided after the vote, so a Yes means agreeing before "
               "anyone can see what was agreed; if you don't know, it's fine to say No",
@@ -48,8 +48,8 @@ FRAMES = {
         angle="nothing in the question says when the rule ends, and 'temporary' only counts if it is written down",
         facts=["no_end", "no_binds"], weight=2, second="F1_blank_cheque"),
     "F3_provax_antipass": dict(
-        angle="you are vaccinated (or will be) and you are still voting No: the vaccine is free either way, and kids "
-              "here get their jabs without anyone checking papers at the school gate",
+        angle="you are vaccinated (or will be) and you are still voting No: getting the jab and requiring a "
+              "certificate are two different things, and childhood vaccination here already works well with no certificate check",
         facts=["free_either_way", "childhood"], weight=2, second="F1_blank_cheque"),
     "F8_powers": dict(
         angle="the certificate is meant to stay separate from the new biometric ID card, and today's law says so, "
@@ -117,7 +117,7 @@ PERSONAS = [
          frames=["F3_provax_antipass", "F14_no_yes_but"]),
     dict(key="isla", name="Isla Park", handle="isla_park_ku", role="university student who works weekends in a cafe",
          place="Kingstonia City", voice="casual, lowercase is fine, a bit dry",
-         details=["studies law at KU", "catches the city loop bus to campus", "just got her new ID card letter"],
+         details=["studies law at KU", "catches the city loop bus to campus", "works weekend shifts at a cafe near campus"],
          frames=["F14_no_yes_but", "F8_powers", "F2_no_end"]),
     dict(key="josh", name="Josh Kendall", handle="josh_k_sparky", role="electrician who works all over the island",
          place="Kingstonia City", voice="blunt, down to earth, short sentences",
@@ -195,7 +195,7 @@ def system_prompt(persona, frame_key):
         f"Be specific, not general: one concrete detail beats three abstract ones. No hashtags, emojis, links, "
         f"@mentions, quotation marks, greetings or sign-offs. Never insult anyone, never mention Marina Castillo, "
         f"the tourism board or resorts. Don't start with Exactly, Absolutely, Spot on, Too right, You're right, "
-        f"Great point, Well said or I hear you. Put any fact in your own words, never in the wording above. "
+        f"Great point, Well said, I hear you, I understand, Totally get or Fair point. Put any fact in your own words, never in the wording above. "
         f"Output only the text of your post."
     )
 
@@ -223,10 +223,19 @@ OPENERS = [
 ]
 CORE_FRAMES = {"F14_no_yes_but", "F1_blank_cheque", "F2_no_end", "F8_powers"}
 REPLY_RULES = (
-    "Make ONE point only. Say any fact in your own words; never reuse the wording above. Mention your own life only "
+    "Make ONE point only. Say any fact in your own words; never reuse the wording above. Avoid stock phrases such as "
+    "'as written', 'as it stands', 'the trouble is', 'locks it in', 'I get wanting', 'makes sense'. Mention your own life only "
     "if it connects directly to their point; no small talk. If you end with a question, it must be about their point. "
     "Do not repeat their sentences back to them and don't lecture."
 )
+
+
+EXEMPT_NOTE = ("They mention exemptions: medical exemptions ARE in the plan, so never lump exemptions in with what's "
+               "missing. Say exemptions are covered, then name what isn't (an end date, the list of places, any review).\n")
+
+
+def exempt_note(target_text):
+    return EXEMPT_NOTE if re.search(r"exempt", target_text or "", re.I) else ""
 
 
 def reply_prompt(target_text, frame_key, wants, context=None):
@@ -235,7 +244,7 @@ def reply_prompt(target_text, frame_key, wants, context=None):
     reb = f"Note: {reb}\n" if reb else ""
     asks = f"The specific thing they raised: {', '.join(wants)}. Use their terms.\n" if wants else ""
     return (
-        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{reb}"
+        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{reb}{exempt_note(target_text)}"
         f"They haven't fully decided. Reply in 2 or 3 short sentences, between 120 and 260 characters. "
         f"{random.choice(OPENERS)} Then make this point: {FRAMES[frame_key]['angle']}. {REPLY_RULES}"
     )
@@ -245,9 +254,10 @@ def second_voice_prompt(target_text, frame_key, wants, context=None):
     ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     return (
-        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}"
+        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
         f"Someone else has already replied to them. Add a different angle, as yourself, in 1 or 2 short sentences, "
-        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. Don't mention the other reply. {REPLY_RULES}"
+        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. {random.choice(OPENERS)} Don't mention the "
+        f"other reply. {REPLY_RULES}"
     )
 
 
@@ -255,7 +265,8 @@ def reply_back_prompt(our_text, their_text):
     return (
         f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "
-        f"and specifically, and stay with your view. If they agreed, thank them briefly and add one small thing. "
+        f"and specifically, and stay with your view. If they agreed, start with a short thanks (Cheers, Thanks, "
+        f"Ta) or go straight to one small new thing; never start with Spot on, Exactly or Too right. "
         f"If they asked a question, answer it with one fact."
     )
 
@@ -264,7 +275,7 @@ def journalist_prompt(journalist_id, their_text):
     who = FIRST_NAMES.get(journalist_id, "the journalist")
     return (
         f"{who}, a local journalist, wrote:\n<<<{their_text[:500]}>>>\n"
-        f"Reply to {who} in 2 sentences, between 120 and 260 characters, as yourself. Respond to their specific "
-        f"point, then add one concrete, checkable fact from your list that supports this story: {STORYLINE}. "
-        f"Calm and specific, no flattery, no hashtags."
+        f"Reply to {who} in 2 sentences, between 120 and 260 characters, as yourself. Don't open by agreeing or "
+        f"praising and don't introduce yourself; open with one concrete fact that bears directly on their point. Then connect it "
+        f"to this story: {STORYLINE}. Calm and specific, no flattery, no hashtags. {REPLY_RULES}"
     )

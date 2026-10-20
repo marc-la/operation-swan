@@ -58,6 +58,9 @@ class Accounts:
         self.records = load_json(config.ACCOUNTS_FILE, []) if live else []
         self.open = {}
         self.next_register = 0.0
+        created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records if r.get("created")]
+        if created:                      # a restart must not register straight after the last registration
+            self.next_register = max(created) + random.uniform(*config.REGISTER_GAP_S)
 
     def save(self):
         if self.live:
@@ -146,6 +149,11 @@ def reply_back_jobs(social, accounts, targeter, limit=3):
     return jobs
 
 
+def second_frame(frame):
+    second = content.FRAMES[frame]["second"]
+    return random.choice(second) if isinstance(second, list) else second
+
+
 def build_prompt(job, targeter):
     persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
     target = job.get("target") or {}
@@ -204,11 +212,21 @@ def main():
 
     def save_state():
         if args.live:
+            # pending reply-backs survive a restart (their notifications are already marked resolved)
+            state["queue"] = [dict(username=j["rec"]["username"], target=j["target"], our_text=j["our_text"],
+                                   tries=j.get("tries", 0)) for j in queue if j["mode"] == "reply_back"]
             save_json(config.STATE_FILE, state)
 
     end = time.time() + args.hours * 3600
     next_write = next_notif = 0.0
     queue, stats = [], {"accepted": 0, "rejected": {}, "by_mode": {}}
+    by_user = {r["username"]: r for r in accounts.active()}
+    for q in state.pop("queue", []):
+        if q["username"] in by_user:
+            queue.append(dict(mode="reply_back", rec=by_user[q["username"]], target=q["target"],
+                              our_text=q["our_text"], tries=q.get("tries", 0)))
+    if queue:
+        print(f"resumed {len(queue)} pending reply-back(s)")
 
     while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
         job = None
@@ -347,11 +365,14 @@ def main():
 
             if target:
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
-            if mode == "reply":
+            if mode in ("reply", "reply_back"):           # either way, don't approach them again for 3 days
                 state["contacted"][str(target["author_id"])] = time.time()
+            if mode == "reply_back":                      # they're talking to us: no extra persona joins in
+                state["second_voice"] = [s for s in state["second_voice"] if s["author"] != target["author_id"]]
+            if mode == "reply":
                 state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_S),
                                                   post_id=target["post_id"], author=target["author_id"],
-                                                  frame=content.FRAMES[job["frame"]]["second"],
+                                                  frame=second_frame(job["frame"]),
                                                   first_persona=persona["key"], wants=job.get("wants"),
                                                   context=job.get("context")))
             if mode == "post":
@@ -389,6 +410,8 @@ def main():
             print("LLM error", type(e).__name__, str(e)[:120])
             time.sleep(20)
         except KeyboardInterrupt:
+            if job and job.get("mode") == "reply_back" and job not in queue:
+                queue.insert(0, job)                  # stopped mid-draft: keep the citizen's reply for next run
             break
 
     save_state()
