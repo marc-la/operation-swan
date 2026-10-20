@@ -38,13 +38,57 @@ WANTS = re.compile(r"sunset( clause)?s?|end date|expiry|independent (oversight|r
                    r"privacy|biometric|id card|health data|surveillance|time[- ]limited|temporary|permanent|"
                    r"hospitals?|nurses?|icu|jobs|small business|tourism|schools?|kids|outer islands?|ferry", re.I)
 FIRM_NO = re.compile(r"\b(vot(e|ing)|mark(ing)?|tick(ing)?) no\b|\bi'?m a no\b|#voteno|keepkingstoniaopen", re.I)
+# Already on our side, softly: replying is echo, not persuasion. ~1 in 5 replies on 20 Oct went to these
+# ("Leaning No at the moment", "My No vote is settled", "slippery slope"), because SOFT matches "leaning".
+LEAN_NO = re.compile(r"\blean(ing|s)? (towards? )?no\b|\b(my|a) no vote\b|\bno from me\b|\bvot(e|ing) against\b|"
+                     r"\bwon'?t (be )?(vot(e|ing)|tick(ing)?) yes\b|slippery slope|won'?t trade|not trading|"
+                     r"(a|the) vaccine i don'?t trust|\bis a joke\b", re.I)
+# The fear behind a Yes: the reason our replies now answer first (content.REBUTTALS). Ranked up in targeting.
+YES_REASON = re.compile(r"hospital|ward|icu|overwhelm|vulnerable|protect|covid|last time|died|deaths|elderly|"
+                        r"immunocompromised|nan\b|grandparent", re.I)
 FIRM_YES = re.compile(r"\b(vot(e|ing)|mark(ing)?|tick(ing)?) yes\b|#voteyes|protectkingstonia|mandate now|"
                       r"\bi'?m a yes\b", re.I)
 SOFT = re.compile(r"\bbut\b|only if|unless|as long as|provided|not sure|unsure|undecided|leaning|torn|guarantee|"
                   r"safeguard|worr|need(s)? (to|clear|real|a)|should|must|\?|if they want|before (i|we)", re.I)
 HOSTILE = re.compile(r"resort (profits|owners|bookings)|profits|castillo|kitb|tourism board|\bsheep\b|idiots?|"
                      r"conspiracy|tyrann", re.I)
+ON_TOPIC = re.compile(r"referendum|h2d2|dolphin flu|vaccin|\bjabs?\b|mandate|ballot|certificate|health pass|"
+                      r"\bvot(e|ing|ers?)\b", re.I)    # journalist posts: the vote itself, not a passing word
 FRAME_PRIORITY = {"F14_no_yes_but": 3.0, "F1_blank_cheque": 2.5, "F8_powers": 2.0}
+# who the citizen says they are -> the personas who share it (playbook §7: an in-group messenger beats a better
+# argument). First match wins; the reply still argues the frame their doubt picked.
+IDENTITIES = [
+    ("health", re.compile(r"\bi'?m an? (nurse|doctor|midwife|pharmacist|carer)|\bi work (in|at) (healthcare|health|"
+                          r"the hospital|a clinic|aged care)|\bas an? (nurse|doctor|health worker|carer)|my ward|"
+                          r"my patients", re.I), ("ana", "sione", "ruth", "priya")),
+    ("teacher", re.compile(r"\bi'?m an? teacher|\bi teach\b|\bas an? teacher|my (students|classroom|class)\b", re.I),
+     ("grace",)),
+    ("parent", re.compile(r"\bas an? (mum|mom|dad|parent|grandparent|nana)|\bmy (kids?|son|daughter|children|boy|girl|"
+                          r"grandkids?|grandson|granddaughter|twins)\b|\bi'?m an? (mum|mom|dad|parent)\b", re.I),
+     ("mere", "grace")),
+    ("islands", re.compile(r"\bout on the (outer )?islands|\bon the outer islands|\bi live on the islands|"
+                           r"\bisland clinic|\bwe island(ers)?\b", re.I), ("sione", "tomasi")),
+    ("shop", re.compile(r"\bmy (shop|cafe|café|business|stall|store|restaurant|bakery)\b|\bi run an? |"
+                        r"\bas an? (shop|business) owner|\bsmall business owner", re.I), ("lani",)),
+    ("student", re.compile(r"\bi'?m an? (uni |university )?student|\bas an? student|\bmy (lectures?|classes) at|"
+                           r"\bat ku\b|\bon campus\b", re.I), ("isla",)),
+    ("trades", re.compile(r"\bi'?m an? (tradie|electrician|builder|plumber|sparky|chippy)|\bon (the )?site\b|"
+                          r"\bmy (crew|tools|van)\b", re.I), ("josh",)),
+    ("fishing", re.compile(r"\bi'?m an? fisher|\bmy boat\b|\bi fish\b|\bat the wharf\b|\bdeckhand", re.I),
+     ("ben", "tomasi")),
+    ("transport", re.compile(r"\bi drive (a|the) (bus|taxi|ferry)|\bbus driver\b|\bmy route\b", re.I), ("dan",)),
+]
+_MESSENGERS = {name: personas for name, _, personas in IDENTITIES}
+
+
+def identity(text):
+    """The first self-description in the citizen's text ('health', 'parent'...), or None."""
+    return next((name for name, pattern, _ in IDENTITIES if pattern.search(text or "")), None)
+
+
+def messengers(ident):
+    """Persona keys who share that identity (empty when unknown)."""
+    return _MESSENGERS.get(ident, ())
 
 
 def loud(text):
@@ -54,7 +98,7 @@ def loud(text):
 
 def classify(text):
     """(frame, wants) to answer with, or (None, None) to skip this text."""
-    if not text or FIRM_NO.search(text) or loud(text) or HOSTILE.search(text):
+    if not text or FIRM_NO.search(text) or LEAN_NO.search(text) or loud(text) or HOSTILE.search(text):
         return None, None
     if FIRM_YES.search(text) and not SOFT.search(text):
         return None, None
@@ -121,7 +165,8 @@ class Targeter:
             try:
                 for p in self.social.account_posts(account_id, limit=15):
                     body = p.get("body") or ""
-                    if FIRM_NO.search(body) or (FIRM_YES.search(body) and not SOFT.search(body)):
+                    if (FIRM_NO.search(body) or LEAN_NO.search(body)
+                            or (FIRM_YES.search(body) and not SOFT.search(body))):
                         verdict = "firm"
                         break
             except ctn.APIError:
@@ -143,8 +188,10 @@ class Targeter:
         if not frame:
             return
         score = (FRAME_PRIORITY.get(frame, 1.5) + (2.0 if soft_yes(body) else 0.0)
+                 + (1.5 if YES_REASON.search(body) else 0.0)
                  + 2.0 * max(0.0, 1 - age_h(post) / config.TARGET_MAX_AGE_H) + (1.0 if source == "news" else 0.0))
-        self.candidates[pid] = dict(post=post, frame=frame, wants=wants, context=context, source=source, score=score)
+        self.candidates[pid] = dict(post=post, frame=frame, wants=wants, context=context, source=source, score=score,
+                                    identity=identity(body))
 
     def refresh(self, force=False):
         if not force and time.time() < self.next_refresh:
@@ -176,7 +223,7 @@ class Targeter:
         for aid in config.JOURNALIST_IDS:
             try:
                 for p in self.social.account_posts(aid, limit=8):
-                    if age_h(p) < config.JOURNALIST_MAX_AGE_H and REFERENDUM.search(p.get("body") or ""):
+                    if age_h(p) < config.JOURNALIST_MAX_AGE_H and ON_TOPIC.search(p.get("body") or ""):
                         self.journalist.setdefault(p["post_id"], p)
             except ctn.APIError:
                 pass

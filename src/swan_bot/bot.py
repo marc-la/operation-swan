@@ -23,10 +23,10 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import config, content, quality
+from . import batch, config, content, quality
 from .amplify import Amplifier
 from .llm import Generator
-from .targeting import Targeter, classify
+from .targeting import Targeter, classify, messengers
 
 
 def now_iso():
@@ -125,12 +125,32 @@ class Accounts:
         self.save()
         return acc
 
-    def eligible(self, frame=None, exclude=(), gap=None):
+    def ready(self, rec, t=None):
+        """May this voice write now (its per-account gap has passed)?"""
+        gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
+        return rec.get("status", "active") == "active" and rec.get("last_write", 0) + gap <= (t or time.time())
+
+    def assignable(self, frame=None, exclude=(), prefer=()):
+        """Like eligible(), but the voice may still be in its gap: for batched drafts that wait in the pool."""
+        free = [r for r in self.voices() if r["persona"] not in exclude]
+        mine = [r for r in free if r["persona"] in prefer]
+        if mine:
+            free = mine
+        elif frame:
+            free = [r for r in free if frame in content.PERSONA_BY_KEY[r["persona"]]["frames"]] or free
+        return min(free, key=lambda r: r.get("last_write", 0)) if free else None
+
+    def eligible(self, frame=None, exclude=(), gap=None, prefer=()):
+        """The voice that wrote longest ago among those free now: a shared-identity messenger (prefer) first,
+        then personas whose home frames include the frame."""
         t = time.time()
         if gap is None or not self.live:                         # dry runs rotate personas without waiting
             gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
         ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude]
-        if frame:
+        mine = [r for r in ready if r["persona"] in prefer]
+        if mine:
+            ready = mine
+        elif frame:
             fit = [r for r in ready if frame in content.PERSONA_BY_KEY[r["persona"]]["frames"]]
             ready = fit or ready
         return min(ready, key=lambda r: r.get("last_write", 0)) if ready else None
@@ -170,27 +190,41 @@ def second_frame(frame):
     return random.choice(second) if isinstance(second, list) else second
 
 
-def build_prompt(job, targeter):
+def pick_post_shape(frame, persona, headline, recent_shapes):
+    """An opening style that fits, used at most 2 times in the last 10 posts (todo/05 variety check)."""
+    for _ in range(12):
+        key, _text = content.pick_shape(frame, headline, persona=persona)
+        if quality.shape_ok(key, recent_shapes):
+            return key
+    return None                                       # let post_prompt pick freely rather than stall
+
+
+def build_prompt(job, targeter, recent_shapes=()):
+    """(persona, system, user). The choices made (shape, voice, tag, catchphrase, event...) land in job["meta"]."""
     persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
     target = job.get("target") or {}
     body = target.get("body") or ""
     mode = job["mode"]
+    meta = job["meta"] = {}
     if mode == "post":
-        user = content.post_prompt(job["frame"], targeter.headline if random.random() < 0.3 else None,
-                                   ask=bool(job.get("amp")))
+        headline = targeter.headline if random.random() < 0.3 else None
+        user = content.post_prompt(job["frame"], headline, shape=pick_post_shape(job["frame"], persona, headline,
+                                                                                 recent_shapes),
+                                   ask=bool(job.get("amp")), meta=meta, persona=persona)
     elif mode == "thread":
         user = content.thread_reply_prompt(body, job["frame"], job["style"])
     elif mode == "thread_answer":
         user = content.thread_answer_prompt(job["our_text"], body)
     elif mode == "reply":
-        user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"))
+        user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona)
     elif mode == "second_voice":
-        user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"))
+        user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
+                                           persona=persona)
     elif mode == "journalist":
-        user = content.journalist_prompt(target["author_id"], body)
+        user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
         user = content.reply_back_prompt(job["our_text"], body)
-    return persona, content.system_prompt(persona, job["frame"]), user
+    return persona, content.system_prompt(persona, job["frame"], meta=meta), user
 
 
 def main():
@@ -206,6 +240,8 @@ def main():
     ap.add_argument("--samples", type=int, default=0, help="dry run: stop after this many accepted drafts")
     ap.add_argument("--allow-qwen", action="store_true", help="fall back to the weak provided model when Gemini is out")
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --live")
+    ap.add_argument("--batch", type=int, default=0, help=f"draft up to N replies / second voices / persona posts per LLM "
+                    f"call (2-{batch.MAX_SIZE}; 0 = one per call). docs/04-technical/llm-batching.md")
     args = ap.parse_args()
 
     config.load_env()
@@ -220,7 +256,7 @@ def main():
     accounts = Accounts(social, args.live)
     state = load_json(config.STATE_FILE, {})
     for key, default in (("replied_posts", []), ("contacted", {}), ("recent_texts", []), ("second_voice", []),
-                         ("journalist_last", {}), ("modes", []), ("journalist_any", 0)):
+                         ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", [])):
         state.setdefault(key, default)
 
     amp = None
@@ -269,6 +305,21 @@ def main():
                               our_text=q["our_text"], tries=q.get("tries", 0)))
     if queue:
         print(f"resumed {len(queue)} pending reply-back(s)")
+    # --batch N: replies, second voices and plain persona posts are drafted N per LLM call into a pool (batch.Desk);
+    # each draft goes out when its voice may next write. Everything else stays one draft per call.
+    desk = batch.Desk(batch.Drafter(gen, size=args.batch, log=log), accounts.ready, log) if args.batch > 1 else None
+    if desk:
+        print(f"batched drafting: up to {desk.size} per LLM call")
+
+    def desk_fill(jobs):
+        rejected = desk.fill(jobs, state["recent_texts"][-300:],
+                             headline=targeter.headline if random.random() < 0.3 else None) or []
+        for r in rejected:
+            stats["rejected"][r["why"]] = stats["rejected"].get(r["why"], 0) + 1
+            cand = r["job"].get("cand")
+            if cand and not cand.get("tries"):                # a rejected reply target gets one more go later
+                cand["tries"] = 1
+                targeter.candidates[cand["post"]["post_id"]] = cand
 
     while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
         job = None
@@ -327,11 +378,18 @@ def main():
                 if rec:
                     job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]),
                                amp=True, level=amp.choose_level())
-            if job is None:
+            drafted = None
+            gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
+                              or (j["mode"] == "reply" and str(j["target"]["author_id"]) in contacted))
+            if job is None and desk:
+                drafted = desk.take("second_voice", t, gone)
+            if job is None and drafted is None:
                 state["second_voice"] = [s for s in state["second_voice"] if t - s["due"] < 3600]   # stale after 1 h
                 due = [s for s in state["second_voice"] if s["due"] <= t]
+                picked = []
                 for sv in due:
-                    rec = accounts.eligible(sv["frame"], exclude={sv["first_persona"]})
+                    rec = (accounts.assignable(sv["frame"], exclude={sv["first_persona"]} | desk.busy("second_voice", picked))
+                           if desk else accounts.eligible(sv["frame"], exclude={sv["first_persona"]}))
                     if not rec:
                         continue                                     # keep it until another persona is free
                     state["second_voice"].remove(sv)
@@ -344,17 +402,47 @@ def main():
                         continue                                     # busy thread, or they already answered us
                     job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
                                wants=sv.get("wants"), context=sv.get("context"))
-                    break
-            if job is None:
+                    if not desk:
+                        break
+                    picked.append(job)
+                    job = None
+                    if len(picked) >= desk.size:
+                        break
+                if picked:
+                    desk_fill(picked)
+                    drafted = desk.take("second_voice", t, gone)
+            if job is None and drafted is None and desk:
+                drafted = desk.take("reply", t, gone)
+                if drafted is None:
+                    picked, authors = [], set()
+                    skip = set(state["replied_posts"]) | desk.pending_targets()
+                    while len(picked) < desk.size:
+                        cand = targeter.next_target(our_ids, skip, contacted)
+                        if not cand:
+                            break
+                        rec = accounts.assignable(cand["frame"], exclude=desk.busy("reply", picked),
+                                                  prefer=messengers(cand.get("identity")))
+                        if not rec or cand["post"]["author_id"] in authors:
+                            targeter.candidates[cand["post"]["post_id"]] = cand      # keep it for the next slot
+                            break
+                        authors.add(cand["post"]["author_id"])
+                        picked.append(dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"],
+                                           wants=cand["wants"], context=cand["context"], source=cand["source"],
+                                           identity=cand.get("identity"), cand=cand))
+                    if picked:
+                        desk_fill(picked)
+                        drafted = desk.take("reply", t, gone)
+            if job is None and drafted is None and not desk:
                 cand = targeter.next_target(our_ids, set(state["replied_posts"]), contacted)
                 if cand:
-                    rec = accounts.eligible(cand["frame"])
+                    rec = accounts.eligible(cand["frame"], prefer=messengers(cand.get("identity")))
                     if rec:
                         job = dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"],
-                                   wants=cand["wants"], context=cand["context"], source=cand["source"])
+                                   wants=cand["wants"], context=cand["context"], source=cand["source"],
+                                   identity=cand.get("identity"))
                     else:
                         targeter.candidates[cand["post"]["post_id"]] = cand      # keep it for the next slot
-            if job is None and t - state["journalist_any"] > config.JOURNALIST_GAP_S:
+            if job is None and drafted is None and t - state["journalist_any"] > config.JOURNALIST_GAP_S:
                 jp = targeter.next_journalist(set(state["replied_posts"]), state["journalist_last"])
                 if jp:
                     frame, _ = classify(jp.get("body") or "")
@@ -363,7 +451,23 @@ def main():
                         job = dict(mode="journalist", rec=rec, target=jp, frame=frame or "F14_no_yes_but")
             idle_post = t - state.get("last_post", 0) > config.IDLE_POST_GAP_S
             plain_posts = not amp or amp.paused()                    # amplified originals replace plain persona posts
-            if job is None and plain_posts and ("post" not in state["modes"][-(config.POST_EVERY_N - 1):] or idle_post):
+            post_ok = plain_posts and ("post" not in state["modes"][-(config.POST_EVERY_N - 1):] or idle_post)
+            if job is None and drafted is None and post_ok and desk:
+                drafted = desk.take("post", t, gone)
+                if drafted is None:
+                    picked = []
+                    while len(picked) < desk.size:
+                        rec = accounts.assignable(exclude=desk.busy("post", picked))
+                        if not rec:
+                            break
+                        picked.append(dict(mode="post", rec=rec,
+                                           frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]])))
+                    if picked:
+                        desk_fill(picked)
+                        drafted = desk.take("post", t, gone)
+            if drafted:
+                job = drafted["job"]
+            if job is None and post_ok and not desk:
                 rec = accounts.eligible()
                 if rec:
                     job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
@@ -371,15 +475,17 @@ def main():
                 pause(45)
                 continue
 
-            # ---- draft and check ----
+            # ---- draft and check (batched drafts were checked when drafted) ----
             rec, mode, target = job["rec"], job["mode"], job.get("target")
             persona = content.PERSONA_BY_KEY[rec["persona"]]
             text = backend = user = None
             if mode == "repost":
                 text, backend = "", "none"
+            elif drafted:
+                text, backend = drafted["text"], drafted["backend"]
             else:
-                persona, system, user = build_prompt(job, targeter)
-            for _ in range(0 if mode == "repost" else 2):
+                persona, system, user = build_prompt(job, targeter, state["recent_shapes"])
+            for _ in range(0 if mode == "repost" or drafted else 2):
                 raw, backend = gen.complete(system, user)
                 if raw is None:
                     break
@@ -389,7 +495,7 @@ def main():
                     break
                 stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
                 log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
-                     "backend": backend, "raw": raw})
+                     "backend": backend, "raw": raw, **{k: (job.get("meta") or {}).get(k) for k in ("shape", "voice")}})
                 print(f"  rejected [{mode}] ({why}): {raw[:160]!r}")
             if not text and mode != "repost":
                 if mode == "reply_back" and job.get("tries", 0) < 2:
@@ -458,18 +564,28 @@ def main():
                 state["journalist_last"][str(target["author_id"])] = time.time()
             if text:
                 state["recent_texts"] = (state["recent_texts"] + [text])[-300:]
+            meta = job.get("meta") or {}
+            if mode == "post" and meta.get("shape"):
+                state["recent_shapes"] = (state["recent_shapes"] + [meta["shape"]])[-30:]
             save_state()
             log({"act": mode, "live": args.live, "post_id": post_id, "username": rec["username"],
                  "account_id": rec.get("account_id"), "owner": rec.get("owner", owner), "persona": persona["key"],
                  "frame": job["frame"], "backend": backend, "source": job.get("source"),
                  "target_post": target and target["post_id"], "target_author": target and target["author_id"],
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
-                 "text": text, "amp_level": job.get("level"), "amp_post": job.get("amp_post"), "style": job.get("style")})
+                 "text": text, "amp_level": job.get("level"), "amp_post": job.get("amp_post"), "style": job.get("style"),
+                 **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
+                                             "lever", "concede", "rebuttal")},
+                 "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
+                 "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
+                 **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})
             where = ""
             if target:
                 ctx = f" [under: {job['context'][:60]!r}]" if job.get("context") else ""
                 where = f"\n    -> #{target['post_id']} (author {target['author_id']}){ctx}: {(target.get('body') or '')[:200]!r}"
-            print(f"[{mode}|{job['frame']}|{backend}] {persona['name']}{where}\n    {text}\n")
+            via = f"|{drafted['batch_id']} #{drafted['batch_pos'] + 1}/{drafted['batch_size']}" if drafted else ""
+            tags = "|".join(str(meta[k]) for k in ("voice", "shape") if meta.get(k))
+            print(f"[{mode}|{job['frame']}|{tags}|{backend}{via}] {persona['name']}{where}\n    {text}\n")
 
         except ctn.RateLimited as e:
             pause((e.retry_after or 30) + 1)
@@ -492,7 +608,7 @@ def main():
             break
 
     save_state()
-    print("done:", json.dumps({**stats, "llm_calls": gen.calls}))
+    print("done:", json.dumps({**stats, "llm_calls": gen.calls, **({"pool_left": len(desk.pool)} if desk else {})}))
 
 
 if __name__ == "__main__":

@@ -36,3 +36,23 @@ Tag each draft with `shape`. The 08 collector reports views, likes and citizen l
 
 ## Done when
 `swan_view.py` on 30 dry-run drafts reads as clearly more emotive and more varied (a teammate signs off), and ≥ 6 shapes are live and tagged in the log.
+
+## State at handoff (2026-10-20, late)
+- **Docs (uncommitted):** [message-playbook](../docs/06-strategy/message-playbook.md) (new; the spec for this item), section H of [literature-notes](../docs/06-strategy/literature-notes.md), and an index line in the [strategy README](../docs/06-strategy/README.md).
+- **Code:** `content.py` and `quality.py` are unchanged from `HEAD`; 19/19 tests pass.
+- **Not part of this item:** the uncommitted `bot.py`, `batch.py`, `llm.py`, `scripts/batch_ab.py`, `tests/test_batch.py` and `todo/12` changes. Check with Marc who owns them before committing anything.
+- **Deploys:** a push to `main` is live on EC2 within ~2 min (`deploy/update.sh` pulls, runs `deploy/check.sh` with the tests, restarts swan-bot). Dry-run first: `python scripts/run_swan.py --samples 20`, then `python scripts/swan_view.py -n 20 --rejects`. Never run `--live` locally: EC2 is the only writer.
+
+## Code traps
+- `batch.py` reads `content.POST_SHAPES` (the headline shape must stay **last**), `content.OPENERS`, and the persona fields `name`, `role`, `place`, `details`, `voice`. Its `SHARED_RULES` repeats the old tone and no-hashtag rules, so batched drafts won't change until it reads shared constants from `content.py`.
+- `bot.py` registers an account for every `PERSONAS` entry that doesn't have one yet (`MAX_ACCOUNTS` 15, 12 used). Keep new characters in a separate list until the team approves registering them.
+- `quality._SOURCE_TEXT` is built from `FACTS` and frame angles (the `copied_fact` check). Any phrase meant to repeat verbatim must be exempted from it.
+
+## Code tasks, lowest risk first
+1. **Tags in `quality.py`:** replace the blanket `"#" in t` reject with an allowlist. Posts carry 0 or 1 tag (0 must pass, because batched posts have none); replies carry 0. Add tests.
+2. **Numbers in `quality.py`:** add the true in-world numbers to `ALLOWED_NUMBERS` and allow listed percentages. Add tests.
+3. **Loader:** a team-edited data file for the optional frame, voice and persona fields in the playbook, merged into `FRAMES` and `PERSONAS` at import. Validate it with a schema check in the tests. Empty fields fall back to today's behaviour.
+4. **Prompt assembly:** read the loaded fields in `system_prompt`, `post_prompt` and `reply_prompt`, keeping the function signatures. Then switch `batch.py`'s rules to the same constants (coordinate with its owner).
+5. **Logging and measurement:** log which shape, tag and voice each draft used (needs `bot.py`), and report citizen likes, replies and unfollows per value through the [08 collector](08-intel-collector.md).
+
+The narrative lead writes the content of those fields, following playbook §2–7.

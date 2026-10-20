@@ -24,3 +24,6 @@ src/pypi-capturethenarrative/
 
 # Amplification kill file (touch on the box to pause --amplify; never commit it)
 AMPLIFY_OFF
+
+# Claude Code agent worktrees (local only)
+.claude/worktrees/

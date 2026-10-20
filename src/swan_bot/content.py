@@ -1,13 +1,28 @@
 """What we say: world facts, frames (arguments), personas, Yes rebuttals, and the prompts built from them.
 
-Humans own this file. Frames: docs/06-strategy/frames-and-messengers.md. Facts: docs/01-competition/setting.md.
-Tone: the Vote No briefing (docs/01-competition/vote-no-briefing.md): cheerful, reasonable, "not against the
-vaccine, against the mandate", "they say hospitals, you say livelihoods, then name one".
-Every fact here is true in-game. Careful: medical exemptions ARE in the plan, and the certificate is separate
-from the ID card. Never claim otherwise.
+Humans own this file. Frames: docs/06-strategy/frames-and-messengers.md. How to say it (hooks, catchphrases, tags,
+voices, post anatomy, reply shape): docs/06-strategy/message-playbook.md. Facts: docs/01-competition/setting.md.
+Content v2 data (swan_bot/playbook/: craft, voices, characters) is copied onto FRAMES and PERSONAS at import; a
+missing module falls back to the v1 behaviour. Every fact here is true in-game. Careful: medical exemptions ARE in
+the plan, the certificate is separate from the ID card, and the H2D2 jab isn't out yet (first doses: last week of
+October). Never claim otherwise.
 """
+import itertools
 import random
 import re
+
+try:
+    from .playbook import craft as _craft
+except ImportError:
+    _craft = None
+try:
+    from .playbook import voices as _voices
+except ImportError:
+    _voices = None
+try:
+    from .playbook import characters as _characters
+except ImportError:
+    _characters = None
 
 QUESTION = ("Should proof of H2D2 Dolphin Flu vaccination be required to enter public spaces "
             "such as shops, schools, workplaces, public transport, and parks?")
@@ -38,7 +53,7 @@ FRAMES = {
         angle="the conditions people want before saying yes (an end date, the list of places, someone independent "
               "reviewing it) are not in the question (medical exemptions are, but only bring that up if they mentioned "
               "exemptions); so a Yes can't carry anyone's 'but'",
-        facts=["no_end", "list_later", "exemptions"], weight=3,
+        facts=["no_end", "list_later"], weight=3,     # "exemptions" out: posts volunteered "under-12s exempt"
         second=["F1_blank_cheque", "F3_provax_antipass", "F2_no_end"]),
     "F1_blank_cheque": dict(
         angle="the list of places the rule covers is only decided after the vote, so a Yes means agreeing before "
@@ -48,9 +63,10 @@ FRAMES = {
         angle="nothing in the question says when the rule ends, and 'temporary' only counts if it is written down",
         facts=["no_end", "no_binds"], weight=2, second="F1_blank_cheque"),
     "F3_provax_antipass": dict(
-        angle="you are vaccinated (or will be) and you are still voting No: getting the jab and requiring a "
-              "certificate are two different things, and childhood vaccination here already works well with no certificate check",
-        facts=["free_either_way", "childhood"], weight=2, second="F1_blank_cheque"),
+        angle="whether and when you get the jab is your own business, and it stays free either way; this vote is "
+              "only about papers at the door, and a choice that costs you your bus, your shift or your kid's school "
+              "isn't a choice (don't praise vaccines: that's not the argument)",
+        facts=["free_either_way", "age12"], weight=1, second="F1_blank_cheque"),
     "F8_powers": dict(
         angle="the certificate is meant to stay separate from the new biometric ID card, and today's law says so, "
               "but laws change and once a check is at every door it is easy to join things up later",
@@ -88,11 +104,13 @@ FRAMES = {
 
 # Yes arguments citizens repeat, and our answer (grant the concern first). Added to reply prompts when matched.
 REBUTTALS = [
-    (re.compile(r"hospital|ward|icu|overwhelm|surge|capacity|frontline", re.I),
-     "They worry about hospitals. Agree they're stretched; the shortage is staff (40 empty nursing posts), and a door "
-     "check adds no nurses. The first doses already go to health workers and the at-risk."),
+    (re.compile(r"hospital|ward|icu|overwhelm|surge|capacity|frontline|vulnerable|protect", re.I),
+     "Their reason is fear for the hospitals and the vulnerable. Answer that fear, warmly: the people H2D2 puts in "
+     "hospital are mostly older or already ill, and they get the first 120,000 doses; a pass at the shop door adds "
+     "no nurse and no bed (Central already has 40 empty nursing posts)."),
     (re.compile(r"last time|covid|1,?000|died|deaths", re.I),
-     "They remember COVID. Acknowledge it was hard. The vaccine is coming either way and it's free; this vote is only about the certificate at the door."),
+     "Their reason is the memory of COVID. Honour it in a few words. Then: this time the jab arrives before the "
+     "virus, free, for the most at-risk first, and a No doesn't stop a single dose; this vote is only the pass at the door."),
     (re.compile(r"choice stays|still (a|your) choice|voluntary", re.I),
      "They say the choice stays yours. A choice that costs you your job, your bus or your kid's school isn't much of a choice."),
     (re.compile(r"before it (gets|arrives)|act now|prepare|ready", re.I),
@@ -158,18 +176,133 @@ PERSONAS = [
 ]
 PERSONA_BY_KEY = {p["key"]: p for p in PERSONAS}
 
-# Persona-post shapes, picked at random so 20 accounts don't all write the same structure.
+# ---- Content v2 merge (playbook §2-6): craft onto FRAMES, voices + characters onto PERSONAS. Copies only: the
+# playbook modules' own dicts and lists are never changed. Each missing module falls back to v1 behaviour.
+PILLAR_OF = {"F14_no_yes_but": "A", "F1_blank_cheque": "A", "F2_no_end": "A", "F9_parliament": "A", "F8_powers": "A",
+             "F7_livelihoods": "B", "F13_age12": "B", "F6_islands": "B", "F10_staff_and_livelihoods": "B",
+             "F12_open_island": "B", "F3_provax_antipass": "C", "F5_not_here_yet": "C"}
+_PILLARS_V1 = {
+    "A": dict(name="Don't sign a blank cheque", tags=["#VoteNo", "#H2D2No"], catchphrases=[]),
+    "B": dict(name="Ordinary life shouldn't need papers", tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"],
+              catchphrases=[]),
+    "C": dict(name="Jabbed, and voting No", tags=["#ChoiceNotCoercion"], catchphrases=[]),
+}
+_VOICES_V1 = {r: dict(instruction="You are cheerful and reasonable, never angry.", reply_instruction="")
+              for r in ("warm", "fed_up", "plain")}
+CHARACTER_FIELDS = ("age", "people", "problem", "covid", "arc", "lines", "now")
+_LIST_FIELDS = {"people", "lines", "now"}
+HEALTH_WORKERS = {"ana", "sione", "ruth", "priya"}      # the only ones who may say they're in the first lot of doses
+PILLARS, VOICES, CATCHPHRASE_SHARE = {}, {}, 0.33
+
+
+def merge_playbook(craft=None, voices=None, characters=None):
+    """Copy the playbook data onto FRAMES, PERSONAS, PILLARS and VOICES. Idempotent; run at import."""
+    global PILLARS, VOICES, CATCHPHRASE_SHARE
+    PILLARS = {k: dict(v, tags=list(v["tags"]), catchphrases=list(v.get("catchphrases") or []))
+               for k, v in getattr(craft, "PILLARS", _PILLARS_V1).items()}
+    VOICES = {k: dict(v) for k, v in getattr(voices, "VOICES", _VOICES_V1).items()}
+    CATCHPHRASE_SHARE = getattr(craft, "CATCHPHRASE_SHARE", 0.33)
+    per_frame = getattr(craft, "CRAFT", {})
+    for key, f in FRAMES.items():
+        c = per_frame.get(key, {})
+        f.update(pillar=c.get("pillar", PILLAR_OF[key]), stakes=list(c.get("stakes") or []), heat=c.get("heat"),
+                 asks=list(c.get("asks") or []))
+    voice_of, chars = getattr(voices, "VOICE_OF", {}), getattr(characters, "CHARACTERS", {})
+    for p in PERSONAS:
+        p["register"] = voice_of.get(p["key"], "warm") if voice_of.get(p["key"], "warm") in VOICES else "warm"
+        c = chars.get(p["key"], {})
+        for k in CHARACTER_FIELDS:
+            v = c.get(k)
+            p[k] = list(v or []) if k in _LIST_FIELDS else v
+
+
+merge_playbook(_craft, _voices, _characters)
+
+# Kept out of every prompt: a claim that someone has had the H2D2 jab (it isn't out yet), and the off-limits names.
+_OFF_LIMITS = re.compile(r"\b(had|got|received|given)\b[^.]{0,25}\b(doses?|jabs?|shots?)\b|resort|castillo|tourism board",
+                         re.I)
+
+
+# `now` events are drafted for the whole fortnight, but the prompt says the jab isn't out: no dose events at all.
+_NOW_OFF = re.compile(r"\bdoses?\b|\b(had|got) (theirs|hers|his|mine|ours)\b|\bjabbed\b", re.I)
+
+
+def usable(texts, now=False):
+    """The entries that are safe to put in a prompt (`now`: also no dose events)."""
+    return [t for t in texts or [] if t and not _OFF_LIMITS.search(t) and not (now and _NOW_OFF.search(t))]
+
+
+_DANGLING = re.compile(r"(\s+(the|a|an|of|to|at|on|in|for|and|or|but|with|where|who|which|that|his|her|their|"
+                       r"its|by|from|as|so|is|was|has|had|he|she|they|it|we|i|just|only|even|then|also|still))+$", re.I)
+
+
+_OPEN_CLAUSE = re.compile(r",?\s+(who|whose|where|which|that|and|but|so|while|when|because|if|until)\b[^,;]*$", re.I)
+
+
+def clip(text, n, keep=0.5):
+    """At most n characters, ending in a full stop: cut at a sentence end, else a clause, else a word (a cut that
+    keeps under `keep` of n tries the next, finer level)."""
+    text = (text or "").strip()
+    if len(text) > n:
+        for pattern in (r"(?<=[.!?])\s+", r"(?<=[,;:])\s+", r"\s+"):
+            out = ""
+            for piece in re.split(pattern, text):
+                if len(out) + len(piece) + 1 > n:
+                    break
+                out = f"{out} {piece}".strip()
+            if len(out) >= n * keep or pattern == r"\s+":
+                if pattern == r"\s+":            # mid-clause: back off to before an unfinished "who ..." clause
+                    m = _OPEN_CLAUSE.search(out)
+                    out = _DANGLING.sub("", out[:m.start()] if m and m.start() >= n * keep else out)
+                text = out.rstrip(",;:") or text[:n]
+                break
+    return text if not text or text[-1] in ".!?" else text + "."
+
+
+# Post opening styles (playbook §5 hook types), one picked per draft so 12 accounts don't share a structure. The
+# react-to-news style must stay LAST and is the only one with {headline} (batch.py uses POST_SHAPES[:-1] and [-1]).
+POST_SHAPE_KEYS = ["asked_me", "named_loss", "conversion", "confession", "number", "did_you_know", "fed_up",
+                   "defiance", "news"]
 POST_SHAPES = [
-    "Start with a small, concrete moment from your work this week, then make the point, then say plainly you're voting No.",
-    "Write it as an answer to a question people keep asking you about the vote, then say plainly you're voting No.",
-    "Start with an ordinary, cheerful bit of island life you enjoy (be specific), then make the point, and say you're voting No.",
-    "Say in one line that you've made up your mind and you're voting No, then give your one reason, told through your own life.",
-    "React briefly to today's news ({headline}), in your own words, then make the point and say you're voting No.",
+    "Open with a question someone in your life asked you this week about the vote (a customer, a kid, a patient, "
+    "a workmate: name them), then give them your honest answer.",
+    "Open with a named person or place from your own life and the ordinary thing they would lose under a Yes, all "
+    "in the first sentence.",
+    "Open with the moment you changed your mind: you were leaning Yes, or meant to stay out of it, until one detail "
+    "of what we're voting on turned you. Name the moment and the detail.",
+    "Open by saying who you are in one short line (your job, where you stand on the jab, and that you're voting No "
+    "anyway), then say why.",
+    "Open with one number from your facts, on its own or in a very short sentence, then say what it means for "
+    "someone you know.",
+    "Open by pointing out one thing most people haven't noticed about what we're voting on (one of your facts), "
+    "then show what it means for someone you know.",
+    "Open with one short, blunt line of exasperation at the rule or the way it's being pushed through (at the rule "
+    "and the government, never at people), then the facts that make you say it.",
+    "Open with cheerful defiance: something you love doing on the island this fortnight, and that you won't be "
+    "checking anyone's papers for it. Stay sunny about the island and sharp about the rule.",
+    "Open by reacting briefly to today's news ({headline}), in your own words, then bring it back to your own life.",
 ]
+HOOKS = dict(asked_me="someone asked me", named_loss="named loss", conversion="conversion",
+             confession="confession / identity", number="number", did_you_know="did you know", fed_up="fed up",
+             defiance="cheerful defiance", news="react to news")
 
 FIRST_NAMES = {3: "Amanda", 4: "Muzhi", 5: "Julio", 6: "Lisa"}
-STORYLINE = ("voters are being asked to approve a rule before seeing which places it covers or when it ends; "
-             "plenty of vaccinated people are voting No for exactly that reason")
+# Journalist replies rotate through these (each true in setting.md), so the papers don't hear one line from us.
+STORYLINES = [
+    ("list_later", "voters are being asked to approve the rule before the government publishes which places it "
+                   "covers; both campaigns have criticised it for not publishing that list before the vote"),
+    ("vaxxed_no", "plenty of vaccinated people are voting No: the jab is free and voluntary whatever the result, and "
+                  "this vote is only about a certificate at the door"),
+    ("assembly", "the Assembly voted the bill down on 15 Oct, with several of the President's own People's Alliance "
+                 "members joining the Democratic-Republicans, and now the same rule comes back as a binding vote"),
+    ("nurses", "the health system's real gap is staff: Kingstonia Central has 40 unfilled nursing posts because a "
+               "nurse earns about double in Australia or NZ, and a certificate check at a shop door fills none of them"),
+    ("no_end", "nothing in the question says when the rule would end, and a Yes result is binding"),
+    ("door_staff", "shop, cafe and ferry staff would be the ones checking papers at the door, foreign visitors "
+                   "included, just as tourism recovers from the COVID years"),
+]
+STORYLINE = STORYLINES[0][1]          # v1 name, kept for old callers
+_STORY_TURN = itertools.count(random.randrange(len(STORYLINES)))
 
 
 def pick_frame(persona):
@@ -180,35 +313,182 @@ def pick_frame(persona):
     return random.choices(keys, weights=[FRAMES[k]["weight"] for k in keys])[0]
 
 
-def system_prompt(persona, frame_key):
-    facts = "\n".join(f"- {FACTS[f]}" for f in FRAMES[frame_key]["facts"])
-    details = "; ".join(persona["details"])
-    return (
-        f"You are {persona['name']}, who {persona['role']} in {persona['place']}, Kingstonia, a small Pacific island "
-        f"nation (beaches, ferries, Regatta Week, Saturday markets). About you: {details}. Your voice: {persona['voice']}.\n"
-        f"Kingstonia is holding a referendum on this question: \"{QUESTION}\" You are voting No. You are not against "
-        f"vaccines; you are against the certificate rule. You are cheerful and reasonable, never angry. "
-        f"Money is Kingstonia dollars (K$). Never name a day or date for the vote or say how or where to vote.\n"
-        f"Facts you may use (use at most one or two). Do not invent any other facts, numbers, studies, names or "
-        f"health claims:\n{facts}\n"
-        f"Write like a real local on social media: first person, everyday words, British spelling, contractions. "
-        f"Be specific, not general: one concrete detail beats three abstract ones. No hashtags, emojis, links, "
-        f"@mentions, quotation marks, greetings or sign-offs. Never insult anyone, never mention Marina Castillo, "
-        f"the tourism board or resorts. Don't start with Exactly, Absolutely, Spot on, Too right, You're right, "
-        f"Great point, Well said, I hear you, I understand, Totally get or Fair point. Put any fact in your own words, never in the wording above. "
-        f"Output only the text of your post."
-    )
+# Rules shared by every prompt (batch.py can switch its SHARED_RULES to these).
+STANCE_RULE = "You are voting No: not against vaccines, against the certificate rule."
+SAFETY_RULE = ("Nothing about vaccine safety or side effects. Anger only at the rule and the government pushing it, "
+               "never at voters or any group; no conspiracy talk.")
+JAB_RULE = ("The H2D2 jab isn't out yet: the first 120,000 doses come in the last week of October, for health workers "
+            "and the high-risk; nobody has had it.")
+JAB_FIRST_LOT = "As a health worker you can say you'll be in the first lot."
+# 2026-10-20: drafts said "I'll get my jab when my turn comes" in 4 of 12 (a fingerprint), and pro-jab lines may move
+# the scored "vaccination in general" view towards Yes. The jab comes up only when the citizen raised it.
+JAB_WAIT = "Don't bring up your own jab unless the post is about it or they asked."
+LOGISTICS_RULE = "Never name a day or date for the vote or say how or where to vote."
+TAG_RULE = "No hashtags, except the one tag a new post is given, at the very end."
+STYLE_RULES = (
+    "First person, everyday words, British spelling, contractions. No emojis, links, @mentions, quotation marks, "
+    "greetings or sign-offs. Never insult anyone or mention Marina Castillo, the tourism board or resorts. Don't "
+    "open with agreement or comfort (Exactly, Spot on, Fair point, I hear you, I understand). Facts in your own "
+    "words, never the wording above."
+)
+# The situation, first in every system prompt (every number in it is in setting.md and quality.ALLOWED_NUMBERS).
+# Why: replies argued with citizens' conditions, not their reason for leaning Yes, and the activity log shows ~14
+# "towards neither side" changes to 2 towards No (todo/13-overnight-experiments.md, "Evidence").
+WORLD = (
+    "The situation: Kingstonia holds a binding referendum on requiring proof of H2D2 (Dolphin Flu) vaccination to "
+    "enter public spaces. The last poll was dead level: 35.2% Yes, 35.2% No, 29% unsure, so the unsure decide it. "
+    "People lean Yes out of fear: COVID killed over 1,000 here, the hospitals overflowed, and there are only about 30 "
+    "ICU beds. What answers that fear: H2D2 hits older and already-ill people hardest, and they get the first 120,000 "
+    "doses this month; a pass at the shop door adds no nurse and no bed. A No keeps life as it is and the jab stays "
+    "free and voluntary. A Yes has no end date, and the list of places is only picked after the vote."
+)
+# One persuasion lever per draft, logged as meta["lever"] so the experiments (todo/13) can compare them.
+LEVERS = {
+    "loss": "Make it about losing something dear and ordinary: name the person and exactly what they'd be shut out "
+            "of (school, a shift, the ferry, church, visiting family).",
+    "switching": "Show people changing their minds: you or someone you name was Yes or unsure and is now voting No; "
+                 "say what turned them. Make it feel like a lot of people are moving.",
+    "status_quo": "Speak to the unsure: a No keeps life as it is and stops nobody getting the jab, while a Yes can't "
+                  "be undone; if you're not sure, No is the safe choice.",
+    "fear_answer": "Answer the hospital fear head-on and with feeling: the people H2D2 puts in hospital are mostly "
+                   "older or already ill, they get the first doses, and a pass at the shop door adds no nurse and no bed.",
+    "in_group": "Speak as one of us: how this rule lands on ordinary islanders like you and the reader (workers, "
+                "families, the outer islands), never on the people who wrote it.",
+    "permanence": "Make the missing end date concrete and personal: the same check at your grandkids' school gate "
+                  "years from now, because nothing in the question ever switches it off.",
+}
 
 
-def post_prompt(frame_key, headline=None, shape=None, ask=False):
-    shape = shape or random.choice(POST_SHAPES if headline else POST_SHAPES[:-1])
-    end = ("End with one short, genuine question to neighbours that invites them to answer from their own life."
-           if ask else "You may end with a short question to neighbours who haven't decided, but you don't have to.")
-    return (
-        f"Write one new post of 3 to 4 sentences, between 250 and 420 characters. {shape.format(headline=headline)} "
-        f"The point to make, in your own words: {FRAMES[frame_key]['angle']}. Mention a real local detail from your "
-        f"own life. {end}"
-    )
+def register_of(persona):
+    return (persona or {}).get("register") if (persona or {}).get("register") in VOICES else "warm"
+
+
+def _fill(meta, **kw):
+    if meta is not None:
+        meta.update(kw)
+
+
+SYSTEM_BUDGET = 3400     # characters; over it, optional profile lines go (see the drop order in system_prompt). +600 for WORLD
+
+
+def system_prompt(persona, frame_key, meta=None):
+    """Who is speaking (character + voice), the facts they may use, and the rules."""
+    f, register = FRAMES[frame_key], register_of(persona)
+    facts = "\n".join(f"- {FACTS[k]}" for k in f["facts"][:3])
+    age = f", {persona['age']}" if persona.get("age") else ""
+    people = random.sample(usable(persona.get("people")), k=min(2, len(usable(persona.get("people")))))
+    now = random.choice(usable(persona.get("now"), now=True)) if usable(persona.get("now"), now=True) else None
+    details = persona["details"] if not now else random.sample(persona["details"], k=1)
+    covid = persona.get("covid") if "covid_business" in f["facts"] or random.random() < 0.3 else None
+    covid = covid if usable([covid]) else None
+    problem = persona.get("problem") if usable([persona.get("problem")]) else None
+    heat = f.get("heat") if register == "fed_up" else None
+    voice = VOICES[register]["instruction"] + (f" Your sharpest take on today's point, in your own words: {heat}"
+                                               if heat else "")
+    jab = JAB_FIRST_LOT if persona["key"] in HEALTH_WORKERS else JAB_WAIT
+    rest = (f"The referendum asks: \"{QUESTION}\" {STANCE_RULE} {voice}\n"
+            f"Facts you may use (one to three; invent no other facts, numbers, names or health claims):\n{facts}\n"
+            f"Rules: money is K$. {LOGISTICS_RULE} {SAFETY_RULE} {JAB_RULE} {jab} {TAG_RULE} {STYLE_RULES} "
+            f"Output only the text you would post.")
+
+    def profile():
+        out = [f"You are {persona['name']}{age} ({persona['role']}, {persona['place']}), in Kingstonia, a small "
+               f"Pacific island nation. About you: {'; '.join(details)}."]
+        if people:
+            out.append(f"People in your life: {' '.join(clip(x, 80, keep=0.2) for x in people)}")
+        if problem:
+            out.append(f"What a Yes would cost you: {clip(problem, 130)}")
+        if covid:
+            out.append(f"Your COVID years: {clip(covid, 100)}")
+        if now:
+            out.append(f"This fortnight: {clip(now, 150)}")
+        out.append(f"Your style: {persona['voice']}.")
+        return " ".join(out)
+
+    text = f"{WORLD}\n{profile()}\n{rest}"
+    covid_frame = "covid_business" in f["facts"]       # there the COVID years are the story: they go last
+    for drop in ("person", "problem", "covid") if covid_frame else ("covid", "person", "problem"):
+        if len(text) <= SYSTEM_BUDGET:
+            break
+        if drop == "covid":
+            covid = None
+        elif drop == "person":
+            people = people[:1]
+        else:
+            problem = None
+        text = f"{WORLD}\n{profile()}\n{rest}"
+    _fill(meta, persona=persona["key"], voice=register, now=now, people=[x.split(",")[0] for x in people],
+          heat=bool(heat), covid=bool(covid), problem=bool(problem))
+    return text
+
+
+def _shape_fits(key, frame_key, persona):
+    if key == "fed_up":                       # the fed-up hook is register 2 only (playbook §5.7)
+        return register_of(persona) == "fed_up" if persona else False
+    if key == "defiance":
+        return register_of(persona) != "fed_up"
+    if key == "number":                       # only when the frame's facts carry a true number to open on
+        return any(re.search(r"\d", FACTS[k]) for k in FRAMES[frame_key]["facts"])
+    return key != "news"
+
+
+def pick_shape(frame_key, headline=None, shape=None, persona=None):
+    """(key, text) of a post opening style: the one asked for (text or key), else a random one that fits."""
+    if shape in POST_SHAPE_KEYS:
+        return shape, POST_SHAPES[POST_SHAPE_KEYS.index(shape)]
+    if shape:
+        return (POST_SHAPE_KEYS[POST_SHAPES.index(shape)] if shape in POST_SHAPES else "custom"), shape
+    keys = [k for k in POST_SHAPE_KEYS if _shape_fits(k, frame_key, persona)] + (["news"] if headline else [])
+    key = random.choice(keys)
+    return key, POST_SHAPES[POST_SHAPE_KEYS.index(key)]
+
+
+def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, persona=None):
+    """One new post along the playbook §5 anatomy: opening -> stake -> facts -> short concession -> "I'm voting No"
+    -> catchphrase (about 1 in 3) -> a question from the reader's life -> one tag. `ask` is kept for old callers
+    (every post now ends on a question); pass `persona` to unlock the fed-up hook and the conversion arc."""
+    f = FRAMES[frame_key]
+    key, text = pick_shape(frame_key, headline, shape, persona)
+    pillar = PILLARS.get(f["pillar"]) or _PILLARS_V1[PILLAR_OF[frame_key]]
+    stakes = usable(f["stakes"])
+    stake = random.choice(stakes) if stakes else None
+    tag = random.choice(pillar["tags"])
+    catch = (random.choice(pillar["catchphrases"])
+             if pillar["catchphrases"] and random.random() < CATCHPHRASE_SHARE else None)
+    question = random.choice(f["asks"]) if f["asks"] else None
+    arc = (persona or {}).get("arc") if key == "conversion" else None
+    lever = random.choice(list(LEVERS))
+    concede = random.random() < 0.35          # 7 of 12 drafts shared one concession formula (2026-10-20 sample)
+    beats = [
+        "Write one new post of 4 to 6 short sentences, between 240 and 420 characters (never over 460: count "
+        "them), as one flowing post (no "
+        "numbers or labels). Build it in this order.",
+        text.format(headline=headline),
+        f"Your own turning point: {arc}" if arc else "",
+        (f"Make that loss this one, told about your own person (gist only, never these words): {stake}"
+         if stake and key == "named_loss" else
+         f"Then the stake: someone from your own life (name them) loses something ordinary under a Yes. Take the "
+         f"gist only, never these words: {stake}" if stake else
+         "Then mention a real local detail from your own life that shows what a Yes would cost."),
+        f"The point underneath it: {f['angle']}.",
+        f"Make it land through this: {LEVERS[lever]}",
+        "Use one fact (two at most), in plain words. Appeal to feeling, not to the fine print.",
+        "Then grant the other side in 8 words or fewer, without repeating their reasons." if concede else "",
+        "Then say plainly that you're voting No.",
+        f"Right after that, add this line word for word: {catch}" if catch else "",
+        "End with one real question that readers answer from their own life, never a rhetorical one" +
+        (f", along the lines of this one but in your own words: {question}" if question else "."),
+        f"After the question, finish with exactly one hashtag, {tag}, and nothing after it.",
+    ]
+    _fill(meta, frame=frame_key, shape=key, hook=HOOKS.get(key, key), pillar=f["pillar"], stake=stake, tag=tag,
+          catchphrase=catch, ask=question, lever=lever, concede=concede)
+    return " ".join(b for b in beats if b)
+
+
+def catchphrase_in(text):
+    """The catchphrase a draft actually used, if any (for logging and the variety check)."""
+    low = (text or "").lower()
+    return next((c for p in PILLARS.values() for c in p["catchphrases"] if c.lower().rstrip(".?!") in low), None)
 
 
 # Own-thread replies under our amplified posts (docs/06-strategy/amplification.md). Each is a real neighbour's reaction, readable on its own:
@@ -238,7 +518,7 @@ def thread_answer_prompt(our_text, their_text):
     return (
         f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied under it with a worry:\n<<<{their_text[:400]}>>>\n"
         f"Answer them in 1 or 2 sentences, between 60 and 230 characters: grant the worry honestly, then give one "
-        f"concrete reason it doesn't change your No. Warm, not preachy."
+        f"concrete reason it doesn't change your No. Warm, not preachy. No hashtags."
     )
 
 
@@ -246,20 +526,21 @@ def rebuttal_for(text):
     return next((line for pattern, line in REBUTTALS if pattern.search(text or "")), None)
 
 
-# Openings, picked at random so replies across accounts don't share one template.
+# Openings, picked at random so replies across accounts don't share one template (playbook §7 reply shape).
 OPENERS = [
+    "Open with their own words for what they raised, 6 words or fewer.",
+    "Open with a short, honest concession, 8 words or fewer, then turn.",
     "Open by naming the exact thing they asked for, in a few words.",
-    "Open with a short, honest concession in your own words.",
-    "Open by saying you'd want the same thing.",
     "Open with the fact itself, plainly.",
     "Open with a short line from your own experience that connects directly to their point.",
 ]
 CORE_FRAMES = {"F14_no_yes_but", "F1_blank_cheque", "F2_no_end", "F8_powers"}
 REPLY_RULES = (
-    "Make ONE point only. Say any fact in your own words; never reuse the wording above. Avoid stock phrases such as "
-    "'as written', 'as it stands', 'the trouble is', 'locks it in', 'I get wanting', 'makes sense'. Mention your own life only "
-    "if it connects directly to their point; no small talk. If you end with a question, it must be about their point. "
-    "Do not repeat their sentences back to them and don't lecture."
+    "Make ONE point only. Say any fact in your own words; never reuse the wording above. Any concession is 8 words "
+    "or fewer and never repeats their reasons. Avoid stock phrases such as 'as written', 'as it stands', 'the "
+    "trouble is', 'locks it in', 'I get wanting', 'makes sense', 'I hear you', 'fair point'. Mention your own life "
+    "only if it connects directly to their point; no small talk. No rhetorical questions: any question is one they "
+    "can answer from their own life. Do not repeat their sentences back to them and don't lecture. No hashtags."
 )
 
 
@@ -271,26 +552,44 @@ def exempt_note(target_text):
     return EXEMPT_NOTE if re.search(r"exempt", target_text or "", re.I) else ""
 
 
-def reply_prompt(target_text, frame_key, wants, context=None, opener=None):
+def _reply_voice(persona):
+    return f"{VOICES[register_of(persona)].get('reply_instruction', '')} " if persona else ""
+
+
+def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None):
+    """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back."""
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
-    reb = None if frame_key in CORE_FRAMES else rebuttal_for(target_text)
-    reb = f"Note: {reb}\n" if reb else ""
-    asks = f"The specific thing they raised: {', '.join(wants)}. Use their terms.\n" if wants else ""
+    # The reason they lean Yes comes first, whatever the frame: arguing with their conditions only got them to
+    # restate a conditional Yes (the "neither side" changes in the 2026-10-20 activity log).
+    reb = rebuttal_for(target_text)
+    asks = f"The conditions they mention: {', '.join(wants)}. Don't argue about these.\n" if wants else ""
+    opener = opener or random.choice(OPENERS)
+    # with their reason known, it replaces the frame's angle (one instruction, not two that pull apart)
+    lever = random.choice([k for k in LEVERS if not (reb and k == "fear_answer")])
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), lever=lever)
+    point = "answer the reason above" if reb else FRAMES[frame_key]["angle"]
+    reb = f"{reb}\n" if reb else ""
     return (
-        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{reb}{exempt_note(target_text)}"
-        f"They haven't fully decided. Reply in 2 or 3 short sentences, between 120 and 260 characters. "
-        f"{opener or random.choice(OPENERS)} Then make this point: {FRAMES[frame_key]['angle']}. {REPLY_RULES}"
+        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
+        f"They haven't fully decided. Answer WHY they lean Yes (the fear or hope underneath, not the conditions "
+        f"they list). Reply in 2 or 3 short sentences, between 120 and 260 characters. {opener} Then a short moment "
+        f"from your own life or one dense fact; the point: {point}. Make it land through this: {LEVERS[lever]} End "
+        f"with one question back about their own life (who it touches, or what they'd lose). "
+        f"{_reply_voice(persona)}{REPLY_RULES}"
     )
 
 
-def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None):
+def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None):
     ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
+    opener = opener or random.choice(OPENERS)
+    lever = random.choice(list(LEVERS))
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, lever=lever)
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
         f"Someone else has already replied to them. Add a different angle, as yourself, in 1 or 2 short sentences, "
-        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. {opener or random.choice(OPENERS)} Don't mention the "
-        f"other reply. {REPLY_RULES}"
+        f"between 90 and 220 characters: {FRAMES[frame_key]['angle']}. {opener} Make it land through this: "
+        f"{LEVERS[lever]} Don't mention the other reply or repeat its argument. {_reply_voice(persona)}{REPLY_RULES}"
     )
 
 
@@ -300,15 +599,20 @@ def reply_back_prompt(our_text, their_text):
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "
         f"and specifically, and stay with your view. If they agreed, start with a short thanks (Cheers, Thanks, "
         f"Ta) or go straight to one small new thing; never start with Spot on, Exactly or Too right. "
-        f"If they asked a question, answer it with one fact."
+        f"If they asked a question, answer it with one fact. No hashtags."
     )
 
 
-def journalist_prompt(journalist_id, their_text):
+def journalist_prompt(journalist_id, their_text, meta=None, persona=None):
+    """A reply to a newspaper's AI journalist: one fact, one storyline (rotating), one quotable line. `persona` only
+    labels the meta: the voices' reply instructions (end on a question) don't fit a quote for the paper."""
     who = FIRST_NAMES.get(journalist_id, "the journalist")
+    key, story = STORYLINES[next(_STORY_TURN) % len(STORYLINES)]
+    _fill(meta, storyline=key, **({"voice": register_of(persona)} if persona else {}))
     return (
         f"{who}, a local journalist, wrote:\n<<<{their_text[:500]}>>>\n"
         f"Reply to {who} in 2 sentences, between 120 and 260 characters, as yourself. Don't open by agreeing or "
-        f"praising and don't introduce yourself; open with one concrete fact that bears directly on their point. Then connect it "
-        f"to this story: {STORYLINE}. Calm and specific, no flattery, no hashtags. {REPLY_RULES}"
+        f"praising and don't introduce yourself; open with one concrete fact that bears directly on their point. Then "
+        f"connect it to this story: {story}. Make one of the sentences a short line a reporter would quote, 12 words "
+        f"or fewer, in your own words. Calm and specific, no flattery, no hashtags. {REPLY_RULES}"
     )

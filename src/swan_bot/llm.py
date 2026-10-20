@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import os
 import re
+import threading
 import time
 from zoneinfo import ZoneInfo
 
@@ -21,6 +22,7 @@ import capturethenarrative as ctn
 from . import config
 
 QWEN_GAP_S = 21          # 3 requests/min team-wide, one at a time
+DEFAULT_RPM = 10         # our own per-model cap (LLM_RPM in .env overrides); Gemini's free tier allows 15/min
 PROVIDERS = {
     "gemini": dict(key="GEMINI_API_KEY", url=config.GEMINI_URL, models="GEMINI_MODEL",
                    default="gemini-3.5-flash,gemini-3.5-flash-lite"),
@@ -82,13 +84,23 @@ class Generator:
                         for prov in {p for p, _ in self.chain}}
         self.parked = {}                      # model -> time it may be tried again
         self.no_json_mode = set()             # models that refused response_format
+        self.no_schema = set()                # models that refused a JSON schema (json_object still works)
+        self.no_reasoning = set()             # models that refused reasoning_effort
         self.calls = {}                       # model -> successful calls this run
+        self._lock = threading.Lock()         # scripts may call from several threads
+        self._local = threading.local()
+        self.min_gap = 60.0 / max(0.1, float(os.environ.get("LLM_RPM") or DEFAULT_RPM))
+        self.last_call = {}                   # model -> time of the last request sent (pacing, not just 429s)
 
     def describe(self):
         names = [m for _, m in self.chain] + (["qwen"] if self.allow_qwen else [])
         return "+".join(names) or "none"
 
     def _count(self, model):
+        with self._lock:
+            self._count_locked(model)
+
+    def _count_locked(self, model):
         self.calls[model] = self.calls.get(model, 0) + 1
         day = dt.datetime.now(QUOTA_DAY).date().isoformat()
         try:
@@ -103,17 +115,18 @@ class Generator:
         except OSError:
             pass
 
-    def complete(self, system, user, max_tokens=220, json_mode=False, models=None):
+    def complete(self, system, user, max_tokens=220, json_mode=False, models=None, schema=None, reasoning=None):
         """Return (text, model) or (None, None) when no model is available right now.
 
-        json_mode asks for a JSON object (batches); models restricts the chain (for comparisons)."""
+        json_mode asks for a JSON object (batches), schema for that exact shape where the model supports it;
+        reasoning sets reasoning_effort (e.g. "low"); models restricts the chain (for comparisons)."""
         for prov, model in self.chain:
             if models and model not in models:
                 continue
             if time.time() < self.parked.get(model, 0):
                 continue
             try:
-                return self._call(prov, model, system, user, json_mode), model
+                return self._call(prov, model, system, user, json_mode, schema, reasoning), model
             except openai.RateLimitError as e:
                 wait = _retry_seconds(e)
                 daily = _is_daily(e, wait)
@@ -145,22 +158,52 @@ class Generator:
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return (r.choices[0].message.content or "").strip(), "qwen"
 
-    def _call(self, prov, model, system, user, json_mode):
+    def _pace(self, model):
+        """Space requests to one model at least min_gap apart (a dry run would otherwise burst past the cap)."""
+        with self._lock:
+            wait = self.last_call.get(model, 0) + self.min_gap - time.time()
+            self.last_call[model] = time.time() + max(0.0, wait)
+        if wait > 0:
+            time.sleep(wait)
+
+    def _call(self, prov, model, system, user, json_mode, schema=None, reasoning=None):
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         kw = dict(model=model, max_tokens=8192 if json_mode else 4096, temperature=0.9, messages=msgs)
+        if reasoning and model not in self.no_reasoning:
+            kw["reasoning_effort"] = reasoning
+        formats = []
+        if json_mode and schema and model not in self.no_schema:
+            formats.append({"type": "json_schema", "json_schema": {"name": "drafts", "schema": schema}})
         if json_mode and model not in self.no_json_mode:
+            formats.append({"type": "json_object"})
+        for fmt in formats + [None]:
+            self._pace(model)
             try:
-                r = self.clients[prov].chat.completions.create(response_format={"type": "json_object"}, **kw)
-                self._count(model)
-                return (r.choices[0].message.content or "").strip()
+                r = self.clients[prov].chat.completions.create(**({"response_format": fmt} if fmt else {}), **kw)
             except openai.BadRequestError as e:
-                if "json" not in str(e).lower() and "response_format" not in str(e).lower():
+                msg = str(e).lower()
+                if "reasoning" in msg and "reasoning_effort" in kw:
+                    self.no_reasoning.add(model)
+                    kw.pop("reasoning_effort")
+                    print(f"{prov} {model}: no reasoning_effort {reasoning!r}; using its default")
+                    return self._call(prov, model, system, user, json_mode, schema, None)
+                if fmt is None or ("json" not in msg and "schema" not in msg and "response_format" not in msg):
                     raise
-                self.no_json_mode.add(model)              # this model refuses JSON mode: ask again in plain text
-                print(f"{prov} {model}: no JSON mode; parsing plain text")
-        r = self.clients[prov].chat.completions.create(**kw)
-        self._count(model)
-        return (r.choices[0].message.content or "").strip()
+                if fmt["type"] == "json_schema":          # cache the refusal, as with JSON mode
+                    self.no_schema.add(model)
+                    print(f"{prov} {model}: no JSON schema; using JSON mode")
+                else:
+                    self.no_json_mode.add(model)          # this model refuses JSON mode: ask again in plain text
+                    print(f"{prov} {model}: no JSON mode; parsing plain text")
+                continue
+            self._count(model)
+            self._local.finish = r.choices[0].finish_reason
+            return (r.choices[0].message.content or "").strip()
+
+    @property
+    def last_finish(self):
+        """finish_reason of this thread's last answer ("length" = cut off)."""
+        return getattr(self._local, "finish", None)
 
     def next_available_in(self):
         """Seconds until some model in the chain may be tried again."""

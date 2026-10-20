@@ -20,6 +20,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | [08](08-intel-collector.md) | Collector into Mongo: snapshots, team clusters, our per-post metrics | Data lead | 21 Oct | — |
 | [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2) | Data lead | 22 Oct | 01, 08 |
 | [06](06-npc-simulator.md) | NPC simulator as a fitness landscape for drafts | Narrative lead | 22–23 Oct | 05, 10 |
+| [13](13-overnight-experiments.md) | Overnight experiments: random arms per draft, citizen follow-up reads, switchbacks, morning report | Marc + fresh session | 21 Oct, then nightly | 05 live |
 
 **Critical path to catch up:** amplification is live (2026-10-20, [amplification](../docs/06-strategy/amplification.md)); next are 07 (Blue: the fastest points, and `scripts/ring_audit.py` already finds the rings) and 05 (content that ranks).
 

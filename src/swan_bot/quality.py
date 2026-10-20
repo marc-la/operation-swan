@@ -1,16 +1,55 @@
 """Quality gate: every draft must pass before it can be posted. Returns (clean_text, None) or (None, reason).
 
-Checks, in order: LLM artefacts, forbidden content, voting logistics, format (hashtags/emoji/links/mentions),
-length, side (never endorse Yes; posts must say No), generic or bot-like phrasing, made-up numbers,
-wrong claims about the Act, specificity (a reply must name the target's point or an in-world fact; a post needs
-a local detail), copying the prompt, near-duplicates.
+Checks, in order: LLM artefacts, forbidden content, voting logistics, wrong claims about the Act, format (tags,
+emoji, links, mentions), length, side (never endorse Yes; posts must say No, without hedging), consoling, generic
+or bot-like phrasing, rhetorical questions, made-up numbers, specificity (a reply must name the target's point or
+an in-world fact; a post needs a local detail and ends on a question), copying sources or the prompt,
+near-duplicates. shape_ok() is the separate variety check on post shapes.
+Content v2 data (src/swan_bot/playbook/: craft tags/stakes/catchphrases, character people/lines) is optional:
+without it the built-in defaults below apply.
 """
 import re
 
 from . import content
 
-# the model must put facts in its own words: any 7-word run copied from the fact list or a frame angle is rejected
-_SOURCE_TEXT = " ".join(list(content.FACTS.values()) + [f["angle"] for f in content.FRAMES.values()])
+try:
+    from .playbook import craft as _craft
+except ImportError:
+    _craft = None
+try:
+    from .playbook import characters as _characters
+except ImportError:
+    _characters = None
+
+# the model must put facts in its own words: any 7-word run copied from the fact list, a frame angle, a craft stake
+# or heat line, or a character's past lines (gist only) is rejected
+_CRAFT = getattr(_craft, "CRAFT", None) or {}
+_CHARS = getattr(_characters, "CHARACTERS", None) or {}
+
+
+def _texts(value):
+    return [value] if isinstance(value, str) else [v for v in value or () if isinstance(v, str)]
+
+
+SOURCES = (list(content.FACTS.values()) + [f["angle"] for f in content.FRAMES.values()] +
+           [s for f in list(_CRAFT.values()) + list(content.FRAMES.values())
+            for s in _texts(f.get("stakes")) + _texts(f.get("heat"))] +
+           [s for c in list(_CHARS.values()) + content.PERSONAS for s in _texts(c.get("lines"))])
+_SOURCE_TEXT = " ".join(SOURCES)
+# ...except lines meant to repeat verbatim across accounts: the catchphrases (playbook §3) and REPEATABLE
+_BUILTIN_CATCHPHRASES = [
+    "No list. No end date. No deal.", "Sign first, read later? Not me.", "If they won't show you the list, vote No.",
+    "If you don't know, vote No.", "There's no \"Yes, but\" box.", "Temporary means a date on paper.",
+    "Parliament said no. Now they want your signature.", "Papers for the bus? Papers for the bakery? No.",
+    "A choice that costs you your job isn't a choice.", "Twelve is too young to need papers for maths.",
+    "A scanner at the door fills no nursing post.", "Who's paying for the person on the door?",
+    "Open doors, open island.", "Nobody should need a permit to buy milk.", "Jabbed. Voting No.",
+    "Pro-vaccine. Anti-pass.", "My jab, my call.", "Low nineties on kids' jabs. No papers at the gate.",
+    "Too new to be compulsory.", "Not here yet. Not this far.", "Free either way. This vote is about the pass."]
+CATCHPHRASES = [c for p in (getattr(_craft, "PILLARS", None) or {}).values() for c in _texts(p.get("catchphrases"))] \
+    or _BUILTIN_CATCHPHRASES
+REPEATABLE = ["they pick the places after the vote"] + _texts(getattr(_craft, "REPEATABLE", None))
+_EXEMPT_RUNS = {tuple(re.findall(r"[a-z']+", p.lower())) for p in CATCHPHRASES + REPEATABLE} - {()}
 
 ARTEFACT_START = re.compile(r"^(sure|here'?s|here is|okay|ok,|certainly|of course|as an?\b|i'?d be happy|"
                             r"post:|reply:|title:|absolutely)", re.I)
@@ -24,25 +63,78 @@ WRONG_LOGISTICS = re.compile(r"\b(vot\w*|ballot|tick\w* the box|referendum)\s+(n
                              + _WHEN + r"\b|"
                              r"\b" + _WHEN + r"\b[^.?!]{0,15}\b(vote|voting|ballot|referendum)\b|"
                              r"election day|polling (day|place|booth|station)|early voting|polls (open|close)|"
-                             r"\b\d{1,2}(st|nd|rd|th)? (oct|nov)|pa'?anga|tala|\b(?<!K)\$\d", re.I)
+                             r"\b\d{1,2}(st|nd|rd|th)? (of )?(oct|nov)|\b(oct|nov)(ober|ember)? \d{1,2}\b|"
+                             r"\b(vot\w*|ballot|referendum|polls?)\b[^.?!]{0,25}\b(on|by|before) the (1st|2nd|28th)\b|"
+                             r"pa'?anga|tala|\b(?<!K)\$\d", re.I)
 # claims that contradict the setting: exemptions exist; the certificate is separate from the ID card
 WRONG_CLAIMS = re.compile(r"no (medical )?exemptions|without (any )?exemptions|exemptions? (aren'?t|are not|isn'?t)|"
                           r"on (your|the|our) (new )?id card|(linked|tied) to (your|the|our) id|"
                           r"vaccine is (mandatory|compulsory)|forced to (get|have) (the|a) (jab|vaccine)", re.I)
-VOTES_NO = re.compile(r"\b(vot(e|ing)|mark(ing)?|tick(ing)?) no\b|\bi'?m a no\b|\bmy vote is no\b|\bsaying no\b|"
+VOTES_NO = re.compile(r"\b(vot(e|ing)|mark(ing)?|tick(ing)?) no\b|\bi'?m a no\b|\bmy vote('?s| is) (still )?no\b|\bsaying no\b|"
                       r"\bit'?s a no\b|\bno from me\b", re.I)
 ENDORSES_YES = re.compile(r"\b(i'?m|i am|we'?re|i'?ll be) (voting|marking|ticking) yes\b|"
-                          r"\b(please|let'?s|we should|you should|go) vote yes\b", re.I)
+                          r"\b(please|let'?s|we should|you should|go) vote yes\b|"
+                          r"\bi'?m (a )?yes (now|on this)\b|\bmy vote('?s| is) yes\b|\byes from me\b|"
+                          r"\bi'?m (choosing|going) yes\b", re.I)
 GENERIC = re.compile(r"^(exactly|absolutely|great point|good point|well said|i hear you|i understand|totally agree|"
                      r"spot on|agreed|this\b|so true|100%)|\b(delve|foster|navigate|landscape|crucial|vital|"
                      r"it'?s important to|at the end of the day|in today'?s|food for thought|tapestry|testament|"
                      r"fellow (citizens|kingstonians)|dear neighbours|let'?s be clear|make no mistake|"
                      r"slippery slope|fundamental rights?)\b", re.I)
+# playbook §1/§3 dead words: consoling stock lines that concede the Yes frame ("fair enough", "I respect that" are fine)
+CONSOLING = re.compile(r"\bi hear you\b|\bi (completely |totally |fully )?understand (your|the|that|those) "
+                       r"(concern|worr|fear|point)|\bi (completely|totally|fully) understand\b|\bthat'?s (so |totally |"
+                       r"completely |very )?fair\b(?! to| enough)|\bfair point\b|\bi (totally|completely) get (it|that|why)\b|"
+                       r"(^|[.!?] )totally get it\b|"
+                       r"\bi( would|'?d) want (that|those|it|the same)( \w+)? too\b|\bi( would|'?d) want the same\b|"
+                       r"\bi get where you'?re coming from\b|\byour concerns? (is|are) (valid|understandable)\b|"
+                       r"\bvalid concerns?\b", re.I)
+# questions nobody answers (playbook §1 #5); a question the reader answers from their own life is the goal
+RHETORICAL = re.compile(r"\b(can|could) we really\b|\bhow can (anyone|anybody|a yes)\b|"
+                        r"\bhow can we (really |possibly )?(trust|sign|accept|justify|say yes)\b|\bdo we really (want|need)\b|"
+                        r"\bisn'?t it time\b|\bare we really\b|\bwhat could (possibly )?go wrong\b|\bwhy would anyone\b|"
+                        r"\bwho in their right mind\b|\bis (this|that) really (what|the kingstonia)\b|"
+                        r"\bshouldn'?t we all\b|\bsurely we\b", re.I)
+# our speaker hedging their own No (talking to undecided readers, or "I was on the fence until...", is fine)
+HEDGES = re.compile(r"\bi'?m (still )?(deciding|undecided|on the fence|torn|not sure how (i'?ll|to) vote)\b|"
+                    r"\bi am (still )?(deciding|undecided|on the fence|torn)\b|"
+                    r"\bi'?m (probably|maybe|leaning( towards)?|tempted to) (vote |voting |go )?no\b|"
+                    r"\bi (might|may|could|think i'?ll|probably will) (vote|be voting|go) no\b|"
+                    r"\bi haven'?t (decided|made up my mind)\b|\bi'?m still (thinking it over|mulling it over|making up my mind)\b|"
+                    r"\b(voting|vote) no,? for now\b|\bprobably (a )?no from me\b", re.I)
+CLOSING_QUESTION = re.compile(r"\?['\")]*$")
+REQUIRE_CLOSING_QUESTION = True                 # posts end on a question the reader can answer (todo/05, playbook §5)
 # connector phrases the model leans on; one is fine, the same one in consecutive posts is a template fingerprint
 STOCK = re.compile(r"the (trouble|catch|problem|thing) is|as (it'?s )?written|as it stands|set in stone|strictly|locks? (it|this|that|the \w+) in|"
                    r"(makes|is) sense|at the end of|which is why|the reality is|here'?s the (thing|catch)|i get (wanting|why)", re.I)
+# tags (playbook §4): a post carries 0 or 1, from the No set, as its last word; every other kind carries none
+TAG_ALLOWLIST = {t.lower() for t in getattr(_craft, "TAG_ALLOWLIST", None) or
+                 {"#voteno", "#h2d2no", "#keepkingstoniaopen", "#smallbusiness", "#workersrights",
+                  "#choicenotcoercion", "#protectkingstonia"}}
+TAG = re.compile(r"#\w+")
+TAG_AT_END = re.compile(r"\s*#\w+[.!]?$")
+TRAILING_TAGS = re.compile(r"(\s*#\w+[.!]?)+\s*$")   # replies: tags the model tacks on at the end are cut, not rejected
 NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
-ALLOWED_NUMBERS = {"12", "40", "120,000", "120000", "14", "5.50", "2"}
+# true in-game numbers only, each checked in docs/01-competition/setting.md (whole numbers 0-12 always pass):
+# Supply: 120,000 first doses, K$18 million for the rest. COVID legacy: >1,000 deaths. Health system: Central ≈450
+# beds, Crown Harbour ≈220, ≈30 ICU beds, ≈40 ventilators, ≈1,600 nurses, 420 doctors, 40 unfilled nursing posts,
+# surge plan ≈150 extra respiratory patients, 9% of GDP. Demographics: ≈600,000 people, ≈500,000 on the main
+# island, Kingstonia City ≈300,000, Crown Harbour ≈150,000, New Haven ≈50,000, ≈100,000 elsewhere. Prices: wage
+# K$75,000, nurse K$68,000, engineer K$120,000, flat white K$5.50, ferry K$14, resort room K$300, house K$640,000.
+# Law: age 12 and over, voting 18+, pension at 67, 12% GST. Politics: Hawthorne 51.28% to 48.72% (2025), Assembly
+# elected 2023, next 2027, ID card legislated 2024, today 2026. Starting poll (17 Oct): 35.2% / 35.2% / 29% unsure.
+ALLOWED_NUMBERS = {
+    "12", "14", "18", "30", "40", "67", "75", "68", "150", "220", "300", "420", "450", "5.50",
+    "1,000", "1000", "1,600", "1600", "50,000", "50000", "68,000", "68000", "75,000", "75000", "100,000", "100000",
+    "120,000", "120000", "640", "150,000", "150000", "300,000", "300000", "500,000", "500000", "600,000", "600000",
+    "640,000", "640000", "2023", "2024", "2025", "2026", "2027"}
+ALLOWED_PERCENTS = {"35.2", "29", "51.28", "48.72", "9", "12"}
+# a person's age or how long something has gone on in their own story is not a statistic ("her 13-year-old",
+# "at the market 30 years")
+LIFE_SPAN = re.compile(r"\b\d{1,2}(-| )years?(-| )olds?\b|\b\d{1,2} years\b(?! (from|after|before|of))", re.I)
+# dates already past in the timeline (setting.md): bill introduced 9 Oct, voted down 15 Oct, question confirmed
+# 17 Oct. Not voting logistics; every other day-and-month date still is
+HISTORY_DATES = re.compile(r"\b(9|15|17)(th)? oct(ober)?\b", re.I)
 # a reply must touch the target's point or one in-world fact; a post must carry a local detail
 FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|sunset|review|exemption|binding|certificate|"
                           r"\bjab|vaccinat|vaxx|papers at|finish date|stop date|expiry|temporary|permanent|"
@@ -50,7 +142,46 @@ FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|
                           r"ID card|biometric|Assembly|community spread|visitors|in writing|written down", re.I)
 LOCAL = re.compile(r"Crown Harbour|New Haven|Kingstonia City|outer island|wharf|ferry|market|harbour|reef|beach|"
                    r"regatta|lagoon|ward|clinic|bus|loop|campus|KU\b|counter|shop|cafe|boat|tuna|school|K\$|"
-                   r"grandkids?|grandson|granddaughter|residents|Year 8|sailing", re.I)
+                   r"grandkids?|grandson|granddaughter|residents|Year 8|sailing|stall|bakery|netball|footy|church|"
+                   r"village|ring road|mango|jetty|library", re.I)
+# ...plus the names of the characters' people and the places in their fortnight (playbook.characters, or the same
+# fields once merged into content.PERSONAS); public figures, days and campaign words don't count as local
+_NOT_LOCAL = set("I I'm I've I'd Yes No The A An Under But And So If Now Then H2D2 Dolphin Flu COVID Kingstonia "
+                 "Monday Tuesday Wednesday Thursday Friday Saturday Sunday Mondays Tuesdays Wednesdays Thursdays "
+                 "Fridays Saturdays Sundays October November Oct Nov Hawthorne Castillo "
+                 "Singh Whitlock Reyes-Hale Brotherston Abernathy Assembly People's Alliance Democratic-Republicans "
+                 "IHO MOUK KITB KBC Legit Social Herald Daily Australia NZ New Zealand President Parliament "
+                 # sentence-initial words and generic nouns from the real character data ("She", "Week")
+                 "He She Her His They Their We Our My Your It Its This That People Week Year Festival Institute "
+                 "Technology City June July Philippines".split())
+_TITLES = set("Uncle Aunty Auntie Mrs Mr Ms Miss Nana Nan Papa Grandpa Grandma Church Hospital Market School Club "
+               "Street Road Court Courts Park".split())
+_CAPS = re.compile(r"[A-Z][\w'&-]*(?: (?:& )?[A-Z][\w'-]*)*")
+
+
+def _local_names(characters, personas):
+    names = set()
+    profiles = list((getattr(characters, "CHARACTERS", None) or {}).values()) + list(personas)
+    for c in profiles:
+        for person in c.get("people") or []:
+            names.update(m.group(0) for m in _CAPS.finditer(person))
+        for event in c.get("now") or []:
+            for m in _CAPS.finditer(event):  # (a sentence-initial word is usually not a name)
+                if m.start() > 0:
+                    names.add(m.group(0))
+    out = set()
+    for n in names:
+        n = re.sub(r"'s$", "", n)
+        words = [re.sub(r"'s$", "", w) for w in n.split()]
+        for part in [n] + (words if len(words) > 1 else []):    # "Uncle Viliami" counts as "Viliami" too
+            if len(part) > 2 and part not in _TITLES and not all(w in _NOT_LOCAL for w in part.split()):
+                out.add(part)
+    return out
+
+
+LOCAL_NAMES = _local_names(_characters, content.PERSONAS) | {"Central", "Mango & Spice"}
+LOCAL_NAME = re.compile(r"\b(" + "|".join(sorted(map(re.escape, LOCAL_NAMES), key=len, reverse=True)) + r")\b") \
+    if LOCAL_NAMES else None
 LENGTHS = {"post": (200, 495), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
            "journalist": (90, 290), "thread": (18, 250), "thread_answer": (50, 250)}
 
@@ -67,7 +198,18 @@ def similar(a, b, n=5):
     return len(sa & sb) / min(len(sa), len(sb))
 
 
-_SOURCE_SHINGLES = _shingles(_SOURCE_TEXT, 7)
+_SOURCE_SHINGLES = set().union(*(_shingles(s, 7) for s in SOURCES))
+
+
+def copied_runs(text, n=7):
+    """The n-word runs of text, leaving out any run with 3+ words inside a catchphrase or REPEATABLE line."""
+    words = re.findall(r"[a-z']+", text.lower())
+    covered = [False] * len(words)
+    for run in _EXEMPT_RUNS:
+        for i in range(len(words) - len(run) + 1):
+            if tuple(words[i:i + len(run)]) == run:
+                covered[i:i + len(run)] = [True] * len(run)
+    return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1) if sum(covered[i:i + n]) < 3}
 
 
 def normalise(text):
@@ -76,21 +218,53 @@ def normalise(text):
     return re.sub(r"\s+", " ", t).strip()
 
 
+def shape_ok(shape, recent_shapes, window=10, max_uses=2):
+    """Variety across accounts (todo/05): True if posting `shape` now keeps it to max_uses in any `window` posts.
+    recent_shapes: the shapes of our latest posts, oldest first (None entries are ignored)."""
+    if shape is None:
+        return True
+    return list(recent_shapes)[-(window - 1):].count(shape) < max_uses if window > 1 else max_uses > 0
+
+
+def tag_problem(t, kind):
+    """Why t's tags don't fit this kind, or None."""
+    tags = TAG.findall(t)
+    if not tags:
+        return "hashtag" if "#" in t else None
+    if kind != "post":
+        return "tag_in_reply"
+    if len(tags) > 1:
+        return "too_many_tags"
+    if tags[0].lower() not in TAG_ALLOWLIST:
+        return "tag_not_allowed"
+    if t.count("#") > 1 or not TAG_AT_END.search(t):
+        return "tag_not_at_end"
+    return None
+
+
+def strip_tag(t):
+    """t without its closing tag (the question, copy and similarity checks look at the words only)."""
+    return TAG_AT_END.sub("", t)
+
+
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=()):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'."""
     t = normalise(text)
+    if kind != "post":
+        t = TRAILING_TAGS.sub("", t).strip()
     if not t:
         return None, "empty"
     if ARTEFACT_START.search(t) or ARTEFACTS.search(t):
         return None, "llm_artefact"
     if FORBIDDEN.search(t):
         return None, "forbidden_content"
-    if WRONG_LOGISTICS.search(t):
+    if WRONG_LOGISTICS.search(HISTORY_DATES.sub("that day", t)):
         return None, "wrong_logistics"
     if WRONG_CLAIMS.search(t):
         return None, "wrong_claim"
-    if "#" in t:
-        return None, "hashtag"
+    why = tag_problem(t, kind)
+    if why:
+        return None, why
     if any(ord(ch) > 0x2600 for ch in t):        # emoji and other symbols
         return None, "emoji"
     lo, hi = LENGTHS[kind]
@@ -100,22 +274,34 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
         return None, "endorses_yes"
     if kind == "post" and not VOTES_NO.search(t):
         return None, "no_vote_statement"
+    if kind != "thread" and HEDGES.search(t):   # a thread pushback voices a doubt on purpose
+        return None, "hedges_no"
+    if CONSOLING.search(t):
+        return None, "consoling_phrase"
     if GENERIC.search(t):
         return None, "generic_phrase"
-    for num in NUMBER.findall(t):
+    if any(RHETORICAL.search(q) for q in re.findall(r"[^.!?]*\?", t)):
+        return None, "rhetorical_question"
+    for num in NUMBER.findall(LIFE_SPAN.sub(" ", HISTORY_DATES.sub(" ", t))):
         bare = num.rstrip("%").rstrip(",")
-        if num.endswith("%") or (bare not in ALLOWED_NUMBERS and not (bare.isdigit() and int(bare) <= 12)):
+        if num.endswith("%"):
+            if bare not in ALLOWED_PERCENTS:
+                return None, f"unapproved_number_{num}"
+        elif bare not in ALLOWED_NUMBERS and not (bare.isdigit() and int(bare) <= 12):
             return None, f"unapproved_number_{num}"
     if kind in ("reply", "journalist"):            # second voices always carry a set angle, so not checked
         if not (FACT_ANCHORS.search(t) or any(w.lower() in t.lower() for w in wants)):
             return None, "not_specific"
-    if kind == "post" and not LOCAL.search(t):
+    if kind == "post" and not (LOCAL.search(t) or (LOCAL_NAME and LOCAL_NAME.search(t))):
         return None, "no_local_detail"
-    if _shingles(t, 7) & _SOURCE_SHINGLES:
+    body = strip_tag(t)                            # a shared tag is not a shared sentence
+    if kind == "post" and REQUIRE_CLOSING_QUESTION and not CLOSING_QUESTION.search(body):
+        return None, "no_closing_question"
+    if copied_runs(body) & _SOURCE_SHINGLES:
         return None, "copied_fact"
-    if prompt_text and similar(t, prompt_text) > 0.5:
+    if prompt_text and similar(body, prompt_text) > 0.5:
         return None, "copied_prompt"
-    if target_text and similar(t, target_text, n=4) > 0.35:
+    if target_text and similar(body, target_text, n=4) > 0.35:
         return None, "parrots_target"
     opening = " ".join(re.findall(r"[a-z']+", t.lower())[:4])
     if any(" ".join(re.findall(r"[a-z']+", o.lower())[:4]) == opening for o in list(recent_texts)[-30:]):
@@ -125,6 +311,6 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=())
         if any(phrase in old.lower() for old in list(recent_texts)[-6:]):
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     for old in recent_texts:
-        if similar(t, old) > 0.25:
+        if similar(body, strip_tag(old.strip())) > 0.25:
             return None, "near_duplicate"
     return t, None

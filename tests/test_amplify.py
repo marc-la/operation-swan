@@ -141,3 +141,24 @@ def test_every_mode_has_a_length():
     for mode in ("post", "reply", "second_voice", "reply_back", "journalist", "thread", "thread_answer"):
         assert mode in quality.LENGTHS
     assert quality.LENGTHS["post"][1] <= 500
+
+
+# ---- messenger matching (playbook §7) ----
+
+def test_identity_and_messengers():
+    from swan_bot import targeting
+    assert targeting.identity("As a nurse I'm leaning yes, but only with an end date") == "health"
+    assert targeting.identity("my daughter turns 12 next month, not sure how I'll vote") == "parent"
+    assert targeting.identity("I run a cafe near the wharf") == "shop"
+    assert targeting.identity("leaning yes but want the list") is None
+    assert "ana" in targeting.messengers("health") and targeting.messengers(None) == ()
+    for _, _, personas in targeting.IDENTITIES:
+        assert set(personas) <= set(content.PERSONA_BY_KEY)
+
+
+def test_eligible_prefers_shared_identity():
+    accounts = make_accounts(n_voices=12, n_boosters=0)
+    rec = accounts.eligible("F14_no_yes_but", prefer=("ana",))
+    assert rec["persona"] == "ana"
+    assert accounts.eligible("F14_no_yes_but", prefer=()) is not None
+    assert accounts.assignable("F14_no_yes_but", prefer=("grace",))["persona"] == "grace"

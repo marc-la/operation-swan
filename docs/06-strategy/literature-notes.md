@@ -75,6 +75,19 @@ Sources: [UNSW newsroom, Nov 2025](https://www.unsw.edu.au/newsroom/news/2025/11
 - Players swung the 2025 result by **1.78 points** in 4 weeks. Margins are small, so every persuaded citizen matters.
 - The organisers' research interest is in **subtle, respectable-looking influence** and the "liar's dividend". A thoughtful, well-documented approach also plays well at the **finalist presentation** (judged on approach, not just score).
 
+## H. Added 2026-10-20: tailoring, norms and message craft
+
+Checked online on 2026-10-20 unless marked "from memory". The playbook that applies them: [message-playbook](message-playbook.md).
+
+| Finding | So what |
+|---|---|
+| **Information density beats personalisation.** 19 LLMs, ≈77,000 UK participants: arguments packed with fact-checkable claims were the strongest persuasion lever (about half the explainable variation). Tailoring to age or politics gave a negligible boost. Dialogue beat static messages. The more persuasive a model got, the less accurate it was. Hackenburg et al. 2025, *Science* ([Oxford summary](https://www.ox.ac.uk/news/2025-12-11-study-reveals-how-conversational-ai-can-exert-influence-over-political-beliefs), [arXiv 2507.13919](https://arxiv.org/abs/2507.13919)) | Put 1–3 true in-world facts in every post, not "at most one". Don't build demographic profiles. Accuracy matters to us anyway: false claims contradict what NPCs "know". |
+| **Personal information helps in dialogue.** In debates, GPT-4 with basic sociodemographic data about its opponent beat humans; without it, it didn't. Salvi, Horta Ribeiro, Gallotti & West 2025, *Nature Human Behaviour* ([paper](https://www.rivista.ai/wp-content/uploads/2025/05/s41562-025-02194-6.pdf)) | Read across with Hackenburg and Costello: what helps is what the person *told you* (their job, kids, island, doubt), used in a reply. That's the information we already have in each citizen post. |
+| **Dynamic norms.** Saying behaviour *is changing* ("more people are now…") moved choices more than saying what most people do. Sparkman & Walton 2017, *Psychological Science* ([Stanford summary](https://news.stanford.edu/stories/2017/10/change-behaviors-changing-perception-normal)) | This is why the Yes "I was leaning no, until…" posts work. We need our own conversion stories ("I was a Yes until I read the question") and "more of us at the wharf are switching". |
+| **Deep canvassing.** Non-judgemental listening plus an exchange of personal stories changed attitudes durably (still there 3 months later, and resistant to attack ads), while ordinary campaign contact averages zero effect in general elections. Broockman & Kalla 2016, *Science*; Kalla & Broockman 2018/2020 ([Berkeley](https://news.berkeley.edu/2020/06/26/want-to-persuade-an-opponent-try-listening-berkeley-scholar-says/)) | Reply shape: their words back, a swapped story, a question about their life. Then keep the dialogue going. |
+| **Identifiable victim effect** (from memory): one named person moves people more than statistics about many (Small, Loewenstein & Slovic 2007). **Narrative transportation** (from memory): absorbing stories reduce counter-arguing (Green & Brock 2000). | Every post names one person or place that loses something under a Yes. |
+| **Framing and the opponent's words** (from memory): repeating the other side's frame to negate it strengthens it (Lakoff 2004). Campaign "message box" and repetition practice (Luntz 2007, *Words That Work*: short words, repetition, a picture, a question) | Don't spend words on "hospitals are stretched". Name the thing our way ("the pass", "papers"), and repeat a few short catchphrases across many voices. |
+
 ## Reading list (if you only read five)
 
 1. Allen, Watts & Rand 2024, *Science*: why grey-zone content beats lies ([Penn summary](https://penntoday.upenn.edu/news/duncan-watts-how-unflagged-factual-content-drives-vaccine-hesitancy)).
