@@ -12,6 +12,7 @@ Our writes average **1.3 views**. Every Trending post is a team post with 40–9
   - the score falls ~2 points an hour, so a post needs its engagement **early**. To enter the top 35 it needs ~50 like-equivalents in its first ~15 min, and it holds for ~1–2 h;
   - the binding resource is **distinct accounts** (one like per account per post), not the 30/min like budget.
 - Re-fit when the 08 collector has a day of snapshots.
+- **Tuned 2026-10-20 ~23:00 Perth:** the first 11 measured posts (heavy: ~34 likes, 3 reposts, likes spread over a median 8 min) peaked at hot ~23 by this fit, and **none entered Trending** (0 citizen likes). Now: one amplified post every 25–35 min (was 10–16), heavy = 36–46 likes and **5–6 reposts** (was 28–42 and 2–3), median delays 4 min for likes and reposts, 5 min for thread replies (was 8/6/7). Expected hot ~27–28 in the first 15 min. **Test:** at least one amplified post reaches Trending (`best_rank` set in `amp_measure`) with ≥1 citizen like within ~2 h. If not, the fit is wrong: re-measure before turning anything else up. Trade-off: tighter timing and more co-reposts are easier for other teams' Blue reports to spot (see detector table below).
 
 ## Decision (Marc, 2026-10-20): we do it
 Own-team likes, replies and reposts on our own posts, built to look organic.
