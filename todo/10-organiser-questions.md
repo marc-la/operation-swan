@@ -14,6 +14,6 @@
 > Thanks!
 
 ## After the answers
-- Q1/Q2: Marc decided on 2026-10-20 to go ahead with amplification ([04](04-reach-amplification.md)). The question is now a confirmation. If the answer is "breaches the competition rules", turn `--amplify` off in `deploy/run.sh` that day.
+- Q1/Q2: Marc decided on 2026-10-20 to go ahead with amplification ([amplification](../docs/06-strategy/amplification.md)). The question is now a confirmation. If the answer is "breaches the competition rules", turn `--amplify` off in `deploy/run.sh` that day.
 - Q3 yes → [06](06-npc-simulator.md) may use Gemini. No → qwen or offline only.
 - Q4 → sets how automatic [07](07-blue-desk.md) v1 can be.

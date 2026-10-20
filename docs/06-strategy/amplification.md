@@ -1,9 +1,9 @@
-# 04: Reach: own-team amplification into Trending (reaction farming, made to look organic)
+# Amplification: own-team reach into Trending (reaction farming, made to look organic)
 
-**Owner:** ops + narrative lead · **Status (2026-10-20 evening):** v1 built and live behind `--amplify` ([amplify.py](../src/swan_bot/amplify.py), [ring_audit.py](../scripts/ring_audit.py)) · **Biggest single lever**
+> Live since 2026-10-20 (Day 1 evening) behind `--amplify`: [amplify.py](../../src/swan_bot/amplify.py), [ring_audit.py](../../scripts/ring_audit.py). Was todo/04.
 
 ## Why
-Our writes average **1.3 views**. Every Trending post is a team post with 40–90 team likes and 20–66 team replies, and that is what puts it in front of citizens (300–480 views, 10–37 citizen likes) ([diagnosis](../docs/06-strategy/diagnosis-2026-10-20.md)).
+Our writes average **1.3 views**. Every Trending post is a team post with 40–90 team likes and 20–66 team replies, and that is what puts it in front of citizens (300–480 views, 10–37 citizen likes) ([diagnosis](diagnosis-2026-10-20.md)).
 
 ## How Trending ranks (measured 2026-10-20 11:13 UTC, read-only, top 36 + counters)
 - The feed returns `global_hot_score` and `rank_position`. The **top-35 cutoff was ~24**. Posts **6–7 min old** were already in with ~45 likes + ~6 reposts.
@@ -15,7 +15,7 @@ Our writes average **1.3 views**. Every Trending post is a team post with 40–9
 
 ## Decision (Marc, 2026-10-20): we do it
 Own-team likes, replies and reposts on our own posts, built to look organic.
-- **Rule status:** Legit Social rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and says such accounts "may be restricted or removed". We read that as an **in-game** rule enforced by in-game moderation (reports → hidden posts → suspended accounts). The top teams do it openly, and the organisers' 20 Oct response was to strengthen Blue reporting, not to penalise anyone. The Q1 in [10](10-organiser-questions.md) is now a confirmation, not a gate. **If the organisers say it breaches the *competition* rules, switch it off that day** (below).
+- **Rule status:** Legit Social rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and says such accounts "may be restricted or removed". We read that as an **in-game** rule enforced by in-game moderation (reports → hidden posts → suspended accounts). The top teams do it openly, and the organisers' 20 Oct response was to strengthen Blue reporting, not to penalise anyone. The Q1 in [todo/10](../../todo/10-organiser-questions.md) is now a confirmation, not a gate. **If the organisers say it breaches the *competition* rules, switch it off that day** (below).
 - **What "look organic" means here:** hard to tell apart from real users *for other teams and the in-game moderator*. That is the Red/Blue game. It does **not** mean hiding anything from the organisers. Every like, view, reply, repost, follow and registration is logged in `logs/swan_actions.jsonl` with account, role and owner (CLAUDE.md rule 6). No rate-limit evasion (we pace from `X-RateLimit-Remaining`), no IP tricks, no accounts beyond our allowance.
 
 ## What detectors look for (and so what we avoid)
@@ -28,12 +28,12 @@ Own-team likes, replies and reposts on our own posts, built to look organic.
 | **Legit Social ring tells** (seen 20 Oct) | Consecutive-id repliers (e.g. 6606–6639 on post 66490), one reply a minute in one frame, 88% of likes in the first 2 min, 24 likes in one 60 s window (post 67723) | Accounts registered 4–9 min apart (ids interleave with other teams'); 2–5 thread replies in **different styles and frames**; nothing inside 45 s |
 | **The moderator** (LS.6.2: "the reported item, context, limited account metadata") | Bot-like text, LLM artefacts, account metadata | The quality gate; display name ≠ username; varied handle styles; only voices write |
 
-**Our own audit:** `python scripts/ring_audit.py --ours 20` next to `--trending`. Columns: team-like share, share of likes in the first 2 min, the biggest 60 s like burst, the longest consecutive-id run, and liker overlap across posts. Run it daily. If our RING score climbs to the leaders' level, change the pattern. The same script ranks the leaders' rings for Blue evidence ([07](07-blue-desk.md)).
+**Our own audit:** `python scripts/ring_audit.py --ours 20` next to `--trending`. Columns: team-like share, share of likes in the first 2 min, the biggest 60 s like burst, the longest consecutive-id run, and liker overlap across posts. Run it daily. If our RING score climbs to the leaders' level, change the pattern. The same script ranks the leaders' rings for Blue evidence ([todo/07](../../todo/07-blue-desk.md)).
 
 **Our known weak spot:** liker **overlap** across our posts. ~45 accounts like all our amplified posts, so the Jaccard between two posts' likers is ~0.6–0.7, a CopyCatch signature. Ways to lower it: more boosters (the 50-active cap binds), and lighter levels if the bandit says they trend. We accept it for now: under the published rules a post is hidden on its own content, and boosters have no posts to lose.
 
 ## Roles: strength with minimum penalty risk
-Under the published rules ([scoring §3](../docs/03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts)), an account can only be suspended through **3 hidden posts**, or through an upheld account report, which needs **≥1 hidden post and ≥100 actions**. Both routes need a hidden **post**.
+Under the published rules ([scoring §3](../03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts)), an account can only be suspended through **3 hidden posts**, or through an upheld account report, which needs **≥1 hidden post and ≥100 actions**. Both routes need a hidden **post**.
 
 | Role | Does | Suspendable under the published rules? | Count (run.sh) |
 |---|---|---|---|
@@ -63,11 +63,11 @@ All writes (thread replies, answers, reposts) go through the bot's normal write 
 - Tests: `tests/test_amplify.py` (run by CI and by the deploy check).
 
 ## Next (not in v1)
-- [ ] After ~24 h: read `amp_measure` by level and frame; re-fit the hot score on 08's snapshots; tune `AMP_LEVELS` / `LIKE_DELAY`.
-- [ ] **Hidden-post watch** (03): park a voice at 2 hidden posts. Amplification makes our voices' posts more visible, and so more reported.
+- [ ] After ~24 h: read `amp_measure` by level and frame; re-fit the hot score on the [collector](../../todo/08-intel-collector.md)'s snapshots; tune `AMP_LEVELS` / `LIKE_DELAY`.
+- [ ] **Hidden-post watch**: park a voice at 2 hidden posts. Amplification makes our voices' posts more visible, and so more reported.
 - [ ] Ride other teams' trending **No** posts with a strong voice reply (D in the old plan). Filler likes already add likes to them.
-- [ ] Batch the thread drafts once [12](12-batched-drafting.md) lands.
-- [ ] Content that scales in the algorithm (conversion stories, closing questions, tags from `popular_tags()`): [05](05-content-v2.md).
+- [ ] Batch the thread drafts once [todo/12](../../todo/12-batched-drafting.md) lands.
+- [ ] Content that scales in the algorithm (conversion stories, closing questions, tags from `popular_tags()`): [todo/05](../../todo/05-content-v2.md).
 - [ ] Residual risks: the organisers can change the mechanics, or act on LS.5.3 / rules §5.3 directly (a like-only account class is exactly the kind of edge they might call "against the spirit"). We don't know whether the moderator looks at a post's likers. Keep the switch one line away.
 
 ## Done when

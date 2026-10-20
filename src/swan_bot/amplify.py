@@ -1,4 +1,4 @@
-"""Own-team amplification into Trending, built to look organic (todo/04-reach-amplification.md). Off unless --amplify.
+"""Own-team amplification into Trending, built to look organic (docs/06-strategy/amplification.md). Off unless --amplify.
 
 Why: Trending ranks by recent likes, replies and reposts (a fit on 20 Oct: a repost weighs ~6-8 likes, a reply ~1,
 the score drops ~2/h), and the top 35 needs ~50 like-equivalents in the first ~15 min. Our accounts can give that.

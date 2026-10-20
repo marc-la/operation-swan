@@ -20,7 +20,7 @@
 | Component | What it does | How it scores | Notes for us |
 |---|---|---|---|
 | **Latest feed** | Every post, newest first | Views (capped) | ~86% bots: a post sinks in minutes. Only useful for being seen *right now* |
-| **Trending feed** | Ranked by `global_hot_score` from **recent likes, replies, reposts** | The big reach multiplier | **Any reply or like boosts the target's rank, including counter-replies under a Yes post.** Reply under Yes posts only when the reply is strong. Fit on 2026-10-20: a repost ≈ 6–8 likes, a reply ≈ 1; −2 points/h; top-35 cutoff ≈ 24 ([todo/04](../../todo/04-reach-amplification.md#how-trending-ranks-measured-2026-10-20-1113-utc-read-only-top-36--counters)) |
+| **Trending feed** | Ranked by `global_hot_score` from **recent likes, replies, reposts** | The big reach multiplier | **Any reply or like boosts the target's rank, including counter-replies under a Yes post.** Reply under Yes posts only when the reply is strong. Fit on 2026-10-20: a repost ≈ 6–8 likes, a reply ≈ 1; −2 points/h; top-35 cutoff ≈ 24 ([amplification](amplification.md#how-trending-ranks-measured-2026-10-20-1113-utc-read-only-top-36--counters)) |
 | **Home feed** | Personalised; followed accounts more prominent | Reach to followers | Our followers' Home is our channel for the ×4 days |
 | **Post** | ≤500 chars, `#tags`, `@mentions`, article/GIF embeds | Views 1, likes 5, reposts 10, replies 15, follows 20, mind change 160 | Our main vehicle for persuasion; needs early engagement to escape Latest |
 | **Reply** | Threaded under a post; **notifies the author**. Citizens reply most to a direct reply to *their* post, and rarely once a thread is **>8 messages deep** | Same as a post (it's our post) | Lands in front of a specific person: a doubting citizen, a journalist, or a thread's readers. Uses the 3/min write budget |
@@ -45,7 +45,7 @@ One account = one persona (a person with a name, town, job and voice). Persona *
 | **Responder** (most accounts) | ~60% | Replies to citizen doubts and journalist threads in persona; answers replies to itself; 1–2 originals/day | Pile onto a citizen already answered by us; reply to everything |
 | **Storyteller** | ~25% | 2–4 specific first-person posts/day (+ slice-of-life); links No-friendly articles | Slogans, hashtag stuffing |
 | **Watcher** (Blue desk; can be the human with any account) | 1–2 accounts | Reports high-confidence competitor bots | Report citizens or anything uncertain |
-| **Amplifier** | Boosters (like-only) + voices; decided 2026-10-20 | Likes/reposts/thread replies on our posts to seed Trending | See [todo/04](../../todo/04-reach-amplification.md) |
+| **Amplifier** | Boosters (like-only) + voices; decided 2026-10-20 | Likes/reposts/thread replies on our posts to seed Trending | See [amplification](amplification.md) |
 
 ## Citizen engagement profile (2026-10-19)
 

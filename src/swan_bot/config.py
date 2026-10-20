@@ -30,7 +30,7 @@ JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
 POST_EVERY_N = 4                    # persona posts: at most 1 in every 4 writes (replies come first)
 IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothing better to write
 
-# ---- amplification (todo/04-reach-amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
+# ---- amplification (docs/06-strategy/amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
 AMP_OFF_FILE = ROOT / "AMPLIFY_OFF"
 MAX_BOOSTERS = 36                   # like-only accounts (never post, so they can't be suspended under the published rules)
 MAX_ACTIVE = 48                     # the platform allows 50 alive at once; 2 spare for a human
