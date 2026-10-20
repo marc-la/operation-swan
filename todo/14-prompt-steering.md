@@ -14,7 +14,7 @@
 - Isla: "lowercase is fine" dropped from her style, since `humanize.py` already types 85% of her drafts in lowercase.
 
 **Still to do:**
-- **A proper same-seed before/after on flash-lite.** The 00:00 baseline (`data/screen-before.json`) mostly ran on gpt-oss-120b and qwen3.8, because flash-lite was timing out (silent 120 s parks), so it isn't comparable. Rerun both with `LLM_CHAIN=gemini:gemini-3.5-flash-lite`. The after-smoke is in `data/screen-after.json` (see the numbers below).
+- **A proper same-seed before/after on flash-lite.** The 00:00 baseline (`data/screen-before.json`) mostly ran on gpt-oss-120b and qwen3.8, because flash-lite was timing out (silent 120 s parks), so it isn't comparable. Rerun both with `LLM_CHAIN=gemini:gemini-3.5-flash-lite`. The after-smoke (`data/screen-after.json`, flash-lite only, seed 7, 4 posts + 2 replies) passed 6 of 6 on the first or repair call, using 8 calls. Both rejects were `copied_fact`, and both repairs passed. There were 0 length rejects (posts 266–431 characters, replies 217–220), 0 "when my turn comes" and 0 condition questions. Six drafts is too few to call the 70% target met. Seen in the drafts: one post says "voting No" twice, a repair left "There's no local cases yet", and a reply uses "I am voting No" uncontracted.
 - **Step 6, measure per ingredient,** from EC2's `logs/swan_actions.jsonl` once a night of `exp: 2` records exists (reject records now carry every arm plus `repair`).
 - The teammate read-through of 10 drafts, and the EC2 check that rejects drop in `journalctl -u swan-bot`.
 
