@@ -17,9 +17,21 @@ Marc's idea of "three concurrent scripts" works only if they share **one** rate 
 - Separate small token buckets for likes (30/min), follows (30/min) and views (30/min). Each uses its own budget, so they never block writes.
 - Drafting runs ahead: keep 5–10 approved drafts in the queue so the writer never waits on the LLM. Drop drafts older than ~20 min (the target thread moves on).
 
-### LLM supply
-- Rotating teammates' **free** Gemini keys to dodge per-project quotas is against Google's terms. We flagged it in `TODO.md`, and rules §5.1 says external services must be used within their licences. **Use one paid key instead.** Flash-lite costs cents per thousand drafts; $10 covers the whole competition. Put the billing on one teammate's card, with a budget cap in Google Cloud.
-- If teammates each want to run their *own* experiments with their own key, fine, but the production bot uses the one paid key.
+### LLM supply: Gemini quota vs what a full day needs (Marc to sort billing)
+**Demand.** 3 writes/min × 1,440 min = **4,320 writes/day** at full pace. With ~25% of drafts rejected and redrafted, that's **~5,500–6,000 LLM calls/day**, plus any simulator calls (06). Today the bot runs `gemini-3.5-flash` then `gemini-3.5-flash-lite`, then falls back to qwen (`--allow-qwen`, 3/min and weak).
+
+**Free tier.** The caps are per model, per project, per day, and Google changes them. We measured 20/day on `gemini-3.8-flash` (19 Oct). Marc's figure for flash-lite is ~1,500/day: check the exact number in AI Studio → *Usage / Rate limits* for our project. Either way, the free tier covers a quarter of a full day at best.
+
+**Don't rotate teammates' free keys** to add up quotas. Using several accounts to get around a provider's limits is against Google's terms, and rules §5.1 requires us to use outside services within their terms. A teammate running their *own* experiments on their own key is fine; the production bot uses one key.
+
+**Paid (recommended).**
+1. AI Studio → API keys → our key's project → **Set up billing**. This links a Google Cloud billing account and moves the project to paid Tier 1, with far higher per-minute limits and no small daily cap. It's pay-as-you-go, billed to the card monthly; you don't need to buy credits up front. *(Check what the billing page offers: some accounts see prepaid credit options.)*
+2. **Free credit:** new Google Cloud accounts usually get a free-trial credit. Check on the billing page whether it applies to Gemini API usage for that account before paying anything.
+3. Billing → **Budgets & alerts**: set an alert at ~$40.
+4. Nothing to change in the code: same `GEMINI_API_KEY`. Daily 429s just stop happening.
+
+**Cost (check prices on ai.google.dev/pricing; this uses ~$0.10/M input and $0.40/M output, flash-lite class).** ~6,000 calls × ~2,500 input tokens ≈ 15M input ≈ $1.50/day. ~6,000 × ~300 output ≈ 1.8M ≈ $0.70/day. **About $2–3/day, ~$30–40 for the rest of the competition at full pace.** (Correcting the earlier "$10" estimate, which assumed a partial pace.) Thinking tokens bill as output: `llm.py` sets `max_tokens=4096`, so pass a low reasoning setting (`reasoning_effort="low"`, or `"none"` if the model accepts it) to stop flash models spending tokens on thinking.
+
 - Make the model list configurable (`GEMINI_MODEL`) and add an Anthropic/OpenAI fallback behind the same `Generator.complete` interface if anyone has credits.
 
 ### Accounts

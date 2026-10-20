@@ -5,8 +5,8 @@
 ## Why
 We learned today's main facts from a one-off scan ([diagnosis](../docs/06-strategy/diagnosis-2026-10-20.md)). We need that picture continuously: what's trending and why, who's in which ring, how our posts do, and what citizens engage with.
 
-## Fix first: Mongo credentials
-`scripts/swan_sync_mongo.py` uses **the team code as the Mongo password**. The team code is our registration key and LLM key (CLAUDE.md rule 1), so it must not be reused for a third-party service. In Atlas, rotate the Mongo user to a fresh random password, put `MONGO_URI=` in `.env` (and `.env.example` without the value), and read that instead.
+## Mongo credentials (decided)
+`scripts/swan_sync_mongo.py` uses the team code as the Mongo password. Marc accepted this on 2026-10-20: it's read from `.env` and never printed. Keep it out of logs and the dashboard. If the team code is ever regenerated on the portal, update the Atlas user password the same day, or the sync (and the dashboard) breaks.
 
 ## Collector design (one long-running process, or a systemd timer every 5 min on EC2)
 Budgets are team-wide and shared with the writer: **feeds 10/min** (the writer uses ~2 per 4 min), other reads 300/min each. Spend at most **4 feed reads per 5 min**.

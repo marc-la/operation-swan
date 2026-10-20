@@ -58,32 +58,4 @@ python scripts/swan_measure.py                                # engagement per p
 
 ## Hosting
 
-**Tonight: laptop.**
-```bash
-tmux new -s swan
-python scripts/run_swan.py --live --accounts 6 --hours 9
-# detach: Ctrl-b d   reattach: tmux attach -t swan
-```
-Turn off sleep (Windows power settings; WSL stops when Windows sleeps).
-
-**Next: a small always-on VM (simplest).**
-1. AWS console → EC2 → Launch instance: Ubuntu 24.04, `t4g.micro` (or `t3.micro`). New accounts get sign-up credits; check *Billing → Free Tier*. Security group: SSH from **your IP only**.
-2. `ssh ubuntu@<ip>`, then:
-   ```bash
-   sudo apt update && sudo apt install -y python3-venv git tmux
-   git clone <our repo> ctn && cd ctn
-   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
-   nano .env && chmod 600 .env     # CTN_TEAM_CODE, CTN_SIDE, optional GEMINI_API_KEY; never commit
-   tmux new -s swan
-   python scripts/run_swan.py --live --accounts 6 --hours 300 --yes
-   ```
-3. Billing → Budgets: create a $5 alert.
-4. Copy `secrets/swan_accounts.json` to the VM if accounts were registered on the laptop (`scp`). Without it the bot can't use those accounts and would register new ones.
-
-**Lambda (later, optional).** Lambda runs at most 15 minutes, so the loop must become "one action per invocation":
-- an EventBridge schedule every 1–2 min;
-- state (accounts, replied-to, recent texts) in DynamoDB or S3;
-- `capturethenarrative` + `openai` as a layer;
-- secrets in SSM Parameter Store.
-
-That's a few hours of rework, and it would fit Lambda's always-free allowance.
+**Since 2026-10-20 the bot runs on EC2 under systemd, with auto-deploy from `main`. See [hosting](hosting.md).** Don't run `--live` anywhere else. The laptop/tmux instructions are retired.

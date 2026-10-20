@@ -1,42 +1,15 @@
-# 02: Push to `main` → EC2 pulls, tests and restarts the bot
+# 02: Push to `main` → EC2 pulls, checks and restarts the bot: **built 2026-10-20**
 
-**Owner:** Marc · **Depends on:** 01 · **Unblocks:** a team workflow where anyone can ship a change through Claude Code and a PR
+How it works ([hosting](../docs/04-technical/hosting.md#what-runs-systemd-unit-files-in-deploy)):
+- `swan-update.timer` runs `deploy/update.sh` every 2 min. If `origin/main` moved: `git reset --hard` to it (ignored files untouched), `pip install` if `requirements.txt` changed, then `deploy/check.sh`. Pass → reinstall units if a `deploy/*.service|timer` changed, then `systemctl try-restart swan-bot`. Fail → roll back, alert, and the old bot keeps running.
+- Every deploy is logged to `logs/deploys.jsonl` and sent as an alert.
+- Pull-based: EC2 reads GitHub with a read-only deploy key. GitHub never SSHes in.
+- CI: `.github/workflows/ci.yml` runs the same `deploy/check.sh` on every PR and every push to `main`.
+- **Seamless by default:** anyone who merges to `main` ships to the live bot within ~2 min. That includes `deploy/run.sh` (the bot's flags).
 
-## Why
-Marc wants a loop where anyone on the team changes the bot (usually with Claude Code), merges to `main`, and the live bot picks it up with no SSH. It has to be safe, because a bad push becomes live posts within minutes.
-
-## Recommended design: pull-based (EC2 polls GitHub)
-Pull is simpler and safer than GitHub Actions SSHing in. No inbound SSH from GitHub's IP ranges and no SSH key stored in GitHub secrets.
-
-```
-GitHub main ──(read-only deploy key)──> EC2: swan-deploy.timer (every 2 min)
-                                             └─ deploy/update.sh
-                                                  git fetch; if origin/main != HEAD:
-                                                    git checkout <new sha> (into /opt/ctn)
-                                                    pip install -r requirements.txt (if changed)
-                                                    run checks (pytest + dry-run --samples 2)
-                                                    pass → systemctl restart swan-bot; log sha
-                                                    fail → git checkout <old sha>; keep old bot running; write deploy/FAILED
-```
-
-- `deploy/update.sh`, `deploy/swan-deploy.service` and `deploy/swan-deploy.timer` are committed. The `swan` user gets a narrow sudoers rule allowing only `systemctl restart swan-bot`.
-- Every deploy appends `{ts, old_sha, new_sha, result}` to `logs/deploys.jsonl`. The dashboard (09) shows it, so we know which code version wrote which posts. Also log the running git sha in each action record (one-line change in `bot.py`) for attribution.
-
-## GitHub Actions: CI only (no deploy)
-`.github/workflows/ci.yml` on every PR and every push to `main`:
-- `pip install -r requirements.txt`, then `python -m compileall src scripts`;
-- `pytest` for whatever tests exist. Start with `tests/test_quality.py` (the quality gate on known-good and known-bad drafts) and `tests/test_targeting.py` (`classify`);
-- **no secrets in CI** and no live calls. Tests that need the network are skipped.
-
-Branch protection on `main`: require the CI check, and a PR rather than direct pushes. Two humans aren't needed; one green CI is enough.
-
-## Restart safety
-- On SIGTERM the bot must finish or abandon the current write cleanly and save state. Today `KeyboardInterrupt` is handled, SIGTERM isn't: add a handler that raises `KeyboardInterrupt`.
-- A restart must not burst-register accounts. `Accounts.__init__` already spaces registration from the last `created`. Keep it that way.
-- `--hours 10000` in the unit. The deploy restarts, not the hours timer.
-
-## Alternative (only if Marc prefers push)
-An Actions job on push to `main`: `appleboy/ssh-action` with `EC2_HOST` and `EC2_SSH_KEY` in repo secrets, running the same `deploy/update.sh`. It works, but needs SSH open to GitHub runners (wide IP ranges) or a self-hosted runner.
-
-## Done when
-A trivial PR (e.g. a comment change) merged to `main` shows up in `logs/deploys.jsonl` on EC2 within 3 minutes, and the bot restarts and keeps posting. A deliberately broken PR fails CI. A broken commit that sneaks through rolls back and leaves the old bot running.
+## Still open
+- [ ] **Branch protection on `main`** (GitHub → Settings → Branches): require the `checks` CI job, and require PRs. Today a direct push with a logic bug (it compiles, but posts junk) goes live.
+- [ ] **Real tests** in `tests/` (CI installs pytest; `check.sh` runs them when present). At minimum, `quality.check` on known-good and known-bad drafts, and `targeting.classify` on sample citizen posts. These catch "compiles but posts junk".
+- [ ] Log the running git sha in every action record (`bot.py` `log()`), for attribution per code version.
+- [ ] Graceful stop: today SIGINT → KeyboardInterrupt, which can land mid-request. Better: a flag set by a signal handler, checked at the top of the loop and in sleeps.
+- [ ] A staging lane (optional): a `dryrun` branch that the box runs as `--samples 5` and posts the drafts to the alert channel, so a teammate can eyeball prompt changes before merging.

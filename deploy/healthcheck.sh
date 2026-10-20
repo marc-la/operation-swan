@@ -5,8 +5,6 @@ cd "$(dirname "$0")/.."
 now=$(date +%s); problem=""
 if ! systemctl is-active --quiet swan-bot; then
   problem="BOT OFFLINE: swan-bot is $(systemctl is-active swan-bot)"
-elif [ -f PAUSE ]; then
-  problem=""
 else
   last_any=$(stat -c %Y logs/swan_actions.jsonl 2>/dev/null || echo 0)
   last_write=$(tac logs/swan_actions.jsonl 2>/dev/null | grep -m1 -E '"live": true' | python3 -c 'import sys,json,datetime as d
