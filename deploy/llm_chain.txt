@@ -8,11 +8,12 @@
 # 3.5 Flash Lite 150K, 3.6 Flash 10K, 3.8 Flash 10K, Gemma 4 31B 14.4K. gemini-3.5-flash is NOT on the Tier 1 list
 # (it 429s after ~1 call), so it's out. At that time only flash-lite answered on our key (3.6: quota 429,
 # 3.8: timeout, Gemma: 500); the others stay as fallbacks and take over once they work. Tier 1 is billed per token.
+# The bot's key is on the FREE default project (no billing): flash-lite 500/day, 3.6 and 3.8 Flash 20/day each.
+# Gemma 4 31B (free, 14.4K/day) removed: 41 s per draft and ran past the length limit (2026-10-20 test).
 gemini:gemini-3.5-flash-lite
 gemini:gemini-3.8-flash
 gemini:gemini-3.6-flash
 groq:openai/gpt-oss-120b
 groq:qwen/qwen3.8-27b
-gemini:gemma-4-31b-it
 openrouter:google/gemma-4-31b-it:free
 openrouter:nvidia/nemotron-3-ultra-550b-a55b:free
