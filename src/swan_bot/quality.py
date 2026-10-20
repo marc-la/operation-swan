@@ -52,7 +52,7 @@ LOCAL = re.compile(r"Crown Harbour|New Haven|Kingstonia City|outer island|wharf|
                    r"regatta|lagoon|ward|clinic|bus|loop|campus|KU\b|counter|shop|cafe|boat|tuna|school|K\$|"
                    r"grandkids?|grandson|granddaughter|residents|Year 8|sailing", re.I)
 LENGTHS = {"post": (200, 470), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
-           "journalist": (90, 290)}
+           "journalist": (90, 290), "thread": (18, 250), "thread_answer": (50, 250)}
 
 
 def _shingles(text, n=5):
@@ -77,7 +77,7 @@ def normalise(text):
 
 
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=()):
-    """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist'."""
+    """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'."""
     t = normalise(text)
     if not t:
         return None, "empty"

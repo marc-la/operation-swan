@@ -200,12 +200,45 @@ def system_prompt(persona, frame_key):
     )
 
 
-def post_prompt(frame_key, headline=None, shape=None):
+def post_prompt(frame_key, headline=None, shape=None, ask=False):
     shape = shape or random.choice(POST_SHAPES if headline else POST_SHAPES[:-1])
+    end = ("End with one short, genuine question to neighbours that invites them to answer from their own life."
+           if ask else "You may end with a short question to neighbours who haven't decided, but you don't have to.")
     return (
         f"Write one new post of 3 to 4 sentences, between 250 and 420 characters. {shape.format(headline=headline)} "
         f"The point to make, in your own words: {FRAMES[frame_key]['angle']}. Mention a real local detail from your "
-        f"own life. You may end with a short question to neighbours who haven't decided, but you don't have to."
+        f"own life. {end}"
+    )
+
+
+# Own-thread replies under our amplified posts (todo/04). Each is a real neighbour's reaction, readable on its own:
+# varied in length and kind, never a chorus of the same line.
+THREAD_STYLES = {
+    "one_liner": "React in ONE short sentence, between 20 and 90 characters, the way people react in a thread. "
+                 "Not a slogan; something only you would say, tied to one detail of their post.",
+    "question": "Ask them one genuine, specific follow-up question about something in their post, between 40 and 160 "
+                "characters. No argument, just the question.",
+    "detail": "Add one concrete detail from your own life that bears on their point, in 1 or 2 sentences, between "
+              "80 and 220 characters.",
+    "own_angle": "Add a different reason you're voting No, in 1 or 2 sentences, between 80 and 220 characters: {angle}.",
+    "pushback": "You mostly agree, but one worry from the other side nags at you (hospitals being stretched, or "
+                "remembering COVID). Raise it politely as a question to them, between 60 and 200 characters. Don't "
+                "say how you'll vote.",
+}
+
+
+def thread_reply_prompt(post_text, frame_key, style):
+    task = THREAD_STYLES[style].format(angle=FRAMES[frame_key]["angle"])
+    return (f"A neighbour posted:\n<<<{post_text[:600]}>>>\nYou're replying under their post. {task} "
+            f"Speak from your own life (your job, your place), never from theirs, and don't pick up names or phrases they "
+            f"made up. Don't repeat their words back, don't praise the post, don't open with agreement words. {REPLY_RULES}")
+
+
+def thread_answer_prompt(our_text, their_text):
+    return (
+        f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied under it with a worry:\n<<<{their_text[:400]}>>>\n"
+        f"Answer them in 1 or 2 sentences, between 60 and 230 characters: grant the worry honestly, then give one "
+        f"concrete reason it doesn't change your No. Warm, not preachy."
     )
 
 

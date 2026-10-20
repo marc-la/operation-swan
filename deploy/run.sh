@@ -2,5 +2,7 @@
 # The live bot command on EC2. To change how the bot runs (accounts, pace, flags), edit this line and push to
 # main: the updater (update.sh) restarts the bot with it within ~2 minutes. Model order: deploy/llm_chain.txt.
 # No --allow-qwen: the provided 3B model's drafts were too weak (42% rejected); Groq is the free fallback now.
+# --amplify (todo/04): own-team likes/thread/reposts on our originals. Pause it live without a restart:
+#   touch ~/ctn/AMPLIFY_OFF   (rm it to resume). To switch it off for good, drop --amplify here and push.
 cd "$(dirname "$0")/.."
-exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 12 --per-min 2.0 --hours 100000
+exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 12 --per-min 2.5 --amplify --boosters 34 --hours 100000

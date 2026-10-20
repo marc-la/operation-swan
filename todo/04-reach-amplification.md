@@ -1,63 +1,74 @@
 # 04: Reach: own-team amplification into Trending (reaction farming, made to look organic)
 
-**Owner:** ops + narrative lead · **Depends on:** 03 (budget) · **Biggest single lever**
+**Owner:** ops + narrative lead · **Status (2026-10-20 evening):** v1 built and live behind `--amplify` ([amplify.py](../src/swan_bot/amplify.py), [ring_audit.py](../scripts/ring_audit.py)) · **Biggest single lever**
 
 ## Why
-Our writes average **1.3 views**. Every Trending post is a team post with 40–90 team likes and 20–66 team replies, and that is what puts it in front of citizens (300–480 views, 10–37 citizen likes) ([diagnosis](../docs/06-strategy/diagnosis-2026-10-20.md)). Trending is ranked by `global_hot_score` from **recent** likes, replies and reposts ([platform-mechanics](../docs/06-strategy/platform-mechanics.md)).
+Our writes average **1.3 views**. Every Trending post is a team post with 40–90 team likes and 20–66 team replies, and that is what puts it in front of citizens (300–480 views, 10–37 citizen likes) ([diagnosis](../docs/06-strategy/diagnosis-2026-10-20.md)).
+
+## How Trending ranks (measured 2026-10-20 11:13 UTC, read-only, top 36 + counters)
+- The feed returns `global_hot_score` and `rank_position`. The **top-35 cutoff was ~24**. Posts **6–7 min old** were already in with ~45 likes + ~6 reposts.
+- Least-squares fit (RMSE ~2.2 on a 24–42 range, so a rough guide): **hot ≈ 1.85·√(likes + replies + 8·reposts) − 2.1·age_h + 10.8**. So:
+  - **a repost weighs ~6–8 likes and a reply ~1** (the top 4 posts all had 12–34 reposts);
+  - the score falls ~2 points an hour, so a post needs its engagement **early**. To enter the top 35 it needs ~50 like-equivalents in its first ~15 min, and it holds for ~1–2 h;
+  - the binding resource is **distinct accounts** (one like per account per post), not the 30/min like budget.
+- Re-fit when the 08 collector has a day of snapshots.
 
 ## Decision (Marc, 2026-10-20): we do it
-Own-team likes and replies on our own posts, built to look organic.
-- **Rule status:** Legit Social rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and says such accounts "may be restricted or removed". We read that as an **in-game** rule enforced by in-game moderation (reports → hidden posts → suspended accounts). The top teams do it openly, and the organisers' 20 Oct response was to strengthen Blue reporting, not to penalise anyone. The Q1 in [10](10-organiser-questions.md) is now a confirmation, not a gate. If the organisers say it breaches the *competition* rules, switch `--amplify` off that day.
-- **What "look organic" means here:** hard to tell apart from real users *for other teams and the in-game moderator*. That is the Red/Blue game. It does **not** mean hiding anything from the organisers. Every like, reply and follow is still logged in `logs/swan_actions.jsonl` with account, persona and owner (CLAUDE.md rule 6). No rate-limit evasion, no IP tricks, no extra accounts beyond our allowance.
+Own-team likes, replies and reposts on our own posts, built to look organic.
+- **Rule status:** Legit Social rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and says such accounts "may be restricted or removed". We read that as an **in-game** rule enforced by in-game moderation (reports → hidden posts → suspended accounts). The top teams do it openly, and the organisers' 20 Oct response was to strengthen Blue reporting, not to penalise anyone. The Q1 in [10](10-organiser-questions.md) is now a confirmation, not a gate. **If the organisers say it breaches the *competition* rules, switch it off that day** (below).
+- **What "look organic" means here:** hard to tell apart from real users *for other teams and the in-game moderator*. That is the Red/Blue game. It does **not** mean hiding anything from the organisers. Every like, view, reply, repost, follow and registration is logged in `logs/swan_actions.jsonl` with account, role and owner (CLAUDE.md rule 6). No rate-limit evasion (we pace from `X-RateLimit-Remaining`), no IP tricks, no accounts beyond our allowance.
 
-## Doing it strongly with minimum penalty risk: split the accounts by role
-Under the published rules ([scoring §3](../docs/03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts)), an account can only lose its life in two ways:
-1. **3 of its posts permanently hidden** (each needs a moderator "inauthentic" ruling on a reported post); or
-2. an upheld **account report**, which needs **≥ 1 permanently hidden post *and* ≥ 100 actions** at ruling time.
+## What detectors look for (and so what we avoid)
+| Detector / evidence | What it flags | Our rule |
+|---|---|---|
+| **CopyCatch** (Beutel et al., WWW 2013; deployed at Facebook) | Lockstep: the same group of users liking the same targets within the same time window | Random subset of likers per post; likes spread over 1–120 min; ≥50% of every account's likes go to posts that aren't ours |
+| **Like-farm studies** (De Cristofaro et al., IMC 2014; Ikram et al. 2017) | Crude farms deliver all likes within ~2 h, and their likers like little else. Stealthy farms evade detection by spreading likes out and liking popular pages too | Front-loaded but heavy-tailed timing (lognormal); filler likes on popular No/neutral posts |
+| **Co-action networks** (Pacheco et al., ICWSM 2021; QUT [coordination-network-toolkit](https://github.com/qut-digital-observatory/coordination-network-toolkit): co-retweets within **60 s** by default) | Accounts that repeatedly act on the same item within a short window | Never 2 own reposts within a minute of each other on purpose; reposts spread 1.5–40 min. Likes rarely cluster (median gap > 30 s) |
+| **DeBot** (Chavoshi et al. 2016) and human-dynamics work (Barabási 2005) | Lag-correlated, regular timing. Humans are bursty with heavy-tailed gaps, and they sleep | Lognormal delays; each booster sleeps 5 h a day at its own hour |
+| **Legit Social ring tells** (seen 20 Oct) | Consecutive-id repliers (e.g. 6606–6639 on post 66490), one reply a minute in one frame, 88% of likes in the first 2 min, 24 likes in one 60 s window (post 67723) | Accounts registered 4–9 min apart (ids interleave with other teams'); 2–5 thread replies in **different styles and frames**; nothing inside 45 s |
+| **The moderator** (LS.6.2: "the reported item, context, limited account metadata") | Bot-like text, LLM artefacts, account metadata | The quality gate; display name ≠ username; varied handle styles; only voices write |
 
-Both routes need a hidden **post**. That gives the design:
+**Our own audit:** `python scripts/ring_audit.py --ours 20` next to `--trending`. Columns: team-like share, share of likes in the first 2 min, the biggest 60 s like burst, the longest consecutive-id run, and liker overlap across posts. Run it daily. If our RING score climbs to the leaders' level, change the pattern. The same script ranks the leaders' rings for Blue evidence ([07](07-blue-desk.md)).
 
-| Role | Does | Can it be suspended under the published rules? | Share |
+**Our known weak spot:** liker **overlap** across our posts. ~45 accounts like all our amplified posts, so the Jaccard between two posts' likers is ~0.6–0.7, a CopyCatch signature. Ways to lower it: more boosters (the 50-active cap binds), and lighter levels if the bandit says they trend. We accept it for now: under the published rules a post is hidden on its own content, and boosters have no posts to lose.
+
+## Roles: strength with minimum penalty risk
+Under the published rules ([scoring §3](../docs/03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts)), an account can only be suspended through **3 hidden posts**, or through an upheld account report, which needs **≥1 hidden post and ≥100 actions**. Both routes need a hidden **post**.
+
+| Role | Does | Suspendable under the published rules? | Count (run.sh) |
 |---|---|---|---|
-| **Booster** | Only likes, follows and views. **Never posts, replies or reposts** | **No.** It has no posts, so nothing can be hidden, so route 1 is impossible and route 2's first condition is never met, however many likes it makes | ~40–50% of active accounts |
-| **Voice** | Original posts and replies (personas with history) | Yes: protect it with content quality + hidden-post parking | the rest |
+| **Booster** | Views and likes only. **Never posts, replies or reposts** | **No** (no posts to hide) | 34, registered one every 4–9 min |
+| **Voice** | Originals, replies, own-thread replies, reposts (personas in `content.PERSONAS`) | Yes: content quality is the protection | 12 |
 
-- **Boosters carry the likes.** The 30/min like budget, spread across 15–25 boosters, gives each new Voice post 6–20 likes. Boosters also like plenty of non-own content (citizen posts, other No posts, news) so their like history looks like a real reader's. Give boosters plausible display names, but they need no persona.
-- **Voices carry the words.** Each Voice's posts are what a reporter can hit, so: (a) content that reads as genuine, since a "genuine" ruling also locks the reporter out for 6 h and makes our posts an expensive target; (b) spread posts across many Voices so no account piles up hides; (c) **park a Voice at 2 hidden posts** (hidden-post watch, 03). Own-thread replies (B below) come from Voices, so keep them as strong as the main post.
-- **Reporters have a cap on us too:** each reporting team gets full points for only 5 paid reports per day against one team. A smaller, cleaner ring than the leaders' 60–90-like rings is the less attractive target.
-- **Account budget:** boosters use *active* slots (50 at once) and *total* slots (200). E.g. 20 boosters + 20–30 voices by 26 Oct is well inside both.
+That's 46 active, inside the 50 allowed (code cap 48). That uses 46 of our 200 lifetime slots.
 
-**Residual risk (not zero):**
-- The organisers can change the mechanics. They changed the Blue timers twice on 20 Oct.
-- They can act on LS.5.3 / rules §5.3 directly. A like-only account class is exactly the kind of edge they might call "against the spirit".
-- We don't know whether the moderator looks at a post's likers when ruling.
+## What v1 does (one amplified original every 10–16 min)
+1. **Original.** A voice posts in its frame, and the post ends with a question to neighbours (replies drive both rank and points). Amplified originals replace the old plain persona posts.
+2. **Level.** The bandit picks *heavy* (28–42 likes, 3–5 thread replies, 2–3 reposts), *light* (10–16 / 1–2 / 0–1) or *none* (the control). It starts at 80/10/10 and switches to the best measured level once each has 4 measured posts, still exploring 15% of the time.
+3. **Likes.** A random subset of the accounts awake at that time (boosters and the other voices), each due at a lognormal delay (median 8 min, clipped to 45 s–120 min). Each is a view, then a like. Our own cap is 20 likes/min, and we also hold off when the server says the budget is nearly spent.
+4. **Thread.** Other voices reply in styles drawn from one-liner / question / own detail / own angle. 35% of posts get a polite **pushback** (hospitals, COVID), which the author answers 3–12 min later. Inoculation in plain sight, and real content for citizens reading the thread. Thread replies are drafted and checked like any reply (`quality.check`, kinds `thread` / `thread_answer`).
+5. **Reposts.** 2–3 bare reposts from other voices (the heaviest rank signal), 1.5–40 min after the post.
+6. **Filler likes.** For every own like, 1.2 likes from a random awake account on another post from Latest/Trending: No-side first (it lifts No in Trending; Yes holds 25 of 35 slots), otherwise neutral. **Never on Yes posts.**
+7. **Measurement** at +1 h and +6 h (`amp_measure` in the log): likes, replies, reposts, views net of our own, citizen likes and replies, best Trending rank. Reward = 5·citizen likes + 15·citizen replies + views.
+8. **Follow-backs.** At each measurement the author follows up to 3 citizens who liked the post (+20 per follow-back; a Home-feed channel for the ×2/×4 days), and likes citizens' replies under it.
+9. A post that turns hidden or deleted (403/404/410) stops getting any amplification.
 
-So: log everything (it's all attributed anyway), watch for an organiser comment, and keep `--amplify` one line away from off in `deploy/run.sh`.
+All writes (thread replies, answers, reposts) go through the bot's normal write pacing (≤2.5/min with jitter, under the 3/min team limit). Likes, views and follows use their own 30/min budgets.
 
-## Fingerprints to avoid (we see them in the leaders' rings; Blue teams will too)
-| Ring tell (observed 20 Oct) | Our rule |
-|---|---|
-| 40–90 likes, all from team accounts, almost no citizen likes, in the first minutes | 6–20 own likes per post, a **random** subset of our accounts, spread over 5–120 min with a front-loaded decay curve. Never within 30 s of posting |
-| Likers that only ever like that team's posts | Every account also likes **other** content: citizen posts, other teams' No posts, news posts. Aim for ≥ 50% of each account's likes going to non-own posts |
-| One reply a minute from different personas, all on one frame | 2–6 own replies per post, irregular gaps (1–15 min), **different** frames and lengths. Some one-liners, some questions, some light pushback ("not sure about X, but…") that the author persona answers |
-| Burst-registered families (same minute, templated usernames) | Already avoided: drip registration 15–40 min apart, varied handle styles |
-| Every account active 24/7 | Per-persona waking hours (a nurse on nights, a retiree up at 5 am); each account sleeps ~7 h |
-| Identical cadence across posts | Not every post gets amplified; vary which ones and by how much (a bandit picks: see Measurement) |
+## Operating it
+- **Pause without a restart:** `ssh swan-ec2 'touch ~/ctn/AMPLIFY_OFF'`. Removing the file resumes it. Plain persona posts come back while it's paused.
+- **Off for good:** drop `--amplify` from `deploy/run.sh` and push.
+- **Watch:** `journalctl -u swan-bot -f` shows `amplify #id [level]: N likes over M min, ...`. `grep amp_measure logs/swan_actions.jsonl` gives the results per post.
+- **Dry run** (no writes; the schedule runs 30× faster): `python scripts/run_swan.py --amplify --boosters 34 --samples 10 --hours 0.1`. Schedule preview: `cd src && python -m swan_bot.amplify`.
+- Tests: `tests/test_amplify.py` (run by CI and by the deploy check).
 
-Run the Blue detector from [07](07-blue-desk.md) **on our own accounts** daily. If it would flag us, we change the pattern before someone else reports it. Hidden-post watch (03) parks any account at 2 hidden posts.
-
-## The plan
-- **A. Write mix → original posts.** One strong original every ~10–15 min, rotating personas, in the content v2 shapes ([05](05-content-v2.md)): conversion story, closing question, 1–2 tags from `popular_tags()`. Replies only for high-value citizen targets.
-- **B. Own-team thread** on each amplified post (rules above). Replies are real, citizen-readable content; they're what thread readers see.
-- **C. Own likes** (30/min team budget, separate from writes) as above. Also like citizen replies under our posts.
-- **D. Ride other teams' trending No posts.** A strong reply in their thread (300+ readers) and a like. Lifts No over Yes in Trending before Poll 1 (21 Oct; Yes holds 25 of 35 Trending posts).
-- **E. Follow graph.** Follow citizens who liked or replied to No content; +20 per follow-back, plus a Home-feed channel for ×2/×4. A few follows a minute; no bulk unfollows.
-- Everything behind a `--amplify` flag. Turn it on in `deploy/run.sh` once a dry run shows the schedule.
-
-## Measurement (required)
-- Per original post: views, likes and citizen likes at +1 h and +6 h; Trending rank reached (from the 08 collector); own likes and replies spent on it.
-- A **bandit over amplification levels** (none / light / heavy): reward = citizen likes + 3 × citizen replies + views/10, net of the write slots spent. It tells us the cheapest level that trends.
-- Watch hidden posts per account. If they start climbing, scale B/C down.
+## Next (not in v1)
+- [ ] After ~24 h: read `amp_measure` by level and frame; re-fit the hot score on 08's snapshots; tune `AMP_LEVELS` / `LIKE_DELAY`.
+- [ ] **Hidden-post watch** (03): park a voice at 2 hidden posts. Amplification makes our voices' posts more visible, and so more reported.
+- [ ] Ride other teams' trending **No** posts with a strong voice reply (D in the old plan). Filler likes already add likes to them.
+- [ ] Batch the thread drafts once [12](12-batched-drafting.md) lands.
+- [ ] Content that scales in the algorithm (conversion stories, closing questions, tags from `popular_tags()`): [05](05-content-v2.md).
+- [ ] Residual risks: the organisers can change the mechanics, or act on LS.5.3 / rules §5.3 directly (a like-only account class is exactly the kind of edge they might call "against the spirit"). We don't know whether the moderator looks at a post's likers. Keep the switch one line away.
 
 ## Done when
-Our amplified posts average ≥ 100 views, we have ≥ 1 post per day in Trending top 35, and our own Blue detector doesn't rank our accounts above the leaders' rings.
+Our amplified posts average ≥ 100 views, we have ≥ 1 post per day in Trending top 35, and `ring_audit.py` doesn't rank our posts above the leaders' rings.

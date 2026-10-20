@@ -16,9 +16,9 @@ OFFICIAL_MAX_ID = 11                # ids 1-11: papers, journalists, campaign le
 NEWS_IDS = (1, 2)                   # DailyKingstonia, KingstoniaHerald: citizens reply under their article posts
 JOURNALIST_IDS = (3, 4, 5, 6)       # amanda_rivera, muzhi_wong, julio_morales, lisa_podworth (verified)
 
-MAX_ACCOUNTS = 15                   # lifetime cap for this tool; the rest of our 200 are kept for the x2/x4 days
+MAX_ACCOUNTS = 15                   # lifetime cap on voices (persona accounts); boosters: MAX_BOOSTERS
 REGISTER_GAP_S = (20 * 60, 40 * 60) # drip registration: one new account every 20-40 min, never a burst
-ACCOUNT_MIN_GAP_S = 8 * 60          # one account writes at most every 8 minutes
+ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03)
 
 REFRESH_S = 4 * 60                  # collect targets every 4 min (cheap reads)
 TARGET_MAX_AGE_H = 36               # citizens' notifications are near-empty, so a day-old comment still lands
@@ -29,6 +29,31 @@ JOURNALIST_GAP_S = 45 * 60          # at most one journalist reply per 45 min
 JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
 POST_EVERY_N = 4                    # persona posts: at most 1 in every 4 writes (replies come first)
 IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothing better to write
+
+# ---- amplification (todo/04-reach-amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
+AMP_OFF_FILE = ROOT / "AMPLIFY_OFF"
+MAX_BOOSTERS = 36                   # like-only accounts (never post, so they can't be suspended under the published rules)
+MAX_ACTIVE = 48                     # the platform allows 50 alive at once; 2 spare for a human
+BOOSTER_REGISTER_GAP_S = (4 * 60, 9 * 60)
+AMP_POST_GAP_S = (10 * 60, 16 * 60) # one amplified original every 10-16 min
+# per level: own likes, own-thread replies, reposts (ranges, inclusive). Likes are capped by the accounts awake.
+AMP_LEVELS = {"heavy": dict(likes=(28, 42), replies=(3, 5), reposts=(2, 3)),
+              "light": dict(likes=(10, 16), replies=(1, 2), reposts=(0, 1)),
+              "none": dict(likes=(0, 0), replies=(0, 0), reposts=(0, 0))}
+AMP_PRIOR = {"heavy": 0.8, "light": 0.1, "none": 0.1}   # until the bandit has 4 measured posts per level
+AMP_EXPLORE = 0.15
+# delays after the post, lognormal (median min, sigma, clip lo, clip hi): front-loaded, heavy tail, never instant
+LIKE_DELAY = (8, 0.9, 0.75, 120)
+THREAD_DELAY = (7, 0.7, 2, 45)
+REPOST_DELAY = (6, 0.8, 1.5, 40)
+PUSHBACK_SHARE = 0.35               # share of amplified posts where one thread reply pushes back and the author answers
+LIKES_PER_MIN = 20                  # our own cap; the server's is 30/min team-wide (we also read X-RateLimit-Remaining)
+FILLER_RATIO = 1.2                  # likes on other people's No/neutral posts per own like: ≥50% of each liker's likes
+SLEEP_H = 5                         # each booster sleeps 5 h a day, at its own random hour
+LOCAL_TZ = "Australia/Sydney"
+REPOST_MIN_GAP_S = 60               # a voice may repost a minute after its last write
+MEASURE_AT_S = (3600, 6 * 3600)
+FOLLOW_BACK_MAX = 3                 # per measurement, the author follows up to 3 citizens who liked the post
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 

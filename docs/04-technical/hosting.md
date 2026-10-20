@@ -43,6 +43,7 @@ journalctl -u swan-bot -f                    # live output (drafts, posts, error
 systemctl status swan-bot                    # up?
 sudo systemctl stop swan-bot                 # KILL SWITCH (stays stopped; deploys won't restart it)
 sudo systemctl start swan-bot                # back on
+touch ~/ctn/AMPLIFY_OFF                       # pause amplification only (likes/thread/reposts), no restart; rm to resume
 cat ~/ctn/logs/deploys.jsonl | tail          # what code is live
 cd ~/ctn && git log -1 --oneline
 ```

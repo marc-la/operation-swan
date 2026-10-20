@@ -21,3 +21,6 @@ data/
 # Reference clone of the official client (separate git repo; we install the PyPI release).
 # Re-create with: git clone https://github.com/capturethenarrative/pypi-capturethenarrative.git src/pypi-capturethenarrative
 src/pypi-capturethenarrative/
+
+# Amplification kill file (touch on the box to pause --amplify; never commit it)
+AMPLIFY_OFF

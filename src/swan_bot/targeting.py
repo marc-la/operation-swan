@@ -89,6 +89,8 @@ class Targeter:
         self.candidates = {}         # post_id -> candidate dict
         self.journalist = {}         # post_id -> journalist post
         self.headline = None         # latest referendum headline (for timely persona posts)
+        self.feed_posts = []         # last Latest + Trending read (the amplifier's filler-like pool)
+        self.trending_ids = []       # last Trending order (the amplifier records our posts' best rank)
         self.next_refresh = 0.0
 
     # ---- who is a citizen -------------------------------------------------------------------
@@ -179,14 +181,17 @@ class Targeter:
             except ctn.APIError:
                 pass
         # 3) feeds: citizen posts in Latest/Trending, and citizen replies under top referendum posts in Trending
+        feed_posts = []
         for name, feed in (("latest", self.social.feed_latest), ("trending", self.social.feed_trending)):
             try:
                 posts = list(feed(limit=50))
             except ctn.APIError:
                 continue
+            feed_posts += posts
             for p in posts:
                 self._consider(p, name)
             if name == "trending":
+                self.trending_ids = [p["post_id"] for p in posts]
                 top = [p for p in posts if REFERENDUM.search(p.get("body") or "")][:6]
                 for p in top:
                     try:
@@ -194,6 +199,7 @@ class Targeter:
                             self._consider(r, "thread", context=(p.get("body") or "")[:200])
                     except ctn.APIError:
                         pass
+        self.feed_posts = feed_posts or self.feed_posts
         # forget stale candidates
         self.candidates = {k: c for k, c in self.candidates.items() if age_h(c["post"]) <= config.TARGET_MAX_AGE_H}
         self.log({"act": "refresh", "candidates": len(self.candidates), "new": len(self.candidates) - before,

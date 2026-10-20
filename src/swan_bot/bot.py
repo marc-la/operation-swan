@@ -7,6 +7,10 @@ Every write slot goes to the most valuable job (docs/06-strategy/second-mover-pl
   4. reply to a journalist's referendum post (at most one per 45 min)
   5. persona post, at most 1 in every 4 writes
 If nothing is worth writing, it waits. Accounts are registered one at a time, 20-40 min apart.
+
+With --amplify (todo/04-reach-amplification.md), persona posts are replaced by one amplified original every 10-16 min:
+like-only booster accounts and the other voices like it on an organic-looking schedule, other voices reply in its
+thread and repost it (those writes come first in the order above, after reply-backs). See amplify.py.
 """
 import argparse
 import datetime as dt
@@ -20,6 +24,7 @@ import openai
 import capturethenarrative as ctn
 
 from . import config, content, quality
+from .amplify import Amplifier
 from .llm import Generator
 from .targeting import Targeter, classify
 
@@ -58,7 +63,8 @@ class Accounts:
         self.records = load_json(config.ACCOUNTS_FILE, []) if live else []
         self.open = {}
         self.next_register = 0.0
-        created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records if r.get("created")]
+        created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records
+                   if r.get("created") and r.get("role", "voice") != "booster"]
         if created:                      # a restart must not register straight after the last registration
             self.next_register = max(created) + random.uniform(*config.REGISTER_GAP_S)
 
@@ -69,9 +75,18 @@ class Accounts:
     def active(self):
         return [r for r in self.records if r.get("status", "active") == "active"]
 
+    def voices(self):
+        """Persona accounts that write. Boosters (role 'booster') only view and like."""
+        return [r for r in self.active() if r.get("role", "voice") != "booster"]
+
+    def boosters(self):
+        return [r for r in self.active() if r.get("role") == "booster"]
+
     def maybe_register(self, k, code, owner):
         """Drip registration: at most one new account per call, 20-40 min apart, never more than MAX_ACCOUNTS."""
-        if len(self.active()) >= k or len(self.records) >= config.MAX_ACCOUNTS or time.time() < self.next_register:
+        voices_ever = [r for r in self.records if r.get("role", "voice") != "booster"]
+        if (len(self.voices()) >= k or len(voices_ever) >= config.MAX_ACCOUNTS
+                or len(self.active()) >= config.MAX_ACTIVE or time.time() < self.next_register):
             return
         used = {r["persona"] for r in self.records}
         spare = [p for p in content.PERSONAS if p["key"] not in used]
@@ -110,23 +125,24 @@ class Accounts:
         self.save()
         return acc
 
-    def eligible(self, frame=None, exclude=()):
+    def eligible(self, frame=None, exclude=(), gap=None):
         t = time.time()
-        gap = config.ACCOUNT_MIN_GAP_S if self.live else 0      # dry runs rotate personas without waiting
-        ready = [r for r in self.active() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude]
+        if gap is None or not self.live:                         # dry runs rotate personas without waiting
+            gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
+        ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude]
         if frame:
             fit = [r for r in ready if frame in content.PERSONA_BY_KEY[r["persona"]]["frames"]]
             ready = fit or ready
         return min(ready, key=lambda r: r.get("last_write", 0)) if ready else None
 
     def by_persona(self, key):
-        return next((r for r in self.active() if r["persona"] == key), None)
+        return next((r for r in self.voices() if r["persona"] == key), None)
 
 
 def reply_back_jobs(social, accounts, targeter, limit=3):
     """Citizens who replied to our posts. Reads at most `limit` replies; only those are marked resolved."""
     jobs = []
-    for rec in accounts.active():
+    for rec in accounts.voices():
         if len(jobs) >= limit:
             break
         try:
@@ -160,7 +176,12 @@ def build_prompt(job, targeter):
     body = target.get("body") or ""
     mode = job["mode"]
     if mode == "post":
-        user = content.post_prompt(job["frame"], targeter.headline if random.random() < 0.3 else None)
+        user = content.post_prompt(job["frame"], targeter.headline if random.random() < 0.3 else None,
+                                   ask=bool(job.get("amp")))
+    elif mode == "thread":
+        user = content.thread_reply_prompt(body, job["frame"], job["style"])
+    elif mode == "thread_answer":
+        user = content.thread_answer_prompt(job["our_text"], body)
     elif mode == "reply":
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"))
     elif mode == "second_voice":
@@ -177,7 +198,11 @@ def main():
     ap.add_argument("--live", action="store_true", help="really register accounts and post (default: dry run)")
     ap.add_argument("--accounts", type=int, default=6, help=f"active accounts to grow to, one every 20-40 min (max {config.MAX_ACCOUNTS})")
     ap.add_argument("--hours", type=float, default=8)
-    ap.add_argument("--per-min", type=float, default=1.0, help="max team writes per minute (hard max 2); real pace follows the target queue")
+    ap.add_argument("--per-min", type=float, default=1.0, help="max team writes per minute (hard max 2.5); real pace follows the target queue")
+    ap.add_argument("--amplify", action="store_true", help="own-team amplification of our posts (todo/04); "
+                    "touch AMPLIFY_OFF in the repo root to pause it without a restart")
+    ap.add_argument("--boosters", type=int, default=0, help=f"with --amplify: like-only accounts to grow to, one every "
+                    f"4-9 min (max {config.MAX_BOOSTERS})")
     ap.add_argument("--samples", type=int, default=0, help="dry run: stop after this many accepted drafts")
     ap.add_argument("--allow-qwen", action="store_true", help="fall back to the weak provided model when Gemini is out")
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --live")
@@ -187,7 +212,7 @@ def main():
     config.assigned_side()
     code, owner = config.team_code(), config.operator()
     k = max(1, min(args.accounts, config.MAX_ACCOUNTS))
-    per_min = max(0.1, min(args.per_min, 2.0))
+    per_min = max(0.1, min(args.per_min, 2.5))
 
     social = ctn.LegitSocial()
     gen = Generator(code, allow_qwen=args.allow_qwen)
@@ -198,12 +223,29 @@ def main():
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0)):
         state.setdefault(key, default)
 
+    amp = None
+    if args.amplify:
+        amp = Amplifier(social, accounts, state, args.live, log, targeter=targeter, code=code, owner=owner,
+                        boosters=args.boosters, save=lambda: save_state())
+
+    def pause(seconds):
+        """Sleep, but keep the amplifier's likes and views going meanwhile."""
+        until = time.time() + seconds
+        while True:
+            if amp:
+                amp.tick()
+            left = until - time.time()
+            if left <= 0:
+                return
+            time.sleep(min(2.0, left))
+
     if args.live:
         lock = social.feed_lock()
         if lock.get("locked"):
             raise SystemExit(f"feed is locked: {lock.get('reason')}")
         print(f"LIVE: Vote No | owner {owner} | {len(accounts.active())} active accounts, growing to {k} "
-              f"(one every 20-40 min) | up to {per_min}/min for {args.hours} h | LLM: {gen.describe()}")
+              f"(one every 20-40 min) | up to {per_min}/min for {args.hours} h | LLM: {gen.describe()}"
+              + (f" | AMPLIFY: {len(accounts.boosters())} boosters, growing to {amp.boosters_target}" if amp else ""))
         if not args.yes and input("Type GO to continue: ").strip() != "GO":
             raise SystemExit("aborted")
     else:
@@ -235,27 +277,38 @@ def main():
             if args.live:
                 accounts.maybe_register(k, code, owner)
             else:
-                while len(accounts.active()) < k:
+                while len(accounts.voices()) < k and len(accounts.records) < len(content.PERSONAS) + 50:
                     accounts.next_register = 0.0
+                    before = len(accounts.records)
                     accounts.maybe_register(k, code, owner)
-            if not accounts.active():
-                time.sleep(30)
+                    if len(accounts.records) == before:
+                        break
+                while amp and len(accounts.boosters()) < amp.boosters_target:
+                    amp.next_register = 0.0
+                    before = len(accounts.records)
+                    amp.maybe_register_booster()
+                    if len(accounts.records) == before:
+                        break
+            if not accounts.voices():
+                pause(30)
                 continue
             # No retirement by action count: accounts are lost through moderator-hidden posts, not actions
             # (scoring guide s3). Parking by hidden-post count is a TODO (TODO.md, "Hidden-post watch").
             our_ids = {r.get("account_id") for r in accounts.records if r.get("account_id")}
             targeter.refresh()
+            if amp:
+                amp.tick()
             if args.live and time.time() >= next_notif:
                 queue += reply_back_jobs(social, accounts, targeter)
                 next_notif = time.time() + 300
 
             wait = next_write - time.time()
             if wait > 0:
-                time.sleep(min(wait, 30))
+                pause(min(wait, 30))
                 continue
             if gen.next_available_in() > 0 and not args.allow_qwen:
                 print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
-                time.sleep(min(gen.next_available_in() + 1, 600))
+                pause(min(gen.next_available_in() + 1, 600))
                 continue
 
             # ---- choose the job (greedy order) ----
@@ -267,6 +320,13 @@ def main():
                 if job["rec"].get("last_write", 0) + 60 > t:      # don't double-post from one account
                     queue.insert(0, job)
                     job = None
+            if job is None and amp:                                  # own-thread replies, answers, reposts (due)
+                job = amp.next_write_job()
+            if job is None and amp and amp.amp_post_due():            # the next amplified original
+                rec = accounts.eligible()
+                if rec:
+                    job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]),
+                               amp=True, level=amp.choose_level())
             if job is None:
                 state["second_voice"] = [s for s in state["second_voice"] if t - s["due"] < 3600]   # stale after 1 h
                 due = [s for s in state["second_voice"] if s["due"] <= t]
@@ -302,19 +362,24 @@ def main():
                     if rec:
                         job = dict(mode="journalist", rec=rec, target=jp, frame=frame or "F14_no_yes_but")
             idle_post = t - state.get("last_post", 0) > config.IDLE_POST_GAP_S
-            if job is None and ("post" not in state["modes"][-(config.POST_EVERY_N - 1):] or idle_post):
+            plain_posts = not amp or amp.paused()                    # amplified originals replace plain persona posts
+            if job is None and plain_posts and ("post" not in state["modes"][-(config.POST_EVERY_N - 1):] or idle_post):
                 rec = accounts.eligible()
                 if rec:
                     job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
             if job is None:
-                time.sleep(45)
+                pause(45)
                 continue
 
             # ---- draft and check ----
             rec, mode, target = job["rec"], job["mode"], job.get("target")
-            persona, system, user = build_prompt(job, targeter)
-            text = backend = None
-            for _ in range(2):
+            persona = content.PERSONA_BY_KEY[rec["persona"]]
+            text = backend = user = None
+            if mode == "repost":
+                text, backend = "", "none"
+            else:
+                persona, system, user = build_prompt(job, targeter)
+            for _ in range(0 if mode == "repost" else 2):
                 raw, backend = gen.complete(system, user)
                 if raw is None:
                     break
@@ -326,7 +391,7 @@ def main():
                 log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
                      "backend": backend, "raw": raw})
                 print(f"  rejected [{mode}] ({why}): {raw[:160]!r}")
-            if not text:
+            if not text and mode != "repost":
                 if mode == "reply_back" and job.get("tries", 0) < 2:
                     job["tries"] = job.get("tries", 0) + 1      # a citizen who answered us is worth another try
                     queue.append(job)
@@ -335,18 +400,25 @@ def main():
             # ---- send ----
             post_id = None
             if args.live:
+                def send(acc):
+                    if mode == "post":
+                        return acc.post(text)
+                    if mode == "repost":
+                        return acc.repost(target["post_id"])
+                    return acc.reply(target["post_id"], text)
+
                 acc = accounts.session(rec)
                 try:
-                    r = acc.post(text) if mode == "post" else acc.reply(target["post_id"], text)
+                    r = send(acc)
                 except ctn.APIError as e:
                     if e.status != 401:
                         raise
                     acc = accounts.relogin(rec)
-                    r = acc.post(text) if mode == "post" else acc.reply(target["post_id"], text)
+                    r = send(acc)
                 post_id = r["post_id"]
-                rl = social.rate_limit
+                rl = acc.rate_limit                      # the team-wide write budget, as this answer reported it
                 if rl and rl.remaining == 0:
-                    time.sleep(rl.reset / max(rl.limit, 1) + 1)
+                    pause(rl.reset / max(rl.limit, 1) + 1)
                 # a citizen who talks back to us: follow them from that persona (separate follow budget)
                 if mode == "reply_back" and target["author_id"] not in rec.setdefault("followed", []):
                     try:
@@ -377,17 +449,22 @@ def main():
                                                   context=job.get("context")))
             if mode == "post":
                 state["last_post"] = time.time()
+                if job.get("amp"):
+                    amp.on_post(post_id, rec, text, job["frame"], job["level"])
+            if mode == "thread" and amp:
+                amp.on_thread_sent(job, post_id, text)
             if mode == "journalist":
                 state["journalist_any"] = time.time()
                 state["journalist_last"][str(target["author_id"])] = time.time()
-            state["recent_texts"] = (state["recent_texts"] + [text])[-300:]
+            if text:
+                state["recent_texts"] = (state["recent_texts"] + [text])[-300:]
             save_state()
             log({"act": mode, "live": args.live, "post_id": post_id, "username": rec["username"],
                  "account_id": rec.get("account_id"), "owner": rec.get("owner", owner), "persona": persona["key"],
                  "frame": job["frame"], "backend": backend, "source": job.get("source"),
                  "target_post": target and target["post_id"], "target_author": target and target["author_id"],
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
-                 "text": text})
+                 "text": text, "amp_level": job.get("level"), "amp_post": job.get("amp_post"), "style": job.get("style")})
             where = ""
             if target:
                 ctx = f" [under: {job['context'][:60]!r}]" if job.get("context") else ""
@@ -395,7 +472,7 @@ def main():
             print(f"[{mode}|{job['frame']}|{backend}] {persona['name']}{where}\n    {text}\n")
 
         except ctn.RateLimited as e:
-            time.sleep((e.retry_after or 30) + 1)
+            pause((e.retry_after or 30) + 1)
         except ctn.APIError as e:
             print("API error", e.status, e.message)
             msg = (e.message or "").lower()
@@ -404,11 +481,11 @@ def main():
                 accounts.save()
                 log({"act": "suspended", "username": job["rec"]["username"]})
             elif e.status == 403 and "locked" in msg:
-                time.sleep(300)
-            time.sleep(10)
+                pause(300)
+            pause(10)
         except openai.APIError as e:
             print("LLM error", type(e).__name__, str(e)[:120])
-            time.sleep(20)
+            pause(20)
         except KeyboardInterrupt:
             if job and job.get("mode") == "reply_back" and job not in queue:
                 queue.insert(0, job)                  # stopped mid-draft: keep the citizen's reply for next run
