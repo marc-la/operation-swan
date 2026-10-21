@@ -230,3 +230,32 @@ def test_plain_posts_are_dropped_after_their_audits(tmp_path, monkeypatch):
                     "3": dict(post=dict(created_at=S.iso()), first_seen=time.time(), classes=[])}
     b.prune()
     assert sorted(b.s["posts"]) == ["2", "3"]
+
+
+def test_days_count_the_levers_and_split_locks_at_sydney_midnight(tmp_path, monkeypatch):
+    import datetime as dt
+    b = blue(tmp_path, monkeypatch)
+    mid = dt.datetime(2026, 10, 23, tzinfo=S.SYDNEY).timestamp()             # midnight Sydney, 23 Oct
+    monkeypatch.setattr(S, "now", lambda: mid + 10 * 3600)
+    b.s["reports"] = {"p1": dict(kind="post", status="hidden", filed=mid - 5 * 3600, ruled_day="2026-10-22"),
+                      "p2": dict(kind="post", status="genuine", filed=mid - 4 * 3600, ruled_day="2026-10-22"),
+                      "p3": dict(kind="post", status="refused", filed=mid - 4 * 3600)}
+    b.s["locks"] = [[mid - 2 * 3600, mid + 4 * 3600], [mid - 1 * 3600, mid + 1 * 3600]]   # overlapping: one lock
+    d = b.days()
+    assert d["2026-10-22"] == dict(filed=2, hidden=1, genuine=1, accounts=0, locked_h=2.0)
+    assert d["2026-10-23"]["locked_h"] == 4.0
+
+
+def test_dashboard_verdict_names_the_weakest_lever():
+    import datetime as dt
+    from swan_dash import build
+    now = dt.datetime(2026, 10, 23, 12, tzinfo=S.SYDNEY)
+    days = {"2026-10-22": dict(filed=68, hidden=40, genuine=20, accounts=0, locked_h=9.0),
+            "2026-10-23": dict(filed=20, hidden=5, genuine=0, accounts=0, locked_h=0.0)}
+    points = [dict(_t=dt.datetime(2026, 10, 22, 20, tzinfo=S.SYDNEY), points=640, type="SCORE_NARRATIVE",
+                   message="Moderation: 20 first inauthentic reports and 28 inauthentic reports")]
+    rows = build.blue_days(days, points, now.astimezone(dt.timezone.utc))
+    assert [r["today"] for r in rows] == [True, False]
+    y = rows[1]
+    assert y["pct"] == 53 and y["level"] == "down"
+    assert y["lever"] == "moderator: only 67% of rulings hidden (about 90% expected)"   # filed 68 is fine, hit isn't

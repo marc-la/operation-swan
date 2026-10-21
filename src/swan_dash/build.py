@@ -19,6 +19,8 @@ from zoneinfo import ZoneInfo
 
 import jinja2
 
+from swan_blue.evidence import first_later
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
 SYDNEY = ZoneInfo("Australia/Sydney")          # competition days roll over at midnight Sydney (9pm Perth)
@@ -372,6 +374,16 @@ def fact_desk(root):
 BLUE_STALE_S = 10 * 60                         # swan-blue writes its status every minute
 BLUE_APPROVE = "ssh swan-ec2 'ctn/scripts/blue.sh approve all'"
 BLUE_ERROR_S = 2 * 3600                        # an older error has been dealt with or retried: not shown
+# Is Blue going well? A day's Blue points against the modelled ceiling (docs/06-strategy/blue-reporting.md §2:
+# ~70 reports a day refilled around the clock), and when a day falls short, the first lever below its bar.
+BLUE_TARGET_DAY = 1200
+BLUE_GOOD, BLUE_POOR = 0.9, 0.6                # share of target: green at or above GOOD, red below POOR
+BLUE_BARS = (("filed", 50, "slots: only {v} reports filed (about 70 fit in a day)"),
+             ("hit", 0.8, "moderator: only {v:.0%} of rulings hidden (about 90% expected)"),
+             ("first", 0.6, "speed: only {v:.0%} paid as first reporter (aim for 80%)"))
+BLUE_LOCKED_H = 14                             # more hours locked than this: genuine rulings cost the day
+BLUE_PER_AWARD = 20                            # under this per paid award: the per-team daily rates are cutting in
+BLUE_MSG = re.compile(r"moderat|inauthentic|suspen", re.I)
 
 
 BLUE_WORDS = {"pending": "pending, rules about", "hidden": "hidden (inauthentic)", "genuine": "ruled genuine",
@@ -385,6 +397,40 @@ def blue_row(r, teams):
     team = teams.setdefault(r.get("team"), len(teams) + 1)
     return dict(what=f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}", team=f"team {team}",
                 status=r.get("status"), word=BLUE_WORDS.get(r.get("status"), r.get("status")), at=hm(t) if t else "")
+
+
+def blue_days(days, points, now):
+    """By Sydney day, newest first: Blue points and first/later awards from the portal log (the ground truth),
+    joined with swan-blue's own counts; for each finished day, its share of target and its weakest lever."""
+    portal = {}
+    for e in points:
+        msg = e.get("message") or ""
+        if not BLUE_MSG.search(f"{e.get('type')} {msg}"):
+            continue
+        p = portal.setdefault(e["_t"].astimezone(SYDNEY).date().isoformat(), dict(points=0, first=0, later=0))
+        f, later = first_later([msg])
+        p["points"], p["first"], p["later"] = p["points"] + e["points"], p["first"] + f, p["later"] + later
+    today, rows = now.astimezone(SYDNEY).date().isoformat(), []
+    for d in sorted(set(days) | set(portal), reverse=True):
+        a, p = days.get(d, {}), portal.get(d, {})
+        ruled, paid = a.get("hidden", 0) + a.get("genuine", 0), p.get("first", 0) + p.get("later", 0)
+        r = dict(day=dt.date.fromisoformat(d).strftime("%a %-d %b"), today=d == today, points=p.get("points", 0),
+                 filed=a.get("filed", 0), hidden=a.get("hidden", 0), genuine=a.get("genuine", 0),
+                 accounts=a.get("accounts", 0), first=p.get("first", 0), paid=paid, locked_h=a.get("locked_h", 0),
+                 lever=None)
+        r["pct"] = round(100 * r["points"] / BLUE_TARGET_DAY)
+        r["level"] = "up" if r["pct"] >= 100 * BLUE_GOOD else "warn" if r["pct"] >= 100 * BLUE_POOR else "down"
+        if not r["today"] and r["level"] != "up":
+            vals = dict(filed=r["filed"], hit=r["hidden"] / ruled if ruled else None, first=r["first"] / paid if paid else None)
+            per_award = r["points"] / paid if paid else None
+            r["lever"] = next((msg.format(v=vals[k]) for k, bar, msg in BLUE_BARS
+                               if vals[k] is not None and vals[k] < bar), None) or \
+                (f"locks: {r['locked_h']:g} h locked" if r["locked_h"] > BLUE_LOCKED_H else None) or \
+                (f"team spread: {per_award:.0f} points per award against 25 at full rate (report more teams, "
+                 f"fewer per team)" if per_award is not None and per_award < BLUE_PER_AWARD else None) or \
+                "no single lever is below its bar"
+        rows.append(r)
+    return rows
 
 
 def blue_panel(data, now, points, day_start):
@@ -401,7 +447,10 @@ def blue_panel(data, now, points, day_start):
     rings = [dict(post=r.get("post"), why=short(r.get("why"), 160), reports=r.get("reports"))
              for r in s.get("rings") or []]
     waiting, teams = len(s.get("waiting") or []), {}
-    bits = ([f"{waiting} waiting for approval"] if waiting else []) + \
+    history = blue_days(s.get("days") or {}, points, now)
+    last = next((r for r in history if not r["today"]), None)       # the last finished day decides the verdict
+    bits = ([f"yesterday {last['pct']}% of target"] if last else []) + \
+        ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked until {hm(locked)}"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
         ([f"{today.get('hidden', 0)} hidden today"] if today.get("filed") else []) + \
@@ -415,7 +464,7 @@ def blue_panel(data, now, points, day_start):
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
         today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
         queued=s.get("queued") or 0, first=s.get("first") or {}, rows=[blue_row(r, teams) for r in s.get("ledger") or []],
-        rate=prec.get("rate"), ruled=prec.get("n"),
+        rate=prec.get("rate"), ruled=prec.get("n"), history=history, last=last, target=BLUE_TARGET_DAY,
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 
 

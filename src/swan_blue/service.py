@@ -105,7 +105,7 @@ class Blue:
         self.ours = set()
         self.s = read_json(self.state_file, {})
         for k, v in dict(labels={}, posts={}, authors={}, author_ring={}, reports={}, harvest={}, last={}, alerts={},
-                         lock_until=0, lock_why=None, last_error=None, pf_scale=1.0, first=None).items():
+                         lock_until=0, lock_why=None, last_error=None, pf_scale=1.0, first=None, locks=[]).items():
             self.s.setdefault(k, v)
         self.feed_hold = 0
 
@@ -478,6 +478,7 @@ class Blue:
                 until = r["filed"] + RULE_S + LOCK_S
                 if until > self.s["lock_until"]:
                     self.s["lock_until"], self.s["lock_why"] = until, f"#{r['target']} ruled genuine"
+                    self.s["locks"].append([r["filed"] + RULE_S, until])      # for the hours-locked history
                     self.log({"act": "lock", "until": iso(until), "why": self.s["lock_why"]})
 
     def ruled(self, key, r, outcome, at):
@@ -537,6 +538,7 @@ class Blue:
                        refused=sum(r["status"] == "refused" and sydney_day(r["filed"]) == today for r in reps),
                        teams=len({r["label"] for r in filed_today})),
             precision=self.precision(), ready=len(ranked), first=self.s["first"], pf_scale=self.s["pf_scale"],
+            days=self.days(),
             waiting=[c["key"] for c in waiting], rings=rings(waiting),
             queued=len([k for k in ok if k not in self.s["reports"]]),       # approved, not filed yet
             ledger=[dict(key=k, target=r["target"], kind=r["kind"], team=r["label"], status=r["status"],
@@ -544,6 +546,38 @@ class Blue:
                     for k, r in sorted(self.s["reports"].items(), key=lambda kv: kv[1]["filed"])
                     if r["status"] == "pending" or sydney_day(r["filed"]) == today],
             last_error=self.s["last_error"], last_error_ts=self.s.get("last_error_ts")))
+
+    def days(self, n=14):
+        """Per Sydney day, the levers behind the day's Blue points: reports filed (slot use), rulings hidden and
+        genuine (the moderator's hit rate), account rulings, and hours locked (what the genuine rulings cost)."""
+        out = {}
+        day = lambda d: out.setdefault(d, dict(filed=0, hidden=0, genuine=0, accounts=0, locked_h=0.0))
+        for r in self.s["reports"].values():
+            if r["status"] != "refused":
+                day(sydney_day(r["filed"]))["filed"] += 1
+            if r.get("ruled_day"):
+                key = {"hidden": "hidden", "genuine": "genuine", "ruled": "accounts"}.get(r["status"])
+                if key:
+                    day(r["ruled_day"])[key] += 1
+        merged, t_now = [], now()                           # overlapping locks run at the same time (#questions)
+        for a, b in sorted(self.s["locks"]):
+            b = min(b, t_now)                               # a lock still running counts up to now
+            if a >= b:
+                continue
+            if merged and a <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        for a, b in merged:
+            t = a
+            while t < b:                                    # split each lock at Sydney midnights
+                d = dt.datetime.fromtimestamp(t, SYDNEY)
+                nxt = dt.datetime.combine(d.date() + dt.timedelta(days=1), dt.time(), SYDNEY).timestamp()
+                day(d.date().isoformat())["locked_h"] += (min(b, nxt) - t) / 3600
+                t = nxt
+        for v in out.values():
+            v["locked_h"] = round(v["locked_h"], 1)
+        return dict(sorted(out.items())[-n:])
 
     # ---- one pass ----
     def tick(self):
