@@ -461,8 +461,8 @@ def blue_panel(data, now, points, day_start):
         ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked until {hm(locked)}"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
-        ([f"{today.get('hidden', 0)} hidden today"] if today.get("filed") else []) + \
-        ([f"{pts:+,} pts today"] if pts else [])
+        ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
+        ([f"{pts:+,} pts since 9pm"] if pts else [])
     return dict(
         stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
         summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
