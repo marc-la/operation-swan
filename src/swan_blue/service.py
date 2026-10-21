@@ -106,6 +106,9 @@ class Blue:
         self.s["alerts"][kind] = now()
         subprocess.run([str(config.ROOT / "deploy" / "alert.sh"), f"BLUE: {msg}"], check=False)
 
+    def error(self, text):
+        self.s["last_error"], self.s["last_error_ts"] = text, iso()
+
     def due(self, what):
         if now() - self.s["last"].get(what, 0) >= EVERY[what]:
             self.s["last"][what] = now()
@@ -128,7 +131,7 @@ class Blue:
             return self.reporter
         rec = self.load_ours()
         if rec is None:
-            self.s["last_error"] = "no active booster to report from"
+            self.error("no active booster to report from")
             return None
         saved = read_json(SESSION_FILE, {})
         if saved.get("username") == rec["username"] and saved.get("token"):
@@ -145,7 +148,7 @@ class Blue:
         try:
             page = list(method(limit=50))
         except ctn.APIError as e:
-            self.s["last_error"] = f"feed {e.status}"
+            self.error(f"feed read failed: {e.status}")
             return []
         rl = self.social.rate_limit
         if rl and rl.remaining < FEED_RESERVE:
@@ -236,17 +239,17 @@ class Blue:
 
     def mode(self):
         if not self.live:
-            return "off", "dry run"
+            return "off", "dry run: files nothing"
         if config.BLUE_OFF_FILE.exists():
-            return "off", "BLUE_OFF is set"
+            return "off", "stopped: BLUE_OFF is set on the box"
         if FORCE_MODE:
             return FORCE_MODE, "set in swan_blue/service.py"
         p = self.precision()
         if p["n"] < BLUE_AUTO_AFTER:
-            return "approve", f"{p['n']} of {BLUE_AUTO_AFTER} rulings in"
+            return "approve", f"needs your approval until {BLUE_AUTO_AFTER} rulings are in ({p['n']} so far)"
         if p["rate"] < BLUE_MIN_RATE:
-            return "approve", f"only {p['rate']:.0%} ruled inauthentic (needs {BLUE_MIN_RATE:.0%})"
-        return "auto", f"{p['rate']:.0%} ruled inauthentic over {p['n']}"
+            return "approve", f"needs your approval: only {p['rate']:.0%} ruled inauthentic (auto needs {BLUE_MIN_RATE:.0%})"
+        return "auto", f"files on its own: {p['rate']:.0%} of {p['n']} rulings inauthentic"
 
     # ---- candidates, ranked by expected value ----
     def candidates(self):
@@ -260,10 +263,11 @@ class Blue:
             if age_min > MAX_POST_AGE_H * 60:
                 continue
             strong = 1.0 if len(cls) == 2 else 0.95
+            ring_why = ev.brief(a)
             if f"p{pid}" not in reported:
                 out.append(dict(key=f"p{pid}", kind="post", target=int(pid), author=a["author"], label=p["label"],
                                 age_min=round(age_min), trending=p["trending"], classes=cls,
-                                detail=ev.post_detail(a), brief=ev.brief(a) + (", on Trending" if p["trending"] else ""),
+                                detail=ev.post_detail(a), ring=int(pid), ring_why=ring_why,
                                 base=(age_min, p["trending"], strong)))
             if "reply_ring" in cls:
                 seen = set()
@@ -274,8 +278,8 @@ class Blue:
                     r_age = (t - ev.ts(r["created"])) / 60
                     out.append(dict(key=f"p{r['post_id']}", kind="post", target=r["post_id"], author=r["author"],
                                     label=p["label"], age_min=round(r_age), trending=False, classes=["reply_ring"],
-                                    detail=ev.reply_detail(r, a), brief=ev.brief(None, a), base=(r_age, False, 0.95),
-                                    root=int(pid)))
+                                    detail=ev.reply_detail(r, a), ring=int(pid), ring_why=ring_why,
+                                    base=(r_age, False, 0.95)))
                     if len(seen) >= 3:
                         break
         for aid, h in self.s["harvest"].items():
@@ -283,7 +287,7 @@ class Blue:
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), classes=["hidden_post"],
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"]),
-                                brief=f"post #{h['hidden_post']} hidden, {h['actions']}+ actions"))
+                                ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
         return out
 
     def ranked(self):
@@ -327,6 +331,9 @@ class Blue:
             return
         free = CAP - len(self.pending())
         ok = self.approved()
+        accounts = [c for c in ranked if c["kind"] == "account"]
+        if len(accounts) >= free:            # enough account leads for every slot: no post report, so no lock risk
+            ranked = accounts
         for c in ranked:
             if free <= 0 or self.locked():
                 break
@@ -365,7 +372,7 @@ class Blue:
     def refused(self, c, e):
         msg = (e.message or "")[:300]
         self.log({"act": "refused", "key": c["key"], "status": e.status, "message": msg})
-        self.s["last_error"] = f"{c['key']}: {e.status} {msg[:120]}"
+        self.error(f"report refused: {e.status} {msg[:120]}")
         low = msg.lower()
         if e.status in (400, 404, 409):              # bad detail, gone, already reported: drop this one only
             self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"],
@@ -464,9 +471,8 @@ class Blue:
                        accounts=sum(r["status"] == "ruled" for r in ruled_today),
                        teams=len({r["label"] for r in filed_today})),
             precision=self.precision(), ready=len(ranked),
-            waiting=[dict(key=c["key"], ev=c["ev"], age_min=c.get("age_min"), why=c["brief"])
-                     for c in waiting],
-            last_error=self.s["last_error"]))
+            waiting=[c["key"] for c in waiting], rings=rings(waiting),
+            last_error=self.s["last_error"], last_error_ts=self.s.get("last_error_ts")))
 
     # ---- one pass ----
     def tick(self):
@@ -496,17 +502,28 @@ class Blue:
             try:
                 ranked = self.tick()
             except ctn.APIError as e:
-                self.s["last_error"] = f"{e.status} {(e.message or '')[:120]}"
+                self.error(f"{e.status} {(e.message or '')[:120]}")
                 ranked = []
             if once:
                 return ranked
             time.sleep(TICK_S)
 
 
+def rings(cands):
+    """The approval list as the reader decides it: one row per ring, with how many reports it gives."""
+    out = {}
+    for c in cands:
+        r = out.setdefault(c["ring"] or c["key"], dict(post=c["ring"], why=c["ring_why"], reports=0, ev=0.0,
+                                                        team=c["label"]))
+        r["reports"] += 1
+        r["ev"] = round(r["ev"] + c["ev"], 1)
+    return sorted(out.values(), key=lambda r: -r["ev"])
+
+
 def approve(keys):
     """Append an approval: post ids ('133074' or 'p133074'), account keys ('a4955'), or 'all' (what waits now)."""
     if keys == ["all"]:
-        keys = [w["key"] for w in read_json(STATUS_FILE, {}).get("waiting", [])]
+        keys = list(read_json(STATUS_FILE, {}).get("waiting", []))
     keys = [k if k[0] in "pa" else f"p{k}" for k in keys if k]
     APPROVALS.parent.mkdir(exist_ok=True)
     with open(APPROVALS, "a") as f:

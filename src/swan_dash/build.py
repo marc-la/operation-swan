@@ -371,27 +371,38 @@ def fact_desk(root):
 # ---- Blue (todo/07, src/swan_blue): only what the team needs to decide ----
 BLUE_STALE_S = 10 * 60                         # swan-blue writes its status every minute
 BLUE_APPROVE = "ssh swan-ec2 'ctn/scripts/blue.sh approve all'"
+BLUE_ERROR_S = 2 * 3600                        # an older error has been dealt with or retried: not shown
 
 
 def blue_panel(data, now, points, day_start):
-    """The Blue section: mode, slots, lock, today's rulings, and the reports waiting for approval. None if not set up."""
+    """The Blue section: what needs a decision (the reports waiting, grouped by ring), the state in one line, and
+    today's results once there are any. None if swan-blue isn't set up."""
     s = read_json(data / "blue_status.json")
     if not s:
         return None
     t = ts(s.get("ts"))
-    locked = ts(s.get("locked_until"))
-    nxt = ts(s.get("next_ruling"))
-    prec = s.get("precision") or {}
+    locked, nxt, err_t = ts(s.get("locked_until")), ts(s.get("next_ruling")), ts(s.get("last_error_ts"))
+    today, prec = s.get("today") or {}, s.get("precision") or {}
     pts = sum(e["points"] for e in points if e["_t"] >= day_start and re.search(
         r"moderat|inauthentic|suspen|report", f"{e.get('type')} {e.get('message')}", re.I))
+    rings = [dict(post=r.get("post"), why=short(r.get("why"), 160), reports=r.get("reports"))
+             for r in s.get("rings") or []]
+    waiting = len(s.get("waiting") or [])
+    bits = ([f"{waiting} waiting for approval"] if waiting else []) + \
+        ([f"locked until {hm(locked)}"] if locked else []) + \
+        ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
+        ([f"{today.get('hidden', 0)} hidden today"] if today.get("filed") else []) + \
+        ([f"{pts:+,} pts today"] if pts else [])
     return dict(
         stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
-        mode=s.get("mode"), why=s.get("why"), pending=s.get("pending"), cap=s.get("cap"),
-        locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), next_ruling=hm(nxt) if nxt else None,
-        today=s.get("today") or {}, rate=prec.get("rate"), ruled=prec.get("n"), points=pts,
-        waiting=[dict(key=w["key"], age=w.get("age_min"), ev=w.get("ev"), why=short(w.get("why"), 200))
-                 for w in s.get("waiting") or []],
-        approve=BLUE_APPROVE, error=s.get("last_error"), reporter=s.get("reporter"))
+        summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
+        locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), pending=s.get("pending"),
+        next_ruling=hm(nxt) if nxt else None, waiting=waiting, rings=rings,
+        teams=len({r.get("team") for r in s.get("rings") or []}),
+        ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
+        today=today if today.get("filed") or today.get("hidden") or today.get("genuine") else None,
+        rate=prec.get("rate"), ruled=prec.get("n"),
+        error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 
 
 def gather(root, now, service):
@@ -467,7 +478,7 @@ def gather(root, now, service):
     elif blue and blue["stale"]:
         amber = f"BLUE: no status from swan-blue since {blue['ago'].replace(' ago', '')}. On the box: journalctl -u swan-blue -n 50"
     elif blue and blue["waiting"]:
-        amber = f"BLUE: {len(blue['waiting'])} reports wait for your approval (Blue, below)"
+        amber = f"BLUE: {blue['waiting']} reports wait for your approval (Blue, below)"
     if red:
         banner = dict(level="red", text=red)
     elif amber:

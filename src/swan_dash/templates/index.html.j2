@@ -258,25 +258,21 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <p class="sub">Read from the portal every 15 minutes{% if portal_checked %} (last check {{ portal_checked }}){% endif %}. By hand if needed: <code>ssh swan-ec2 'ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt; &lt;name&gt;'</code></p>
 </div></details>
 
-<details id="blue"{% if blue and blue.waiting %} open{% endif %}><summary><b>Blue</b><span class="sub {{ 'warn' if blue and (blue.stale or blue.waiting or blue.locked) else '' }}">
-  {% if blue %}{{ blue.mode }} · {{ blue.pending }}/{{ blue.cap }} pending ·
-    {% if blue.locked %}locked until {{ blue.locked }}{% else %}open{% endif %} ·
-    today {{ blue.today.hidden | n }} hidden, {{ blue.today.genuine | n }} genuine · {{ blue.points | n }} pts{% else %}not running{% endif %}</span></summary>
+<details id="blue"{% if blue and blue.waiting %} open{% endif %}><summary><b>Blue</b><span class="sub {{ 'warn' if blue and (blue.stale or blue.waiting) else '' }}">
+  {% if blue %}{{ blue.summary }}{% else %}not running{% endif %}</span></summary>
 <div>
   {% if blue %}
-  <p>{{ blue.mode }}: {{ blue.why }}.{% if blue.locked %} Locked until {{ blue.locked }} ({{ blue.lock_why }}).{% endif %}{% if blue.next_ruling %} Next ruling about {{ blue.next_ruling }}.{% endif %}</p>
-  <p class="sub">Today: {{ blue.today.filed | n }} filed against {{ blue.today.teams | n }} teams · {{ blue.today.hidden | n }} hidden, {{ blue.today.genuine | n }} genuine, {{ blue.today.accounts | n }} account rulings.
-    {% if blue.ruled %}Overall {{ (blue.rate * 100) | round | int }}% ruled inauthentic over {{ blue.ruled }} (auto needs 70%).{% endif %}</p>
   {% if blue.waiting %}
-  <h3>Waiting for approval · each is a team account's post with a like or reply ring</h3>
-  <code class="cmd">{{ blue.approve }}</code>
+  <p><b>{{ blue.waiting }} reports ready</b> from {{ blue.rings | length }} ring{{ 's' if blue.rings | length > 1 }} ({{ blue.teams }} team{{ 's' if blue.teams > 1 }}), expected to earn about {{ blue.ev | n }} points. Every one is a post by a team account (registered after launch, not ours) inside a ring:</p>
   <table>
-    {% for w in blue.waiting %}<tr><td>#{{ w.key[1:] }}</td><td class="num">{{ w.age | n }}m</td><td>{{ w.why }}</td></tr>{% endfor %}
+    <tr><th>Ring</th><th>Evidence</th><th class="num">Reports</th></tr>
+    {% for r in blue.rings %}<tr><td>{{ ('#' ~ r.post) if r.post else 'account' }}</td><td>{{ r.why }}</td><td class="num">{{ r.reports }}</td></tr>{% endfor %}
   </table>
-  <p class="sub">Some only: <code>ssh swan-ec2 'ctn/scripts/blue.sh approve {{ blue.waiting[:2] | map(attribute='key') | join(',') }}'</code>. Unapproved ones are never filed.</p>
+  <code class="cmd">{{ blue.approve }}</code>
   {% endif %}
-  {% if blue.error %}<p class="sub warn">Last error: {{ blue.error }}</p>{% endif %}
-  <p class="sub">Reports from {{ blue.reporter or '—' }}. Stop filing: <code>ssh swan-ec2 'touch ctn/BLUE_OFF'</code> (rm to resume).</p>
+  <p class="sub">{% if blue.locked %}Reporting locked until {{ blue.locked }} ({{ blue.lock_why }}). {% elif blue.next_ruling %}{{ blue.pending }} pending, next ruling about {{ blue.next_ruling }}. {% endif %}{{ blue.why | capitalize }}.</p>
+  {% if blue.today %}<p class="sub">Today: {{ blue.today.filed | n }} filed, {{ blue.today.hidden | n }} hidden, {{ blue.today.genuine | n }} ruled genuine{% if blue.today.accounts %}, {{ blue.today.accounts }} account rulings{% endif %}{% if blue.ruled %} · {{ (blue.rate * 100) | round | int }}% of {{ blue.ruled }} rulings inauthentic so far{% endif %}.</p>{% endif %}
+  {% if blue.error %}<p class="sub warn">{{ blue.error | capitalize }}.</p>{% endif %}
   {% else %}<p class="sub">swan-blue hasn't written a status yet.</p>{% endif %}
 </div></details>
 

@@ -118,3 +118,24 @@ def test_mode_gate(tmp_path, monkeypatch):
     assert b.mode()[0] == "approve"
     (tmp_path / "BLUE_OFF").touch()
     assert b.mode()[0] == "off"
+
+
+def test_account_leads_fill_every_slot_without_post_reports(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.live = True
+    filed = []
+    monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
+    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 2)}
+    ranked = [dict(key="p1", kind="post", ev=20), dict(key="a1", kind="account", ev=14),
+              dict(key="a2", kind="account", ev=14)]
+    b.fill(ranked, "auto")
+    assert filed == ["a1", "a2"]             # 2 free slots, 2 account leads: the post waits
+
+
+def test_approval_rows_are_one_per_ring():
+    cands = [dict(key="p11", ring=10, ring_why="ring A", label="cA", ev=19.7),
+             dict(key="p12", ring=10, ring_why="ring A", label="cA", ev=19.7),
+             dict(key="p20", ring=20, ring_why="ring B", label="cB", ev=15.0),
+             dict(key="a7", ring=None, ring_why="post #3 already hidden", label="cB", ev=14.3)]
+    rows = S.rings(cands)
+    assert [(r["post"], r["reports"], r["ev"]) for r in rows] == [(10, 2, 39.4), (20, 1, 15.0), (None, 1, 14.3)]
