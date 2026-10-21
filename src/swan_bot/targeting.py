@@ -214,7 +214,8 @@ class Targeter:
             return
         score = (FRAME_PRIORITY.get(frame, 1.5) + (2.0 if soft_yes(body) else 0.0)
                  + (1.5 if YES_REASON.search(body) else 0.0)
-                 + 2.0 * max(0.0, 1 - age_h(post) / config.TARGET_MAX_AGE_H) + (1.0 if source == "news" else 0.0))
+                 + 2.0 * max(0.0, 1 - age_h(post) / config.TARGET_MAX_AGE_H) + (1.0 if source == "news" else 0.0)
+                 + (config.TRENDING_THREAD_BONUS if source == "thread" else 0.0))
         self.candidates[pid] = dict(post=post, frame=frame, wants=wants, context=context, source=source, score=score,
                                     identity=identity(body))
 
@@ -270,7 +271,7 @@ class Targeter:
             if name == "trending":
                 self.trending_ids = [p["post_id"] for p in posts]
                 self.trending_posts = posts
-                top = [p for p in posts if REFERENDUM.search(p.get("body") or "")][:6]
+                top = [p for p in posts if REFERENDUM.search(p.get("body") or "")][:config.TRENDING_THREADS]
                 for p in top:
                     try:
                         for r in self.social.replies(p["post_id"], limit=50):

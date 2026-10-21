@@ -6,6 +6,9 @@ One account per provider, each used on its own terms.
 Free tiers cap requests per model per day, so a 429 that says the daily quota is spent parks that model until the
 retry time, a per-minute 429 parks it for a minute, and the next model in the chain is tried. Every model's calls
 are counted per day in data/llm_usage.json so we learn the real quotas.
+Paid models (config.LLM_PRICES) are charged per call from the tokens the API reports, into data/llm_spend.json by
+Sydney day. When today's allowance (llm.allowance: the budget shared out by the Red multiplier, unspent days carried
+forward) is spent, they are parked until Sydney midnight and the free models carry on.
 The provided qwen 3B model is only used with allow_qwen=True (off in production: too weak, too slow).
 """
 import datetime as dt
@@ -50,6 +53,39 @@ PROVIDERS = {
 CHAIN_FILE = config.ROOT / "deploy" / "llm_chain.txt"
 USAGE_FILE = config.DATA / "llm_usage.json"
 QUOTA_DAY = ZoneInfo("America/Los_Angeles")      # Gemini and Groq daily quotas reset at midnight Pacific
+SPEND_FILE = config.DATA / "llm_spend.json"
+BUDGET_DAY = ZoneInfo(config.LOCAL_TZ)           # competition days roll over at midnight Sydney
+
+
+def budget_days():
+    """[(ISO day, weight)] from config.LLM_BUDGET_DAYS."""
+    out = []
+    for start, end, weight in config.LLM_BUDGET_DAYS:
+        d, last = dt.date.fromisoformat(start), dt.date.fromisoformat(end)
+        while d <= last:
+            out.append((d.isoformat(), weight))
+            d += dt.timedelta(days=1)
+    return out
+
+
+def allowance(day, spent):
+    """USD the priced models may still spend on Sydney day `day`: the budget's share up to and including that day,
+    minus everything spent so far ({day: usd}, today included). Unspent days carry forward; never past the budget."""
+    days = budget_days()
+    total = sum(w for _, w in days) or 1
+    share = config.LLM_BUDGET_USD * sum(w for d, w in days if d <= day) / total
+    return max(0.0, min(share, config.LLM_BUDGET_USD) - sum(v for d, v in spent.items() if d <= day))
+
+
+def day_share(day):
+    """The budget's share for one Sydney day before carry-over (the priority reserve is a part of it)."""
+    days = budget_days()
+    return config.LLM_BUDGET_USD * sum(w for d, w in days if d == day) / (sum(w for _, w in days) or 1)
+
+
+def cost(model, prompt_tokens, completion_tokens):
+    p_in, p_out = config.LLM_PRICES[model]
+    return (prompt_tokens * p_in + completion_tokens * p_out) / 1e6
 
 
 def _retry_seconds(err):
@@ -127,17 +163,30 @@ class Generator:
             pass
 
     def complete(self, system, user, max_tokens=None, json_mode=False, models=None, schema=None, reasoning=None,
-                 temperature=0.9):
+                 temperature=0.9, priority=False):
         """Return (text, model) or (None, None) when no model is available right now.
 
         json_mode asks for a JSON object (batches), schema for that exact shape where the model supports it;
         reasoning sets reasoning_effort (e.g. "low"); models restricts the chain (for comparisons).
-        max_tokens caps the answer (None: 4096, 8192 in JSON mode); a cut-off answer sets last_finish "length"."""
+        max_tokens caps the answer (None: 4096, 8192 in JSON mode); a cut-off answer sets last_finish "length".
+        priority (amplified posts) may spend the reserve, config.LLM_AMP_RESERVE_SHARE of today's share; other calls
+        skip the paid models once only the reserve is left."""
         for prov, model in self.chain:
             if models and model not in models:
                 continue
             if time.time() < self.parked.get(model, 0):
                 continue
+            if model in config.LLM_PRICES:
+                left = self.budget_left()
+                if left <= 0:
+                    now = dt.datetime.now(BUDGET_DAY)
+                    midnight = (now + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    self._park(model, (midnight - now).total_seconds(), "daily budget")
+                    print(f"{prov} {model}: today's LLM budget is spent; parked to Sydney midnight")
+                    continue
+                today = dt.datetime.now(BUDGET_DAY).date().isoformat()
+                if not priority and left <= config.LLM_AMP_RESERVE_SHARE * day_share(today):
+                    continue                                 # the rest of today is kept for amplified posts
             try:
                 return self._call(prov, model, system, user, json_mode, schema, reasoning, max_tokens,
                                   temperature), model
@@ -172,6 +221,34 @@ class Generator:
             model=ctn.competitorllm.MODEL, max_tokens=max_tokens or 220, temperature=temperature,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return (r.choices[0].message.content or "").strip(), "qwen"
+
+    def spent(self):
+        """{Sydney day: USD} charged to the priced models (data/llm_spend.json)."""
+        try:
+            return json.loads(SPEND_FILE.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def budget_left(self):
+        return allowance(dt.datetime.now(BUDGET_DAY).date().isoformat(), self.spent())
+
+    def _charge(self, model, usage, system, user, text):
+        """Add one call's cost to today's spend. Without a usage block, ~4 characters a token (input + answer)."""
+        if model not in config.LLM_PRICES:
+            return
+        p = getattr(usage, "prompt_tokens", None)
+        c = getattr(usage, "completion_tokens", None)        # includes the thinking tokens of a reasoning model
+        if p is None or c is None:
+            p, c = (len(system) + len(user)) / 4, len(text) / 4 + 1000      # unknown thinking: assume 1,000
+        day = dt.datetime.now(BUDGET_DAY).date().isoformat()
+        with self._lock:
+            spent = self.spent()
+            spent[day] = round(spent.get(day, 0.0) + cost(model, p, c), 6)
+            try:
+                config.DATA.mkdir(exist_ok=True)
+                SPEND_FILE.write_text(json.dumps(spent, indent=1))
+            except OSError:
+                pass
 
     def _park(self, model, seconds, why):
         self.parked[model] = time.time() + seconds
@@ -229,6 +306,7 @@ class Generator:
             self._count(model)
             self._local.finish = r.choices[0].finish_reason
             text = (r.choices[0].message.content or "").strip()
+            self._charge(model, getattr(r, "usage", None), system, user, text)
             if cap and r.choices[0].finish_reason == "length":
                 # a thinking model spends max_tokens on thinking: at 600, gpt-oss-120b answered "" 96 times on 20-21
                 # Oct and gemini-3.6-flash stopped mid-sentence ("...if she'd need papers to get on")

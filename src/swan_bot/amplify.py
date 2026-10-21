@@ -203,6 +203,13 @@ class Amplifier:
             return (total + k * prior) / (n + k)
         return max(ready, key=score)
 
+    def priority_window(self):
+        """True while an amplified post is under config.AMP_PRIORITY_S old and still has thread jobs to send: other
+        writes wait, so its voices aren't in their 4-min gap when its replies come due (Trending is won early)."""
+        t = time.time()
+        fresh = {int(pid) for pid, m in self.state["amp_posts"].items() if t - m["t"] < config.AMP_PRIORITY_S}
+        return not self.paused() and any(th["post_id"] in fresh for th in self.state["amp_threads"])
+
     def amp_post_due(self):
         return not self.paused() and time.time() >= self.state["amp_next_post"]
 

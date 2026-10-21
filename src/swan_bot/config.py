@@ -27,10 +27,15 @@ HIDDEN_STOP = 2                     # this many: stops writing (one more hidden 
 
 REFRESH_S = 4 * 60                  # collect targets every 4 min (cheap reads)
 TARGET_MAX_AGE_H = 36               # citizens' notifications are near-empty, so a day-old comment still lands
+# Citizens replying under Trending posts: a reply there is read by the thread's viewers (300-480 views per Trending
+# post), not just by the citizen. 2026-10-21: read 12 threads (was 6) and rank these targets above news replies.
+TRENDING_THREADS = 12
+TRENDING_THREAD_BONUS = 1.5
 CONTACT_COOLDOWN_S = 72 * 3600      # first contact with a given citizen at most every 3 days
 SECOND_VOICE_S = (10 * 60, 30 * 60) # a second persona follows up on the same doubt 10-30 min later
 SECOND_VOICE = False                # 2026-10-21: off. ~2 views each; the write slots go to amplified threads
 REPLY_BACK = False                  # 2026-10-21: off, same reason (~2 views, 0.07 citizen replies each)
+REPLY_BACK_AMP = True               # ...except to citizens replying in our amplified threads, where people are reading
 JOURNALIST_MAX_AGE_H = 12
 JOURNALIST_GAP_S = 45 * 60          # at most one journalist reply per 45 min
 JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
@@ -55,12 +60,32 @@ AMP_LEVELS = {"heavy": dict(likes=(36, 46), replies=(15, 20), reposts=(5, 6)),
 AMP_PRIOR = {"heavy": 1.0, "light": 0.0, "none": 0.0}   # 2026-10-21: always heavy (was 0.8 / 0.1 / 0.1)
 AMP_EXPLORE = 0.0
 THREAD_PER_VOICE = 2                # thread replies one voice may write under one amplified post
+AMP_PRIORITY_S = 20 * 60            # priority lane: other writes wait this long after an amplified post (thread first)
 # The amplified post is our best content: drafted on the strongest models first, the usual chain if they are out.
 # The bot's key is on the free project: 3.8 and 3.6 Flash have 20 requests a day each (deploy/llm_chain.txt).
 # 2026-10-21: Kimi K2.5 and GLM-5 on Bedrock lead (best drafts in llm_compare, paid from the AWS credits); then the
 # free Gemini Flash models and qwen-plus-character (Alibaba free quota, 1M tokens to 2027-01-20).
 # Order comes from deploy/llm_chain.txt, not from this tuple.
 AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3.6-flash", "qwen-plus-character")
+# Where persuasion happens, drafts get AMP_MODELS too: replies to citizens (a change of mind is 160 points). Thread
+# one-liners and author answers try the free models first and reach the paid ones only when those are out.
+STRONG_MODES = {"reply", "reply_back"}
+CHEAP_MODES = {"thread", "thread_answer"}
+
+# ---- LLM spend (llm.py). Bedrock is paid from the AWS free-plan credits: $99.67 on 2026-10-21, shared with EC2 ----
+# $99.67 credits = this + EC2 to ~5 Nov (t3.micro ~$0.32/day, public IPv4 $0.12/day, 8 GB disk ~$0.03/day: ~$7.50;
+# load 0.00, so no unlimited-CPU surcharge) + ~$7 tolerance (Bedrock calls made off the box with the same key aren't
+# counted here; the bill lags by hours). With LLM_PRICES padded ~25%, the real spend should come in under this.
+LLM_BUDGET_USD = 85.0               # all priced models together, 21 Oct to 2 Nov
+# USD per million tokens (input, output). us-west-2 list prices padded ~25% (Kimi $0.60/$3.00, GLM-5 $1.00/$3.20 from
+# third-party listings, 2026-10-21; eu-west-2 runs ~20% over us-west-2). Replace with the console's Sydney prices.
+LLM_PRICES = {"moonshotai.kimi-k2.5": (0.75, 3.75), "zai.glm-5": (1.25, 4.00)}
+# Daily shares follow the Red multiplier (x1 to 25 Oct, x2 26-31 Oct, x4 1-2 Nov; Sydney days): a draft is worth up to
+# 4x more on the last days. A day's unspent share carries forward; the total never passes LLM_BUDGET_USD.
+LLM_BUDGET_DAYS = [("2026-10-21", "2026-10-25", 1), ("2026-10-26", "2026-10-31", 2), ("2026-11-01", "2026-11-02", 4)]
+# Priority lane: this share of each day's share stays for amplified posts. Other drafts use the paid models only
+# while more than it is left, then the free ones.
+LLM_AMP_RESERVE_SHARE = 0.25
 AMP_AUTHOR_EXPLORE = 0.2            # share of amplified posts by a random ready voice, not the best-measured one
 AMP_AUTHOR_PRIOR = (2, 40.0)        # (pseudo-posts, reward each) for a voice not yet measured: try it early
 # delays after the post, lognormal (median min, sigma, clip lo, clip hi): front-loaded, heavy tail, never instant

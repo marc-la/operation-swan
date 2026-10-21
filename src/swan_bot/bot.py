@@ -223,7 +223,7 @@ def experiment_fields(target):
 
 def second_frame(frame):
     second = content.FRAMES[frame]["second"]
-    return content.live_frame(random.choice(second) if isinstance(second, list) else second)
+    return random.choice(second) if isinstance(second, list) else second
 
 
 def pick_post_shape(frame, persona, headline, recent_shapes):
@@ -240,7 +240,6 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None):
     pulse_now (todo/15): all of it for amplified posts (and a fresh hook as their news, about half the time), the
     hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest."""
     persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
-    job["frame"] = content.live_frame(job["frame"], persona)      # a fact paused since the job was queued
     target = job.get("target") or {}
     body = target.get("body") or ""
     mode = job["mode"]
@@ -507,7 +506,7 @@ def main():
             if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
                 pause(15)
                 continue
-            gone =lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
+            gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
                               or (j["mode"] == "reply" and str(j["target"]["author_id"]) in contacted))
             if job is None and desk and config.SECOND_VOICE:
                 drafted = desk.take("second_voice", t, gone)
@@ -733,9 +732,6 @@ def main():
         except openai.APIError as e:
             print("LLM error", type(e).__name__, str(e)[:120])
             pause(20)
-        except content.AllPaused as e:                # the fact desk paused every frame: wait for a review
-            print(e)
-            pause(300)
         except KeyboardInterrupt:
             if job and job.get("mode") == "reply_back" and job not in queue:
                 queue.insert(0, job)                  # stopped mid-draft: keep the citizen's reply for next run
