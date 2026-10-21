@@ -43,6 +43,21 @@ On top: a freshness bonus (posts under 10 min, already in), and an **engaged bon
 
 **Citizen replies are targets too** (a reply to them notifies them). Check that Latest items with `reply_to_post_id` become candidates, with the thread context passed to the draft.
 
+**Citizen replies need their parent post** (checked 2026-10-22):
+- `refresh()` calls `_consider(p, "latest")` with **no context**. A citizen reply from Latest therefore passes only if its own body has referendum keywords and a frame match, so short replies ("exactly, that's my worry too") are dropped.
+- For each citizen item with `reply_to_post_id`, read the parent (`get_post`, 1 cheap read) and pass its first ~200 characters as `context`, as the thread path already does. Check thread depth (≤ 8).
+- Replies are ~75 of the ~100 citizen items an hour, so this is most of the volume.
+- Citizen replies **to us** come through notifications (the reply-back path). Check that path also uses the same loose first pass.
+
+**Citizens added mid-game** (the organisers said more NPCs may be added; [overview](../docs/01-competition/overview.md), [platform-mechanics](../docs/06-strategy/platform-mechanics.md)):
+- `config.is_citizen` is `12 ≤ id ≤ 2343`, so a new citizen gets a high id and is treated as a team bot: never answered, never counted.
+- `get_account` has no field that tells NPCs from team accounts (checked: `username`, `display_name`, `avatar_url`, `verified`, `private`, `created_at` only).
+- **Do:**
+  1. Add `config.EXTRA_CITIZEN_RANGES = []` (id ranges) and make `is_citizen` honour it.
+  2. Write a read-only hourly detector (`scripts/`, run by `swan-watch`): walk `accounts()` from the last id seen. Flag runs of ≥ 20 consecutive ids created at a steady seeding pace that contain none of our accounts. The original 2,331 citizens were seeded at ~8/min over ~5 h; team registrations interleave between teams.
+  3. Alert, then a human confirms (ideally against a Discord announcement) and adds the range.
+- Never auto-add: a wrong range sends our replies to bots and pollutes every metric.
+
 **Log every skip with its reason** (a todo/19 leftover): `not_citizen`, `off_topic`, `hostile`, `replied`, `session_cap`, `no_voice`, `deep_thread`. Per hour, that gives the share of citizen items we answer.
 
 ## Do
@@ -50,7 +65,9 @@ On top: a freshness bonus (posts under 10 min, already in), and an **engaged bon
 2. Swap the per-author cooldown for the per-post and per-session rules. Keep `state["contacted"]` for the session cap and for the engaged bonus.
 3. Turn the firm-Yes arm on with a flag (`config.FIRM_YES_ARM`, default **on** at ×1, a few % of writes). It uses todo/20's concede-first style.
 4. Add the skip log and an hourly coverage line to the refresh record: citizen items seen, answered, skipped by reason.
-5. Tests: no-frame posts are kept; a repeat author is answered on a new post; the session cap holds; firm Yes only under the flag. Dry-run, then ship via `main`.
+5. Parent context for citizen replies from Latest, and the reply-back path on the same loose first pass.
+6. New-citizen detection: `EXTRA_CITIZEN_RANGES` plus the detector and its alert (human confirms).
+7. Tests: no-frame posts are kept; a repeat author is answered on a new post; the session cap holds; firm Yes only under the flag. Dry-run, then ship via `main`.
 
 ## Measure (24 h before vs after)
 - Coverage: share of citizen Latest items we answer (target ≥ 80% at peak).
