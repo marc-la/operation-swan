@@ -13,7 +13,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
 | ~~19~~ | ✓ **Shipped 2026-10-21 (d99bd34):** citizen writes first; Latest every 2 min, paged; "Yes, with conditions" kept; reply-backs and second voices on | Marc + Claude | done | — |
-| [22](22-reader-writer-split.md) | Reader/writer split: same decisions, less waiting (reader thread, draft-ahead, one writer). Behaviour-preserving: invariant tests, replay equivalence, flag with rollback | Marc + Claude | 23 Oct at the earliest | 20 and 21 stable ≥ 6 h |
+| [22](22-reader-writer-split.md) | Reader/writer split: same decisions, less waiting (reader thread, draft-ahead, one writer). Light checks: nothing switched off (feature checklist test), core rules tested, flag for rollback | Marc + Claude | right after 20 and 21 | 20, 21 finished |
 | ~~21~~ | ✓ **Shipped 2026-10-21 (8446cbf, a035e4f, c35ac3c):** reach every citizen. One Latest reader with a snapshot, no unread pages, a queue that survives restarts, and the citizen funnel (answered / skipped / lost per item); hard skips only, the stance sets priority; per-post and per-session limits; firm-Yes arm; new-citizen alert (a person confirms). [21](21-reach-every-citizen.md) | Marc + Claude | done | — |
 | [20](20-replies-that-convert.md) | Replies that convert: changes of mind toward No (0 so far), reply style A/B, weak frames out, Kimi length rejects, followup.py bug | Marc + Claude | **22 Oct, concurrently with 21** | 19 (shipped) |
 | [07](07-blue-reporting.md) | Blue reporting: **built 21 Oct** (`swan-blue` on EC2, approve mode first). Left: approve the first batch, check the first rulings and locks, ask B.10/B.11 | Blue lead | **21–22 Oct** | — |

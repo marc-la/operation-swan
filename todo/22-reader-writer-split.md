@@ -1,6 +1,6 @@
 # 22: Reader/writer split: the same bot, without the waiting (a behaviour-preserving refactor)
 
-**Owner:** Marc + a fresh Claude session · **Depends on:** [todo/20](20-replies-that-convert.md) and [todo/21](21-reach-every-citizen.md) merged and stable for ≥ 6 h (G12's funnel log running) · **When:** 23 Oct at the earliest, never on a ×4 day
+**Owner:** Marc + a fresh Claude session · **Depends on:** [todo/20](20-replies-that-convert.md) and [todo/21](21-reach-every-citizen.md) finished · **When:** right after them
 
 ## Read first
 `CLAUDE.md`, [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md), [research E: throughput](../docs/06-strategy/research-2026-10-21/E-throughput.md) §a.3, `src/swan_bot/bot.py` (`main()` is one ~430-line loop with closures: `write_status`, `pause`, `save_state`, `desk_fill`), `targeting.py` (`Targeter.refresh`), `amplify.py` (`tick`), `llm.py`.
@@ -21,24 +21,26 @@ The bot runs everything in one serial loop: read targets (`targeter.refresh()`, 
   - keeps the 4-min voice gap and the send-time checks (`ledger.send_problem`, `gone()`).
 - The amplifier's likes and views keep their own budget in `pause()` / `tick()`, unchanged (amplification is paused anyway).
 
-## Assurance that nothing else changes
-1. **Invariants, each with a test in `tests/test_bot_split.py`:**
-   - **one writer:** only the writer thread calls post, reply, repost or like;
-   - **pacing:** the gap between writes is never below today's (`per_min` clamp plus jitter), and the bot backs off on 429;
-   - **voice gap:** a voice never writes inside `ACCOUNT_MIN_GAP_S`;
-   - **no double replies:** a post in `replied_posts` is never answered again, and the per-session cap holds (todo/21);
-   - **state safety:** `swan_state.json`, `swan_accounts.json` and `llm_spend.json` are written by one owner under a lock, atomically (tmp file + `os.replace`). No lost updates when the reader and writer both change state;
-   - **the order is unchanged:** for the same queue contents, `pick_job` returns the same job as before.
-2. **Replay equivalence:** feed a recorded hour of reads (fixtures from `logs/feed_reads.jsonl` and saved Latest pages) through the old and the new loop in dry-run with a fixed random seed and a fake LLM. Each write decision (target, voice, mode, frame) must be the same; only timestamps may differ. Write down any difference and justify it.
-3. **Dry run on the real platform** (`--hours 0.2`, no writes): compare the job mix and target picks with the old loop, run side by side.
-4. **Shadow first:** deploy with `config.SPLIT_LOOP = False` (old loop) and switch the flag on in citizen hours with someone watching. Watch the G12 funnel, the write rate, 429s and hidden-post alerts for 1 h. **Rollback:** set the flag back and restart (~1 min).
-5. **Before and after** over 6 h each, written into this file with the date: median citizen-post → reply time, reply-back latency, writes/h, 429s per hour, `lost(*)` counts. Expected: reply-back latency drops from ≤ 5 min to ≤ 1 min, and the ceiling rises from ~1.4 to ~2.5 writes/min, with **no change in what gets sent**.
+## Assurance: nothing switched off by accident
+Light-touch (Marc, 2026-10-22): the aim is no integration breakage, not proof of identical output. Low results show up in the data anyway.
+1. **A feature checklist, in a test:** after the change, every job type still runs in a dry run, and every background duty still fires.
+   - **Job types:** `reply`, `reply_back`, `second_voice`, `journalist`, `post`, `repost`.
+   - **Background duties:** registration drip, `pulse.update`, fact desk, `amp.tick` (respects `AMPLIFY_OFF`), `write_status` / dashboard, `save_state`, the hidden-post limits, the todo/20 and todo/21 logging (`lost(*)`, `skipped(*)`, `read_*`).
+   - Name each one in `tests/test_bot_split.py`, and run the dry run with `--samples` large enough to hit each.
+2. **The core rules, a few small tests:**
+   - only the writer posts;
+   - pacing never faster than today and backs off on 429;
+   - the 4-min voice gap holds;
+   - no double replies;
+   - state files written by one owner, atomically (tmp file + `os.replace`).
+3. **A flag for a fast rollback:** `config.SPLIT_LOOP`. Ship with it on, and watch the first hour: write rate, 429s, the G12 funnel, alerts. Off and a restart (~1 min) if anything looks wrong.
+4. **A quick before/after** (1–2 h each), noted here: reply-back latency, writes/h, 429s.
 
 ## Out of scope
 New targeting or content rules (todo/20 and todo/21); more processes (one writer, always: [research E](../docs/06-strategy/research-2026-10-21/E-throughput.md#b-marcs-three-questions)); any change to rate-limit handling except keeping it correct across threads.
 
 ## Guardrails
-Writes stay off in tests and dry runs. Ship via `main` only with all tests green and the flag off. Never switch the flag on during the ×4 days unless it has run cleanly for 48 h before them.
+Writes stay off in tests and dry runs. Ship via `main` with all tests green.
 
 ## Done when
-The invariant tests and the replay test pass. The split has run ≥ 24 h with the flag on and no invariant breaks. The before/after numbers are written here. Then delete the old loop.
+The checklist test and the rule tests pass, the first live hour is clean, and the before/after numbers are noted here. Delete the old loop once it has run a day without issues.
