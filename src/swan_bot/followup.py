@@ -15,7 +15,7 @@ import time
 
 import capturethenarrative as ctn
 
-from . import config
+from . import config, feeds
 from .amplify import is_citizen_id
 from .analysis import ts_of
 from .targeting import stance
@@ -127,7 +127,7 @@ class Reader:
     def trending(self, our_ids):
         """{post_id: rank} for our posts in Trending right now (one feed read; feeds are 10/min team-wide)."""
         try:
-            posts = self.read(self.social.feed_trending, limit=50)
+            posts = self.read(feeds.read, self.social, "feed_trending", "swan-followup", limit=50)   # logged (G1)
         except ctn.APIError:
             return {}
         return {p["post_id"]: rank for rank, p in enumerate(posts, 1) if p["post_id"] in our_ids}

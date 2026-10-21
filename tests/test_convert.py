@@ -189,7 +189,8 @@ def test_turn_cap_and_deep_threads(monkeypatch):
 
 # ---- step 1: followup.py counted posts we only liked as ours ----
 def test_followup_our_ids_are_posts_we_wrote(tmp_path, monkeypatch):
-    from swan_bot import followup
+    from swan_bot import feeds, followup
+    monkeypatch.setattr(feeds, "FEED_LOG", tmp_path / "feed_reads.jsonl")
     rows = [dict(act="like", live=True, post_id=1, own=False), dict(act="repost", live=True, post_id=2),
             dict(act="amp_plan", live=True, post_id=3), dict(act="reply", live=True, post_id=4),
             dict(act="thread_answer", live=True, post_id=5), dict(act="post", live=False, post_id=6)]
@@ -208,6 +209,7 @@ def test_followup_our_ids_are_posts_we_wrote(tmp_path, monkeypatch):
     rec = reader.followup(write, 0, 1_790_000_000, followup.our_post_ids(rows))
     assert rec["replied_to_us"] is False
     assert reader.trending(followup.our_post_ids(rows)) == {4: 2}
+    assert '"proc": "swan-followup"' in (tmp_path / "feed_reads.jsonl").read_text()
 
 
 # ---- step 5: levers, frames, no vaccine advocacy ----
