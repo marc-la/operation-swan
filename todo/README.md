@@ -12,11 +12,14 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
+| ~~19~~ | ✓ **Shipped 2026-10-21 (d99bd34):** citizen writes first; Latest every 2 min, paged; "Yes, with conditions" kept; reply-backs and second voices on | Marc + Claude | done | — |
+| [21](21-reach-every-citizen.md) | Reach every citizen: hard-skip only non-citizen/off-topic/hostile; the stance sets priority, not eligibility; per-post and per-session limits instead of a 72 h author cooldown; firm-Yes arm; skip log | Marc + Claude | **22 Oct** | 19 (shipped) |
+| [20](20-replies-that-convert.md) | Replies that convert: changes of mind toward No (0 so far), reply style A/B, weak frames out, Kimi length rejects, followup.py bug | Marc + Claude | **22 Oct, concurrently with 21** | 19 (shipped) |
 | [07](07-blue-reporting.md) | Blue reporting: **built 21 Oct** (`swan-blue` on EC2, approve mode first). Left: approve the first batch, check the first rulings and locks, ask B.10/B.11 | Blue lead | **21–22 Oct** | — |
 | ~~16~~ | ✓ **Done 2026-10-21:** fact desk. Facts in `content/facts.toml`, checked against the papers hourly (contradictions pause, the rest proposed). Workflow: [system-architecture §9](../docs/06-strategy/system-architecture.md#9-fact-desk-who-reviews-when-how-2026-10-21) | Marc + Claude | done | — |
 | [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2): built 21 Oct, box setup left | Marc | 22 Oct | — |
 
-**Critical path to catch up (2026-10-21):** Blue (07) starts today. Amplification went harder on 21 Oct: one post an hour, every one heavy, 15–20 thread replies on top of 5–6 reposts, best models and best-measured voices ([amplification](../docs/06-strategy/amplification.md)). The trending pulse (old 15, built 21 Oct: [amplification](../docs/06-strategy/amplification.md#trending-pulse-2026-10-21)) keeps that content current. Its 24 h before/after check is open there. Dropped 21 Oct: the overnight experiments (old 13; too little data), the NPC simulator (old 06), the intel collector (old 08), second voices and reply-backs.
+**Critical path (2026-10-22):** changes of mind at volume ([direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md#the-plan-changes-of-mind-at-volume-22-oct--2-nov)). **21** = reach every citizen (volume), **20** = replies that convert (conversion and the light read), run concurrently in two sessions. Blue runs on its own (`swan-blue`). Amplification is **paused** (`AMPLIFY_OFF`, 2026-10-21 14:12 UTC), and Trending pushes are dropped (old 18 deleted 2026-10-22).
 
 ## Ops leftovers (small, Marc)
 Done 2026-10-20 and deleted from this folder: bot on EC2 under systemd, plus auto-deploy from `main` with alerts and CI ([hosting](../docs/04-technical/hosting.md)); throughput (old 03: LLM chain, 2.5 writes/min, 4-min voice gap); amplification (old 04, now [amplification](../docs/06-strategy/amplification.md)). Still open:
