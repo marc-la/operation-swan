@@ -68,6 +68,13 @@ def test_red_when_every_llm_parked_amber_on_fallback(tmp_path):
     assert page(make_root(tmp_path, [write(3)], parked))[0]["banner"]["level"] == "red"
 
 
+def test_amber_when_every_llm_parked_briefly(tmp_path):
+    brief = {"llm": [{"model": "flash-lite", "parked_until": 60, "why": "per-minute limit"},
+                     {"model": "gpt-oss", "parked_until": 90, "why": "daily quota"}]}
+    ctx, _ = page(make_root(tmp_path, [write(3)], brief))
+    assert ctx["banner"]["level"] == "amber" and ctx["banner"]["text"].startswith("LLMS BUSY")
+
+
 def test_amber_on_fallback_llm(tmp_path):
     fallback = {"llm": [{"model": "flash-lite", "parked_until": 3600, "why": "daily quota"},
                         {"model": "gpt-oss", "parked_until": None, "why": None}]}

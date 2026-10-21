@@ -30,6 +30,7 @@ POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2",
 MULTIPLIERS = [(dt.date(2026, 10, 26), 2), (dt.date(2026, 11, 1), 4)]     # derived, not confirmed by organisers
 LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; this covers several hours
 STALE_STATUS_S = 300
+STALL_S = 5 * 60                               # every LLM parked this long or longer: red
 PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15 min
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
 ACTIVITY_TOP, ACTIVITY_ALL = 12, 60          # rows always shown / rows behind "Older activity"
@@ -170,9 +171,12 @@ def gather(root, now, service):
         red = f"DOWN: swan-bot is {service}. On the box: journalctl -u swan-bot -n 50"
     elif health:
         red = health
-    elif chain and current is None:
+    elif chain and current is None and min(m["parked_until"] for m in chain) - now.timestamp() >= STALL_S:
         first = min(m["parked_until"] for m in chain)
         red = f"STALLED: every LLM is parked until {hm(dt.datetime.fromtimestamp(first, dt.timezone.utc))}"
+    elif chain and current is None:              # a short gap: the bot waits a minute and carries on
+        first = min(m["parked_until"] for m in chain)
+        amber = f"LLMS BUSY: every model is rate-limited, next free at {hm(dt.datetime.fromtimestamp(first, dt.timezone.utc))}"
     elif stale:
         amber = ("NO STATUS: the bot hasn't reported for "
                  + (ago(now - status_t).replace(" ago", "") if status_t else "a while (or isn't live)"))
