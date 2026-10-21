@@ -57,9 +57,10 @@ AMP_EXPLORE = 0.0
 THREAD_PER_VOICE = 2                # thread replies one voice may write under one amplified post
 # The amplified post is our best content: drafted on the strongest models first, the usual chain if they are out.
 # The bot's key is on the free project: 3.8 and 3.6 Flash have 20 requests a day each (deploy/llm_chain.txt).
-# qwen-plus-character (Alibaba free quota, 1M tokens to 2027-01-20) backs them up: 5/6 drafts passed the gate in
-# llm_compare at 2 items per call (2026-10-21). Order comes from deploy/llm_chain.txt, not from this tuple.
-AMP_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "qwen-plus-character")
+# 2026-10-21: Kimi K2.5 and GLM-5 on Bedrock lead (best drafts in llm_compare, paid from the AWS credits); then the
+# free Gemini Flash models and qwen-plus-character (Alibaba free quota, 1M tokens to 2027-01-20).
+# Order comes from deploy/llm_chain.txt, not from this tuple.
+AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3.6-flash", "qwen-plus-character")
 AMP_AUTHOR_EXPLORE = 0.2            # share of amplified posts by a random ready voice, not the best-measured one
 AMP_AUTHOR_PRIOR = (2, 40.0)        # (pseudo-posts, reward each) for a voice not yet measured: try it early
 # delays after the post, lognormal (median min, sigma, clip lo, clip hi): front-loaded, heavy tail, never instant

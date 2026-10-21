@@ -42,6 +42,10 @@ PROVIDERS = {
     # tokens per model for 90 days, then pay-as-you-go unless "stop when free quota is used up" is on (2026-10-21)
     "alibaba": dict(key="ALIBABA_API_KEY", url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
                     models="ALIBABA_MODEL", default=""),
+    # Bedrock (Sydney), billed to the AWS free-plan credits on the EC2 account. Claude is us-east-1 only and refuses
+    # /chat/completions, so it isn't reachable here (2026-10-21)
+    "bedrock": dict(key="BEDROCK_API_KEY", url="https://bedrock-mantle.ap-southeast-2.api.aws/v1",
+                    models="BEDROCK_MODEL", default=""),
 }
 CHAIN_FILE = config.ROOT / "deploy" / "llm_chain.txt"
 USAGE_FILE = config.DATA / "llm_usage.json"

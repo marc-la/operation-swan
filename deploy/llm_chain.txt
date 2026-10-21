@@ -13,6 +13,12 @@
 # The bot's key is on the FREE default project (no billing): flash-lite 500/day, 3.6 and 3.8 Flash 20/day each.
 # Gemma 4 31B (free, 14.4K/day) removed: 41 s per draft and ran past the length limit (2026-10-20 test).
 gemini:gemini-3.5-flash-lite
+# 2026-10-21: Bedrock (Sydney) on the AWS free-plan credits ($99.67, shared with the EC2 box). llm_compare, 6 drafts at
+# 2 per call: Kimi K2.5 4/6 and the only model to pass both posts; GLM-5 4/6; Mistral Large 3 and Qwen3-235B 2/6;
+# DeepSeek V3.2 3/6 at 64 s. Kimi and GLM lead the amplified post (config.AMP_MODELS) and take over from flash-lite
+# when its free 500/day is spent. Needs BEDROCK_API_KEY in .env.
+bedrock:moonshotai.kimi-k2.5
+bedrock:zai.glm-5
 gemini:gemini-3.8-flash
 gemini:gemini-3.6-flash
 groq:openai/gpt-oss-120b
