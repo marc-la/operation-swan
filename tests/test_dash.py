@@ -249,3 +249,49 @@ def test_facts_section_lists_pauses_first_and_hides_decided(tmp_path):
     assert ctx["banner"]["level"] == "amber" and "FACT PAUSED: polls" in ctx["banner"]["text"]
     assert "python scripts/facts_review.py --accept 3 --same-key" in html and "--reject 1,2" not in html
     assert "--reject 2,1" in html and "<script>alert(1)" not in html and "&lt;script&gt;" in html
+
+
+# ---- Reach (2026-10-22): did we answer every citizen we could, fast, and did it convert? ----
+def refresh(minutes_ago, funnel, candidates=3):
+    return {"ts": iso(minutes_ago), "act": "refresh", "candidates": candidates, "funnel": funnel}
+
+
+def test_reach_green_when_every_citizen_answered(tmp_path):
+    f = {"2026-10-22T04": {"seen": 10, "answered": 8, "skipped": {"off_topic": 2}, "lost": {}, "pending": {}},
+         "2026-10-22T05": {"seen": 2, "answered": 1, "skipped": {}, "lost": {}, "pending": {"queued": 1}}}
+    ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
+    r = ctx["reach"]
+    assert r["verdict"] == "KEEPING UP" and r["tile"]["answered"] == 8 and r["tile"]["answerable"] == 8
+    assert "none lost" in r["lines"][0]["text"] and "Citizens answered" in html and "Reach: keeping up" in html
+
+
+def test_reach_losing_citizens_is_red_with_the_reason(tmp_path):
+    f = {"2026-10-22T04": {"seen": 5, "answered": 3, "skipped": {}, "lost": {"gate:near_duplicate": 2}, "pending": {}},
+         "2026-10-22T05": {"seen": 0, "answered": 0, "skipped": {}, "lost": {}, "pending": {}}}
+    ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
+    cov = ctx["reach"]["lines"][0]
+    assert ctx["reach"]["verdict"] == "LOSING CITIZENS" and cov["light"] == "red"
+    assert "2 lost (2 gate:near_duplicate)" in cov["text"] and "If not green" in html
+
+
+def test_reach_no_funnel_yet_is_amber_and_page_renders(tmp_path):
+    ctx, html = page(make_root(tmp_path, [write(5)]))
+    assert ctx["reach"]["tile"] is None and ctx["reach"]["lines"][0]["light"] == "amber"
+    assert "posts last hour" in html
+
+
+def test_reach_dates_citizen_posts_from_our_post_ids():
+    clock = [(100, 1000.0), (200, 2000.0)]
+    assert build._written_at(150, clock) == 1500.0
+    assert build._written_at(50, clock) is None and build._written_at("x", clock) is None
+
+
+def test_reach_counts_changes_of_mind_from_portal_messages():
+    since = NOW - dt.timedelta(hours=5)
+    pts = [{"_t": NOW - dt.timedelta(hours=1), "message": "NPC engagement: 3 likes, 2 contributions to changes of mind "
+            "towards your side and 1 contribution to a change of mind away from your side"},
+           {"_t": NOW - dt.timedelta(hours=2), "message": "NPC engagement: 1 change of mind on vaccination towards your side, "
+            "4 contributions to changes of mind on vaccination towards neither side"},
+           {"_t": NOW - dt.timedelta(hours=9), "message": "NPC engagement: 9 contributions to changes of mind towards your side"}]
+    m = build._minds(pts, since)
+    assert m == {"toward": 3, "away": 1, "neither": 4, "primary_toward": 1}

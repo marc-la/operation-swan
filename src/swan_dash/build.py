@@ -476,6 +476,206 @@ def blue_panel(data, now, points, day_start):
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 
 
+# ---- reach: did we answer every citizen we could, fast, and did it convert? (Marc, 2026-10-22) ----
+CITIZEN_WRITES = {"reply", "reply_back", "second_voice", "journalist"}
+REACH_SPEED_MIN = 3            # a new citizen post answered within this (median)
+REACH_BACK_MIN = 1             # a citizen answering us gets our reply within this (median)
+REACH_QUEUE_MIN = 10           # the oldest citizen item still waiting
+REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
+REACH_CONVERT_AFTER = 100      # citizen-facing writes today before "no change toward No" counts as a problem
+MIND = re.compile(r"(\d+) (.*)")
+
+
+def _id_clock(actions):
+    """(post id, unix time) of our own live writes: ids rise with time, so a citizen post's id dates it."""
+    pts = []
+    for a in actions:
+        try:
+            if a.get("live") is True and a.get("act") in WRITES and a.get("post_id") not in (None, "None"):
+                pts.append((int(a["post_id"]), a["_t"].timestamp()))
+        except (TypeError, ValueError):
+            pass
+    return sorted(pts)
+
+
+def _written_at(pid, clock):
+    """When post `pid` was written, interpolated between our own posts; None outside what we can date."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    for (i0, t0), (i1, t1) in zip(clock, clock[1:]):
+        if i0 <= pid <= i1 and i1 > i0:
+            return t0 + (t1 - t0) * (pid - i0) / (i1 - i0)
+    return None
+
+
+def _median(xs):
+    xs = sorted(xs)
+    return None if not xs else (xs[len(xs) // 2] if len(xs) % 2 else (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2)
+
+
+def _minds(points, since):
+    """Changes of mind in the portal's messages since `since`: toward / away / neither, primary or contribution."""
+    out = dict(toward=0, away=0, neither=0, primary_toward=0)
+    for e in points:
+        if e["_t"] < since:
+            continue
+        for part in re.split(r",| and ", e.get("message") or ""):
+            m = MIND.match(part.strip().removeprefix("NPC engagement: "))
+            if not m or "mind" not in m.group(2):
+                continue
+            n, what = int(m.group(1)), m.group(2)
+            side = "toward" if "towards your side" in what else "away" if "away from your side" in what else "neither"
+            out[side] += n
+            if side == "toward" and "contribution" not in what:
+                out["primary_toward"] += n
+    return out
+
+
+def reach(actions, status, points, now, day_start):
+    """The Reach block: a verdict and six plain sentences, each with a light and what to do when it isn't green."""
+    hour_ago = now - dt.timedelta(hours=1)
+    refreshes = [a for a in actions if a.get("act") == "refresh"]
+    funnel = (refreshes[-1].get("funnel") if refreshes else None) or {}
+    keys = sorted(funnel)
+    full = funnel[keys[-2]] if len(keys) >= 2 else None          # the last full hour (UTC hour keys)
+    cur = funnel[keys[-1]] if keys else None
+    f = full or cur
+    lines = []
+
+    # 1) coverage
+    if f:
+        skipped, lost, pending = (f.get(k) or {} for k in ("skipped", "lost", "pending"))
+        n_skip, n_lost, n_wait = sum(skipped.values()), sum(lost.values()), sum(pending.values())
+        answerable = max(f.get("seen", 0) - n_skip, 0)
+        share = f.get("answered", 0) / answerable if answerable else None
+        start = dt.datetime.strptime((keys[-2] if full else keys[-1]), "%Y-%m-%dT%H").replace(tzinfo=dt.timezone.utc)
+        reasons = ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(skipped.items(), key=lambda kv: -kv[1]))
+        text = (f"{perth(start).strftime('%-I%p').lower()}–{perth(start + dt.timedelta(hours=1)).strftime('%-I%p').lower()}: "
+                f"citizens wrote {f.get('seen', 0)} things we could see. We answered {f.get('answered', 0)}"
+                + (f", skipped {n_skip} on purpose ({reasons})" if n_skip else "")
+                + (f", {n_wait} still waiting" if n_wait else "")
+                + (f", {n_lost} lost ({', '.join(f'{v} {k}' for k, v in lost.items())})" if n_lost else ", none lost") + ".")
+        light = "red" if n_lost else ("amber" if share is not None and share < REACH_SHARE and not n_wait else "green")
+        lines.append(dict(name="Coverage", light=light, text=text,
+                          fix="Citizens are being lost or left: the reason is above. Targeting (todo/21) or drafting (todo/20) owns it."))
+        tile = dict(answered=f.get("answered", 0), answerable=answerable, lost=n_lost, light=light)
+    else:
+        lines.append(dict(name="Coverage", light="amber", text="No coverage figures yet (the bot logs them each refresh).",
+                          fix="If this lasts more than 5 min, the bot isn't refreshing: check Bot below."))
+        tile = None
+
+    # 2) speed
+    clock = _id_clock(actions)
+    fresh, back = [], []
+    for a in actions:
+        if a.get("live") is not True or a["_t"] < hour_ago or a.get("group") not in (None, "None"):
+            continue
+        w = _written_at(a.get("target_post"), clock)
+        if w is None:
+            continue
+        lag = (a["_t"].timestamp() - w) / 60
+        if a.get("act") == "reply" and a.get("source") == "latest" and lag >= 0:
+            fresh.append(lag)
+        elif a.get("act") == "reply_back" and lag >= 0:
+            back.append(lag)
+    mf, mb = _median(fresh), _median(back)
+    if mf is None and mb is None:
+        lines.append(dict(name="Speed", light="green", text="No new citizen posts to answer in the last hour.", fix=""))
+    else:
+        parts = []
+        if mf is not None:
+            parts.append(f"we answer a new citizen post in {mf:.1f} min (target ≤ {REACH_SPEED_MIN}, {len(fresh)} replies)")
+        if mb is not None:
+            parts.append(f"a citizen answering us gets our reply in {mb:.1f} min (target ≤ {REACH_BACK_MIN}, {len(back)})")
+        slow = (mf or 0) > REACH_SPEED_MIN or (mb or 0) > REACH_BACK_MIN
+        lines.append(dict(name="Speed", light="amber" if slow else "green", text="Last hour: " + "; ".join(parts) + ".",
+                          fix="We're outside the citizen's session window: check Queue below and the LLM line under Bot."))
+        tile = tile and dict(tile, speed=mf)
+
+    # 3) queue
+    q = status.get("queue") or {}
+    oldest = status.get("oldest_waiting_s")
+    if oldest is None:
+        waits = [float(a["age_min"]) for a in actions if a.get("act") == "wait" and a.get("age_min") not in (None, "None")
+                 and (now - a["_t"]).total_seconds() < 300]
+        oldest = max(waits) * 60 if waits else None
+    waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
+    if waiting is not None:
+        old_min = oldest / 60 if oldest is not None else None
+        lines.append(dict(name="Queue", light="amber" if old_min and old_min > REACH_QUEUE_MIN else "green",
+                          text=f"{waiting} citizen item{'s' if waiting != 1 else ''} in the queue (all hours)"
+                               + (f", the oldest for {old_min:.0f} min (target < {REACH_QUEUE_MIN})" if old_min is not None else "")
+                               + (f"; {q['drafts_ready']} drafts ready" if q.get("drafts_ready") is not None else "") + ".",
+                          fix="The bot isn't keeping up: free voices, a parked LLM, or a stuck loop. Check alerts and Bot."))
+
+    # 4) budget
+    hour_writes = [a for a in actions if a.get("live") is True and a.get("act") in WRITES and a["_t"] >= hour_ago]
+    grp = [a for a in hour_writes if a.get("group") not in (None, "None")]
+    cit = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a not in grp]
+    other = len(hour_writes) - len(grp) - len(cit)
+    cap = TEAM_CAP_PER_MIN * 60
+    spare = max(cap - len(hour_writes), 0)
+    by_group = {}
+    for a in grp:
+        by_group[a["group"]] = by_group.get(a["group"], 0) + 1
+    backlog = oldest is not None and oldest / 60 > REACH_QUEUE_MIN
+    lines.append(dict(name="Budget", light="amber" if backlog and spare > 30 else "green",
+                      text=f"Last hour: {len(cit)} writes to citizens, {len(grp)} to the extra groups"
+                           + (f" ({', '.join(f'{v} {k}' for k, v in sorted(by_group.items()))})" if by_group else "")
+                           + f", {other} other, of {cap} allowed. {spare} spare"
+                           + (" while citizens were waiting." if backlog else
+                              " because there was nothing better to send (fine)." if spare else "."),
+                      fix="Budget sat idle while citizens waited: the bot is slower than the queue. Check Queue and Bot."))
+
+    # 5) rejections
+    acc = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("llm_calls") not in (None, "None")]
+    first = sum(str(a.get("llm_calls")) == "1" for a in acc)
+    gate_lost = sum(1 for a in actions if a.get("act") == "lost" and str(a.get("why", "")).startswith("gate:")
+                    and a.get("mode") in CITIZEN_WRITES and a["_t"] >= hour_ago)
+    if acc or gate_lost:
+        share1 = first / len(acc) if acc else None
+        lines.append(dict(name="Rejections", light="red" if gate_lost else ("amber" if share1 is not None and share1 < REACH_SHARE else "green"),
+                          text=(f"{share1:.0%} of drafts to citizens passed the quality check first time ({len(acc)} drafts, target ≥ {REACH_SHARE:.0%}); "
+                                if share1 is not None else "")
+                               + (f"{gate_lost} citizen{'s' if gate_lost != 1 else ''} lost to rejections." if gate_lost else "none lost to rejections."),
+                          fix=("Citizens are being lost to rejections: look at the reject reasons under Activity, and tell the content session (todo/20)."
+                               if gate_lost else "Nobody lost, but each rejection costs a repair (a few seconds and an LLM call). "
+                               "The content session (todo/20) tunes the prompts.")))
+
+    # 6) outcome
+    minds = _minds(points, day_start)
+    cit_today = sum(1 for a in actions if a.get("live") is True and a.get("act") in CITIZEN_WRITES and a["_t"] >= day_start)
+    newest = max((e["_t"] for e in points), default=None)
+    last_pts = sum(e["points"] for e in points if newest and (newest - e["_t"]).total_seconds() < 600) if newest else None
+    per100 = (lambda n: f"{100 * n / cit_today:.1f}") if cit_today else (lambda n: "—")
+    stuck = cit_today >= REACH_CONVERT_AFTER and minds["toward"] == 0
+    worse = minds["toward"] < minds["away"]
+    lines.append(dict(name="Is it working?", light="red" if worse else ("amber" if stuck else "green"),
+                      text=(f"{last_pts:+,} points at {hm(newest)}. " if last_pts is not None else "")
+                           + f"Today (since 9pm Perth, {cit_today} writes to citizens): changes of mind {minds['toward']} toward No"
+                           + (f" ({minds['primary_toward']} full)" if minds["primary_toward"] else "")
+                           + f", {minds['away']} away, {minds['neither']} neither; per 100 writes "
+                           + f"{per100(minds['toward'])} / {per100(minds['away'])} / {per100(minds['neither'])}.",
+                      fix="Replies aren't moving people toward No: the content session's read-out (todo/20) decides what to change."))
+
+    order = ["red", "amber", "green"]
+    worst = min((l["light"] for l in lines), key=order.index)
+    bad = lambda names, levels=("red", "amber"): [l for l in lines if l["name"] in names and l["light"] in levels]
+    if bad(("Coverage", "Rejections"), ("red",)):
+        verdict = "LOSING CITIZENS"
+    elif bad(("Speed", "Queue", "Budget", "Coverage")):
+        verdict = "FALLING BEHIND"
+    elif bad(("Is it working?",)):
+        verdict = "NOT CONVERTING YET"
+    else:
+        verdict = "KEEPING UP"
+    why = ", ".join(l["name"].lower() for l in lines if l["light"] != "green") or None
+    return dict(verdict=verdict, light=worst, why=why, lines=lines, tile=tile,
+                skipped=(f or {}).get("skipped") or {}, groups=by_group)
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -652,7 +852,7 @@ def gather(root, now, service):
                  chain=states),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
         activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
-        blue=blue,
+        blue=blue, reach=reach(actions, status, points, now, day_start),
         built=perth(now).strftime("%H:%M:%S"))
 
 
@@ -661,7 +861,7 @@ def render(ctx):
                              autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
     env.filters["short"], env.filters["hm"] = short, hm
-    return env.get_template("index.html.j2").render(**ctx)
+    return env.get_template("index.html.j2").render(ctx)
 
 
 def write_atomic(path, text):

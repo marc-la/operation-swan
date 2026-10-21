@@ -33,6 +33,14 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .sub { color: var(--muted); font-size: 13px; }
 .up { color: var(--green); } .down { color: var(--red); } .warn { color: var(--amber); }
+.reach { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: -10px 0 22px; }
+.reach .verdict { display: inline-block; padding: 4px 10px; border-radius: 8px; font-weight: 600; margin-bottom: 6px; }
+.reach ul { list-style: none; margin: 0; padding: 0; }
+.reach li.rl { display: flex; gap: 8px; padding: 5px 0; border: 0; grid-template-columns: none; }
+.reach .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--green); }
+.reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); }
+.reach .fix { display: block; color: var(--muted); font-size: 13px; }
+.reach details { margin-top: 8px; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
 @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
@@ -183,9 +191,26 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     <div class="val {{ 'up' if score.delta >= 0 else 'down' }}">{{ '+' if score.delta >= 0 else '' }}{{ score.delta | n }}</div>
     <div class="sub">{% if score.last_hour is not none %}{{ '%+d' % score.last_hour }} at {{ score.last_hour_at }}{% elif score.per_hour is not none %}≈ {{ score.per_hour | n }} pts/hour{% endif %} · since {{ day_start }}</div>
     {% else %}<div class="val">—</div><div class="sub">since {{ day_start }}</div>{% endif %}</div>
-  <div class="kpi"><div class="label">Posts, last hour</div>
-    <div class="val">{{ writes.hour }}</div>
-    <div class="sub">{% if writes.planned %}pace {{ writes.planned }} · {% endif %}cap {{ writes.cap }}</div></div>
+  <div class="kpi"><div class="label">Citizens answered</div>
+    {% if reach.tile %}
+    <div class="val {{ 'down' if reach.tile.light == 'red' else ('warn' if reach.tile.light == 'amber' else 'up') }}">{{ reach.tile.answered }} / {{ reach.tile.answerable }}</div>
+    <div class="sub">{{ reach.tile.lost }} lost{% if reach.tile.speed is defined and reach.tile.speed is not none %} · reply in {{ '%.1f' % reach.tile.speed }} min{% endif %} · last full hour</div>
+    {% else %}<div class="val">—</div><div class="sub">{{ writes.hour }} posts last hour</div>{% endif %}</div>
+</div>
+
+<div class="reach">
+  <div class="verdict {{ 'green' if reach.verdict == 'KEEPING UP' and reach.light != 'red' else reach.light }}">Reach: {{ reach.verdict | lower }}{% if reach.why %} · flagged: {{ reach.why }}{% endif %}</div>
+  <ul>
+  {% for l in reach.lines %}
+    <li class="rl"><span class="dot {{ l.light }}"></span><span><b>{{ l.name }}:</b> {{ l.text }}{% if l.light != 'green' and l.fix %}<span class="fix">If not green: {{ l.fix }}</span>{% endif %}</span></li>
+  {% endfor %}
+  </ul>
+  {% if reach.skipped or reach.groups %}
+  <details id="reach-more"><summary>Reach details</summary><div>
+    {% if reach.skipped %}<p class="sub">Skipped on purpose, last full hour: {% for k, v in reach.skipped | dictsort %}{{ v }} {{ k | replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}. Hard skips only: off topic, hostile, deep thread, already answered (todo/21).</p>{% endif %}
+    {% if reach.groups %}<p class="sub">Extra groups, last hour (todo/23): {% for k, v in reach.groups | dictsort %}{{ v }} {{ k | replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  </div></details>
+  {% endif %}
 </div>
 
 <div class="label">Activity</div>
