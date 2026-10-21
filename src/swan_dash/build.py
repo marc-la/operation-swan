@@ -374,6 +374,19 @@ BLUE_APPROVE = "ssh swan-ec2 'ctn/scripts/blue.sh approve all'"
 BLUE_ERROR_S = 2 * 3600                        # an older error has been dealt with or retried: not shown
 
 
+BLUE_WORDS = {"pending": "pending, rules about", "hidden": "hidden (inauthentic)", "genuine": "ruled genuine",
+              "refused": "refused", "ruled": "ruled (outcome in the portal log)"}
+
+
+def blue_row(r, teams):
+    """One of today's reports for the COP table: what, against which team (numbered as they appear), where it
+    stands, when."""
+    t = ts(r.get("at"))
+    team = teams.setdefault(r.get("team"), len(teams) + 1)
+    return dict(what=f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}", team=f"team {team}",
+                status=r.get("status"), word=BLUE_WORDS.get(r.get("status"), r.get("status")), at=hm(t) if t else "")
+
+
 def blue_panel(data, now, points, day_start):
     """The Blue section: what needs a decision (the reports waiting, grouped by ring), the state in one line, and
     today's results once there are any. None if swan-blue isn't set up."""
@@ -387,7 +400,7 @@ def blue_panel(data, now, points, day_start):
         r"moderat|inauthentic|suspen|report", f"{e.get('type')} {e.get('message')}", re.I))
     rings = [dict(post=r.get("post"), why=short(r.get("why"), 160), reports=r.get("reports"))
              for r in s.get("rings") or []]
-    waiting = len(s.get("waiting") or [])
+    waiting, teams = len(s.get("waiting") or []), {}
     bits = ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked until {hm(locked)}"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
@@ -400,7 +413,8 @@ def blue_panel(data, now, points, day_start):
         next_ruling=hm(nxt) if nxt else None, waiting=waiting, rings=rings,
         teams=len({r.get("team") for r in s.get("rings") or []}),
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
-        today=today if today.get("filed") or today.get("hidden") or today.get("genuine") else None,
+        today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
+        queued=s.get("queued") or 0, rows=[blue_row(r, teams) for r in s.get("ledger") or []],
         rate=prec.get("rate"), ruled=prec.get("n"),
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 

@@ -139,3 +139,14 @@ def test_approval_rows_are_one_per_ring():
              dict(key="a7", ring=None, ring_why="post #3 already hidden", label="cB", ev=14.3)]
     rows = S.rings(cands)
     assert [(r["post"], r["reports"], r["ev"]) for r in rows] == [(10, 2, 39.4), (20, 1, 15.0), (None, 1, 14.3)]
+
+
+def test_dashboard_reads_an_older_status_file(tmp_path):
+    import datetime as dt
+    import json
+    from swan_dash import build
+    (tmp_path / "blue_status.json").write_text(json.dumps(dict(ts=S.iso(), mode="approve", why="x", pending=2, cap=25,
+                                                                today={"filed": 2}, waiting=[], rings=[])))
+    now = dt.datetime.now(dt.timezone.utc)
+    b = build.blue_panel(tmp_path, now, [], now - dt.timedelta(hours=1))
+    assert b["today"]["refused"] == 0 and b["queued"] == 0 and b["rows"] == [] and not b["stale"]

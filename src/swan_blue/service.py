@@ -469,9 +469,15 @@ class Blue:
             today=dict(filed=len(filed_today), hidden=sum(r["status"] == "hidden" for r in ruled_today),
                        genuine=sum(r["status"] == "genuine" for r in ruled_today),
                        accounts=sum(r["status"] == "ruled" for r in ruled_today),
+                       refused=sum(r["status"] == "refused" and sydney_day(r["filed"]) == today for r in reps),
                        teams=len({r["label"] for r in filed_today})),
             precision=self.precision(), ready=len(ranked),
             waiting=[c["key"] for c in waiting], rings=rings(waiting),
+            queued=len([k for k in ok if k not in self.s["reports"]]),       # approved, not filed yet
+            ledger=[dict(key=k, target=r["target"], kind=r["kind"], team=r["label"], status=r["status"],
+                         at=iso(r["filed"] + RULE_S if r["status"] == "pending" else r.get("ruled") or r["filed"]))
+                    for k, r in sorted(self.s["reports"].items(), key=lambda kv: kv[1]["filed"])
+                    if r["status"] == "pending" or sydney_day(r["filed"]) == today],
             last_error=self.s["last_error"], last_error_ts=self.s.get("last_error_ts")))
 
     # ---- one pass ----
