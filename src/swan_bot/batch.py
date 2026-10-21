@@ -87,10 +87,9 @@ OUTPUT_RULES = (
 
 
 def persona_card(persona, frame_key):
-    facts = "; ".join(content.FACTS[f] for f in content.fact_store.active(content.FRAMES[frame_key]["facts"]))
-    details = [d for d in persona["details"] if not content.fact_store.paused_in(d)]
+    facts = "; ".join(content.FACTS[f] for f in content.FRAMES[frame_key]["facts"])
     return (f"Write as {persona['name']}, who {persona['role']} in {persona['place']}. "
-            f"About them: {'; '.join(details)}. Voice: {persona['voice']}.\nFacts this item may use: {facts}")
+            f"About them: {'; '.join(persona['details'])}. Voice: {persona['voice']}.\nFacts this item may use: {facts}")
 
 
 def item_text(job, shape=None, opener=None, headline=None):
@@ -153,11 +152,10 @@ def pack(jobs, headline=None, rng=random):
         label = LABELS[i]
         labels.append(label)
         persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
-        job["frame"] = content.live_frame(job["frame"], persona)      # a paused fact may have taken its frame
         items[label] = item_text(job, shape=shapes[i % len(shapes)], opener=openers[i % len(openers)],
                                  headline=headline)
         parts.append(f"=== Item {label} ===\n{persona_card(persona, job['frame'])}\n{items[label]}")
-    system = f"{content.world()}\n\n{SHARED_RULES}\n\n{MODE_RULES[mode]}\n\n{OUTPUT_RULES}"
+    system = f"{content.WORLD}\n\n{SHARED_RULES}\n\n{MODE_RULES[mode]}\n\n{OUTPUT_RULES}"
     user = "\n\n".join(parts) + f"\n\nWrite all {len(jobs)} items ({', '.join(labels)}) as JSON."
     return Pack(mode, jobs, labels, system, user, items, schema_for(labels))
 
@@ -204,8 +202,7 @@ def _persona_words(p):
 # words only one persona has (wharf cafe, tuna, sailing club...): a draft that uses two of another item's is borrowing
 # it. Words from the shared world text (facts, angles, rules) and everyday words don't count.
 _ALL_WORDS = {p["key"]: _persona_words(p) for p in content.PERSONAS}
-_COMMON = _words(" ".join([f["text"] for f in content.fact_store.TABLE.values()]
-                          + [f["angle"] for f in content.FRAMES.values()]
+_COMMON = _words(" ".join(list(content.FACTS.values()) + [f["angle"] for f in content.FRAMES.values()]
                           + content.OPENERS + content.POST_SHAPES + [SHARED_RULES] + list(MODE_RULES.values()))) | \
     _words("both early half small last before same once come past near left short mostly soon after asked gets "
            "living sees heading morning turns looks second line care jobs shops staff voted serves trade crowd "
@@ -323,18 +320,14 @@ class Desk:
         return [d["text"] for d in self.pool]
 
     def take(self, mode, t, gone=lambda job: False):
-        """A pooled draft of this mode whose account may write now, or None. Drops stale drafts, those whose
-        target was answered meanwhile (gone(job) True) and those drafted before a fact was paused."""
+        """A pooled draft of this mode whose account may write now, or None. Drops stale drafts and those whose
+        target was answered meanwhile (gone(job) True)."""
         keep = []
-        content.fact_store.refresh()
         for d in self.pool:
             j = d["job"]
-            paused = d["drafted_at"] < content.fact_store.changed_at
-            if (t - d["drafted_at"] > POOL_TTL_S[j["mode"]] or j["rec"].get("status", "active") != "active" or gone(j)
-                    or paused):
+            if t - d["drafted_at"] > POOL_TTL_S[j["mode"]] or j["rec"].get("status", "active") != "active" or gone(j):
                 self.log({"act": "pool_drop", "mode": j["mode"], "persona": j["rec"]["persona"],
-                          "batch_id": d["batch_id"], "age_s": round(t - d["drafted_at"]),
-                          **({"why": "fact_paused"} if paused else {})})
+                          "batch_id": d["batch_id"], "age_s": round(t - d["drafted_at"])})
                 continue
             keep.append(d)
         self.pool = keep

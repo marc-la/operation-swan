@@ -1,7 +1,6 @@
 """Quality gate: every draft must pass before it can be posted. Returns (clean_text, None) or (None, reason).
 
-Checks, in order: LLM artefacts, forbidden content, voting logistics, wrong claims about the Act, claims false
-in-game and the wording of paused facts (content/facts.toml, data/facts_paused.json), format (tags,
+Checks, in order: LLM artefacts, forbidden content, voting logistics, wrong claims about the Act, format (tags,
 emoji, links, mentions), length, side (never endorse Yes; posts must say No, without hedging), consoling, generic
 or bot-like phrasing, rhetorical questions, made-up numbers, specificity (a reply must name the target's point or
 an in-world fact; a post needs a local detail and ends on a question), copying sources or the prompt,
@@ -12,7 +11,6 @@ without it the built-in defaults below apply.
 import re
 
 from . import content
-from . import facts as fact_store
 
 try:
     from .playbook import craft as _craft
@@ -33,7 +31,7 @@ def _texts(value):
     return [value] if isinstance(value, str) else [v for v in value or () if isinstance(v, str)]
 
 
-SOURCES = ([f["text"] for f in fact_store.TABLE.values()] + [f["angle"] for f in content.FRAMES.values()] +
+SOURCES = (list(content.FACTS.values()) + [f["angle"] for f in content.FRAMES.values()] +
            [s for f in list(_CRAFT.values()) + list(content.FRAMES.values())
             for s in _texts(f.get("stakes")) + _texts(f.get("heat"))] +
            [s for c in list(_CHARS.values()) + content.PERSONAS for s in _texts(c.get("lines"))])
@@ -144,28 +142,6 @@ LIFE_SPAN = re.compile(r"\b\d{1,2}(-| )years?(-| )olds?\b|\b\d{1,2} years\b(?! (
 # dates already past in the timeline (setting.md): bill introduced 9 Oct, voted down 15 Oct, question confirmed
 # 17 Oct. Not voting logistics; every other day-and-month date still is
 HISTORY_DATES = re.compile(r"\b(9|15|17)(th)? oct(ober)?\b", re.I)
-
-
-def figures(text):
-    """(numbers, percents) that text states, read the way the number gate reads drafts (ages, spans of years and
-    past dates aside); a number with thousands commas comes with and without them."""
-    nums, pcts = set(), set()
-    for num in NUMBER.findall(LIFE_SPAN.sub(" ", HISTORY_DATES.sub(" ", text or ""))):
-        bare = num.rstrip("%").rstrip(",")
-        if num.endswith("%"):
-            pcts.add(bare)
-        else:
-            nums |= {bare, bare.replace(",", "")}
-    return nums, pcts
-
-
-# ...plus every figure an active fact in content/facts.toml states (text and numbers), so a fact approved through
-# scripts/facts_review.py can't be blocked by this gate. A paused fact adds none; the hand-checked ones above stay.
-for _fact in fact_store.TABLE.values():
-    if _fact.get("status") == "active":
-        _nums, _pcts = figures(" ".join([_fact["text"], *map(str, _fact.get("numbers") or [])]))
-        ALLOWED_NUMBERS |= _nums
-        ALLOWED_PERCENTS |= _pcts
 # a reply must touch the target's point or one in-world fact; a post must carry a local detail
 FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|sunset|review|exemption|binding|certificate|"
                           r"\bjab|vaccinat|vaxx|papers at|finish date|stop date|expiry|temporary|permanent|"
@@ -324,11 +300,6 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, "wrong_logistics"
     if WRONG_CLAIMS.search(t):
         return None, "wrong_claim"
-    if fact_store.FALSE_CLAIMS and fact_store.FALSE_CLAIMS.search(t):
-        return None, "false_claim"
-    paused = fact_store.paused_in(t)
-    if paused:
-        return None, f"paused_fact_{paused}"
     why = tag_problem(t, kind)
     if why:
         return None, why

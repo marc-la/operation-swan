@@ -318,7 +318,7 @@ def test_builtin_catchphrases_without_playbook(playbook):
     assert "Twelve is too young to need papers for maths." in q.CATCHPHRASES
     assert q.copied_runs("If they won't show you the list, vote No. Twelve is too young to need papers for maths.") == set()
     c = quality.content                       # content.py may merge craft/characters itself; nothing else counts
-    own = ([f["text"] for f in c.fact_store.TABLE.values()] + [f["angle"] for f in c.FRAMES.values()] +
+    own = (list(c.FACTS.values()) + [f["angle"] for f in c.FRAMES.values()] +
            [s for f in c.FRAMES.values() for s in q._texts(f.get("stakes")) + q._texts(f.get("heat"))] +
            [s for p in c.PERSONAS for s in q._texts(p.get("lines"))])
     assert set(q.SOURCES) == set(own)

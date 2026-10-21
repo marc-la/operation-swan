@@ -278,7 +278,7 @@ class Amplifier:
             else:
                 gap = config.REPOST_MIN_GAP_S if th["kind"] == "repost" else None
                 frame = None if th["kind"] == "repost" else random.choice(
-                    [f for f in content.live_frames() if f != th.get("frame")])
+                    [f for f in content.FRAMES if f != th.get("frame")])
                 busy = set(reposted) if th["kind"] == "repost" else \
                     {p for p in done if done.count(p) >= config.THREAD_PER_VOICE}
                 hidden = self.accounts.hidden()
