@@ -11,6 +11,9 @@ coordination toolkit's 60 s co-action window, Legit Social's consecutive-id repl
     python scripts/ring_audit.py --trending            # the top of Trending (the leaders' rings)
     python scripts/ring_audit.py --ours 20             # our last 20 amplified posts (from logs/swan_actions.jsonl)
     python scripts/ring_audit.py 66490 67723           # given posts
+
+scripts/swan_watch.py runs it hourly on our last amplified posts and on Trending, and alerts when we look as
+ring-like as the leaders.
 """
 import argparse
 import datetime as dt
@@ -61,6 +64,21 @@ def ring_score(r):
                         + 0.2 * min(r["runs"] / 10, 1) + 0.15 * r["overlap"]))
 
 
+def audit_many(social, ids):
+    """Audit each post, then score its liker overlap with the others in this set (so audit a set, not one post)."""
+    rows = []
+    for pid in ids:
+        try:
+            rows.append(audit(social, pid))
+        except ctn.APIError as e:
+            print(f"#{pid}: {e.status} {e.message}")
+    for r in rows:
+        others = [o["_team_likers"] for o in rows if o is not r and o["_team_likers"]]
+        r["overlap"] = (statistics.mean(len(r["_team_likers"] & o) / len(r["_team_likers"] | o) for o in others)
+                        if others and r["_team_likers"] else 0.0)
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("posts", nargs="*", type=int)
@@ -74,16 +92,7 @@ def main():
     if args.ours:
         plans = [json.loads(line) for line in open(config.ACTIONS_LOG) if '"amp_plan"' in line]
         ids += [p["post_id"] for p in plans if p.get("live") and p.get("post_id")][-args.ours:]
-    rows = []
-    for pid in ids:
-        try:
-            rows.append(audit(social, pid))
-        except ctn.APIError as e:
-            print(f"#{pid}: {e.status} {e.message}")
-    for r in rows:
-        others = [o["_team_likers"] for o in rows if o is not r and o["_team_likers"]]
-        r["overlap"] = (statistics.mean(len(r["_team_likers"] & o) / len(r["_team_likers"] | o) for o in others)
-                        if others and r["_team_likers"] else 0.0)
+    rows = audit_many(social, ids)
     print(f"{'post':>7} {'author':>6} {'likes':>5} {'team%':>5} {'<2m%':>5} {'med':>5} {'b60':>4} {'run':>4} "
           f"{'tRep':>4} {'ovl':>4} {'RING':>4}")
     for r in sorted(rows, key=ring_score, reverse=True):

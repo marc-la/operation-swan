@@ -61,7 +61,7 @@ def test_thread_jobs_come_from_other_voices():
     amp = make_amp(acc)
     amp.on_post(None, acc.records[0], "our post", "F1_blank_cheque", "heavy")
     for th in amp.state["amp_threads"]:
-        th["due"] = 0
+        th["due"] = time.time() - 1                        # due now (jobs over an hour late are dropped)
     seen = []
     while True:
         job = amp.next_write_job()
@@ -70,8 +70,37 @@ def test_thread_jobs_come_from_other_voices():
         assert job["rec"]["persona"] != "lani"
         assert job["rec"].get("role") != "booster"
         assert job["mode"] in ("thread", "repost")
-        seen.append(job["rec"]["persona"])
-    assert len(seen) == len(set(seen)), "each voice touches a post once"
+        job["rec"]["last_write"] = 0                       # dry run: no per-voice gap
+        seen.append((job["mode"], job["rec"]["persona"]))
+    replies = [p for m, p in seen if m == "thread"]
+    reposts = [p for m, p in seen if m == "repost"]
+    assert len(replies) >= 15, "heavy posts get a deep thread"
+    assert max(replies.count(p) for p in replies) <= config.THREAD_PER_VOICE
+    assert 5 <= len(reposts) == len(set(reposts)), "heavy posts keep their reposts, one per voice"
+
+
+def test_pick_author_prefers_best_measured_voice(monkeypatch):
+    acc = make_accounts()
+    monkeypatch.setattr(config, "AMP_AUTHOR_EXPLORE", 0.0)
+    measured = {r["username"]: [5, 0.0] for r in acc.voices()}
+    measured["v7"] = [5, 400.0]
+    amp = make_amp(acc, {"amp_authors": measured})
+    assert amp.pick_author()["username"] == "v7"
+    amp.state["amp_authors"].pop("v3")                      # never measured: the prior beats a measured 0
+    assert amp.pick_author()["username"] in ("v7", "v3")
+    for r in acc.voices():
+        r["status"] = "suspended"
+    assert amp.pick_author() is None
+
+
+def test_author_stats_from_log(tmp_path):
+    log = tmp_path / "actions.jsonl"
+    log.write_text("\n".join([
+        '{"act": "amp_measure", "post_id": 1, "author": "a", "at_h": 6.0, "reward": 99}',
+        '{"act": "amp_measure", "post_id": 1, "author": "a", "at_h": 1.0, "reward": 10}',
+        '{"act": "amp_measure", "post_id": 2, "author": "b", "at_h": 1.0, "reward": 4}',
+        '{"act": "like", "post_id": 3}', "not json"]))
+    assert amplify.author_stats_from_log(log) == {"a": [1, 10.0], "b": [1, 4.0]}
 
 
 def test_paused_by_file(tmp_path, monkeypatch):
@@ -132,6 +161,7 @@ def test_tick_runs_own_and_filler_likes_never_on_yes():
     own = [r for r in likes if r["own"]]
     filler = [r for r in likes if not r["own"]]
     assert own and len(own) == len({r["username"] for r in own})
+    assert all(r["username"].startswith("b") for r in filler), "only boosters do filler likes"
     assert len(filler) >= len(own), "at least half of all likes go to posts that aren't ours"
     yes_ids = {p["post_id"] for p in Stub.feed_posts if "#voteyes" in p["body"]}
     assert not any(r["post_id"] in yes_ids for r in filler)

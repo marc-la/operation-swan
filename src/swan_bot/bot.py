@@ -23,7 +23,7 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, experiment, humanize, pulse, quality
+from . import batch, config, content, experiment, humanize, pulse, quality, watch
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
@@ -63,6 +63,7 @@ class Accounts:
         self.records = load_json(config.ACCOUNTS_FILE, []) if live else []
         self.open = {}
         self.next_register = 0.0
+        self._hidden, self._hidden_mtime = {}, None
         created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records
                    if r.get("created") and r.get("role", "voice") != "booster"]
         if created:                      # a restart must not register straight after the last registration
@@ -125,14 +126,30 @@ class Accounts:
         self.save()
         return acc
 
+    def hidden(self):
+        """{username: moderator-hidden posts} from scripts/swan_watch.py (data/swan_watch.json, re-read on change)."""
+        try:
+            mtime = watch.WATCH_FILE.stat().st_mtime
+        except OSError:
+            return {}
+        if mtime != self._hidden_mtime:
+            self._hidden_mtime = mtime
+            self._hidden = {u: len(p) for u, p in watch.load().get("hidden", {}).items()}
+        return self._hidden
+
+    def parked(self, rec):
+        """Too many hidden posts to write again (config.HIDDEN_STOP): a person decides what happens to it."""
+        return self.hidden().get(rec["username"], 0) >= config.HIDDEN_STOP
+
     def ready(self, rec, t=None):
         """May this voice write now (its per-account gap has passed)?"""
         gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
-        return rec.get("status", "active") == "active" and rec.get("last_write", 0) + gap <= (t or time.time())
+        return (rec.get("status", "active") == "active" and not self.parked(rec)
+                and rec.get("last_write", 0) + gap <= (t or time.time()))
 
     def assignable(self, frame=None, exclude=(), prefer=()):
         """Like eligible(), but the voice may still be in its gap: for batched drafts that wait in the pool."""
-        free = [r for r in self.voices() if r["persona"] not in exclude]
+        free = [r for r in self.voices() if r["persona"] not in exclude and not self.parked(r)]
         mine = [r for r in free if r["persona"] in prefer]
         if mine:
             free = mine
@@ -146,7 +163,8 @@ class Accounts:
         t = time.time()
         if gap is None or not self.live:                         # dry runs rotate personas without waiting
             gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
-        ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude]
+        ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude
+                 and not self.parked(r)]
         mine = [r for r in ready if r["persona"] in prefer]
         if mine:
             ready = mine
@@ -275,8 +293,13 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None):
     mode, meta = job["mode"], job.get("meta") or {}
     target_text = (job.get("target") or {}).get("body") or ""
     prompt, repair, backend = user, None, None
+    models = config.AMP_MODELS if job.get("amp") else None     # the amplified post gets the strongest models
     for _ in range(2):
-        raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7))
+        raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
+                                    models=models)
+        if raw is None and models:                             # out of quota: the usual chain
+            models = None
+            raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7))
         if raw is None:
             break
         text, why = quality.check(raw, mode, recent_texts, prompt_text=user, target_text=target_text,
@@ -388,7 +411,7 @@ def main():
     queue, stats = [], {"accepted": 0, "rejected": {}, "by_mode": {}}
     by_user = {r["username"]: r for r in accounts.active()}
     for q in state.pop("queue", []):
-        if q["username"] in by_user:
+        if q["username"] in by_user and config.REPLY_BACK:
             queue.append(dict(mode="reply_back", rec=by_user[q["username"]], target=q["target"],
                               our_text=q["our_text"], tries=q.get("tries", 0)))
     if queue:
@@ -439,7 +462,7 @@ def main():
             pulse_now = pulse.update(state, targeter, our_ids, gen, log)
             if amp:
                 amp.tick()
-            if args.live and time.time() >= next_notif:
+            if args.live and config.REPLY_BACK and time.time() >= next_notif:
                 queue += reply_back_jobs(social, accounts, targeter)
                 next_notif = time.time() + 300
 
@@ -464,16 +487,16 @@ def main():
             if job is None and amp:                                  # own-thread replies, answers, reposts (due)
                 job = amp.next_write_job()
             if job is None and amp and amp.amp_post_due():            # the next amplified original
-                rec = accounts.eligible()
+                rec = amp.pick_author()
                 if rec:
                     job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]),
                                amp=True, level=amp.choose_level())
             drafted = None
             gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
                               or (j["mode"] == "reply" and str(j["target"]["author_id"]) in contacted))
-            if job is None and desk:
+            if job is None and desk and config.SECOND_VOICE:
                 drafted = desk.take("second_voice", t, gone)
-            if job is None and drafted is None:
+            if job is None and drafted is None and config.SECOND_VOICE:
                 state["second_voice"] = [s for s in state["second_voice"] if t - s["due"] < 3600]   # stale after 1 h
                 due = [s for s in state["second_voice"] if s["due"] <= t]
                 picked = []
@@ -637,7 +660,7 @@ def main():
                 state["contacted"][str(target["author_id"])] = time.time()
             if mode == "reply_back":                      # they're talking to us: no extra persona joins in
                 state["second_voice"] = [s for s in state["second_voice"] if s["author"] != target["author_id"]]
-            if mode == "reply":
+            if mode == "reply" and config.SECOND_VOICE:
                 state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_S),
                                                   post_id=target["post_id"], author=target["author_id"],
                                                   frame=second_frame(job["frame"]),

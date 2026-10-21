@@ -1,0 +1,9 @@
+[Unit]
+Description=Hidden-post watch and hourly ring self-audit (scripts/swan_watch.py): read-only
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/home/ec2-user/ctn/.venv/bin/python scripts/swan_watch.py
+TimeoutStartSec=15min

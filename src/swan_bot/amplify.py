@@ -23,6 +23,7 @@ Single-threaded: the bot calls tick() while it waits. tick() never raises.
 """
 import collections
 import datetime as dt
+import json
 import math
 import random
 import re
@@ -32,7 +33,7 @@ from zoneinfo import ZoneInfo
 
 import capturethenarrative as ctn
 
-from . import config, content, experiment
+from . import config, content
 from .targeting import FIRM_NO, FIRM_YES, REFERENDUM
 
 NO_TAGS = re.compile(r"#(voteno|keepkingstoniaopen|choicenotcoercion|nomandate|protectchoice)\b", re.I)
@@ -87,6 +88,29 @@ def is_citizen_id(account_id):
     return config.OFFICIAL_MAX_ID < (account_id or 0) <= config.CITIZEN_MAX_ID
 
 
+def author_stats_from_log(path):
+    """{username: [posts, reward]} from the first amp_measure of each amplified post in the action log."""
+    first = {}
+    if path.exists():
+        for line in path.open():
+            if '"amp_measure"' not in line:
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("reward") is None or not r.get("author"):
+                continue
+            if r["post_id"] not in first or (r.get("at_h") or 0) < (first[r["post_id"]].get("at_h") or 0):
+                first[r["post_id"]] = r
+    stats = {}
+    for r in first.values():
+        s = stats.setdefault(r["author"], [0, 0.0])
+        s[0] += 1
+        s[1] += r["reward"]
+    return stats
+
+
 class Amplifier:
     def __init__(self, social, accounts, state, live, log, targeter=None, code=None, owner=None, boosters=0,
                  save=lambda: None):
@@ -104,6 +128,8 @@ class Amplifier:
         for key, default in (("amp_actions", []), ("amp_threads", []), ("amp_posts", {}), ("amp_liked", {}),
                              ("amp_stats", {}), ("amp_next_post", 0.0), ("amp_filler_debt", 0.0)):
             state.setdefault(key, default)
+        if "amp_authors" not in state:                     # per-voice results of its amplified posts so far
+            state["amp_authors"] = author_stats_from_log(config.ACTIONS_LOG) if live else {}
         created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in accounts.boosters() if r.get("created")]
         self.next_register = (max(created) + random.uniform(*config.BOOSTER_REGISTER_GAP_S)) if created and live else 0.0
 
@@ -153,10 +179,29 @@ class Amplifier:
     # ---- level choice (bandit) -------------------------------------------------------------------
     def choose_level(self):
         stats = self.state["amp_stats"]
-        if any(stats.get(lv, [0, 0])[0] < 4 for lv in config.AMP_LEVELS) or random.random() < config.AMP_EXPLORE:
-            levels = list(config.AMP_PRIOR)
+        levels = [lv for lv in config.AMP_PRIOR if config.AMP_PRIOR[lv] > 0]     # a level at prior 0 is switched off
+        if any(stats.get(lv, [0, 0])[0] < 4 for lv in levels) or random.random() < config.AMP_EXPLORE:
             return random.choices(levels, weights=[config.AMP_PRIOR[lv] for lv in levels])[0]
-        return max(config.AMP_LEVELS, key=lambda lv: stats[lv][1] / stats[lv][0])
+        return max(levels, key=lambda lv: stats[lv][1] / stats[lv][0])
+
+    def pick_author(self):
+        """The voice for the next amplified post: among those free now, the best measured so far (citizen likes,
+        replies and views per post; config.AMP_AUTHOR_PRIOR for a voice not yet measured), or a random one
+        config.AMP_AUTHOR_EXPLORE of the time."""
+        hidden = self.accounts.hidden()
+        ready = [r for r in self.accounts.voices() if self.accounts.ready(r)
+                 and hidden.get(r["username"], 0) < config.HIDDEN_OFF_AMP]          # a voice with a hidden post stays off
+        if not ready:
+            return None
+        if random.random() < config.AMP_AUTHOR_EXPLORE:
+            return random.choice(ready)
+        k, prior = config.AMP_AUTHOR_PRIOR
+        stats = self.state["amp_authors"]
+
+        def score(r):
+            n, total = stats.get(r["username"], (0, 0.0))
+            return (total + k * prior) / (n + k)
+        return max(ready, key=score)
 
     def amp_post_due(self):
         return not self.paused() and time.time() >= self.state["amp_next_post"]
@@ -174,24 +219,20 @@ class Amplifier:
                                                      measured=[], best_rank=None, likes=0, text=text[:600])
         likes = self.plan_likes(post_id, rec, random.randint(*spec["likes"]), t)
         voices = [r for r in self.accounts.voices() if r["persona"] != rec["persona"]]
-        n_rep = min(random.randint(*spec["replies"]), len(voices))
-        styles = random.sample(THREAD_MIX, k=min(n_rep, len(THREAD_MIX)))
+        n_rep = min(random.randint(*spec["replies"]), len(voices) * config.THREAD_PER_VOICE)
+        styles = [random.choice(THREAD_MIX) for _ in range(n_rep)]
         if n_rep and random.random() < config.PUSHBACK_SHARE:
             styles[-1] = "pushback"
         threads = [dict(kind="thread", post_id=post_id, due=t + delay_s(config.THREAD_DELAY) * self.scale, style=s,
                         author=rec["persona"], frame=frame) for s in styles]
-        # H5 (todo/13): heavy posts get 4, 6 or 8 reposts at random, to find the dose that reaches Trending
-        reposts = experiment.draw("amp_reposts", experiment.AMP_REPOSTS) if level == "heavy" else \
-            random.randint(*spec["reposts"])
-        self.state["amp_posts"][str(post_id)]["reposts_arm"] = reposts if level == "heavy" else None
+        reposts = random.randint(*spec["reposts"])
         threads += [dict(kind="repost", post_id=post_id, due=t + delay_s(config.REPOST_DELAY) * self.scale,
                          author=rec["persona"])
                     for _ in range(min(reposts, len(voices)))]
         self.state["amp_threads"] += threads
         self.log({"act": "amp_plan", "live": self.live, "post_id": post_id, "level": level,
                   "username": rec["username"], "likes": len(likes),
-                  "replies": [s for s in styles], "reposts": sum(th["kind"] == "repost" for th in threads),
-                  "reposts_arm": self.state["amp_posts"][str(post_id)]["reposts_arm"]})
+                  "replies": [s for s in styles], "reposts": sum(th["kind"] == "repost" for th in threads)})
         print(f"  amplify #{post_id} [{level}]: {len(likes)} likes over "
               f"{(max([a['due'] for a in likes], default=t) - t) / 60:.0f} min, "
               f"{n_rep} thread replies {styles}, {sum(th['kind'] == 'repost' for th in threads)} reposts")
@@ -220,7 +261,9 @@ class Amplifier:
         threads = self.state["amp_threads"]
         threads[:] = [th for th in threads if t - th["due"] < 3600]
         for th in sorted((th for th in threads if th["due"] <= t), key=lambda th: th["due"]):
-            done = self.state["amp_posts"].get(str(th["post_id"]), {}).setdefault("touched", [])
+            post = self.state["amp_posts"].get(str(th["post_id"]), {})
+            done = post.setdefault("touched", [])                 # personas per thread reply (a voice may reply twice)
+            reposted = post.setdefault("reposted", [])            # personas that reposted it (once each)
             if th["kind"] == "answer":
                 rec = self.accounts.by_persona(th["author"])
                 if not rec or rec.get("last_write", 0) + config.REPOST_MIN_GAP_S > t:
@@ -229,7 +272,12 @@ class Amplifier:
                 gap = config.REPOST_MIN_GAP_S if th["kind"] == "repost" else None
                 frame = None if th["kind"] == "repost" else random.choice(
                     [f for f in content.FRAMES if f != th.get("frame")])
-                rec = self.accounts.eligible(frame, exclude={th["author"], *done}, gap=gap)
+                busy = set(reposted) if th["kind"] == "repost" else \
+                    {p for p in done if done.count(p) >= config.THREAD_PER_VOICE}
+                hidden = self.accounts.hidden()
+                busy |= {r["persona"] for r in self.accounts.voices()
+                         if hidden.get(r["username"], 0) >= config.HIDDEN_OFF_AMP}
+                rec = self.accounts.eligible(frame, exclude={th["author"], *busy}, gap=gap)
                 if not rec:
                     continue
                 th["frame_for"] = frame
@@ -245,7 +293,9 @@ class Amplifier:
                     if e.status in (403, 404, 410):                   # hidden or deleted: stop amplifying it
                         self.drop_post(th["post_id"], f"get_post {e.status}")
                     continue
-            if th["kind"] != "answer":
+            if th["kind"] == "repost":
+                reposted.append(rec["persona"])
+            elif th["kind"] == "thread":
                 done.append(rec["persona"])
             job = dict(mode={"thread": "thread", "answer": "thread_answer", "repost": "repost"}[th["kind"]],
                        rec=rec, target=target, frame=th.get("frame_for") or th.get("frame") or
@@ -375,7 +425,7 @@ class Amplifier:
 
     def do_filler(self):
         pool = self.filler_pool()
-        likers = [r for r in self.accounts.active() if not self.asleep(r)]
+        likers = [r for r in self.accounts.boosters() if not self.asleep(r)]   # voices keep their actions for writing
         random.shuffle(likers)
         for r in likers[:5]:
             fresh = [p for p in pool if p["post_id"] not in self.liked(r["username"])]
@@ -431,12 +481,14 @@ class Amplifier:
                   "likes": c.get("like_count"), "replies": c.get("reply_count"), "reposts": c.get("repost_count"),
                   "views": c.get("view_count"), "own_likes": meta.get("likes", 0), "own_views": meta.get("own_views", 0),
                   "citizen_likes": len(cit_likers), "citizen_replies": len(cit_replies), "best_rank": meta.get("best_rank"),
-                  "reposts_arm": meta.get("reposts_arm"),
                   "reward": reward})
         if first:
             s = self.state["amp_stats"].setdefault(meta["level"], [0, 0.0])
             s[0] += 1
             s[1] += reward
+            a = self.state["amp_authors"].setdefault(meta["author"], [0, 0.0])
+            a[0] += 1
+            a[1] += reward
         # the author follows citizens who liked it (+20 each if they follow back) and likes citizen replies
         rec = next((r for r in self.accounts.voices() if r["username"] == meta["author"]), None)
         if not rec:

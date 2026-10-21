@@ -20,11 +20,17 @@ JOURNALIST_IDS = (3, 4, 5, 6)       # amanda_rivera, muzhi_wong, julio_morales, 
 MAX_ACCOUNTS = 15                   # lifetime cap on voices (persona accounts); boosters: MAX_BOOSTERS
 REGISTER_GAP_S = (20 * 60, 40 * 60) # drip registration: one new account every 20-40 min, never a burst
 ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03)
+# Moderator-hidden posts per voice (scripts/swan_watch.py). 1 hidden + ≥100 actions = the next account report
+# suspends it; 3 hidden = suspended (scoring guide §3). Lost @lani_wharfcafe23 this way on 2026-10-20.
+HIDDEN_OFF_AMP = 1                  # this many: off amplified posts and threads (less on show, fewer reports)
+HIDDEN_STOP = 2                     # this many: stops writing (one more hidden post would suspend it)
 
 REFRESH_S = 4 * 60                  # collect targets every 4 min (cheap reads)
 TARGET_MAX_AGE_H = 36               # citizens' notifications are near-empty, so a day-old comment still lands
 CONTACT_COOLDOWN_S = 72 * 3600      # first contact with a given citizen at most every 3 days
 SECOND_VOICE_S = (10 * 60, 30 * 60) # a second persona follows up on the same doubt 10-30 min later
+SECOND_VOICE = False                # 2026-10-21: off. ~2 views each; the write slots go to amplified threads
+REPLY_BACK = False                  # 2026-10-21: off, same reason (~2 views, 0.07 citizen replies each)
 JOURNALIST_MAX_AGE_H = 12
 JOURNALIST_GAP_S = 45 * 60          # at most one journalist reply per 45 min
 JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
@@ -38,16 +44,25 @@ MAX_ACTIVE = 48                     # the platform allows 50 alive at once; 2 sp
 BOOSTER_REGISTER_GAP_S = (4 * 60, 9 * 60)
 # 2026-10-20 late: 11 measured posts peaked at hot ~23 vs a top-35 cutoff ~24 (0 entered Trending). Fewer posts,
 # each pushed over the line: a repost weighs ~8 likes, and the engagement has to land in the first ~15 min.
-AMP_POST_GAP_S = (25 * 60, 35 * 60) # one amplified original every 25-35 min
+# 2026-10-21: 16 heavy posts at 36-46 likes, 3-5 replies, 4-8 reposts: 0 in Trending, 0 citizen views. The posts that
+# trend carry 40-90 team likes AND 20-66 team replies. So: one post an hour, every one heavy, ~15-20 thread replies
+# (each voice may reply twice) on top of the reposts (the fit's heaviest signal; the write budget was 83% idle).
+AMP_POST_GAP_S = (50 * 60, 70 * 60) # one amplified original an hour
 # per level: own likes, own-thread replies, reposts (ranges, inclusive). Likes are capped by the accounts awake.
-AMP_LEVELS = {"heavy": dict(likes=(36, 46), replies=(3, 5), reposts=(5, 6)),
+AMP_LEVELS = {"heavy": dict(likes=(36, 46), replies=(15, 20), reposts=(5, 6)),
               "light": dict(likes=(10, 16), replies=(1, 2), reposts=(0, 1)),
               "none": dict(likes=(0, 0), replies=(0, 0), reposts=(0, 0))}
-AMP_PRIOR = {"heavy": 0.8, "light": 0.1, "none": 0.1}   # until the bandit has 4 measured posts per level
-AMP_EXPLORE = 0.15
+AMP_PRIOR = {"heavy": 1.0, "light": 0.0, "none": 0.0}   # 2026-10-21: always heavy (was 0.8 / 0.1 / 0.1)
+AMP_EXPLORE = 0.0
+THREAD_PER_VOICE = 2                # thread replies one voice may write under one amplified post
+# The amplified post is our best content: drafted on the strongest models first, the usual chain if they are out.
+# The bot's key is on the free project: 3.8 and 3.6 Flash have 20 requests a day each (deploy/llm_chain.txt).
+AMP_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash")
+AMP_AUTHOR_EXPLORE = 0.2            # share of amplified posts by a random ready voice, not the best-measured one
+AMP_AUTHOR_PRIOR = (2, 40.0)        # (pseudo-posts, reward each) for a voice not yet measured: try it early
 # delays after the post, lognormal (median min, sigma, clip lo, clip hi): front-loaded, heavy tail, never instant
 LIKE_DELAY = (4, 0.8, 0.75, 60)
-THREAD_DELAY = (5, 0.6, 2, 30)
+THREAD_DELAY = (6, 0.6, 2, 40)
 REPOST_DELAY = (4, 0.7, 1.5, 20)
 PUSHBACK_SHARE = 0.35               # share of amplified posts where one thread reply pushes back and the author answers
 LIKES_PER_MIN = 20                  # our own cap; the server's is 30/min team-wide (we also read X-RateLimit-Remaining)
@@ -66,10 +81,10 @@ PULSE_MAX_CHARS = 600               # all its notes together
 PULSE_HOOK_FRESH_S = 6 * 3600       # a hook from a headline this new may open an amplified post (the news shape)...
 PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
 
-# ---- experiments (todo/13-overnight-experiments.md; swan_bot/experiment.py) ----
-PIN = {}                            # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
+# ---- experiment arms (swan_bot/experiment.py). The overnight experiments stopped 2026-10-21 (too little data) ----
+PIN = {"reply_mode": "reason_first"}   # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
 # One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).
-SWITCHBACK = [("reply_mode", ["reason_first", "conditions_first"], 2 * 3600)]
+SWITCHBACK = []
 ARM_WEIGHTS = {}                    # {dim: {arm: weight}}: reweight arms (the bandit, from night 2). Empty = as drawn
 FOLLOWUPS_LOG = LOGS / "swan_followups.jsonl"   # scripts/swan_followup.py: citizens' stance after we replied
 OUTCOMES_LOG = LOGS / "swan_outcomes.jsonl"     # ...and per-post citizen engagement at OUTCOME_AT_S
