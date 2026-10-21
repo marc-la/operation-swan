@@ -208,3 +208,25 @@ def test_calibration_scales_first_estimates(tmp_path, monkeypatch):
     b.calibrate()
     assert b.s["first"] == dict(first=5, later=5) and b.s["pf_scale"] == round(0.5 / 0.9, 2)
     assert round(ev.p_first(30, False, b.s["pf_scale"]), 2) == 0.5
+
+
+def test_reads_the_bots_snapshot_and_falls_back(tmp_path, monkeypatch):
+    import json
+    b = blue(tmp_path, monkeypatch)
+    snap = tmp_path / "latest_snapshot.json"
+    monkeypatch.setattr(S, "SNAPSHOT_FILE", snap)
+    assert b.snapshot("latest") is None                                            # missing: fall back to the feed
+    post = dict(post_id=1, author_id=5000, created_at=S.iso())
+    snap.write_text(json.dumps(dict(read_at=S.iso(), posts=[post], trending=dict(read_at=S.iso(time.time() - 3600),
+                                                                                   posts=[post]))))
+    assert b.snapshot("latest") == [post] and b.snapshot("trending") is None       # stale Trending: fall back
+
+
+def test_plain_posts_are_dropped_after_their_audits(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    old = S.iso(time.time() - 4 * 3600)
+    b.s["posts"] = {"1": dict(post=dict(created_at=old), first_seen=time.time(), classes=[]),
+                    "2": dict(post=dict(created_at=old), first_seen=time.time(), classes=["like_ring"]),
+                    "3": dict(post=dict(created_at=S.iso()), first_seen=time.time(), classes=[])}
+    b.prune()
+    assert sorted(b.s["posts"]) == ["2", "3"]

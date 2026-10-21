@@ -99,6 +99,8 @@ def main():
                                                 "account_id": r.get("account_id")}, r, upsert=True))
     for r in jsonl(config.FOLLOWUPS_LOG):
         ops["followups"].append(ReplaceOne({"post_id": r["post_id"], "check": r["check"]}, r, upsert=True))
+    for r in jsonl(config.LOGS / "blue_reports.jsonl"):       # swan_blue: reports, rulings, locks, mode changes
+        ops["blue"].append(ReplaceOne({"ts": r["ts"], "act": r["act"], "key": r.get("key")}, r, upsert=True))
     n = {}
     for name, batch in ops.items():
         db[name].bulk_write(batch, ordered=False)

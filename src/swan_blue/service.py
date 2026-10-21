@@ -32,6 +32,7 @@ STATUS_FILE = config.DATA / "blue_status.json"        # the dashboard reads this
 APPROVALS = config.DATA / "blue_approved.jsonl"        # scripts/blue.sh appends here
 SESSION_FILE = config.SECRETS / "blue_session.json"   # the reporter's token (never logged)
 REPORTS_LOG = config.LOGS / "blue_reports.jsonl"
+FEED_LOG = config.LOGS / "feed_reads.jsonl"            # every feed call from this box, any process (todo/21 audit)
 SYDNEY = ZoneInfo("Australia/Sydney")
 
 CAP = 25                      # pending reports per team (Discord, 20 Oct); account reports counted too, to be safe
@@ -51,6 +52,11 @@ FRESH_MIN = 60                # a post report older than this is "stale" (the fi
 FRESH_RESERVE = 5             # ...and may not take the last this-many free slots: they wait for fresh ring posts
 CALIBRATE_AFTER = 8           # paid post awards in the portal log before we trust our first-reporter share
 PORTAL_FILE = config.DATA / "portal.json"           # swan_dash/portal.py writes the points log here
+# The bot is the team's Latest reader (todo/21): it writes its pages here, {"read_at", "posts", "trending": {...}}.
+# The team's feed budget is 10/min, so swan-blue reads this while it's fresh and calls the feed only as a fallback.
+SNAPSHOT_FILE = config.DATA / "latest_snapshot.json"
+SNAPSHOT_MAX_AGE_S = 10 * 60
+PLAIN_KEEP_S = 3 * 3600       # a post with no ring evidence is dropped this long after posting (its audits are done)
 TICK_S = 60
 EVERY = dict(trending=10 * 60, latest=3 * 60, authors=3 * 60, rulings=10 * 60, harvest=30 * 60, ours=10 * 60,
              calibrate=15 * 60)
@@ -160,9 +166,23 @@ class Blue:
             self.error(f"feed read failed: {e.status}")
             return []
         rl = self.social.rate_limit
+        with open(FEED_LOG, "a") as f:                  # the team's feed budget is spent on this box: log our share
+            f.write(json.dumps({"ts": iso(), "proc": "swan-blue", "route": method.__name__,
+                                "remaining": rl and rl.remaining, "limit": rl and rl.limit,
+                                "reset": rl and rl.reset}) + "\n")
         if rl and rl.remaining < FEED_RESERVE:
             self.feed_hold = now() + rl.reset          # leave the rest of the minute to the bot
         return page
+
+    def snapshot(self, part):
+        """The bot's fresh Latest ('latest') or Trending ('trending') posts, or None if missing or stale."""
+        d = read_json(SNAPSHOT_FILE, {})
+        d = d if part == "latest" else d.get("trending") or {}
+        try:
+            fresh = now() - ev.ts(d["read_at"]) <= SNAPSHOT_MAX_AGE_S
+        except (KeyError, TypeError, ValueError):
+            return None
+        return d.get("posts") if fresh and isinstance(d.get("posts"), list) else None
 
     def note(self, post, source):
         """Remember a post worth auditing: a team author, not ours, not a reply on one of our posts."""
@@ -178,10 +198,12 @@ class Blue:
         if self.due("ours"):
             self.load_ours()
         if self.due("trending"):
-            for post in self.feed(self.social.feed_trending)[:35]:
+            posts = self.snapshot("trending")
+            for post in (posts if posts is not None else self.feed(self.social.feed_trending))[:35]:
                 self.note(post, "trending")
         if self.due("latest"):
-            for post in self.feed(self.social.feed_latest):
+            posts = self.snapshot("latest")
+            for post in (posts if posts is not None else self.feed(self.social.feed_latest)):
                 if not post.get("reply_to_post_id"):
                     self.note(post, "latest")
         if self.due("authors"):
@@ -233,8 +255,10 @@ class Blue:
                 self.s["author_ring"][str(a["author"])] = dict(post=int(pid), members=sorted(ev.members(a)), t=t)
 
     def prune(self):
-        cut = now() - 36 * 3600
-        self.s["posts"] = {k: v for k, v in self.s["posts"].items() if v["first_seen"] >= cut}
+        t = now()
+        cut = t - 36 * 3600
+        self.s["posts"] = {k: v for k, v in self.s["posts"].items() if v["first_seen"] >= cut and
+                           (v.get("classes") or t - ev.ts(v["post"]["created_at"]) <= PLAIN_KEEP_S)}
         self.s["authors"] = {k: v for k, v in self.s["authors"].items() if v >= cut}
         self.s["author_ring"] = {k: v for k, v in self.s["author_ring"].items() if v["t"] >= cut}
 
