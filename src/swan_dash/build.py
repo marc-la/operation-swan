@@ -435,7 +435,6 @@ def gather(root, now, service):
                    if m.get("parked_until") else "ready", out=bool(m.get("parked_until")))
               for i, m in enumerate(chain)]
     acc = status.get("accounts") or {}
-    banned_day = [a for a in actions if a.get("act") == "suspended" and a["_t"] >= now - dt.timedelta(hours=24)]
     per_min = status.get("per_min")
 
     facts = fact_desk(root)
@@ -464,8 +463,6 @@ def gather(root, now, service):
     elif current:
         top = chain[0]
         amber = f"DEGRADED: on fallback LLM {chain[current]['model']} ({top['model']}: {top.get('why') or 'parked'})"
-    elif banned_day:
-        amber = f"ACCOUNT LOST: {len(banned_day)} suspended in the last 24 h ({banned_day[-1].get('username')})"
     elif status.get("rate_limited_last_hour"):
         amber = f"RATE-LIMITED: {status['rate_limited_last_hour']} × 429 in the last hour"
     elif portal.get("error"):

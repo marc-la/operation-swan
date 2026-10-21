@@ -188,7 +188,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     <div class="sub">{% if writes.planned %}pace {{ writes.planned }} · {% endif %}cap {{ writes.cap }}</div></div>
 </div>
 
-<div class="label">Activity · most recently active first · open a row for its context</div>
+<div class="label">Activity</div>
 <ol class="activity">
 {% for r in activity %}
   {{ item(r) }}
@@ -211,7 +211,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% if accounts.suspended %} · {{ accounts.suspended }} suspended{% endif %}
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
-  <h3>LLM, in order of preference</h3>
+  <h3>LLMs</h3>
   <table>
   {% for m in llm.chain %}
     <tr><td>{{ loop.index }}. {{ m.model }}</td><td class="{{ 'warn' if m.out else ('up' if m.state == 'in use' else '') }}">{{ m.state }}</td></tr>
@@ -303,7 +303,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if pulse %}updated {{ pulse.ago }}{% if pulse.stale %} (too old: not used){% endif %}{% else %}none logged yet{% endif %}</span></summary>
 <div>
   {% if pulse %}
-  <p class="sub">What the bot writes towards, from Trending · #{{ pulse.id }}</p>
+  <p class="sub">From Trending #{{ pulse.id }}</p>
   {% if pulse.hooks %}<h3>Hooks</h3><p>{{ pulse.hooks | join(' · ') }}</p>{% endif %}
   {% if pulse.no_shapes %}<h3>For No, what lands</h3><p>{{ pulse.no_shapes | join(' · ') }}</p>{% endif %}
   {% if pulse.yes_lines %}<h3>Yes is pushing</h3><p>{{ pulse.yes_lines | join(' · ') }}</p>{% endif %}
