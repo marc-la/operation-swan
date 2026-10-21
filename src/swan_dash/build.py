@@ -127,6 +127,37 @@ def sydney_midnight(day):
     return dt.datetime.combine(day, dt.time(), SYDNEY)
 
 
+def bundle(rows):
+    """Runs of back-to-back rows of one family (LLM parks, deploys) become one row that opens to show them.
+    rows are newest first; so is each bundle."""
+    items = []
+    for r in rows:
+        last = items[-1] if items else None
+        if r.get("family") and last and last.get("family") == r["family"]:
+            if last["kind"] != "group":
+                last = items[-1] = dict(kind="group", family=r["family"], t=last["t"], time=last["time"],
+                                        who="", post=None, rows=[last])
+            last["rows"].append(r)
+        else:
+            items.append(r)
+    for g in items:
+        if g["kind"] != "group":
+            continue
+        g["id"] = f"g-{g['family']}-{int(g['t'].timestamp())}"
+        g["what"] = f"{'LLM parked' if g['family'] == 'llm' else 'deploys'} ×{len(g['rows'])}"
+        if g["family"] == "llm":                # newest park per model, models with the same reason together
+            newest = {}
+            for r in g["rows"]:
+                newest.setdefault(r["model"], r)
+            by_reason = {}
+            for r in newest.values():
+                by_reason.setdefault(f"{r['why']} until {r['until']}", []).append(r["model"])
+            g["text"] = short(" · ".join(f"{', '.join(ms)}: {why}" for why, ms in by_reason.items()), 200)
+        else:
+            g["text"] = f"latest: {g['rows'][0]['text']}"
+    return items
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -250,8 +281,9 @@ def gather(root, now, service):
         elif act == "llm_park":
             u = ts(a.get("until"))
             if u and (u - a["_t"]).total_seconds() >= LONG_PARK_S:
-                rows.append(dict(t=a["_t"], who="", what="LLM parked",
-                                 text=f"{a.get('model')}: {a.get('why')} until {hm(u)}", kind="event"))
+                rows.append(dict(t=a["_t"], who="", what="LLM parked", kind="event", family="llm",
+                                 model=a.get("model"), why=a.get("why"), until=hm(u),
+                                 text=f"{a.get('model')}: {a.get('why')} until {hm(u)}"))
     for e in points:                           # the outcome, interleaved with what we did
         rows.append(dict(t=e["_t"], who="", what=f"{e['points']:+,} pts", text=short(e.get("message"), 160),
                          kind="gain" if e["points"] >= 0 else "loss"))
@@ -259,12 +291,18 @@ def gather(root, now, service):
         t, _, msg = line.partition(" ")
         if ts(t):
             msg = msg.removeprefix("[swan-ec2] ")
-            rows.append(dict(t=ts(t), who="", what="deploy" if msg.startswith("deployed") else "alert",
-                             text=short(msg), kind="event"))
+            if msg.startswith("deployed"):
+                rows.append(dict(t=ts(t), who="", what="deploy", text=short(msg.removeprefix("deployed ")),
+                                 kind="event", family="deploy"))
+            elif "hidden by the moderator" in msg:          # deploy/healthcheck + swan-watch: a voice lost a post
+                rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="bad"))
+            else:
+                rows.append(dict(t=ts(t), who="", what="alert", text=short(msg), kind="event"))
     rows.sort(key=lambda r: r["t"], reverse=True)
-    for r in rows[:ACTIVITY_ALL]:
+    for r in rows:
         r["time"] = hm(r["t"])
         r.setdefault("post", None)
+    items = bundle(rows)
 
     # ---- the trending pulse the bot writes towards (todo/15): its newest "pulse" record ----
     p = next((a for a in reversed(actions) if a.get("act") == "pulse"), None)
@@ -290,7 +328,7 @@ def gather(root, now, service):
                  rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked,
                  chain=states),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
-        activity=rows[:ACTIVITY_TOP], older=rows[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, built=perth(now).strftime("%H:%M:%S"))
+        activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, built=perth(now).strftime("%H:%M:%S"))
 
 
 def render(ctx):

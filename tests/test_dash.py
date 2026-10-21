@@ -147,3 +147,22 @@ def test_main_writes_page_robots_and_script(tmp_path, monkeypatch):
     build.main()
     assert {p.name for p in out.iterdir()} == {"index.html", "robots.txt", "app.js"}
     assert "location.reload" in (out / "app.js").read_text()
+
+
+def test_back_to_back_parks_and_deploys_are_bundled(tmp_path):
+    def park(minutes_ago, model, hours=3):
+        return {"ts": iso(minutes_ago), "act": "llm_park", "model": model, "why": "daily quota",
+                "until": (NOW + dt.timedelta(hours=hours)).isoformat()}
+    acts = [park(30, "gemini-a"), park(29, "gemini-b"), write(20), park(10, "gemini-a"), park(9, "gemini-b"),
+            park(8, "gemini-c")]
+    root = make_root(tmp_path, acts)
+    (root / "logs" / "alerts.log").write_text(
+        f"{iso(5)[:19]}Z [swan-ec2] deployed abc1234 Marc: one\n{iso(4)[:19]}Z [swan-ec2] deployed def5678 Marc: two\n"
+        f"{iso(3)[:19]}Z [swan-ec2] @lani: post #9 hidden by the moderator (1 hidden)\n")
+    ctx, html = page(root)
+    kinds = [(r["kind"], r["what"]) for r in ctx["activity"]]
+    assert kinds == [("bad", "post hidden"), ("group", "deploys ×2"), ("group", "LLM parked ×3"),
+                     ("write", "reply"), ("group", "LLM parked ×2")]
+    assert ctx["activity"][2]["text"] == "gemini-c, gemini-b, gemini-a: daily quota until 17:00"
+    assert ctx["activity"][1]["text"] == "latest: def5678 Marc: two"
+    assert html.count("<details class=\"x\"") == 3

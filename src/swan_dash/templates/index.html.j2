@@ -46,6 +46,10 @@ li .w { font-weight: 600; overflow-wrap: anywhere; }
 li .w span { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
 li.event, li.event .w { color: var(--muted); font-weight: 400; }
 li.bad .w, li.bad .x { color: var(--red); }
+li.group, li.group .w { color: var(--muted); font-weight: 400; }
+li details { background: none; border: 0; border-radius: 0; margin: 0; }
+li summary { padding: 0; }
+li details .sub { padding: 2px 0 0 1.2em; }
 li.gain, li.loss { border-left: 4px solid var(--green); background: var(--green-bg); }
 li.loss { border-left-color: var(--red); background: var(--red-bg); }
 li.gain .w { color: var(--green); } li.loss .w { color: var(--red); }
@@ -69,6 +73,17 @@ code { font-size: 12px; }
 </head>
 <body>
 <main>
+
+{% macro item(r) %}
+<li class="{{ r.kind }}"><span class="t">{{ r.time }}</span>
+  <span class="w">{{ r.what }}{% if r.who %}<span>{{ r.who }}</span>{% endif %}</span>
+  {% if r.kind == 'group' %}
+  <details class="x" id="{{ r.id }}"><summary>{{ r.text }}</summary>
+    {% for s in r.rows %}<div class="sub">{{ s.time }} · {{ s.text }}</div>{% endfor %}</details>
+  {% else %}
+  <span class="x">{{ r.text }}{% if r.post %} <span class="id">#{{ r.post }}</span>{% endif %}</span>
+  {% endif %}</li>
+{% endmacro %}
 
 <header><b>SWAN</b><span>as of {{ now }} Perth</span></header>
 
@@ -94,9 +109,7 @@ code { font-size: 12px; }
 <div class="label">Activity · newest first</div>
 <ol class="activity">
 {% for r in activity %}
-  <li class="{{ r.kind }}"><span class="t">{{ r.time }}</span>
-    <span class="w">{{ r.what }}{% if r.who %}<span>{{ r.who }}</span>{% endif %}</span>
-    <span class="x">{{ r.text }}{% if r.post %} <span class="id">#{{ r.post }}</span>{% endif %}</span></li>
+  {{ item(r) }}
 {% else %}
   <li class="event"><span class="t"></span><span class="w"></span><span class="x">Nothing logged yet.</span></li>
 {% endfor %}
@@ -105,9 +118,7 @@ code { font-size: 12px; }
 <details id="older"><summary><b>Older activity</b><span class="sub">{{ older | length }} more</span></summary>
 <ol>
 {% for r in older %}
-  <li class="{{ r.kind }}"><span class="t">{{ r.time }}</span>
-    <span class="w">{{ r.what }}{% if r.who %}<span>{{ r.who }}</span>{% endif %}</span>
-    <span class="x">{{ r.text }}{% if r.post %} <span class="id">#{{ r.post }}</span>{% endif %}</span></li>
+  {{ item(r) }}
 {% endfor %}
 </ol></details>
 {% endif %}
