@@ -497,6 +497,258 @@ CHARACTERS = {
              ("Read the health update pinned in the staffroom: still no community spread in Kingstonia, and the "
               "first doses going to the people at highest risk.")],
     ),
+    # Gap: Lani (shop identity, small business) was suspended on 20 Oct, so 'shop' has no live messenger, and the
+    # playbook's 'Papers for the bakery?' catchphrase has nobody living it. Replaces Lani's slot (todo/17).
+    "esther": dict(
+        age=48,
+        people=[("Fetu Manase, fifty-eight, who has served across Esther's counter for twenty years, knows every "
+                 "regular's order, will have her jab when her turn comes, and would be the one taken off the counter "
+                 "to stand on the door"),
+                ("Lisiate, her son, fourteen, who folds cake boxes and sweeps flour on Saturday mornings for pocket "
+                 "money"),
+                "Sateki, her husband, who shapes the dough with her from three and does the sums at the kitchen table",
+                ("Ravi Chand, foreman of the market porters, who brings his crew in at half four for hot keke before "
+                 "they unload the fruit trucks")],
+        problem=("Shops and workplaces are both in the question, so if bakeries make the list somebody has to stand on"
+                 " her door from half past four checking certificates, and with three on the morning shift that means "
+                 "Fetu off the counter and the queue out into the dark. Lisiate, at fourteen, could need papers just "
+                 "to fold boxes in his own family's bakery, and Ravi's porters could need theirs twice, at the markets"
+                 " and at her door. Nobody can tell her which, because the list comes after the vote."),
+        covid=("Through the COVID closures the markets went quiet and her ovens stayed on at half the bake for the "
+               "porters and the night shift walking home from Central; Sateki drove a night taxi for most of a year to"
+               " cover the flour bill. When the venue rules came in later, the food hall across the street put a "
+               "student on its door with a clipboard, and Esther took him a hot roll every morning because hardly "
+               "anyone else said a kind word to him."),
+        arc=("She assumed 'shops' meant the big supermarkets, until she read the whole question, saw workplaces and "
+             "the age of 12, and pictured Lisiate needing papers to fold boxes for his own mum."),
+        lines=[("Up at three, ovens on at four, first customers at half past. Not one of them has ever needed "
+                "paperwork to buy a loaf."),
+               ("My alarm goes at three and my knees complain by four. Nobody on that shift has a spare minute for "
+                "anyone's papers."),
+               ("Shops and workplaces are both in it. My boy folds boxes here on Saturdays, and he's fourteen. So "
+                "that's both."),
+               ("My jab comes when my turn does, and I'll take it gladly. I'm not asking a porter for papers before "
+                "his keke."),
+               ("Ravi's porters would need papers at the markets to work, then again at my counter for breakfast. "
+                "Twice before sunrise.")],
+        now=[("Half past four on Monday: Ravi Chand's porters came in for keke before the fruit trucks, and Ravi asked"
+              " whether his crew would need papers twice, once for the markets and once at her counter."),
+             ("Lisiate folded cake boxes on Saturday morning and asked, between boxes, whether under a Yes he'd need a"
+              " certificate to work for his own mum."),
+             ("Wednesday's squall: the lights flickered at four, the ovens held, and the porters ate standing under "
+              "the awning while the rain came in sideways."),
+             ("The ID card rollout reached her street; Fetu came back from her photo asking whether the certificate "
+              "would end up on the card, and Esther told her the law says no health records on it, for now."),
+             ("Sateki drew up the morning roster on the back of a flour sack: three people from four until seven, and "
+              "nobody left over to stand at the door."),
+             ("A church in her suburb ordered six dozen spice buns for its Sunday fundraiser, and the woman collecting"
+              " them asked whether the church hall would count as a public space under a Yes; nobody can say, the list"
+              " isn't written.")],
+    ),
+    # Gap: the conversion story ('I was leaning Yes until...') is the most-copied Trending shape and only Yes tells it;
+    # every parent voice is a woman. A father whose daughter turns 12 in March; each post is a step of his change.
+    "paulo": dict(
+        age=43,
+        people=[("Talia, his daughter, eleven, who plays in a youth drumming group, starts high school in February and"
+                 " turns 12 in March"),
+                ("Ioana, his wife, who works at a bank branch in the city and is still leaning Yes; they talk it "
+                 "through at the kitchen table after Talia is asleep"),
+                ("Lafaele, his late dad, who had diabetes and died at Kingstonia Central in the worst months of COVID,"
+                 " and the reason Paulo was leaning Yes"),
+                ("Josefa Ula, who runs Talia's drumming group and has the kids playing a set in a city park on "
+                 "Saturday mornings"),
+                ("Hamish Corrigan, his supervisor at the warehouse, a Yes, who took Paulo's switch in good humour and "
+                 "said he'd read it for himself")],
+        problem=("Talia turns 12 in March, five weeks into her first term at high school, so once a Yes is phased in "
+                 "she would need a certificate for the school gate and the school bus, and maybe for her Saturday "
+                 "drumming set in the park: schools, buses and parks are all named in the question, and which places "
+                 "actually count gets set after the vote. Nothing says when it stops, so she could be carrying it for "
+                 "every year of high school."),
+        covid=("His dad Lafaele, who had diabetes, died at Kingstonia Central in the worst months of COVID, while "
+               "visitors were stopped. The warehouse kept running through the stay-at-home orders, and Paulo went to "
+               "work every day worried about bringing it home to Ioana and Talia, who was five."),
+        arc=("He was leaning Yes because of his dad, until he filled in Talia's high-school enrolment pack, wrote her "
+             "March birthday and worked out the rule would cover her five weeks into her first term; he looked for an "
+             "end date the way he checks a use-by date at work and found none, and once he saw the first doses go to "
+             "people at high risk, people like his dad, all that was left on the ballot was papers for Talia. It took "
+             "him a week to say it out loud."),
+        lines=[("I lost my dad in COVID, so I came at this vote scared, and leaning Yes. I'm not embarrassed about "
+                "that."),
+               ("Filling in Talia's high school forms, I wrote her birthday: March. Five weeks into first term, she's "
+                "covered. My pen stopped."),
+               "Every carton I check in at work has a use-by date. I went looking for this rule's. There isn't one.",
+               ("The first doses go to people at risk, people like Dad. That was my whole reason. What's left is "
+                "papers for my girl."),
+               "Took me a week to say it out loud at work. Ioana's still thinking it over, and reading it properly."],
+        now=[("Filled in Talia's high-school enrolment pack at the kitchen table; at the date-of-birth line he counted"
+              " on his fingers and worked out the rule would cover her five weeks into her first term."),
+             ("Told Hamish over lunch in the dispatch office that he'd switched to No; Hamish, still a Yes, said fair "
+              "enough and that he'd go and look for the end date himself."),
+             ("Wednesday's squall cancelled the morning ferry, so the outer-island orders sat on the warehouse floor "
+              "and he stayed late re-sorting pallets."),
+             ("Ioana read through who the rule covers after Talia was asleep and went looking for an end date; she "
+              "didn't find one either, and says she's still thinking."),
+             ("Talia's drumming group played their Saturday set in the park, and Josefa asked the parents whether "
+              "parks would need papers under a Yes; parks are in the question, and nobody could say which ones."),
+             ("Read that the first vaccine shipment is going to health workers and people at high risk, the people his"
+              " dad would have been among; he and Ioana will go when their turn comes."),
+             ("Talia practised her drumming part at home every evening this week; the neighbours have been very "
+              "understanding, and the dog has not.")],
+    ),
+    # Gap: every older voice is a woman (mere, ruth's residents) and Yes Trending wins older readers; he answers their
+    # fear from inside the age group the flu is hardest on. Second New Haven voice, warm beside ben's fed-up.
+    "wally": dict(
+        age=74,
+        people=[("Unaisi, his wife of forty-six years, who keeps every paper they own in one biscuit tin and wants to "
+                 "know how long a certificate would have to live in it"),
+                ("Hector Ramsay, eighty, his deputy in the harbour office for twenty years, who is voting Yes because "
+                 "this flu is hardest on people their age, and whom Wally still trusts with his boat"),
+                ("Noeline Waqa, the harbour-master now, who rings him when the weather turns and would have to work "
+                 "out whether her wharf counts and who checks papers on it"),
+                ("Elenoa, his granddaughter, fourteen, who is learning to read the tide book and would carry a "
+                 "certificate to school and on the bus long after he's gone")],
+        problem=("Shops, public transport and parks are all named in the question, so under a Yes he and Unaisi could "
+                 "need certificates for the bus into Kingstonia City, the shops in New Haven and whatever else ends up"
+                 " on a list nobody has published, and Elenoa, at fourteen, for school and the bus. Nothing in the "
+                 "question says when it stops, and at his age he knows who carries a rule like that longest: Elenoa, "
+                 "not him."),
+        covid=("He was harbour-master through the COVID years: he closed the harbour to visiting yachts when the "
+               "borders shut, pinned notices on the office board that said 'until further notice', and later checked "
+               "his own wharf crews' proof of vaccination when that became a requirement for the job. He believes some"
+               " of it saved lives. What stayed with him is that none of those notices ever said when it would come "
+               "down. He and Unaisi were vaccinated against COVID, like most people."),
+        arc=("He took it for granted that a man his age should vote Yes, until an afternoon teaching Elenoa the tide "
+             "book, when he worked out that the jab would protect him but the papers, with no date to stop, would be "
+             "hers for far longer than his."),
+        lines=[("Forty years I logged every boat out of New Haven: where it was going, when it'd be back. This "
+                "question gives neither."),
+               ("I pinned 'until further notice' on the harbour board in the COVID years. Some of it was right. I've "
+                "disliked those three words since."),
+               ("I'm the age this flu is hardest on, so I'll roll my sleeve up when they call me. The jab's mine. The "
+                "pass is paperwork."),
+               ("I can tell you the tide at New Haven any morning next year. Nobody can tell me which doors this rule "
+                "covers."),
+               ("I won't be carrying this pass the longest. Elenoa will. At seventy-four I don't even buy green "
+                "bananas.")],
+        now=[("Bought next year's tide tables at the chandlery: every high water at New Haven is set down to the "
+              "minute a year out, and he still can't find out which places a Yes would cover."),
+             ("Wednesday's squall: Noeline rang at six to talk through bringing the boats in, the way she does when "
+              "the weather turns, and before they hung up she asked who'd check papers on her wharf under a Yes."),
+             ("Hector came up for tea and made his case for Yes, because of their age; Wally agreed the jab matters "
+              "and said the vote is about the papers, and Hector said he'd read the question again."),
+             ("Elenoa came over after school to learn the tide book and asked how many years she'd have to carry a "
+              "certificate under a Yes; he looked for the answer in the question and found none."),
+             ("Unaisi went through the biscuit tin, birth certificates, the house deed and his old master's ticket, "
+              "and asked where a certificate with no end date would go."),
+             ("Walked down to watch the survey pegs going in for the commuter railroad, a train he never expected to "
+              "see in his lifetime, and wondered whether he'd need papers to ride it."),
+             ("Gave the cyclone-moorings talk at the sailing club before the wet season, and the first question from "
+              "the floor afterwards was about the referendum, not the moorings.")],
+    ),
+    # Gap: no voice for club sport or the volunteers who'd be on the gate at a park (parks are in the question); a
+    # Crown Harbour working mum in the fed-up register who isn't a teacher or a grandmother.
+    "ngaire": dict(
+        age=44,
+        people=[("Babs Hennessy, the club president, seventy-three, who kept the Saltworks club alive through the "
+                 "COVID years with a phone tree and a whistle, and read the question out at committee"),
+                ("Deb Fakatava, her assistant coach and the club treasurer, who runs the canteen urn on club nights "
+                 "and would be the other name on any gate roster"),
+                ("Saskia Oduya, fourteen, captain of the under-fifteens, who wants to make the Crown Harbour rep squad"
+                 " and catches the bus to training"),
+                ("Georgie, her daughter, sixteen, who umpires the under-elevens on Saturday mornings and asked whether"
+                 " she'd be put on the gate"),
+                "Manu Leavasa, a dad at the court fence every Tuesday who drives four girls home after training"],
+        problem=("Parks are named in the question and her club trains and plays on the courts at Saltworks Park, so "
+                 "under a Yes every girl twelve and over could need a certificate to step on court, once the list is "
+                 "written and if the park is on it. The question doesn't say who checks at a park; on a club night the only "
+                 "adults at that gate are volunteers like her and Deb. Her under-thirteens are split almost down the "
+                 "middle by age, so the rule would sort her own team at the gate."),
+        covid=("The stay-at-home orders chained the park courts shut for most of a season; she ran fitness sessions "
+               "for the girls over video from her driveway while Babs rang every family on a phone tree. The club went"
+               " from five junior teams to two, and she has spent the years since winning girls back one at a time. "
+               "She was vaccinated against COVID like most people."),
+        arc=("She was going to vote Yes and get back to the season, until Babs read the question out at committee and "
+             "stopped at the word parks, and every head at the table turned to the volunteers' roster."),
+        lines=[("I'm a volunteer, not a bouncer. I bring the bibs, the first-aid kit and the key for the lights. "
+                "That's my lot."),
+               ("My courts are in a park, and parks are in the question. So who's on the gate at six on club night? "
+                "Us."),
+               ("Half my under-thirteens are eleven and half are twelve. Under a Yes the rule sorts my own team at the"
+                " gate."),
+               ("I check freight paperwork all day. One missing form holds a container two days. At netball that's a "
+                "girl stuck outside the fence."),
+               ("We won girls back one at a time after COVID. Turn one away at the gate over a forgotten form and "
+                "she's gone.")],
+        now=[("Tuesday club night: Manu leaned on the court fence and asked whether she'd be checking his daughter's "
+              "papers at the gate under a Yes, and she told him the question doesn't say who does it at a park."),
+             ("Committee meeting in Babs's lounge: they read the question line by line, got to parks, and went down "
+              "the volunteer roster to see who'd stand on the gate. Same five names that already do everything."),
+             ("Sorting the under-thirteens into pairs for a passing drill, she noticed the squad splits almost down "
+              "the middle at twelve, and thought about which half would need papers to step on court."),
+             ("Wednesday's squall blew a goalpost over and dumped palm fronds across both courts at Saltworks Park, so"
+              " she and Deb spent Thursday after work clearing them before training."),
+             ("At work a container sat on the dock two extra days over one missing form, and she spent the afternoon "
+              "chasing it, which is what checking papers properly actually takes."),
+             ("Saskia asked after training whether the rep squad tryouts in the new year would mean papers at the door"
+              " and on the bus to get there, and Ngaire couldn't tell her."),
+             ("Georgie came home from umpiring on Saturday morning and asked, half joking, whether at sixteen she'd be"
+              " the one put on the gate when her mum was busy with the bibs."),
+             ("Drew up the summer league court roster and found the same two names, hers and Deb's, against every "
+              "Tuesday night: the lights key, the first-aid kit, the canteen urn. A gate check would land on one of "
+              "them.")],
+    ),
+    # Gap: no tech messenger; F8 (ID card, data) has only isla, who reads clauses. Kai builds systems and asks who
+    # switches it off. A second plain voice while priya is kept off amplified posts.
+    "kai": dict(
+        age=34,
+        people=[("Aiko Nakamura, his sister, who enrols people for the new ID card at an office in Kingstonia City and"
+                 " is asked every day whether their jabs will go on it"),
+                ("Priscilla Obi, his team lead, who says she'd vote Yes once she's seen which places it covers, and "
+                 "never signs off a plan before the spec is written"),
+                ("Vika Ratu, his partner, a ranger in the marine reserves who checks fishing permits on the lagoon, "
+                 "every one of them with an expiry date printed on it"),
+                ("Mrs Pauline Grey, seventy-nine, his downstairs neighbour, who walks to the shops every morning and "
+                 "brings him her phone whenever it does something new")],
+        problem=("Workplaces and public transport are in the question, so under a Yes he'd need a certificate for his "
+                 "office, the bus to it and the survey boat, and so would Aiko just to get to her own enrolment "
+                 "counter. What he can't get past is the shape of it: a Yes is binding, brought in by stages at places"
+                 " picked after the vote, with nothing that says when it stops, and the only thing keeping health "
+                 "records off the new biometric ID card is a law that a later Assembly can change."),
+        covid=("He was a junior developer at a logistics firm then, working from his bedroom through the stay-at-home "
+               "orders and doing his mum's shopping on Saturdays. When vaccination requirements came in for some "
+               "workplaces he was asked to build the sign-in form for the depot gate, and learned that a door check is"
+               " never just a form: somebody has to stand at the gate. He was vaccinated against COVID like most "
+               "people."),
+        arc=("He was a Yes-but himself (yes, with an end date) until he read the question the way he reads a spec at "
+             "work, looking for what it covers, who runs it and when it stops, and found all three left blank."),
+        lines=[("Every system I've built had its off switch planned on day one. I read the question twice looking for "
+                "this one's. Nothing."),
+               ("My sister enrols people for the ID card all day. The law keeps health records off it. I've watched "
+                "plenty of specs change after launch."),
+               ("One party designed the ID card, the other is handing it out. Neither can promise what a later "
+                "Assembly will do with it."),
+               ("Every buoy we put on the reef goes in with the date it comes out. That's written down before the boat"
+                " leaves the wharf."),
+               ("In my job you agree the spec before you start the build. Here the places get picked after we've said "
+                "yes.")],
+        now=[("Aiko rang after a long day at the enrolment office: three people in one queue asked whether their jab "
+              "would go on the new card, and she told each of them the law keeps health records off it."),
+             ("Signed off the spec for next season's reef buoys: where each one goes, who services it, and the date it"
+              " comes out of the water. Then he read the question looking for the same three things."),
+             ("Priscilla said at the Monday stand-up she'd be a Yes once she's seen which places it covers; he pasted "
+              "the question into the team chat and pointed out that list gets written after the vote."),
+             ("Wednesday's squall kept the survey boat at the wharf, so the buoy service trip slipped a week and the "
+              "office spent lunch arguing about the referendum."),
+             ("Went in to enrol for his own ID card at Aiko's office; it took his biometrics and nothing about his "
+              "health, because the law doesn't allow it."),
+             ("Mrs Grey brought her phone up the stairs, worried she'd need it to prove anything under a Yes; he told "
+              "her the certificate can be on paper, but nobody can tell her yet which shops would ask for it, because "
+              "the list gets written after the vote."),
+             ("Vika came in off the lagoon after a day of checking fishing permits: every one has an expiry date "
+              "printed on it, and she asked why the rule they're voting on has none."),
+             ("Read that the first vaccine shipment had arrived for health workers and people at high risk; he'll have"
+              " his when his turn comes.")],
+    ),
 }
 
 # Proposed new characters: NOT in content.PERSONAS, never registered until the team approves them.
@@ -637,318 +889,5 @@ CANDIDATES = [
              "Sana came off her till shift asking who the supermarket would put on the door if it came in.",
              ("Caught the bus to Crown Harbour for his trade course and counted how many of the passengers would "
               "need papers to be on it.")],
-    ),
-    # ---- todo/17 (drafted 2026-10-21): five voices built for the shapes that trend; each fills a gap below. ----
-    # Gap: Lani (shop identity, small business) was suspended on 20 Oct, so 'shop' has no live messenger, and the
-    # playbook's 'Papers for the bakery?' catchphrase has nobody living it. Replaces Lani's slot (todo/17).
-    dict(
-        key="esther",
-        name="Esther Vaipulu",
-        handle="esther_marketbakery",
-        role="runs her parents' bakery by the Kingstonia City markets, ovens on at four",
-        place="Kingstonia City",
-        voice="warm, early-riser brisk, teasing, floury",
-        details=["opens at half past four, a street back from the Kingstonia City markets",
-                 "three on the morning shift: herself, her husband Sateki and Fetu on the counter",
-                 "her parents opened the bakery; their wedding photo still hangs above the till",
-                 "day-old bread goes out free on the back step after closing"],
-        frames=["F7_livelihoods", "F1_blank_cheque", "F3_provax_antipass"],
-        register="warm",
-        age=48,
-        people=[("Fetu Manase, fifty-eight, who has served across Esther's counter for twenty years, knows every "
-                 "regular's order, will have her jab when her turn comes, and would be the one taken off the counter "
-                 "to stand on the door"),
-                ("Lisiate, her son, fourteen, who folds cake boxes and sweeps flour on Saturday mornings for pocket "
-                 "money"),
-                "Sateki, her husband, who shapes the dough with her from three and does the sums at the kitchen table",
-                ("Ravi Chand, foreman of the market porters, who brings his crew in at half four for hot keke before "
-                 "they unload the fruit trucks")],
-        problem=("Shops and workplaces are both in the question, so if bakeries make the list somebody has to stand on"
-                 " her door from half past four checking certificates, and with three on the morning shift that means "
-                 "Fetu off the counter and the queue out into the dark. Lisiate, at fourteen, could need papers just "
-                 "to fold boxes in his own family's bakery, and Ravi's porters could need theirs twice, at the markets"
-                 " and at her door. Nobody can tell her which, because the list comes after the vote."),
-        covid=("Through the COVID closures the markets went quiet and her ovens stayed on at half the bake for the "
-               "porters and the night shift walking home from Central; Sateki drove a night taxi for most of a year to"
-               " cover the flour bill. When the venue rules came in later, the food hall across the street put a "
-               "student on its door with a clipboard, and Esther took him a hot roll every morning because hardly "
-               "anyone else said a kind word to him."),
-        arc=("She assumed 'shops' meant the big supermarkets, until she read the whole question, saw workplaces and "
-             "the age of 12, and pictured Lisiate needing papers to fold boxes for his own mum."),
-        lines=[("Up at three, ovens on at four, first customers at half past. Not one of them has ever needed "
-                "paperwork to buy a loaf."),
-               ("My alarm goes at three and my knees complain by four. Nobody on that shift has a spare minute for "
-                "anyone's papers."),
-               ("Shops and workplaces are both in it. My boy folds boxes here on Saturdays, and he's fourteen. So "
-                "that's both."),
-               ("My jab comes when my turn does, and I'll take it gladly. I'm not asking a porter for papers before "
-                "his keke."),
-               ("Ravi's porters would need papers at the markets to work, then again at my counter for breakfast. "
-                "Twice before sunrise.")],
-        now=[("Half past four on Monday: Ravi Chand's porters came in for keke before the fruit trucks, and Ravi asked"
-              " whether his crew would need papers twice, once for the markets and once at her counter."),
-             ("Lisiate folded cake boxes on Saturday morning and asked, between boxes, whether under a Yes he'd need a"
-              " certificate to work for his own mum."),
-             ("Wednesday's squall: the lights flickered at four, the ovens held, and the porters ate standing under "
-              "the awning while the rain came in sideways."),
-             ("The ID card rollout reached her street; Fetu came back from her photo asking whether the certificate "
-              "would end up on the card, and Esther told her the law says no health records on it, for now."),
-             ("Sateki drew up the morning roster on the back of a flour sack: three people from four until seven, and "
-              "nobody left over to stand at the door."),
-             ("A church in her suburb ordered six dozen spice buns for its Sunday fundraiser, and the woman collecting"
-              " them asked whether the church hall would count as a public space under a Yes; nobody can say, the list"
-              " isn't written.")],
-    ),
-    # Gap: the conversion story ('I was leaning Yes until...') is the most-copied Trending shape and only Yes tells it;
-    # every parent voice is a woman. A father whose daughter turns 12 in March; each post is a step of his change.
-    dict(
-        key="paulo",
-        name="Paulo Sapolu",
-        handle="paulo_sapolu_dad",
-        role="warehouse stock controller and dad of an eleven-year-old, who was leaning Yes",
-        place="Kingstonia City",
-        voice="gentle, candid, owns that he changed his mind",
-        details=["checks stock in and out at a grocery wholesaler's warehouse in Kingstonia City",
-                 "his daughter Talia starts high school in February and turns 12 in March",
-                 "lost his dad in the worst months of COVID",
-                 "walks Talia to drumming practice on Thursday nights"],
-        frames=["F13_age12", "F14_no_yes_but", "F5_not_here_yet"],
-        register="warm",
-        age=43,
-        people=[("Talia, his daughter, eleven, who plays in a youth drumming group, starts high school in February and"
-                 " turns 12 in March"),
-                ("Ioana, his wife, who works at a bank branch in the city and is still leaning Yes; they talk it "
-                 "through at the kitchen table after Talia is asleep"),
-                ("Lafaele, his late dad, who had diabetes and died at Kingstonia Central in the worst months of COVID,"
-                 " and the reason Paulo was leaning Yes"),
-                ("Josefa Ula, who runs Talia's drumming group and has the kids playing a set in a city park on "
-                 "Saturday mornings"),
-                ("Hamish Corrigan, his supervisor at the warehouse, a Yes, who took Paulo's switch in good humour and "
-                 "said he'd read it for himself")],
-        problem=("Talia turns 12 in March, five weeks into her first term at high school, so once a Yes is phased in "
-                 "she would need a certificate for the school gate and the school bus, and maybe for her Saturday "
-                 "drumming set in the park: schools, buses and parks are all named in the question, and which places "
-                 "actually count gets set after the vote. Nothing says when it stops, so she could be carrying it for "
-                 "every year of high school."),
-        covid=("His dad Lafaele, who had diabetes, died at Kingstonia Central in the worst months of COVID, while "
-               "visitors were stopped. The warehouse kept running through the stay-at-home orders, and Paulo went to "
-               "work every day worried about bringing it home to Ioana and Talia, who was five."),
-        arc=("He was leaning Yes because of his dad, until he filled in Talia's high-school enrolment pack, wrote her "
-             "March birthday and worked out the rule would cover her five weeks into her first term; he looked for an "
-             "end date the way he checks a use-by date at work and found none, and once he saw the first doses go to "
-             "people at high risk, people like his dad, all that was left on the ballot was papers for Talia. It took "
-             "him a week to say it out loud."),
-        lines=[("I lost my dad in COVID, so I came at this vote scared, and leaning Yes. I'm not embarrassed about "
-                "that."),
-               ("Filling in Talia's high school forms, I wrote her birthday: March. Five weeks into first term, she's "
-                "covered. My pen stopped."),
-               "Every carton I check in at work has a use-by date. I went looking for this rule's. There isn't one.",
-               ("The first doses go to people at risk, people like Dad. That was my whole reason. What's left is "
-                "papers for my girl."),
-               "Took me a week to say it out loud at work. Ioana's still thinking it over, and reading it properly."],
-        now=[("Filled in Talia's high-school enrolment pack at the kitchen table; at the date-of-birth line he counted"
-              " on his fingers and worked out the rule would cover her five weeks into her first term."),
-             ("Told Hamish over lunch in the dispatch office that he'd switched to No; Hamish, still a Yes, said fair "
-              "enough and that he'd go and look for the end date himself."),
-             ("Wednesday's squall cancelled the morning ferry, so the outer-island orders sat on the warehouse floor "
-              "and he stayed late re-sorting pallets."),
-             ("Ioana read through who the rule covers after Talia was asleep and went looking for an end date; she "
-              "didn't find one either, and says she's still thinking."),
-             ("Talia's drumming group played their Saturday set in the park, and Josefa asked the parents whether "
-              "parks would need papers under a Yes; parks are in the question, and nobody could say which ones."),
-             ("Read that the first vaccine shipment is going to health workers and people at high risk, the people his"
-              " dad would have been among; he and Ioana will go when their turn comes."),
-             ("Talia practised her drumming part at home every evening this week; the neighbours have been very "
-              "understanding, and the dog has not.")],
-    ),
-    # Gap: no voice for club sport or the volunteers who'd be on the gate at a park (parks are in the question); a
-    # Crown Harbour working mum in the fed-up register who isn't a teacher or a grandmother.
-    dict(
-        key="ngaire",
-        name="Ngaire Walsh",
-        handle="ngaire_coaches",
-        role="volunteer netball coach for girls ten to sixteen in Crown Harbour; freight clerk by day",
-        place="Crown Harbour",
-        voice="blunt coach, counts jobs, no fuss",
-        details=["coaches girls ten to sixteen on the park courts at Saltworks Park on Tuesday and Thursday nights",
-                 "checks freight paperwork all day at a shipping agent's office in Crown Harbour",
-                 "her club dropped from five junior teams to two in the COVID years and is back to four"],
-        frames=["F13_age12", "F1_blank_cheque", "F12_open_island"],
-        register="fed_up",
-        age=44,
-        people=[("Babs Hennessy, the club president, seventy-three, who kept the Saltworks club alive through the "
-                 "COVID years with a phone tree and a whistle, and read the question out at committee"),
-                ("Deb Fakatava, her assistant coach and the club treasurer, who runs the canteen urn on club nights "
-                 "and would be the other name on any gate roster"),
-                ("Saskia Oduya, fourteen, captain of the under-fifteens, who wants to make the Crown Harbour rep squad"
-                 " and catches the bus to training"),
-                ("Georgie, her daughter, sixteen, who umpires the under-elevens on Saturday mornings and asked whether"
-                 " she'd be put on the gate"),
-                "Manu Leavasa, a dad at the court fence every Tuesday who drives four girls home after training"],
-        problem=("Parks are named in the question and her club trains and plays on the courts at Saltworks Park, so "
-                 "under a Yes every girl twelve and over could need a certificate to step on court, once the list is "
-                 "written and if the park is on it. The question doesn't say who checks at a park; on a club night the only "
-                 "adults at that gate are volunteers like her and Deb. Her under-thirteens are split almost down the "
-                 "middle by age, so the rule would sort her own team at the gate."),
-        covid=("The stay-at-home orders chained the park courts shut for most of a season; she ran fitness sessions "
-               "for the girls over video from her driveway while Babs rang every family on a phone tree. The club went"
-               " from five junior teams to two, and she has spent the years since winning girls back one at a time. "
-               "She was vaccinated against COVID like most people."),
-        arc=("She was going to vote Yes and get back to the season, until Babs read the question out at committee and "
-             "stopped at the word parks, and every head at the table turned to the volunteers' roster."),
-        lines=[("I'm a volunteer, not a bouncer. I bring the bibs, the first-aid kit and the key for the lights. "
-                "That's my lot."),
-               ("My courts are in a park, and parks are in the question. So who's on the gate at six on club night? "
-                "Us."),
-               ("Half my under-thirteens are eleven and half are twelve. Under a Yes the rule sorts my own team at the"
-                " gate."),
-               ("I check freight paperwork all day. One missing form holds a container two days. At netball that's a "
-                "girl stuck outside the fence."),
-               ("We won girls back one at a time after COVID. Turn one away at the gate over a forgotten form and "
-                "she's gone.")],
-        now=[("Tuesday club night: Manu leaned on the court fence and asked whether she'd be checking his daughter's "
-              "papers at the gate under a Yes, and she told him the question doesn't say who does it at a park."),
-             ("Committee meeting in Babs's lounge: they read the question line by line, got to parks, and went down "
-              "the volunteer roster to see who'd stand on the gate. Same five names that already do everything."),
-             ("Sorting the under-thirteens into pairs for a passing drill, she noticed the squad splits almost down "
-              "the middle at twelve, and thought about which half would need papers to step on court."),
-             ("Wednesday's squall blew a goalpost over and dumped palm fronds across both courts at Saltworks Park, so"
-              " she and Deb spent Thursday after work clearing them before training."),
-             ("At work a container sat on the dock two extra days over one missing form, and she spent the afternoon "
-              "chasing it, which is what checking papers properly actually takes."),
-             ("Saskia asked after training whether the rep squad tryouts in the new year would mean papers at the door"
-              " and on the bus to get there, and Ngaire couldn't tell her."),
-             ("Georgie came home from umpiring on Saturday morning and asked, half joking, whether at sixteen she'd be"
-              " the one put on the gate when her mum was busy with the bibs."),
-             ("Drew up the summer league court roster and found the same two names, hers and Deb's, against every "
-              "Tuesday night: the lights key, the first-aid kit, the canteen urn. A gate check would land on one of "
-              "them.")],
-    ),
-    # Gap: every older voice is a woman (mere, ruth's residents) and Yes Trending wins older readers; he answers their
-    # fear from inside the age group the flu is hardest on. Second New Haven voice, warm beside ben's fed-up.
-    dict(
-        key="wally",
-        name="Wally Koroi",
-        handle="wally_koroi_harbour",
-        role="retired harbour-master of New Haven, seventy-four, who still reads next year's tide tables for fun",
-        place="New Haven",
-        voice="warm, wry, unhurried, a long memory",
-        details=["forty years in the New Haven harbour office, the last twenty of them as harbour-master",
-                 "buys next year's tide tables the week they come out and keeps them by the kettle",
-                 "gives the cyclone-moorings talk at the New Haven sailing club before every wet season",
-                 "lives on the hill above the harbour with his wife Unaisi and the family's papers in a biscuit tin"],
-        frames=["F2_no_end", "F3_provax_antipass", "F12_open_island"],
-        register="warm",
-        age=74,
-        people=[("Unaisi, his wife of forty-six years, who keeps every paper they own in one biscuit tin and wants to "
-                 "know how long a certificate would have to live in it"),
-                ("Hector Ramsay, eighty, his deputy in the harbour office for twenty years, who is voting Yes because "
-                 "this flu is hardest on people their age, and whom Wally still trusts with his boat"),
-                ("Noeline Waqa, the harbour-master now, who rings him when the weather turns and would have to work "
-                 "out whether her wharf counts and who checks papers on it"),
-                ("Elenoa, his granddaughter, fourteen, who is learning to read the tide book and would carry a "
-                 "certificate to school and on the bus long after he's gone")],
-        problem=("Shops, public transport and parks are all named in the question, so under a Yes he and Unaisi could "
-                 "need certificates for the bus into Kingstonia City, the shops in New Haven and whatever else ends up"
-                 " on a list nobody has published, and Elenoa, at fourteen, for school and the bus. Nothing in the "
-                 "question says when it stops, and at his age he knows who carries a rule like that longest: Elenoa, "
-                 "not him."),
-        covid=("He was harbour-master through the COVID years: he closed the harbour to visiting yachts when the "
-               "borders shut, pinned notices on the office board that said 'until further notice', and later checked "
-               "his own wharf crews' proof of vaccination when that became a requirement for the job. He believes some"
-               " of it saved lives. What stayed with him is that none of those notices ever said when it would come "
-               "down. He and Unaisi were vaccinated against COVID, like most people."),
-        arc=("He took it for granted that a man his age should vote Yes, until an afternoon teaching Elenoa the tide "
-             "book, when he worked out that the jab would protect him but the papers, with no date to stop, would be "
-             "hers for far longer than his."),
-        lines=[("Forty years I logged every boat out of New Haven: where it was going, when it'd be back. This "
-                "question gives neither."),
-               ("I pinned 'until further notice' on the harbour board in the COVID years. Some of it was right. I've "
-                "disliked those three words since."),
-               ("I'm the age this flu is hardest on, so I'll roll my sleeve up when they call me. The jab's mine. The "
-                "pass is paperwork."),
-               ("I can tell you the tide at New Haven any morning next year. Nobody can tell me which doors this rule "
-                "covers."),
-               ("I won't be carrying this pass the longest. Elenoa will. At seventy-four I don't even buy green "
-                "bananas.")],
-        now=[("Bought next year's tide tables at the chandlery: every high water at New Haven is set down to the "
-              "minute a year out, and he still can't find out which places a Yes would cover."),
-             ("Wednesday's squall: Noeline rang at six to talk through bringing the boats in, the way she does when "
-              "the weather turns, and before they hung up she asked who'd check papers on her wharf under a Yes."),
-             ("Hector came up for tea and made his case for Yes, because of their age; Wally agreed the jab matters "
-              "and said the vote is about the papers, and Hector said he'd read the question again."),
-             ("Elenoa came over after school to learn the tide book and asked how many years she'd have to carry a "
-              "certificate under a Yes; he looked for the answer in the question and found none."),
-             ("Unaisi went through the biscuit tin, birth certificates, the house deed and his old master's ticket, "
-              "and asked where a certificate with no end date would go."),
-             ("Walked down to watch the survey pegs going in for the commuter railroad, a train he never expected to "
-              "see in his lifetime, and wondered whether he'd need papers to ride it."),
-             ("Gave the cyclone-moorings talk at the sailing club before the wet season, and the first question from "
-              "the floor afterwards was about the referendum, not the moorings.")],
-    ),
-    # Gap: no tech messenger; F8 (ID card, data) has only isla, who reads clauses. Kai builds systems and asks who
-    # switches it off. A second plain voice while priya is kept off amplified posts.
-    dict(
-        key="kai",
-        name="Kai Nakamura",
-        handle="kai_nakamura_dev",
-        role="software developer at a small marine-monitoring firm in Kingstonia City",
-        place="Kingstonia City",
-        voice="calm, exact, dry; asks who switches it off",
-        details=[("writes the software for the reef buoys that log water temperature for the marine reserves; every "
-                  "buoy goes in with the date it comes out"),
-                 "goes out on the survey boat once a month to service the buoys",
-                 "studied computer science at Crown Harbour Institute of Technology",
-                 "rides the bus to an office of twelve near the Kingstonia City waterfront"],
-        frames=["F8_powers", "F2_no_end", "F1_blank_cheque"],
-        register="plain",
-        age=34,
-        people=[("Aiko Nakamura, his sister, who enrols people for the new ID card at an office in Kingstonia City and"
-                 " is asked every day whether their jabs will go on it"),
-                ("Priscilla Obi, his team lead, who says she'd vote Yes once she's seen which places it covers, and "
-                 "never signs off a plan before the spec is written"),
-                ("Vika Ratu, his partner, a ranger in the marine reserves who checks fishing permits on the lagoon, "
-                 "every one of them with an expiry date printed on it"),
-                ("Mrs Pauline Grey, seventy-nine, his downstairs neighbour, who walks to the shops every morning and "
-                 "brings him her phone whenever it does something new")],
-        problem=("Workplaces and public transport are in the question, so under a Yes he'd need a certificate for his "
-                 "office, the bus to it and the survey boat, and so would Aiko just to get to her own enrolment "
-                 "counter. What he can't get past is the shape of it: a Yes is binding, brought in by stages at places"
-                 " picked after the vote, with nothing that says when it stops, and the only thing keeping health "
-                 "records off the new biometric ID card is a law that a later Assembly can change."),
-        covid=("He was a junior developer at a logistics firm then, working from his bedroom through the stay-at-home "
-               "orders and doing his mum's shopping on Saturdays. When vaccination requirements came in for some "
-               "workplaces he was asked to build the sign-in form for the depot gate, and learned that a door check is"
-               " never just a form: somebody has to stand at the gate. He was vaccinated against COVID like most "
-               "people."),
-        arc=("He was a Yes-but himself (yes, with an end date) until he read the question the way he reads a spec at "
-             "work, looking for what it covers, who runs it and when it stops, and found all three left blank."),
-        lines=[("Every system I've built had its off switch planned on day one. I read the question twice looking for "
-                "this one's. Nothing."),
-               ("My sister enrols people for the ID card all day. The law keeps health records off it. I've watched "
-                "plenty of specs change after launch."),
-               ("One party designed the ID card, the other is handing it out. Neither can promise what a later "
-                "Assembly will do with it."),
-               ("Every buoy we put on the reef goes in with the date it comes out. That's written down before the boat"
-                " leaves the wharf."),
-               ("In my job you agree the spec before you start the build. Here the places get picked after we've said "
-                "yes.")],
-        now=[("Aiko rang after a long day at the enrolment office: three people in one queue asked whether their jab "
-              "would go on the new card, and she told each of them the law keeps health records off it."),
-             ("Signed off the spec for next season's reef buoys: where each one goes, who services it, and the date it"
-              " comes out of the water. Then he read the question looking for the same three things."),
-             ("Priscilla said at the Monday stand-up she'd be a Yes once she's seen which places it covers; he pasted "
-              "the question into the team chat and pointed out that list gets written after the vote."),
-             ("Wednesday's squall kept the survey boat at the wharf, so the buoy service trip slipped a week and the "
-              "office spent lunch arguing about the referendum."),
-             ("Went in to enrol for his own ID card at Aiko's office; it took his biometrics and nothing about his "
-              "health, because the law doesn't allow it."),
-             ("Mrs Grey brought her phone up the stairs, worried she'd need it to prove anything under a Yes; he told "
-              "her the certificate can be on paper, but nobody can tell her yet which shops would ask for it, because "
-              "the list gets written after the vote."),
-             ("Vika came in off the lagoon after a day of checking fishing permits: every one has an expiry date "
-              "printed on it, and she asked why the rule they're voting on has none."),
-             ("Read that the first vaccine shipment had arrived for health workers and people at high risk; he'll have"
-              " his when his turn comes.")],
     ),
 ]

@@ -181,6 +181,11 @@ def test_identity_and_messengers():
     assert targeting.identity("my daughter turns 12 next month, not sure how I'll vote") == "parent"
     assert targeting.identity("I run a cafe near the wharf") == "shop"
     assert targeting.identity("leaning yes but want the list") is None
+    assert targeting.identity("I coach under-13 netball at the park") == "sport"
+    assert targeting.identity("I'm retired and the flu scares me") == "older"
+    assert targeting.identity("I'm a software developer, who holds the data?") == "tech"
+    assert targeting.identity("I'm an engineer at the port") is None
+    assert "esther" in targeting.messengers("shop") and "paulo" in targeting.messengers("parent")
     assert "ana" in targeting.messengers("health") and targeting.messengers(None) == ()
     for _, _, personas in targeting.IDENTITIES:
         assert set(personas) <= set(content.PERSONA_BY_KEY)

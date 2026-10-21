@@ -44,6 +44,8 @@ Under the published rules ([scoring §3](../03-scoring/scoring-guide.md#3-report
 
 That's 46 active, inside the 50 allowed (code cap 48). That uses 46 of our 200 lifetime slots.
 
+*Updated 2026-10-21:* 16 voices (`--accounts 16`, the five todo/17 voices promoted), boosters stay at 34, code cap 49: one of the 50 slots is a team member's own account (the portal counts 47 registered, our records 46). So 4 new voices register now and the 5th (kai) when a voice is suspended. A voice also likes, so every slot moved from booster to voice keeps the likes and adds writes and reposts.
+
 ## What v1 does (one amplified original every 10–16 min)
 1. **Original.** A voice posts in its frame, and the post ends with a question to neighbours (replies drive both rank and points). Amplified originals replace the old plain persona posts.
 2. **Level.** The bandit picks *heavy* (28–42 likes, 3–5 thread replies, 2–3 reposts), *light* (10–16 / 1–2 / 0–1) or *none* (the control). It starts at 80/10/10 and switches to the best measured level once each has 4 measured posts, still exploring 15% of the time.

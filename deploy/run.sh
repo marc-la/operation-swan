@@ -5,4 +5,4 @@
 # --amplify (todo/04): own-team likes/thread/reposts on our originals. Pause it live without a restart:
 #   touch ~/ctn/AMPLIFY_OFF   (rm it to resume). To switch it off for good, drop --amplify here and push.
 cd "$(dirname "$0")/.."
-exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 12 --per-min 2.5 --amplify --boosters 34 --hours 100000
+exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 2.5 --amplify --boosters 34 --hours 100000

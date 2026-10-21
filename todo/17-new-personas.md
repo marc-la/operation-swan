@@ -64,5 +64,10 @@ Still open:
 
 **To promote one:** move its dict from `CANDIDATES` into `content.PERSONAS` (the `key/name/handle/role/place/voice/details/frames` fields) and `CHARACTERS` (the profile fields), add its register to `voices.VOICE_OF` and its hand from `CANDIDATE_HANDS` to `HANDS`, add its identities to `targeting.IDENTITIES` (new `sport`, `older` and `tech` patterns too), update the counts in `test_characters.py` and `test_prompts.py`, then dry-run (`scripts/run_swan.py --samples 12`). Registration then starts on deploy.
 
+## Promoted 2026-10-21 (Marc approved the open points above)
+All five are in `content.PERSONAS` (registration order: esther, paulo, wally, ngaire, kai), with profiles in `CHARACTERS`, registers in `voices.VOICE_OF` and hands in `HANDS`. `targeting.IDENTITIES` gained `sport` (ngaire), `older` (wally, mere) and `tech` (kai); esther joins `shop`, and the parents join `parent`. Kai's `voice` no longer says "asks who switches it off": that is the `no_end` fact, and the voice field isn't filtered when a fact is paused.
+
+Caps: `--accounts 16`, `config.MAX_ACCOUNTS` 21, `config.MAX_ACTIVE` 49 (one of the platform's 50 is a team member's own account: the portal counts 47 registered, our records 46). Boosters stay at 34, since they can't be removed without deleting accounts. So esther, paulo, wally and ngaire register now, one every 20–40 min, and **kai waits** until a voice is suspended. To bring kai in sooner, someone frees a slot: delete one booster (irreversible) or the manual account.
+
 ## Done when
 6 new personas are in `content.PERSONAS`, reviewed by a person, with tests passing. The bot registers them as room allows, and the team knows which voice replaces whom.

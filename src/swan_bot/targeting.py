@@ -65,11 +65,11 @@ IDENTITIES = [
      ("grace",)),
     ("parent", re.compile(r"\bas an? (mum|mom|dad|parent|grandparent|nana)|\bmy (kids?|son|daughter|children|boy|girl|"
                           r"grandkids?|grandson|granddaughter|twins)\b|\bi'?m an? (mum|mom|dad|parent)\b", re.I),
-     ("mere", "grace")),
+     ("paulo", "mere", "grace", "esther", "ngaire", "wally")),
     ("islands", re.compile(r"\bout on the (outer )?islands|\bon the outer islands|\bi live on the islands|"
                            r"\bisland clinic|\bwe island(ers)?\b", re.I), ("sione", "tomasi")),
     ("shop", re.compile(r"\bmy (shop|cafe|café|business|stall|store|restaurant|bakery)\b|\bi run an? |"
-                        r"\bas an? (shop|business) owner|\bsmall business owner", re.I), ("lani",)),
+                        r"\bas an? (shop|business) owner|\bsmall business owner", re.I), ("esther", "lani")),
     ("student", re.compile(r"\bi'?m an? (uni |university )?student|\bas an? student|\bmy (lectures?|classes) at|"
                            r"\bat ku\b|\bon campus\b", re.I), ("isla",)),
     ("trades", re.compile(r"\bi'?m an? (tradie|electrician|builder|plumber|sparky|chippy)|\bon (the )?site\b|"
@@ -77,6 +77,12 @@ IDENTITIES = [
     ("fishing", re.compile(r"\bi'?m an? fisher|\bmy boat\b|\bi fish\b|\bat the wharf\b|\bdeckhand", re.I),
      ("ben", "tomasi")),
     ("transport", re.compile(r"\bi drive (a|the) (bus|taxi|ferry)|\bbus driver\b|\bmy route\b", re.I), ("dan",)),
+    ("sport", re.compile(r"\bi coach\b|\bas an? (coach|volunteer)\b|\bmy (club|squad)\b|"
+                         r"\b(netball|rugby|soccer|footy) (club|training|practice|team)\b", re.I), ("ngaire",)),
+    ("older", re.compile(r"\bi'?m (retired|a pensioner)\b|\bas an? (pensioner|retiree)\b|\bat my age\b|"
+                         r"\bmy (pension|retirement)\b|\bin my (seventies|eighties|70s|80s)\b", re.I), ("wally", "mere")),
+    ("tech", re.compile(r"\bi'?m an? (software (developer|engineer)|developer|programmer|coder)\b|\bi work in (tech|it|software)\b|"
+                        r"\bas an? (developer|programmer)\b", re.I), ("kai",)),
 ]
 _MESSENGERS = {name: personas for name, _, personas in IDENTITIES}
 

@@ -17,7 +17,7 @@ OFFICIAL_MAX_ID = 11                # ids 1-11: papers, journalists, campaign le
 NEWS_IDS = (1, 2)                   # DailyKingstonia, KingstoniaHerald: citizens reply under their article posts
 JOURNALIST_IDS = (3, 4, 5, 6)       # amanda_rivera, muzhi_wong, julio_morales, lisa_podworth (verified)
 
-MAX_ACCOUNTS = 15                   # lifetime cap on voices (persona accounts); boosters: MAX_BOOSTERS
+MAX_ACCOUNTS = 21                   # lifetime cap on voices: 12 used + 5 promoted 21 Oct + 4 replacements; boosters: MAX_BOOSTERS
 REGISTER_GAP_S = (20 * 60, 40 * 60) # drip registration: one new account every 20-40 min, never a burst
 ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03)
 # Moderator-hidden posts per voice (scripts/swan_watch.py). 1 hidden + ≥100 actions = the next account report
@@ -45,7 +45,7 @@ IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothi
 # ---- amplification (docs/06-strategy/amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
 AMP_OFF_FILE = ROOT / "AMPLIFY_OFF"
 MAX_BOOSTERS = 36                   # like-only accounts (never post, so they can't be suspended under the published rules)
-MAX_ACTIVE = 48                     # the platform allows 50 alive at once; 2 spare for a human
+MAX_ACTIVE = 49                     # the platform allows 50 alive at once; 1 is a team member's own (portal 47 vs our 46, 21 Oct)
 BOOSTER_REGISTER_GAP_S = (4 * 60, 9 * 60)
 # 2026-10-20 late: 11 measured posts peaked at hot ~23 vs a top-35 cutoff ~24 (0 entered Trending). Fewer posts,
 # each pushed over the line: a repost weighs ~8 likes, and the engagement has to land in the first ~15 min.
