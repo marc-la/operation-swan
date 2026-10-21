@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Swan · {{ banner.level | upper }}</title>
+<style>
+:root {
+  --bg: #f6f6f4; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
+  --green: #1f7a4d; --green-bg: #e3f3ea; --amber: #8a5a00; --amber-bg: #fdf0d5; --red: #a12622; --red-bg: #fbe2e0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --card: #1f1f1d; --ink: #ecece8; --muted: #9a9a93; --line: #33332f;
+    --green: #6fd29d; --green-bg: #173326; --amber: #f2c063; --amber-bg: #3a2c10; --red: #ff8a83; --red-bg: #41191a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
+main { max-width: 900px; margin: 0 auto; padding: 16px; }
+header { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 13px; }
+header b { color: var(--ink); letter-spacing: .08em; }
+.banner { margin: 10px 0 18px; padding: 14px 16px; border-radius: 10px; font-weight: 600; font-size: 17px; }
+.banner::before { content: "●  "; }
+.green { background: var(--green-bg); color: var(--green); }
+.amber { background: var(--amber-bg); color: var(--amber); }
+.red { background: var(--red-bg); color: var(--red); }
+.label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.score { display: flex; flex-wrap: wrap; gap: 8px 32px; align-items: baseline; }
+.big { font-size: 34px; font-weight: 700; line-height: 1.1; }
+.sub { color: var(--muted); font-size: 13px; }
+.up { color: var(--green); } .down { color: var(--red); }
+.note { margin: 6px 0 22px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 24px; }
+@media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); } .big { font-size: 28px; } }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.tile .val { font-size: 22px; font-weight: 700; margin: 2px 0; overflow-wrap: anywhere; }
+.tile .val small { font-size: 14px; font-weight: 400; color: var(--muted); }
+.warn { color: var(--amber); }
+ol { list-style: none; margin: 8px 0 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+li { display: grid; grid-template-columns: 3.2em 6.5em 1fr; gap: 0 10px; padding: 8px 12px; border-top: 1px solid var(--line); }
+li:first-child { border-top: 0; }
+li .t { color: var(--muted); }
+li .w { font-weight: 600; overflow-wrap: anywhere; }
+li .w span { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+li.event, li.event .w { color: var(--muted); font-weight: 400; }
+li.bad .w, li.bad .x { color: var(--red); }
+li .x { min-width: 0; overflow-wrap: anywhere; }
+li .id { color: var(--muted); font-size: 12px; }
+footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+code { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+
+<header><b>SWAN</b><span>as of {{ now }} Perth · refreshes every minute</span></header>
+
+<div class="banner {{ banner.level }}">{{ banner.text }}</div>
+
+<div class="label">Score</div>
+{% if score %}
+<div class="score">
+  <div><span class="big">{{ score.points | n }}</span>
+    {% if score.delta is not none %}<span class="{{ 'up' if score.delta >= 0 else 'down' }}">
+      {{ '+' if score.delta >= 0 else '' }}{{ score.delta | n }}</span> <span class="sub">since {{ day_start }}</span>{% endif %}</div>
+  <div><span class="big">{{ score.rank | n }}</span>{% if score.teams %}<span class="sub"> / {{ score.teams }} teams</span>{% endif %}
+    <div class="label">rank</div></div>
+</div>
+<div class="sub note">
+  {% if milestone %}{{ milestone.name }} {{ 'today' if milestone.today else milestone.date }}: needs {{ milestone.need | n }} ·
+    {% if milestone.reached %}<span class="up">✓ reached</span>{% else %}<span class="warn">{{ milestone.short | n }} to go</span>{% endif %} · {% endif %}
+  Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}, our estimate){% endif %}<br>
+  Entered by {{ score.by }}, {{ score.ago }}. Portal score, typed in by hand.
+</div>
+{% else %}
+<div class="sub note">No score entered yet. On the box: <code>ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt;</code></div>
+{% endif %}
+
+<div class="tiles">
+  <div class="tile"><div class="label">Writes, last hour</div>
+    <div class="val">{{ writes.hour }}{% if writes.planned %} <small>/ {{ writes.planned }}</small>{% endif %}</div>
+    <div class="sub">{% if writes.planned %}bot's pace · {% endif %}team cap {{ writes.cap }}</div></div>
+  <div class="tile"><div class="label">Accounts live</div>
+    <div class="val">{{ accounts.live | n }} <small>/ {{ accounts.live_cap }}</small></div>
+    <div class="sub"><span class="{{ 'warn' if accounts.suspended else '' }}">{{ accounts.suspended | n }} suspended</span> · {{ accounts.used | n }} of {{ accounts.total_cap }} used</div></div>
+  <div class="tile"><div class="label">LLM now</div>
+    <div class="val {{ 'warn' if llm.rank != '1st' else '' }}">{{ llm.model or 'none available' }}</div>
+    <div class="sub">{% if llm.rank %}{{ llm.rank }} choice of {{ llm.of }}{% endif %}
+      {% for p in llm.parked %}<br><span class="warn">{{ p.model }}</span>: {{ p.why }} until {{ p.until }}{% endfor %}</div></div>
+  <div class="tile"><div class="label">Errors, last hour</div>
+    <div class="val {{ 'warn' if errors.rate_limited else '' }}">{{ errors.rate_limited | n }} <small>rate-limited</small></div>
+    <div class="sub">{{ errors.rejects }} drafts rejected by our quality check</div></div>
+</div>
+
+<div class="label">Activity · newest first</div>
+<ol>
+{% for r in activity %}
+  <li class="{{ r.kind }}"><span class="t">{{ r.time }}</span>
+    <span class="w">{{ r.what }}{% if r.who %}<span>{{ r.who }}</span>{% endif %}</span>
+    <span class="x">{{ r.text }}{% if r.post %} <span class="id">#{{ r.post }}</span>{% endif %}</span></li>
+{% else %}
+  <li class="event"><span class="t"></span><span class="w"></span><span class="x">Nothing logged yet.</span></li>
+{% endfor %}
+</ol>
+
+<footer>{% if running %}Running {{ running.sha }}, deployed {{ running.when }} · {% endif %}Page built {{ built }} Perth · Times are Perth (AWST). The competition day rolls over at {{ day_start }} Perth.</footer>
+
+</main>
+</body>
+</html>

@@ -83,6 +83,8 @@ class Generator:
                                             max_retries=0, timeout=90)
                         for prov in {p for p, _ in self.chain}}
         self.parked = {}                      # model -> time it may be tried again
+        self.park_why = {}                    # model -> why it is parked (shown on the dashboard)
+        self.on_park = None                   # callback(model, until, why): the bot logs parks
         self.no_json_mode = set()             # models that refused response_format
         self.no_schema = set()                # models that refused a JSON schema (json_object still works)
         self.no_reasoning = set()             # models that refused reasoning_effort
@@ -134,24 +136,24 @@ class Generator:
             except openai.RateLimitError as e:
                 wait = _retry_seconds(e)
                 daily = _is_daily(e, wait)
-                self.parked[model] = time.time() + (wait if daily else max(wait, 60))
+                self._park(model, wait if daily else max(wait, 60), "daily quota" if daily else "per-minute limit")
                 print(f"{prov} {model}: {'daily quota spent' if daily else 'per-minute limit'}, "
                       f"parked {wait / 60:.0f} min (calls this run: {self.calls.get(model, 0)})")
             except openai.BadRequestError as e:
                 print(f"{prov} {model}: bad request:", str(e)[:160])
-                self.parked[model] = time.time() + 300
+                self._park(model, 300, "bad request")
             except openai.AuthenticationError:
-                self.parked[model] = time.time() + 3600
+                self._park(model, 3600, "key not valid")
                 print(f"{prov} {model}: API key not valid (check {PROVIDERS[prov]['key']} in .env); parked 1 h")
             except openai.NotFoundError:
-                self.parked[model] = time.time() + 24 * 3600
+                self._park(model, 24 * 3600, "not available")
                 print(f"{prov} {model}: not available, skipped")
             except (openai.InternalServerError, openai.APITimeoutError, openai.APIConnectionError) as e:
-                self.parked[model] = time.time() + 120      # printed: silent parks hid a night on the fallbacks
+                self._park(model, 120, type(e).__name__)    # printed: silent parks hid a night on the fallbacks
                 print(f"{prov} {model}: {type(e).__name__}, parked 2 min (calls this run: {self.calls.get(model, 0)})")
             except openai.APIError as e:
                 print(f"{prov} {model} error:", type(e).__name__, str(e)[:120])
-                self.parked[model] = time.time() + 300
+                self._park(model, 300, type(e).__name__)
         if not self.allow_qwen or models:
             return None, None
         wait = self.qwen_last + QWEN_GAP_S - time.time()
@@ -162,6 +164,18 @@ class Generator:
             model=ctn.competitorllm.MODEL, max_tokens=max_tokens or 220, temperature=temperature,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return (r.choices[0].message.content or "").strip(), "qwen"
+
+    def _park(self, model, seconds, why):
+        self.parked[model] = time.time() + seconds
+        self.park_why[model] = why
+        if self.on_park:
+            self.on_park(model, self.parked[model], why)
+
+    def status(self):
+        """The chain in order, with each model's park time and reason (for data/status.json; no keys)."""
+        now = time.time()
+        return [dict(model=m, parked_until=self.parked[m] if self.parked.get(m, 0) > now else None,
+                     why=self.park_why.get(m) if self.parked.get(m, 0) > now else None) for _, m in self.chain]
 
     def _pace(self, model):
         """Space requests to one model at least min_gap apart (a dry run would otherwise burst past the cap)."""

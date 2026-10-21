@@ -8,6 +8,7 @@ LOGS = ROOT / "logs"                # gitignored: every action we take
 DATA = ROOT / "data"                # gitignored: working state
 ACCOUNTS_FILE = SECRETS / "swan_accounts.json"
 STATE_FILE = DATA / "swan_state.json"
+STATUS_FILE = DATA / "status.json"    # live bot health for the dashboard (todo/09)
 ACTIONS_LOG = LOGS / "swan_actions.jsonl"
 
 LAUNCH_UTC = "2026-10-19T07:00"     # teams could only register from launch; earlier accounts are seeded citizens

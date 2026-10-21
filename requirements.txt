@@ -1,3 +1,4 @@
 capturethenarrative==0.5.1
 openai==3.35.1
 pymongo[srv]==4.19.0
+jinja2==3.1.6

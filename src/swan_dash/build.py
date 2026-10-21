@@ -1,0 +1,276 @@
+"""Build the team dashboard (todo/09): one static HTML page from the bot's own files. swan-dash.timer runs it every
+minute on EC2 and nginx serves the result behind a password.
+
+    python -m swan_dash.build --out /var/www/swan        # (from src/) what the timer runs
+    python -m swan_dash.build --out /tmp/swan            # local preview from this checkout's logs/ and data/
+
+It reads logs/ and data/ only. It never opens .env or secrets/ (the systemd unit also makes them inaccessible) and
+needs no network. Every value on the page is picked field by field; whole records are never rendered.
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import pathlib
+import subprocess
+from zoneinfo import ZoneInfo
+
+import jinja2
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+PERTH = ZoneInfo("Australia/Perth")
+SYDNEY = ZoneInfo("Australia/Sydney")          # competition days roll over at midnight Sydney (9pm Perth)
+TEAM_CAP_PER_MIN = 3                           # posts + replies + reposts, team-wide (rules)
+LIVE_CAP, TOTAL_CAP = 50, 200                  # accounts alive at once / ever
+WRITES = {"post": "post", "reply": "reply", "second_voice": "2nd voice", "reply_back": "reply-back",
+          "journalist": "journalist", "thread": "own thread", "thread_answer": "thread answer", "repost": "repost"}
+# poll awards and Red multiplier changes, as Sydney calendar dates (docs/01-competition/schedule.md)
+POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2", 2500),
+         (dt.date(2026, 10, 29), "Poll 3", 2500)]
+MULTIPLIERS = [(dt.date(2026, 10, 26), 2), (dt.date(2026, 11, 1), 4)]     # derived, not confirmed by organisers
+LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; this covers several hours
+STALE_STATUS_S = 300
+LONG_PARK_S = 600                              # per-minute parks are noise; longer ones go in the activity log
+
+
+def read_json(path, default=None):
+    try:
+        return json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
+
+
+def tail_jsonl(path, nbytes=LOG_TAIL_BYTES):
+    """Records from the last nbytes of a jsonl file, oldest first (a cut first line is skipped)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - nbytes))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+    except FileNotFoundError:
+        return []
+    if size > nbytes:
+        lines = lines[1:]
+    out = []
+    for line in lines:
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return out
+
+
+def tail_lines(path, n=50):
+    try:
+        return path.read_text().splitlines()[-n:]
+    except FileNotFoundError:
+        return []
+
+
+def ts(s):
+    """ISO time ('...Z' or '+00:00') -> aware datetime, or None."""
+    try:
+        return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return None
+
+
+def service_state():
+    """'active', 'inactive', 'failed', ... or None where systemd isn't there (a laptop preview)."""
+    try:
+        r = subprocess.run(["systemctl", "is-active", "swan-bot"], capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() or None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def ago(delta):
+    s = int(delta.total_seconds())
+    if s < 90:
+        return "just now" if s < 45 else "1 min ago"
+    if s < 5400:
+        return f"{s // 60} min ago"
+    if s < 48 * 3600:
+        return f"{s // 3600} h ago"
+    return f"{s // 86400} days ago"
+
+
+def until(delta):
+    s = max(0, int(delta.total_seconds()))
+    d, h, m = s // 86400, s % 86400 // 3600, s % 3600 // 60
+    return f"{d}d {h}h" if d else f"{h}h {m}m" if h else f"{m}m"
+
+
+def perth(t):
+    return t.astimezone(PERTH)
+
+
+def hm(t):
+    return perth(t).strftime("%H:%M")
+
+
+def ordinal(n):
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def short(text, n=110):
+    text = " ".join((text or "").split())
+    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
+
+
+def sydney_midnight(day):
+    return dt.datetime.combine(day, dt.time(), SYDNEY)
+
+
+def gather(root, now, service):
+    """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
+    logs, data = root / "logs", root / "data"
+    day_start = sydney_midnight(now.astimezone(SYDNEY).date())
+    hour_ago = now - dt.timedelta(hours=1)
+    status = read_json(data / "status.json") or {}
+    status_t = ts(status.get("ts"))
+    actions = [a for a in tail_jsonl(logs / "swan_actions.jsonl") if ts(a.get("ts"))]
+    for a in actions:
+        a["_t"] = ts(a["ts"])
+
+    # ---- vitals ----
+    live_writes = [a for a in actions if a.get("act") in WRITES and a.get("live") is True]
+    writes_hour = sum(a["_t"] >= hour_ago for a in live_writes)
+    rejects_hour = sum(a.get("act") == "reject" and a["_t"] >= hour_ago for a in actions)
+    last_write = max((a["_t"] for a in live_writes), default=None)
+    chain = status.get("llm") or []
+    current = next((i for i, m in enumerate(chain) if not m.get("parked_until")), None)
+    parked = [dict(model=m["model"], why=m.get("why") or "parked",
+                   until=hm(dt.datetime.fromtimestamp(m["parked_until"], dt.timezone.utc)))
+              for m in chain if m.get("parked_until")]
+    acc = status.get("accounts") or {}
+    banned_day = [a for a in actions if a.get("act") == "suspended" and a["_t"] >= now - dt.timedelta(hours=24)]
+    per_min = status.get("per_min")
+
+    # ---- banner: the first problem wins, worst first ----
+    try:                                       # deploy/healthcheck.sh's current problem, the same text it alerts with
+        health = (data / "health_state").read_text().strip()
+    except FileNotFoundError:
+        health = ""
+    stale = status_t is None or (now - status_t).total_seconds() > STALE_STATUS_S
+    red = amber = None
+    if service not in (None, "active"):
+        red = f"DOWN: swan-bot is {service}. On the box: journalctl -u swan-bot -n 50"
+    elif health:
+        red = health
+    elif chain and current is None:
+        first = min(m["parked_until"] for m in chain)
+        red = f"STALLED: every LLM is parked until {hm(dt.datetime.fromtimestamp(first, dt.timezone.utc))}"
+    elif stale:
+        amber = ("NO STATUS: the bot hasn't reported for "
+                 + (ago(now - status_t).replace(" ago", "") if status_t else "a while (or isn't live)"))
+    elif current:
+        top = chain[0]
+        amber = f"DEGRADED: on fallback LLM {chain[current]['model']} ({top['model']}: {top.get('why') or 'parked'})"
+    elif banned_day:
+        amber = f"ACCOUNT LOST: {len(banned_day)} suspended in the last 24 h ({banned_day[-1].get('username')})"
+    elif status.get("rate_limited_last_hour"):
+        amber = f"RATE-LIMITED: {status['rate_limited_last_hour']} × 429 in the last hour"
+    if red:
+        banner = dict(level="red", text=red)
+    elif amber:
+        banner = dict(level="amber", text=amber)
+    else:
+        banner = dict(level="green", text="RUNNING · last post " + (ago(now - last_write) if last_write else "—"))
+
+    # ---- score (typed in by hand: scripts/swan_score.py) ----
+    entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts"))]
+    score = None
+    if entries:
+        e = entries[-1]
+        before = [x for x in entries if ts(x["ts"]) < day_start]
+        score = dict(points=e["score"], rank=e.get("rank"), teams=e.get("teams"), by=e.get("by", "?"),
+                     ago=ago(now - ts(e["ts"])),
+                     delta=e["score"] - before[-1]["score"] if before else None)
+    today = now.astimezone(SYDNEY).date()
+    poll = next(((d, name, need) for d, name, need in POLLS if d >= today), None)
+    milestone = None
+    if poll:
+        d, name, need = poll
+        have = score["points"] if score else None
+        milestone = dict(name=name, date=d.strftime("%a %-d %b"), need=need,
+                         reached=have is not None and have >= need,
+                         short=None if have is None else max(0, need - have),
+                         today=d == today)
+    mult_now = next((m for d, m in reversed(MULTIPLIERS) if d <= today), 1)
+    nxt = next(((d, m) for d, m in MULTIPLIERS if d > today), None)
+    multiplier = dict(now=mult_now, next=nxt and nxt[1], date=nxt and nxt[0].strftime("%a %-d %b"),
+                      left=nxt and until(sydney_midnight(nxt[0]) - now))
+
+    # ---- activity: our writes, account events, long LLM parks, deploys and alerts ----
+    rows = []
+    for a in actions:
+        act = a.get("act")
+        if act in WRITES and a.get("live") is True:
+            rows.append(dict(t=a["_t"], who=a.get("persona") or a.get("username"), what=WRITES[act],
+                             text=short(a.get("text")), post=a.get("post_id"), kind="write"))
+        elif act == "register":
+            rows.append(dict(t=a["_t"], who=a.get("persona") or a.get("role") or "", what="new account",
+                             text=a.get("username"), kind="event"))
+        elif act == "suspended":
+            rows.append(dict(t=a["_t"], who="", what="SUSPENDED", text=a.get("username"), kind="bad"))
+        elif act == "llm_park":
+            u = ts(a.get("until"))
+            if u and (u - a["_t"]).total_seconds() >= LONG_PARK_S:
+                rows.append(dict(t=a["_t"], who="", what="LLM parked",
+                                 text=f"{a.get('model')}: {a.get('why')} until {hm(u)}", kind="event"))
+    for line in tail_lines(logs / "alerts.log"):
+        t, _, msg = line.partition(" ")
+        if ts(t):
+            msg = msg.removeprefix("[swan-ec2] ")
+            rows.append(dict(t=ts(t), who="", what="deploy" if msg.startswith("deployed") else "alert",
+                             text=short(msg), kind="event"))
+    rows.sort(key=lambda r: r["t"], reverse=True)
+    for r in rows[:30]:
+        r["time"] = hm(r["t"])
+        r.setdefault("post", None)
+
+    deploys = [d for d in tail_jsonl(logs / "deploys.jsonl", 200_000) if d.get("result") == "ok"]
+    running = dict(sha=deploys[-1]["new"][:7], when=hm(ts(deploys[-1]["ts"]))) if deploys else None
+
+    return dict(
+        now=hm(now), banner=banner, score=score, milestone=milestone, multiplier=multiplier,
+        day_start=perth(day_start).strftime("%-I%p").lower(),
+        writes=dict(hour=writes_hour, planned=round(per_min * 60) if per_min else None, cap=TEAM_CAP_PER_MIN * 60),
+        accounts=dict(live=acc.get("live"), live_cap=LIVE_CAP, used=acc.get("used"), total_cap=TOTAL_CAP,
+                      suspended=acc.get("suspended"), voices=acc.get("voices"), boosters=acc.get("boosters")),
+        llm=dict(model=chain[current]["model"] if current is not None else None,
+                 rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked),
+        errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
+        activity=rows[:30], running=running, built=perth(now).strftime("%H:%M:%S"))
+
+
+def render(ctx):
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent / "templates"),
+                             autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
+    env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
+    return env.get_template("index.html.j2").render(**ctx)
+
+
+def write_atomic(path, text):
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", type=pathlib.Path, required=True, help="directory nginx serves")
+    ap.add_argument("--root", type=pathlib.Path, default=ROOT, help="repo checkout with logs/ and data/")
+    args = ap.parse_args()
+    now = dt.datetime.now(dt.timezone.utc)
+    html = render(gather(args.root, now, service_state()))
+    args.out.mkdir(parents=True, exist_ok=True)
+    write_atomic(args.out / "index.html", html)
+    write_atomic(args.out / "robots.txt", "User-agent: *\nDisallow: /\n")
+
+
+if __name__ == "__main__":
+    main()

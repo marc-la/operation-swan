@@ -27,6 +27,7 @@ Host swan-ec2
 | `swan-update.timer` | `deploy/update.sh`: if `origin/main` moved, pull, run `deploy/check.sh`, restart the bot. A failed check rolls back | every 2 min |
 | `swan-health.timer` | `deploy/healthcheck.sh`: alerts if the bot is down, logs nothing for 20 min, or makes no live write for 90 min | every 10 min |
 | `swan-sync.timer` | `scripts/swan_sync_mongo.py`: copies our records to the team MongoDB | every 15 min |
+| `swan-dash.timer` | `src/swan_dash/build.py`: the team dashboard page, served by nginx behind a password ([todo/09](../../todo/09-dashboard-cop.md)). Installed by `deploy/dash_setup.sh`, not `install.sh` | every minute |
 
 **To change how the bot runs** (accounts, pace, flags), edit `deploy/run.sh` and push to `main`. To change the code, push to `main`. Either way it's live in about 2 minutes, unless checks fail.
 
@@ -34,7 +35,7 @@ Host swan-ec2
 `~/ctn/.env` (600), `~/ctn/secrets/swan_accounts.json` (600), `~/ctn/data/swan_state.json`, `~/ctn/logs/` (`swan_actions.jsonl` = the attribution log, `deploys.jsonl`, `alerts.log`). Back up `secrets/` and `logs/` now and then: `scp -r swan-ec2:ctn/secrets swan-ec2:ctn/logs ./backup/`.
 
 ## Alerts
-`deploy/alert.sh` posts to `ALERT_WEBHOOK_URL` in `.env` (a Discord or Slack incoming webhook) and always writes `logs/alerts.log`. Alerts fire on: crash, systemd giving up, bot hung, no writes, deploy done, deploy failed, and recovery. `HEALTHCHECK_PING_URL` (optional, e.g. healthchecks.io) is pinged while healthy, so the whole VM dying is caught too. **Neither is set yet.** Options: [todo/11](../../todo/11-alert-channel.md). Open AWS/GitHub items: [todo/README](../../todo/README.md#ops-leftovers-small-marc).
+`deploy/alert.sh` posts to `ALERT_WEBHOOK_URL` in `.env` (a Discord or Slack incoming webhook) and always writes `logs/alerts.log`. Alerts fire on: crash, systemd giving up, bot hung, no writes, deploy done, deploy failed, and recovery. `HEALTHCHECK_PING_URL` (optional, e.g. healthchecks.io) is pinged while healthy, so the whole VM dying is caught too. **Neither is set** (decided 2026-10-21: the team dashboard shows the same health state, [todo/09](../../todo/09-dashboard-cop.md)); the alerts still land in `logs/alerts.log` and on the page. Open AWS/GitHub items: [todo/README](../../todo/README.md#ops-leftovers-small-marc).
 
 ## Everyday commands
 ```bash

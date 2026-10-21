@@ -39,3 +39,16 @@ def test_reasoning_model_empty_at_cap_is_asked_again_uncapped():
     assert g._call("groq", "gpt-oss", "s", "u", False, max_tokens=600) == "a draft"
     assert sent == [600, 4096] and g.no_cap == {"gpt-oss"}
     assert g._call("groq", "gpt-oss", "s", "u", False, max_tokens=600) == "a draft" and sent[-1] == 4096
+
+
+def test_park_records_why_and_status_hides_expired():
+    g = llm.Generator.__new__(llm.Generator)
+    g.chain = [("gemini", "a"), ("groq", "b"), ("groq", "c")]
+    g.parked, g.park_why, seen = {}, {}, []
+    g.on_park = lambda model, until, why: seen.append((model, why))
+    g._park("a", 3600, "daily quota")
+    g._park("b", -1, "per-minute limit")                  # already expired
+    st = {m["model"]: m for m in g.status()}
+    assert st["a"]["why"] == "daily quota" and st["a"]["parked_until"] > time.time()
+    assert st["b"]["parked_until"] is None and st["b"]["why"] is None and st["c"]["parked_until"] is None
+    assert seen == [("a", "daily quota"), ("b", "per-minute limit")]

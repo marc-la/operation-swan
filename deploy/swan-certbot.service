@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew the dashboard's HTTPS certificate if it is due
+
+[Service]
+Type=oneshot
+ExecStart=certbot renew -q --deploy-hook "systemctl reload nginx"

@@ -302,6 +302,8 @@ def main():
 
     social = ctn.LegitSocial()
     gen = Generator(code, allow_qwen=args.allow_qwen)
+    gen.on_park = lambda model, until, why: log({"act": "llm_park", "model": model, "why": why,
+                                                 "until": dt.datetime.fromtimestamp(until, dt.timezone.utc).isoformat()})
     targeter = Targeter(social, log=log)
     accounts = Accounts(social, args.live)
     state = load_json(config.STATE_FILE, {})
@@ -314,10 +316,31 @@ def main():
         amp = Amplifier(social, accounts, state, args.live, log, targeter=targeter, code=code, owner=owner,
                         boosters=args.boosters, save=lambda: save_state())
 
+    rate_limited = []                    # times of 429s in the last hour (dashboard)
+    last_status = [0.0]
+
+    def write_status():
+        """data/status.json for the dashboard (todo/09), at most every 30 s. Counts and model names only, no secrets."""
+        t = time.time()
+        if not args.live or t - last_status[0] < 30:
+            return
+        last_status[0] = t
+        rate_limited[:] = [x for x in rate_limited if t - x < 3600]
+        recs = accounts.records
+        try:                             # the dashboard must never stop the bot
+            save_json(config.STATUS_FILE, dict(
+                ts=now_iso(), per_min=per_min, llm=gen.status(), rate_limited_last_hour=len(rate_limited),
+                accounts=dict(live=len(accounts.active()), voices=len(accounts.voices()),
+                              boosters=len(accounts.boosters()), used=len(recs),
+                              suspended=sum(r.get("status") == "suspended" for r in recs))))
+        except OSError as e:
+            print("status.json not written:", e)
+
     def pause(seconds):
         """Sleep, but keep the amplifier's likes and views going meanwhile."""
         until = time.time() + seconds
         while True:
+            write_status()
             if amp:
                 amp.tick()
             left = until - time.time()
@@ -373,6 +396,7 @@ def main():
 
     while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
         job = None
+        write_status()
         try:
             # dry runs register a fake account instantly so drafts can be read without waiting
             if args.live:
@@ -639,6 +663,7 @@ def main():
             print(f"[{mode}|{job['frame']}|{tags}|{backend}{via}] {persona['name']}{where}\n    {text}\n")
 
         except ctn.RateLimited as e:
+            rate_limited.append(time.time())
             pause((e.retry_after or 30) + 1)
         except ctn.APIError as e:
             print("API error", e.status, e.message)
