@@ -319,6 +319,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, "llm_artefact"
     if FORBIDDEN.search(t):
         return None, "forbidden_content"
+    if content.advocacy(t):                    # todo/20: no vaccine advocacy until organiser Q3 is answered
+        return None, "vaccine_advocacy"
     if WRONG_LOGISTICS.search(HISTORY_DATES.sub("that day", t)):
         return None, "wrong_logistics"
     if WRONG_CLAIMS.search(t):
@@ -439,6 +441,10 @@ def fix(text, why, kind):
         return drop_first_clause(text)
     if why.startswith("unapproved_number_"):
         return drop_number(text, why[len("unapproved_number_"):], kind)
+    if why == "vaccine_advocacy":
+        parts = [s for s in sentences(text) if not content.advocacy(s)]
+        out = " ".join(parts)
+        return out if parts and len(out) >= min(LENGTHS[kind][0], SHORT_OK) else None
     return None
 
 
@@ -482,6 +488,9 @@ def repair_note(why, raw, kind, tag=None, recent=()):
                 "the ID card, and nobody has had the H2D2 jab yet. Keep the rest.")
     if why == "wrong_logistics":
         return "Remove any day or date and anything about how, when or where to vote. Keep the rest."
+    if why == "vaccine_advocacy":
+        return (f"Cut «{content.advocacy(raw)}»: don't urge anyone to get vaccinated or praise the vaccine; this vote "
+                f"is only about the pass. Keep the rest.")
     if why == "emoji":
         return "Remove the emoji and symbols."
     if why == "llm_artefact":

@@ -279,7 +279,7 @@ def experiment_fields(target):
 
 def second_frame(frame):
     second = content.FRAMES[frame]["second"]
-    return content.live_frame(random.choice(second) if isinstance(second, list) else second)
+    return content.live_frame(content.weighted_frame(second) if isinstance(second, list) else second)
 
 
 def pick_post_shape(frame, persona, headline, recent_shapes):

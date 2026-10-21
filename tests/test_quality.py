@@ -382,7 +382,7 @@ CORPUS = [
      None, {}),
     ('priya_jabbed', 'post',
      "Every day someone at my counter asks about H2D2. My answer: get the jab, it's free either way, and a No doesn't stop a single dose. I'm vaccinated and I'll get this one too. But this vote is only about the pass, and a pass at every shop door is a different thing. Jabbed. Voting No. When your turn comes, who are you taking with you? #ChoiceNotCoercion",
-     None, {}),
+     "vaccine_advocacy", {}),          # todo/20 (2026-10-22): "get the jab" is advocacy until organiser Q3 is answered
     ('sione_islands', 'post',
      "The GP visits my clinic once a week, and most of my patients come over on the K$14 ferry. Under a Yes they'd need papers to board, and nobody can say yet if the wharf counts. Free is not the same as easy out here. I'm voting No. How long does it take you to reach the nearest GP, door to door?",
      None, {}),

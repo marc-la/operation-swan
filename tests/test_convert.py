@@ -208,3 +208,35 @@ def test_followup_our_ids_are_posts_we_wrote(tmp_path, monkeypatch):
     rec = reader.followup(write, 0, 1_790_000_000, followup.our_post_ids(rows))
     assert rec["replied_to_us"] is False
     assert reader.trending(followup.our_post_ids(rows)) == {4: 2}
+
+
+# ---- step 5: levers, frames, no vaccine advocacy ----
+def test_levers_and_frames_reweighted():
+    import collections
+    import random
+    from swan_bot import content
+    random.seed(1)
+    assert "fear_answer" not in content.lever_weights() and content.lever_weights()["in_group"] == 2.0
+    meta = {}
+    for _ in range(200):
+        content.reply_prompt("only if there's an end date", "F14_no_yes_but", ["end date"], meta=meta)
+        assert meta["lever"] != "fear_answer"
+    picks = collections.Counter(content.weighted_frame(["F14_no_yes_but", "F2_no_end"]) for _ in range(2000))
+    assert 0.1 < picks["F2_no_end"] / 2000 < 0.3                       # 0.25 / 1.25 = 0.2
+
+
+def test_vaccine_advocacy_is_off():
+    from swan_bot import content, themes
+    for text in ("Get the jab. Vote No.", "My answer: get the jab, it's free.", "You should get vaccinated first.",
+                 "The vaccine is safe and it works.", "When your turn comes, who are you taking with you?"):
+        assert content.advocacy(text), text
+    for text in ("I'm vaccinated and I'm voting No.", "A No doesn't stop anyone getting the jab.",
+                 "I'll get my jab when my turn comes, and I'm still voting No.", "The jab is free either way."):
+        assert not content.advocacy(text), text
+    assert "get_jab" not in themes.live()
+    text = ("A pass at every shop door is the trouble, not the jab. Get the jab, it's free either way. "
+            "But nobody can say which places count, so I'm voting No.")
+    assert quality.check(text, "reply")[1] == "vaccine_advocacy"
+    fixed = quality.fix(text, "vaccine_advocacy", "reply")
+    assert "Get the jab" not in fixed and quality.check(fixed, "reply")[0]
+    assert "Never urge anyone to get vaccinated" in content.system_prompt(content.PERSONAS[1], "F3_provax_antipass")

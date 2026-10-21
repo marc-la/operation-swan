@@ -69,8 +69,8 @@ def post_share(now=None):
 
 def live():
     """The themes whose facts are all active and whose belief states no paused fact."""
-    return {k: t for k, t in THEMES.items()
-            if fact_store.ok(t.get("requires") or ()) and not fact_store.paused_in(t["belief"])}
+    return {k: t for k, t in THEMES.items() if k not in getattr(config, "THEMES_OFF", ())
+            and fact_store.ok(t.get("requires") or ()) and not fact_store.paused_in(t["belief"])}
 
 
 def words(text):

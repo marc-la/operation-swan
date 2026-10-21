@@ -302,10 +302,28 @@ _OFF_LIMITS = re.compile(r"\b(had|got|received|given)\b[^.]{0,25}\b(doses?|jabs?
 _NOW_OFF = re.compile(r"\bdoses?\b|\b(had|got) (theirs|hers|his|mine|ours)\b|\bjabbed\b", re.I)
 
 
+# Vaccine advocacy (todo/20, 2026-10-22): urging people to get the jab, or praising the vaccine. A persona saying they're
+# vaccinated, or that a No stops nobody getting the jab, is not advocacy. Off while config.NO_VACCINE_ADVOCACY.
+ADVOCACY = re.compile(
+    r"(^|[.!?:;]\s+|,\s+|\band\s+)(please\s+|just\s+|go\s+(and\s+)?)?get\s+(your|the|a|their)\s+(jab|vaccine|shot|dose|"
+    r"booster)s?\b|\b(you|everyone|people|anyone|we all|all of us)\s+should\s+(get|have|take)\s+(it|the|their|your|a|"
+    r"vaccinated)\b|\bget vaccinated\b|\btell (anyone|everyone|people|them|you) to get\b|"
+    r"\b(vaccines?|the jab|jabs|the vaccine) (works?|is safe|are safe|saves? lives|protects?)\b|"
+    r"\bbook (your|a|the) (jab|shot|vaccine|appointment)\b|\bwhen your turn (for the jab )?comes\b|"
+    r"\byour turn for the jab\b|\bdon'?t (skip|wait on|put off) (the|your) (jab|shot|vaccine)\b", re.I)
+
+
+def advocacy(text):
+    """The vaccine advocacy in text while it is off (config.NO_VACCINE_ADVOCACY), or None."""
+    m = config.NO_VACCINE_ADVOCACY and ADVOCACY.search(text or "")
+    return m.group(0).strip(" ,.;:!?") if m else None
+
+
 def usable(texts, now=False):
-    """The entries that are safe to put in a prompt (`now`: also no dose events): none that states a paused fact."""
+    """The entries that are safe to put in a prompt (`now`: also no dose events): none that states a paused fact
+    or urges the jab."""
     return [t for t in texts or [] if t and not _OFF_LIMITS.search(t) and not (now and _NOW_OFF.search(t))
-            and not fact_store.paused_in(t)]
+            and not fact_store.paused_in(t) and not advocacy(t)]
 
 
 _DANGLING = re.compile(r"(\s+(the|a|an|of|to|at|on|in|for|and|or|but|with|where|who|which|that|his|her|their|"
@@ -401,18 +419,28 @@ def live_frames():
     return [k for k in FRAMES if frame_live(k)]
 
 
+def frame_scale(key):
+    """How much of its usual odds a frame gets (config.FRAME_SCALE, todo/20: the frames citizens answered least)."""
+    return config.FRAME_SCALE.get(key, 1.0)
+
+
+def weighted_frame(keys):
+    """One of `keys`, by config.FRAME_SCALE."""
+    return random.choices(list(keys), weights=[frame_scale(k) for k in keys])[0]
+
+
 def _any_live_frame():
     keys = live_frames()
     if not keys:
         raise AllPaused("every frame is paused (data/facts_paused.json): run scripts/facts_review.py")
-    return random.choices(keys, weights=[FRAMES[k]["weight"] for k in keys])[0]
+    return random.choices(keys, weights=[FRAMES[k]["weight"] * frame_scale(k) for k in keys])[0]
 
 
 def pick_frame(persona):
     """Mostly the persona's live home frames, sometimes any live frame (weighted)."""
     home = [k for k in persona["frames"] if frame_live(k)]
     if random.random() < 0.85 and home:
-        return random.choice(home)
+        return weighted_frame(home)
     return _any_live_frame()
 
 
@@ -422,7 +450,7 @@ def live_frame(key, persona=None):
     if key in FRAMES and frame_live(key):
         return key
     home = [k for k in (persona or {}).get("frames", ()) if frame_live(k)]
-    return random.choice(home) if home else _any_live_frame()
+    return weighted_frame(home) if home else _any_live_frame()
 
 
 # Rules shared by every prompt (batch.py can switch its SHARED_RULES to these).
@@ -437,6 +465,8 @@ JAB_RULE_PAUSED = "Never say when the H2D2 jab comes or who has had it."
 # 2026-10-20: drafts said "I'll get my jab when my turn comes" in 4 of 12 (a fingerprint), and pro-jab lines may move
 # the scored "vaccination in general" view towards Yes. The jab comes up only when the citizen raised it.
 JAB_WAIT = "Don't bring up your own jab unless the post is about it or they asked."
+# todo/20 (2026-10-22), while config.NO_VACCINE_ADVOCACY: a move towards vaccines may score against us (organiser Q3)
+NO_ADVOCACY_RULE = "Never urge anyone to get vaccinated or praise the vaccine: this vote is about the pass."
 LOGISTICS_RULE = "Never name a day or date for the vote or say how or where to vote."
 TAG_RULE = "No hashtags, except the one tag a new post is given, at the very end."
 STYLE_RULES = (
@@ -497,6 +527,12 @@ def requiring(key):
 def live_levers():
     """The levers whose wording states no paused fact, in LEVERS order."""
     return [k for k in LEVERS if fact_store.ok(LEVER_REQUIRES.get(k, ()))]
+
+
+def lever_weights(exclude=()):
+    """{lever: weight} for a draw: the live levers by config.LEVER_WEIGHTS (todo/20), those at 0 left out."""
+    out = {k: config.LEVER_WEIGHTS.get(k, 1.0) for k in live_levers() if k not in exclude}
+    return {k: w for k, w in out.items() if w > 0} or {k: 1.0 for k in live_levers() if k not in exclude}
 
 
 def register_of(persona):
@@ -561,6 +597,7 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
             f"Facts you may use, as notes (two at most, in your own words; invent no other facts, numbers, names or "
             f"health claims): {facts}.\n"
             f"Rules: money is K$. {LOGISTICS_RULE} {SAFETY_RULE} {JAB_RULE if doses else JAB_RULE_PAUSED} {jab} "
+            f"{NO_ADVOCACY_RULE + ' ' if config.NO_VACCINE_ADVOCACY else ''}"
             f"{TAG_RULE} {STYLE_RULES} "
             f"Output only the text you would post.")
 
@@ -658,7 +695,7 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
     tag = random.choice(pillar["tags"])
     arc = (persona or {}).get("arc") if key == "conversion" else None
     arc = None if fact_store.paused_in(arc) else arc
-    asks = [a for a in f["asks"] if not fact_store.paused_in(a)]
+    asks = [a for a in f["asks"] if not fact_store.paused_in(a) and not advocacy(a)]
     # the experiment arms (todo/13): drawn independently per draft and logged from meta
     arms = {}
     if arc:
@@ -667,7 +704,7 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
         arms["beat"] = "stake"
     else:
         experiment.draw("beat", ["stake", "lever"] if stake else ["lever"], arms)
-    lever = experiment.draw("lever", live_levers(), arms) if arms["beat"] == "lever" else arms.setdefault("lever", None)
+    lever = experiment.draw("lever", lever_weights(), arms) if arms["beat"] == "lever" else arms.setdefault("lever", None)
     concede = experiment.draw("concede", {True: CONCEDE_SHARE, False: 1 - CONCEDE_SHARE}, arms)
     # a theme's own line replaces the concession, never joins it (the concession arm stays unbiased: the theme gives way)
     if theme and concede and theme["level"] != "implicit":
@@ -832,8 +869,7 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         asks = f"The specific thing they raised: {', '.join(wants)}. Use their terms.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
     # with their reason known, it replaces the frame's angle (one instruction, not two that pull apart)
-    lever = experiment.draw("lever", [k for k in live_levers() if not (reb and reason_first and k == "fear_answer")],
-                            arms)
+    lever = experiment.draw("lever", lever_weights(exclude={"fear_answer"} if reb and reason_first else ()), arms)
     ask_kind = experiment.draw("ask_kind", {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"}, arms)
     sentences, lo, hi = experiment.length_line("reply", arms)
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), **arms)
@@ -859,7 +895,7 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
     arms = {}
-    lever = experiment.draw("lever", live_levers(), arms)
+    lever = experiment.draw("lever", lever_weights(), arms)
     sentences, lo, hi = experiment.length_line("second_voice", arms)
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, **arms)
     return (

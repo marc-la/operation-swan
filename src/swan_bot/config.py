@@ -166,6 +166,16 @@ NOTIF_EVERY_S = 60
 TURNS_PER_SESSION = 3
 TURN_SESSION_S = 30 * 60
 THREAD_MAX_DEPTH = 8
+# Levers, 2026-10-22: fear_answer cut (0 citizen replies in 21 writes); in_group (18%) and permanence (16%) up. Others 1.
+LEVER_WEIGHTS = {"fear_answer": 0.0, "in_group": 2.0, "permanence": 2.0}
+# Frames, 2026-10-22: F2 (2.5% citizen reply rate, n=40) and F3 (5.5%, n=73) stay available at this share of their
+# usual odds (persona posts, second voices, and the light read's frame list).
+FRAME_SCALE = {"F2_no_end": 0.25, "F3_provax_antipass": 0.25}
+# No vaccine advocacy until organiser Q3 says how a pro-vaccine move on "vaccination in general" scores (2026-10-22):
+# it may score away (-80). Being vaccinated may be part of who a persona is; urging anyone to get the jab, or praising
+# the vaccine, is rejected by the gate (content.ADVOCACY), and the get_jab theme ("Get the jab. Vote No.") is off.
+NO_VACCINE_ADVOCACY = True
+THEMES_OFF = {"get_jab"}
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
