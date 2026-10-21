@@ -1,7 +1,8 @@
-"""Craft: how each argument is said. Per pillar a claim, tags and catchphrases; per frame the stakes (who loses
-what under a Yes), the heat line (fed-up voice only) and closing asks (questions answered from the reader's life).
+"""Craft: how each argument is said. Per pillar a claim and tags; the five themes (wedge slogans); per frame the
+stakes (who loses what under a Yes), the heat line (fed-up voice only) and closing asks (questions answered from the
+reader's life).
 
-Humans own the rules: docs/06-strategy/message-playbook.md §2 (pillars), §3 (catchphrases, power and dead words),
+Humans own the rules: docs/06-strategy/message-playbook.md §2 (pillars), §3 (themes and slogans, power and dead words),
 §4 (tags), §5 (post anatomy). Every fact is true in docs/01-competition/setting.md. Merged into content.FRAMES at
 import. Pure data: imports nothing from content or quality.
 """
@@ -10,50 +11,102 @@ PILLARS = {
     "A": dict(
         name="Don't sign a blank cheque",
         claim="They want a Yes before they'll show you what it covers or when it ends",
-        tags=["#VoteNo", "#H2D2No"],
-        catchphrases=[
-            "No list. No end date. No deal.",
-            "Sign first, read later? Not me.",
-            "Won't show us the list? Vote No.",
-            "If you don't know, vote No.",
-            "There's no \"Yes, but\" box.",
-            "Temporary means a date on paper.",
-            "The Assembly said no. So do I.",
-            "Fine print first. Then we'll talk.",
-        ]),
+        tags=["#VoteNo", "#H2D2No"]),
     "B": dict(
         name="Ordinary life shouldn't need papers",
         claim="School, the bus, your shift, the corner shop: a choice that costs you those isn't a choice",
-        tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"],
-        catchphrases=[
-            "Papers for the bakery? Not here.",
-            "Costs you your shift? Not a choice.",
-            "Twelve is too young to need papers.",
-            "A scanner fills no nursing post.",
-            "Who pays the person on the door?",
-            "Open doors, open island.",
-            "Nobody needs a permit for milk.",
-            "Your shift. Your bus. Your call.",
-        ]),
+        tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"]),
     "C": dict(
         name="Jabbed, and voting No",
         claim="Get the jab, it's free either way. This vote is only about the pass",
-        tags=["#ChoiceNotCoercion"],
-        catchphrases=[
-            "Jabbed. Voting No.",
-            "Pro-vaccine. Anti-pass.",
-            "My jab, my call.",
-            "Low nineties, no papers at the gate.",
-            "Too new to be compulsory.",
-            "Not here yet. Not this far.",
-            "Take the jab. Skip the pass.",
-            "The jab's free either way. Vote No.",
-        ]),
+        tags=["#ChoiceNotCoercion"]),
 }
+
+# Themes (playbook §3, 2026-10-21): five wedge slogans, each the short form of one belief our personas reach from
+# their own lives. The belief recurs in many wordings; the slogan itself goes out word for word only now and then
+# (src/swan_bot/themes.py draws the level and keeps the budgets). Fields:
+#   belief    the idea, as a note: what the prompt shows at every level
+#   slogan    the exact line: shown to the model only on a verbatim draw
+#   echo      ways to say it in a line of one's own (one picked per echo draw); echo_speaker: extra ways for the
+#             personas in `verbatim` only (things only they can truly say)
+#   personas  who carries the belief (None: everyone); verbatim: who may say the slogan or its echo_speaker forms
+#             (None: everyone in personas)
+#   frames    the frames it fits (None: any); requires: facts its wording states (paused fact -> theme off)
+#   marks     regex: the theme's key words, to count echoes in the logs (never a reject)
+#   weight    relative odds among the themes that fit a draft
+#   replies   False: posts only (default True)
+# Never say anyone has had the H2D2 jab (it isn't out until the last week of October): no "jabbed" lines.
+IDENTITY_ECHO = ('a short line in the shape "<what you are>. Voting No.", naming your job or your role in your family '
+                 '(never that you have had the jab)')
+THEMES = {
+    "dont_know": dict(
+        belief="nobody can say yet which places a Yes covers (the government won't publish the list until after the "
+               "result), so if you can't see it, the safe vote is No",
+        slogan="Don't know? Vote No.",
+        echo=['a short line of your own that ties not knowing what\'s covered to voting No',
+              'a short line of your own built on the words "don\'t know"',
+              IDENTITY_ECHO],
+        personas=None, verbatim=None, frames=None, requires=["list_later"],
+        marks=r"\bdon.?t know\b|\bnobody (knows|can say|can tell)\b|\bno one (knows|can say|can tell)\b",
+        weight=2),
+    "no_list": dict(
+        belief="they want our Yes before they'll show which places count; without the list first, there's no Yes",
+        slogan="No list, no Yes.",
+        echo=['a short line of your own that makes seeing the list the condition for any Yes',
+              'a short line of your own about being asked to sign before seeing which doors count'],
+        personas=["lani", "priya", "isla", "josh", "mere", "ben", "dan", "grace", "esther", "paulo", "ngaire", "kai"],
+        verbatim=None,
+        frames=["F14_no_yes_but", "F1_blank_cheque", "F2_no_end", "F7_livelihoods", "F13_age12", "F12_open_island",
+                "F6_islands"],
+        requires=["list_later"],
+        marks=r"\b(the|a|no|that|which) list\b|\bwhich (places|doors|venues)\b",
+        weight=1,
+        # posts only: in a reply it argues the citizen's own condition, which got a restated conditional Yes (H1,
+        # 20 Oct); reason-first replies answer why they lean Yes instead
+        replies=False),
+    "get_jab": dict(
+        belief="getting the jab when your turn comes and voting No go together: the jab is free and voluntary either "
+               "way, and a No stops nobody getting it",
+        slogan="Get the jab. Vote No.",
+        echo=['a short line of your own that puts getting the jab and voting No side by side',
+              'a short line of your own saying a No stops nobody getting the jab',
+              IDENTITY_ECHO],
+        personas=["priya", "ana", "ruth", "sione", "grace", "esther", "wally", "mere", "paulo"],
+        verbatim=None,
+        frames=["F3_provax_antipass", "F5_not_here_yet", "F10_staff_and_livelihoods", "F13_age12"],
+        requires=["free_either_way"],
+        marks=r"\bget (the|your) jab\b|\bjab\b[^.?!]{0,60}\b(vot\w+|a) no\b|\b(vot\w+|a) no\b[^.?!]{0,60}\bjab\b|"
+              r"\beither way\b",
+        weight=1),
+    "own_party": dict(
+        belief="even Hawthorne's own People's Alliance members voted the bill down on 15 Oct, so voting No doesn't "
+               "mean turning on him",
+        slogan="Voted Hawthorne. Voting No.",
+        echo=['a short line of your own saying even his own party voted it down'],
+        echo_speaker=['a short line of your own that puts having voted Hawthorne next to voting No',
+                      IDENTITY_ECHO],
+        personas=["josh", "dan", "wally", "kai", "isla"], verbatim=["josh"],
+        frames=["F9_parliament", "F8_powers", "F2_no_end", "F1_blank_cheque"],
+        requires=["bill_failed"],
+        marks=r"\bhawthorne\b|\bown (party|members)\b|\bpeople.?s alliance\b",
+        weight=1),
+    "staff": dict(
+        belief="under a Yes the people behind the counter (baristas, shop staff, drivers, deckhands) end up checking "
+               "customers' papers at the door",
+        slogan="Baristas, not border guards.",
+        echo=['a short line of your own in the shape "<your actual job>, not <a guard or a checkpoint>"',
+              'a short line of your own about being hired to serve people, not to check their papers'],
+        personas=["lani", "esther", "isla", "dan", "tomasi"], verbatim=["lani", "isla"],
+        frames=["F7_livelihoods", "F10_staff_and_livelihoods", "F12_open_island", "F1_blank_cheque"],
+        requires=[],
+        marks=r"\bborder (guard|post|patrol)s?\b|\bnot (a |the )?(guard|bouncer|checkpoint|cop)s?\b|"
+              r"\bcheck(ing)? (people.?s |their |customers.? )?(papers|certificates)\b",
+        weight=1),
+}
+
 # Lower-case No tags the quality check accepts (playbook §4); #protectkingstonia is the 1-in-10 test tag only.
 TAG_ALLOWLIST = {"#voteno", "#h2d2no", "#keepkingstoniaopen", "#smallbusiness", "#workersrights",
                  "#choicenotcoercion", "#protectkingstonia"}
-CATCHPHRASE_SHARE = 0.33   # at most one post in three ends on a catchphrase (playbook §3)
 
 CRAFT = {
     "F14_no_yes_but": dict(

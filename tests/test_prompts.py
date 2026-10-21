@@ -137,7 +137,7 @@ def test_shape_selection_rules():
 
 def test_post_meta_valid_and_in_prompt():
     random.seed(2)
-    catches, beats, closes = 0, {}, {}
+    beats, closes = {}, {}
     for i in range(300):
         fk = FRAME_KEYS[i % 12]
         meta = {}
@@ -147,13 +147,11 @@ def test_post_meta_valid_and_in_prompt():
         assert meta["pillar"] == f["pillar"] and meta["frame"] == fk
         assert meta["tag"] in pillar["tags"] and u.rstrip().endswith(f"{meta['tag']}, and nothing after it.")
         assert meta["stake"] in f["stakes"] and (meta["ask"] in f["asks"]) == (meta["ask_kind"] == "frame")
-        assert meta["catchphrase"] is None or (meta["catchphrase"] in pillar["catchphrases"]
-                                               and meta["catchphrase"] in u)
-        catches += meta["catchphrase"] is not None
+        assert meta["slogan"] is None                                      # no theme given, no slogan
+        assert not any(s in u for s in content.SLOGANS)
         _, lo, hi = experiment.LENGTH_BANDS["post"][meta["length_band"]]
         assert "voting No" in u and f"between {lo} and {hi} words" in u and "characters" not in u
         assert ("8 words or fewer" in u) == meta["concede"]
-        assert not (meta["concede"] and meta["catchphrase"])               # the catchphrase replaces the concession
         # one beat of stake / lever / turning point (todo/14); the lever is logged only when it is in the prompt
         assert (meta["lever"] is not None) == (meta["beat"] == "lever")
         assert meta["lever"] is None or content.LEVERS[meta["lever"]] in u
@@ -172,7 +170,6 @@ def test_post_meta_valid_and_in_prompt():
         else:
             assert meta["closing_question"] and u.index("say plainly") < u.index(end) < u.index("hashtag")
         closes[meta["close"]] = closes.get(meta["close"], 0) + 1
-    assert 0.2 < catches / 300 < 0.45                                    # about one post in three
     assert set(beats) == {"stake", "lever", "turn"} and beats["lever"] > 60, beats
     assert 0.1 < closes["verdict_last"] / sum(closes.values()) < 0.4, closes
 
@@ -308,8 +305,10 @@ def test_journalist_storylines_rotate():
 
 
 def test_catchphrase_in():
-    cp = content.PILLARS["A"]["catchphrases"][0]
+    cp = content.SLOGANS[0]
     assert content.catchphrase_in(f"Blah blah. {cp} What's yours? #VoteNo") == cp
+    assert content.catchphrase_in("blah. don't know, vote no! what's yours") == "Don't know? Vote No."
+    assert content.catchphrase_in("I don't know who'd vote no on that.") is None
     assert content.catchphrase_in("Nothing here.") is None
 
 
@@ -317,7 +316,7 @@ def test_shared_meta_dict_collects_both():
     meta = {}
     content.post_prompt("F9_parliament", meta=meta, persona=P["josh"])
     content.system_prompt(P["josh"], "F9_parliament", meta=meta)
-    assert {"shape", "hook", "voice", "pillar", "stake", "tag", "catchphrase", "now", "heat"} <= set(meta)
+    assert {"shape", "hook", "voice", "pillar", "stake", "tag", "slogan", "now", "heat"} <= set(meta)
 
 
 def test_one_length_and_ending_instruction_per_prompt():

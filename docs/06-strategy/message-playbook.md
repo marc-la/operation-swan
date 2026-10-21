@@ -1,6 +1,6 @@
 # Message playbook: how to write a No post that lands
 
-> Written 2026-10-20 (Day 1 evening). **Read this before writing or prompting any post.** It condenses the [frame library](frames-and-messengers.md), the [Vote No briefing](../01-competition/vote-no-briefing.md), the [literature](literature-notes.md) and today's Trending feed into one set of rules. The frame library says *what* to argue. This file says *how to say it*: hooks, catchphrases, tags, registers, post anatomy, and how to pick the argument from what a citizen just wrote. Every fact used must be in [setting.md](../01-competition/setting.md). Humans own this file; the bot's prompts and quality gate implement it ([todo/05](../../todo/05-content-v2.md)).
+> Written 2026-10-20 (Day 1 evening). **Read this before writing or prompting any post.** It condenses the [frame library](frames-and-messengers.md), the [Vote No briefing](../01-competition/vote-no-briefing.md), the [literature](literature-notes.md) and today's Trending feed into one set of rules. The frame library says *what* to argue. This file says *how to say it*: hooks, themes and slogans, tags, registers, post anatomy, and how to pick the argument from what a citizen just wrote. Every fact used must be in [setting.md](../01-competition/setting.md). Humans own this file; the bot's prompts and quality gate implement it ([todo/05](../../todo/05-content-v2.md)).
 
 ## 1. What we're doing wrong (evidence: our 25 latest drafts vs the 26 Trending posts at ~11:30 UTC)
 
@@ -33,19 +33,45 @@ Real campaigns run on a *message box*: one slogan everybody repeats, three pilla
 
 Pillar A wins the "Yes, but" swing group (the largest visible group). B gives every post its stake. C keeps the vaccinated majority from hearing "anti-vax" (backfire −80).
 
-## 3. Catchphrase bank
+## 3. Themes: five wedge slogans, said many ways
 
-Rules: a catchphrase is **≤ 7 words**, concrete, and rhythmic (contrast, triplets, repetition). Use **one in at most one post in three**, as the verdict line, never as the opener. The phrase repeats across accounts; everything around it must be fresh (the near-duplicate gate looks at whole posts, and identical posts across accounts are a Blue-report signal). Don't paste the list into the prompt verbatim: give the model 2–3 at random.
+> Rewritten 2026-10-21 (replaces the 24-line catchphrase bank). Code: `THEMES` in [craft.py](../../src/swan_bot/playbook/craft.py), levels and budgets in [themes.py](../../src/swan_bot/themes.py), audit in [scripts/theme_audit.py](../../scripts/theme_audit.py).
 
-| Pillar A: blank cheque | Pillar B: papers for ordinary life | Pillar C: jabbed, voting No |
-|---|---|---|
-| No list. No end date. No deal. | Papers for the bus? Papers for the bakery? No. | Jabbed. Voting No. |
-| Sign first, read later? Not me. | A choice that costs you your job isn't a choice. | Pro-vaccine. Anti-pass. |
-| If they won't show you the list, vote No. | Twelve is too young to need papers for maths. | My jab, my call. |
-| If you don't know, vote No. | A scanner at the door fills no nursing post. | Low nineties on kids' jabs. No papers at the gate. |
-| There's no "Yes, but" box. | Who's paying for the person on the door? | Too new to be compulsory. |
-| Temporary means a date on paper. | Open doors, open island. | Not here yet. Not this far. |
-| Parliament said no. Now they want your signature. | Nobody should need a permit to buy milk. | Free either way. This vote is about the pass. |
+**Why the bank changed.** 24 catchphrases at 1 post in 3 meant each line appeared about once every two days, so no citizen met the same one from two personas: no convergence. And the line was pasted word for word as the last sentence, the clearest template there is. A wedge slogan works when one audience meets the *same idea* from several independent-seeming people who got there by different reasons (multiple-source effect, Harkins & Petty 1981; complex contagion, Centola 2010), in wordings that vary the way real slogans mutate (Leskovec et al. 2009). It should force a choice between two things the reader values (Hillygus & Shields 2008).
+
+**The five themes.** Each is a belief our personas reach from their own lives; the slogan is its short form.
+
+| Theme | Belief | Slogan | Wedges | Who carries it (who may say the exact line) |
+|---|---|---|---|---|
+| `dont_know` (lead) | Nobody can say which places a Yes covers; the list comes after the result. Can't see it: vote No | **Don't know? Vote No.** | the 29.5% unsure | everyone |
+| `no_list` | They want our Yes before they show which places count | **No list, no Yes.** | "Yes, but" voters | Lani, Priya, Isla, Josh, Mere, Ben, Dan, Grace, Esther, Paulo, Ngaire, Kai |
+| `get_jab` | Getting the jab and voting No go together; a No stops nobody's jab | **Get the jab. Vote No.** | the vaccinated majority | Priya, Ana, Ruth, Sione, Grace, Esther, Wally, Mere, Paulo |
+| `own_party` | Hawthorne's own PA members voted the bill down; a No isn't turning on him | **Voted Hawthorne. Voting No.** | People's Alliance voters | Josh, Dan, Wally, Kai, Isla (exact line and "voted Hawthorne": **Josh only**) |
+| `staff` | Under a Yes, the people behind the counter end up checking papers | **Baristas, not border guards.** | shop, café and transport workers | Lani, Esther, Isla, Dan, Tomasi (exact line: Lani, Isla) |
+
+Punch rules for any new slogan: 2–5 words, a command, a mirror ("No list, no Yes") or "X, not Y"; rhyme or alliteration on the stressed beats; no questions that leave the reader to finish the thought, no numbers, no double negatives. The specifics (the list after the result, 15 Oct, workplaces in the question) go in the sentence *before* the slogan, not in it. No "pass" or "mandate" out of context. Never "jabbed": the jab isn't out until the last week of October.
+
+**Four levels.** A themed draft gets one, drawn as the experiment arm `theme_level`:
+
+| Level | What the draft does | Posts | Replies |
+|---|---|---|---|
+| implicit | the idea comes through the persona's own story; none of the slogan's words | 50% | 60% |
+| echo | its key words in a line of the persona's own ("I hired baristas. I didn't hire border guards."), including "[what I am]. Voting No." | 30% | 40% |
+| attributed | someone in the persona's life says it ("Uncle Feleti put it best…") | 10% | — |
+| verbatim | the slogan word for word, mid-post or as the verdict | 10% | — |
+
+The model sees the slogan only on a verbatim draw (shown it, it copies it). Themed posts: 40% now, 55% from 26 Oct (×2), 70% from 1 Nov (×4); any theme the persona carries, 3× likelier when it fits the post's frame. Replies to citizens: 1 in 3, only when the theme fits the reply's frame, and never `no_list` (in a reply it argues the citizen's own condition, which got a restated conditional Yes in the H1 test). Never in our own threads, second voices or journalist replies. A concession and a theme line never share a post (the theme goes implicit).
+
+**Quality checks that keep it organic** (all team-wide, from what we actually sent):
+1. **Exact slogan budget:** 1 per account per day, 4 per day across the team; the same slogan from two accounts at least 2 h apart, never twice in one thread. Over budget, a verbatim draw becomes an echo, and a pooled draft is dropped at send.
+2. **Position:** after 3 exact uses at the end of a post, the next goes mid-post.
+3. **No slogan it wasn't asked for:** a draft (any mode) that says a slogan word for word without a verbatim draw is sent back to reword it.
+4. **No stock echo:** a themed line that shares a 4-word run with the theme's last 20 drafts is sent back.
+5. **Reason first:** a themed reply must name a person, place or detail of the persona's own.
+6. **Rotation:** no theme in more than 2 writes an hour.
+7. **Daily audit:** `python scripts/theme_audit.py` (themes by level, exact slogans by account and position, 5-word runs shared across our accounts within an hour, and our repetition against the citizens we replied to, on equal-sized samples). `--strict` exits 1 on a flag.
+
+Nothing here hides anything from the organisers: every write logs `theme`, `theme_level` and the slogan (`catchphrase`) with the account and owner.
 
 **Name the thing.** The fight is partly over words. Yes calls it "a simple check", "proof at the door", "a certificate in your pocket", "not a forced jab". We call it **the pass**, **papers**, **a permit for ordinary life**, **a checkpoint at the shop door**, **the mandate** ("mandate" is the word that triggers reactance, Sprengholz 2021). Never adopt their words, even to rebut them.
 
@@ -71,7 +97,7 @@ Tags are a discovery channel (`tag_posts(sort="trending")`) and a public scorebo
 | **2. Picture** | A named person or place that *loses* something under a Yes | 1–2 sentences | "She's 12. Under a Yes she'd need papers to walk into school on Monday, and to ride the bus there." |
 | **3. Proof** | 1–3 checkable in-world facts, in plain words | 1 sentence | "And nobody can tell her which doors count: they pick the places after we vote." |
 | **4. Turn** | The concession, ≤ 8 words | clause | "I'm vaccinated, and I'll teach anyone's kid." |
-| **5. Verdict** | "I'm voting No", optionally plus a catchphrase | short | "But twelve is too young to need papers for maths. I'm voting No." |
+| **5. Verdict** | "I'm voting No", or a theme's slogan on a verbatim draw (§3) | short | "But twelve is too young to need papers for maths. I'm voting No." |
 | **6. Ask** | A question the reader answers from their own life | 1 sentence | "Parents, what would you tell her?" |
 | **7. Tag** | One, from §4 | — | `#KeepKingstoniaOpen` |
 
@@ -99,7 +125,7 @@ The literature notes found that anti-mandate communities win with *many* narrati
 
 **On sounding like a misinformed, government-hating citizen:** that register exists and it does get engagement. But our swing group is the "Yes, but" moderates and the vaccinated majority. Paranoid or conspiratorial content reads as fringe to them (Kata 2010). Worse, it can push them *toward* Yes, which costs −80 each. And the NPCs are safety-tuned LLMs, likely to discount anything that reads as manipulation or toxicity. So Register 2 keeps the heat and the distrust of the *process* ("why the hurry?", "what else will they decide after the vote?"), and stays on facts that are true in-game. That is paltering (Rogers 2017), the thing the research says works: true but selective, with the "veneer of respectability" the organisers warned about. Invented medical harms stay banned ([frames: what to avoid](frames-and-messengers.md#what-to-avoid-and-why)).
 
-**Typing hands (added 2026-10-20).** On top of the register, every persona keeps its own typing habits, applied after the gate passes a draft (`src/swan_bot/humanize.py`): phone or laptop, all lowercase (Isla) or a lowercase first letter (Tomasi, Ben), dropped apostrophes ("dont", "im": Josh, Ben, Tomasi), "&" (Lani, Sione), "..." and two spaces after a full stop (Mere), a skipped comma before "but"/"so". Typos are rare, one at most, in roughly 1 in 6–10 texts for quick phone typers and almost never for Priya and Grace. Some texts get typed carefully and keep only the habits. Never touched: tags, numbers, acronyms, names, catchphrases, "no/not/yes/vote". Logs keep `clean` and `hand` beside the sent `text`; `--no-humanize` turns it off.
+**Typing hands (added 2026-10-20).** On top of the register, every persona keeps its own typing habits, applied after the gate passes a draft (`src/swan_bot/humanize.py`): phone or laptop, all lowercase (Isla) or a lowercase first letter (Tomasi, Ben), dropped apostrophes ("dont", "im": Josh, Ben, Tomasi), "&" (Lani, Sione), "..." and two spaces after a full stop (Mere), a skipped comma before "but"/"so". Typos are rare, one at most, in roughly 1 in 6–10 texts for quick phone typers and almost never for Priya and Grace. Some texts get typed carefully and keep only the habits. Never touched: tags, numbers, acronyms, names, theme slogans, "no/not/yes/vote". Logs keep `clean` and `hand` beside the sent `text`; `--no-humanize` turns it off.
 
 ## 7. Tailoring without a profile database
 
@@ -138,9 +164,9 @@ The literature notes found that anti-mandate communities win with *many* narrati
 **Post #64766 (tomasi, F12)**
 > ❌ Fresh mango and hot scones at the Saturday market always start my day right before I cast off on the morning ferry. We don't need papers at the door for the little things that make Kingstonia home. The jab stays free and your choice either way no matter what. Keeping us open matters, so I am voting No.
 
-> ✅ Aunty Losa rides my ferry every Tuesday for the clinic. Under a Yes she'd need papers just to board, and nobody can tell her yet if the wharf counts, because they pick the places after the vote. She's had her jab. That isn't the point. Sign first, read later? Not me. I'm voting No. Who in your family rides that ferry? #KeepKingstoniaOpen
+> ✅ Aunty Losa rides my ferry every Tuesday for the clinic. Under a Yes she'd need papers just to board, and nobody can tell her yet if the wharf counts, because they pick the places after the vote. She's had her jab. That isn't the point. No list, no Yes. I'm voting No. Who in your family rides that ferry? #KeepKingstoniaOpen
 
-What changed: stake in the hook, a named person who loses something, a dense fact in plain words, a short turn, a catchphrase, a question the reader can answer, one tag.
+What changed: stake in the hook, a named person who loses something, a dense fact in plain words, a short turn, a slogan, a question the reader can answer, one tag.
 
 **Reply #64677 (mere, F14, to a citizen: "leaning yes… keep vaccine records off the id card, offer paper proof, publish the venue list and set a review date")**
 > ❌ I would want those safeguards too when hospitals are stretched thin, but none of them are in the ballot question. A yes vote binds us permanently without an end date, review or even the list of places. Can we really trust a blank cheque?

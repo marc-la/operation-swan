@@ -23,7 +23,7 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, experiment, humanize, pulse, quality, watch
+from . import batch, config, content, experiment, humanize, pulse, quality, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
@@ -208,9 +208,10 @@ def reply_back_jobs(social, accounts, targeter, limit=3, roots=None):
 
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
-ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "block_id")
+ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
+        "block_id")
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
-               "pulse")
+               "pulse", "theme", "theme_level")
 
 
 def experiment_fields(target):
@@ -235,10 +236,19 @@ def pick_post_shape(frame, persona, headline, recent_shapes):
     return None                                       # let post_prompt pick freely rather than stall
 
 
-def build_prompt(job, targeter, recent_shapes=(), pulse_now=None):
-    """(persona, system, user). The choices made (shape, voice, tag, catchphrase, event...) land in job["meta"].
+def pick_theme(job, ledger, meta):
+    """job["theme"] for a post or a reply to a citizen (themes.py), or None; its choices land in meta."""
+    target = job.get("target")
+    job["theme"] = ledger.pick(job["rec"]["persona"], job["frame"], job["mode"],
+                               thread=themes.thread_of(target) if target else None, meta=meta) if ledger else None
+    return job["theme"]
+
+
+def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
+    """(persona, system, user). The choices made (shape, voice, tag, theme, event...) land in job["meta"].
     pulse_now (todo/15): all of it for amplified posts (and a fresh hook as their news, about half the time), the
-    hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest."""
+    hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest. With a ledger, posts
+    and replies may carry a theme (themes.Ledger.pick)."""
     persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
     job["frame"] = content.live_frame(job["frame"], persona)      # a fact paused since the job was queued
     target = job.get("target") or {}
@@ -246,6 +256,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None):
     mode = job["mode"]
     meta = job["meta"] = {}
     parts = ()
+    theme = pick_theme(job, ledger, meta) if mode in themes.MODES else None
     if mode == "post":
         headline = targeter.headline if random.random() < 0.3 else None
         shape = None
@@ -258,7 +269,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None):
                 meta["pulse_news"] = True
         user = content.post_prompt(job["frame"], headline,
                                    shape=shape or pick_post_shape(job["frame"], persona, headline, recent_shapes),
-                                   ask=bool(job.get("amp")), meta=meta, persona=persona)
+                                   ask=bool(job.get("amp")), meta=meta, persona=persona, theme=theme)
     elif mode == "thread":
         parts = ("hooks",) if pulse_now else ()
         user = content.thread_reply_prompt(body, job["frame"], job["style"])
@@ -266,7 +277,8 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None):
         user = content.thread_answer_prompt(job["our_text"], body)
     elif mode == "reply":
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
-        user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona)
+        user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
+                                    theme=theme)
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
                                            persona=persona)
@@ -290,9 +302,10 @@ def repair_prompt(user, raw, note):
             f"the rest. Output only the fixed text.")
 
 
-def draft_checked(gen, job, system, user, recent_texts, on_reject=None):
-    """Draft and gate, two calls at most. A reject the gate can name a fix for (quality.repair_note) sends the draft
-    back with that fix (the smallest edit); any other reject gets a fresh draft. Returns (text, backend, repair):
+def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=None):
+    """Draft and gate, two calls at most: quality.check, then the theme check (themes.draft_problem). A reject the
+    gate can name a fix for (quality / themes repair_note) sends the draft back with that fix (the smallest edit);
+    any other reject gets a fresh draft. Returns (text, backend, repair):
     text is None when both failed, backend None when no model answered, repair the reject reason the last draft
     was repaired from. on_reject(why, raw, backend, repair) is called for each reject."""
     mode, meta = job["mode"], job.get("meta") or {}
@@ -315,11 +328,14 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None):
             break
         text, why = quality.check(raw, mode, recent_texts, prompt_text=user, target_text=target_text,
                                   wants=job.get("wants") or (), closing_question=meta.get("closing_question", True))
-        if text:
+        theme_why = text and themes.draft_problem(text, job.get("theme"), mode, ledger)
+        if text and not theme_why:
             return text, backend, repair
+        why = theme_why or why
         if on_reject:
             on_reject(why, raw, backend, repair)
-        note = quality.repair_note(why, raw, mode, meta.get("tag"))
+        note = (themes.repair_note(why, job.get("theme")) if theme_why else
+                quality.repair_note(why, raw, mode, meta.get("tag")))
         prompt, repair = (repair_prompt(user, raw, note), why) if note else (user, None)
     return None, backend, repair
 
@@ -357,8 +373,10 @@ def main():
     accounts = Accounts(social, args.live)
     state = load_json(config.STATE_FILE, {})
     for key, default in (("replied_posts", []), ("contacted", {}), ("recent_texts", []), ("second_voice", []),
-                         ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", [])):
+                         ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
+                         ("theme_log", [])):
         state.setdefault(key, default)
+    ledger = themes.Ledger(state["theme_log"])          # the themes we sent, team-wide (saved with the state)
 
     amp = None
     if args.amplify:
@@ -434,6 +452,9 @@ def main():
         print(f"batched drafting: up to {desk.size} per LLM call")
 
     def desk_fill(jobs):
+        for j in jobs:                                    # themes are drawn when queued; the budget is rechecked at send
+            if j["mode"] in themes.MODES:
+                pick_theme(j, ledger, j.setdefault("meta", {}))
         rejected = desk.fill(jobs, state["recent_texts"][-300:],
                              headline=targeter.headline if random.random() < 0.3 else None) or []
         for r in rejected:
@@ -623,11 +644,24 @@ def main():
                          **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
                     print(f"  rejected [{mode}] ({why}{', after repair' if repaired else ''}): {raw[:160]!r}")
 
-                text, backend, repair = draft_checked(gen, job, system, user, state["recent_texts"][-300:], rejected)
+                text, backend, repair = draft_checked(gen, job, system, user, state["recent_texts"][-300:], rejected,
+                                                      ledger)
             if not text and mode != "repost":
                 if mode == "reply_back" and job.get("tries", 0) < 2:
                     job["tries"] = job.get("tries", 0) + 1      # a citizen who answered us is worth another try
                     queue.append(job)
+                continue
+            # the slogan budget again at send time (a pooled draft waited; another account may have used it since)
+            thread = themes.thread_of(target) if target else None
+            why = text and (ledger.send_problem(text, persona["key"], thread) or
+                            (drafted and themes.draft_problem(text, job.get("theme"), mode, ledger)))
+            if why:
+                stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
+                log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
+                     "backend": backend, "raw": text, "draft_id": job["draft_id"], "at_send": True,
+                     "target_post": target and target["post_id"],
+                     **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
+                print(f"  dropped at send [{mode}] ({why}): {text[:160]!r}")
                 continue
             clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
             if text and not args.no_humanize:
@@ -694,6 +728,7 @@ def main():
                 state["journalist_last"][str(target["author_id"])] = time.time()
             if text:
                 state["recent_texts"] = (state["recent_texts"] + [clean])[-300:]
+                ledger.record(clean, persona["key"], job.get("theme"), thread or post_id, mode)
             meta = job.get("meta") or {}
             if mode == "post" and meta.get("shape"):
                 state["recent_shapes"] = (state["recent_shapes"] + [meta["shape"]])[-30:]
@@ -708,7 +743,7 @@ def main():
                  "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
                  "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
                  **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
-                                             "pulse", "pulse_news")},
+                                             "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
                  **{k: meta.get(k) for k in ARMS}, **experiment_fields(target),
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
                  "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),

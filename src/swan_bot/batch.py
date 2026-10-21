@@ -96,8 +96,10 @@ def persona_card(persona, frame_key):
 def item_text(job, shape=None, opener=None, headline=None):
     """Only what differs between items: who writes, about what, and how to open."""
     angle = content.FRAMES[job["frame"]]["angle"]
+    theme = f"\n{content.theme_line(job['theme'])}" if job.get("theme") else ""     # themes.Ledger.pick (bot.py)
     if job["mode"] == "post":
-        return f"Shape: {shape.format(headline=headline)}\nPoint to make, in your own words (never these words): {angle}."
+        return (f"Shape: {shape.format(headline=headline)}\nPoint to make, in your own words (never these words): "
+                f"{angle}.{theme}")
     target = job.get("target") or {}
     body = (target.get("body") or "")[:600]
     ctx = f"Posted under this news item: <<<{job['context'][:200]}>>>\n" if job.get("context") else ""
@@ -110,7 +112,8 @@ def item_text(job, shape=None, opener=None, headline=None):
         asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
         reb = ""
     return (f"{ctx}The neighbour wrote:\n<<<{body}>>>\n{asks}{reb}{content.exempt_note(body)}"
-            f"Opening: {opener}\nPoint to make, in your own words (never these words): {angle}.")
+            f"Opening: {opener}\nPoint to make, in your own words (never these words): {angle}."
+            + (theme if job["mode"] == "reply" else ""))
 
 
 @dataclass

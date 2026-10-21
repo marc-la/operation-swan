@@ -39,8 +39,8 @@ VOICES = {
                  text="Mr Faleolo is 88 and his afternoon walk to the park bench is non-negotiable. Under a Yes, parks "
                       "are named in the question, so that bench could come with a certificate check. He and I are in "
                       "line for the first 120,000 doses, kept for health workers and high-risk people. And there's no "
-                      "community spread here yet. I'll roll my sleeve up first. Not here yet. Not this far. I'm voting "
-                      "No. What's the daily walk you'd hate to need papers for? #ChoiceNotCoercion"),
+                      "community spread here yet. I'll roll my sleeve up first, and I'm voting No. What's the daily "
+                      "walk you'd hate to need papers for? #ChoiceNotCoercion"),
         ]),
     "fed_up": dict(
         share=0.25,
@@ -61,14 +61,14 @@ VOICES = {
                  text="Two cafes I wire asked this week if they'll need someone on the door checking papers. Nobody can "
                       "tell them. They pick the places after we vote, and nothing in the question says when it ends. "
                       "The Assembly threw this bill out, with several of Hawthorne's own party voting against. So why "
-                      "the rush for our signature? I voted Hawthorne. I'm voting No. No list. No end date. No deal. "
+                      "the rush for our signature? I voted Hawthorne. I'm voting No. "
                       "What's the last thing you signed before reading it? #VoteNo"),
             dict(persona="ben", frame="F5_not_here_yet",
                  text="Mrs Taufa buys tuna off my stall every Saturday. I'm out before dawn so it's there for her. Under "
                       "a Yes she might need papers to buy it. Nobody can say yet. They pick the places after the vote. "
                       "No community spread here yet. First doses go to health workers and people at high risk. And "
-                      "they want a pass at the market for now? My jab can wait its turn. I'm voting No. Not here yet. "
-                      "Not this far. What do you pick up at the market every week? #ChoiceNotCoercion"),
+                      "they want a pass at the market for now? My jab can wait its turn. I'm voting No. "
+                      "What do you pick up at the market every week? #ChoiceNotCoercion"),
             dict(persona="tomasi", frame="F6_islands",
                  text="The Fonua kids ride my morning ferry every Thursday with their mum, off to the clinic. Under a Yes "
                       "the eldest is 13, so he'd need a certificate to board, if the ferry counts. Nobody can say. They "

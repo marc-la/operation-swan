@@ -61,13 +61,13 @@ def test_subtle_typos_are_rare_and_careful_hands_are_clean():
 
 def test_catchphrases_kept_whole():
     rng = random.Random(2)
-    for p in content.PILLARS.values():
-        for c in p["catchphrases"]:
-            text = f"Mrs Taufa buys tuna off my stall, and I'm out before dawn. {c} I'm voting No. What do you buy?"
-            for key in humanize.HANDS:
-                for _ in range(40):
-                    out, _ = humanize.apply(text, key, "post", rng)
-                    assert c.lower().rstrip(".?!") in out.lower(), (key, out)
+    assert len(content.SLOGANS) == 5
+    for c in content.SLOGANS:
+        text = f"Mrs Taufa buys tuna off my stall, and I'm out before dawn. {c} I'm voting No. What do you buy?"
+        for key in humanize.HANDS:
+            for _ in range(40):
+                out, _ = humanize.apply(text, key, "post", rng)
+                assert c.lower().rstrip(".?!") in out.lower(), (key, out)
 
 
 def test_paired_commas_untouched():

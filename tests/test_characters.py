@@ -78,7 +78,7 @@ def test_lines_not_copied_from_facts_or_angles():
     source = " ".join([f["text"] for f in content.fact_store.TABLE.values()] + [f["angle"] for f in content.FRAMES.values()])
     try:
         from swan_bot.playbook import craft
-        source += " " + " ".join(c for pl in craft.PILLARS.values() for c in pl["catchphrases"])
+        source += " " + " ".join(t["slogan"] + " " + t["belief"] for t in craft.THEMES.values())
     except ImportError:
         pass
     src = _shingles(source)

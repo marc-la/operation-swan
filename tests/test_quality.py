@@ -281,7 +281,8 @@ def test_local_check_without_characters(playbook):
 
 FAKE_CRAFT = dict(
     TAG_ALLOWLIST={"#voteno", "#keepkingstoniaopen"},
-    PILLARS={"A": dict(tags=["#VoteNo"], catchphrases=["If they won't show you the list, vote No."])},
+    PILLARS={"A": dict(tags=["#VoteNo"])},
+    THEMES={"t": dict(slogan="If they won't show you the list, vote No.", belief="the list comes after the vote")},
     CRAFT={"F6_islands": dict(
         pillar="B",
         stakes=["A gran riding the ferry to her clinic visit can't find out yet whether the wharf counts, because "
@@ -317,8 +318,8 @@ def test_catchphrases_and_repeatable_lines_may_repeat(playbook):
 
 def test_builtin_catchphrases_without_playbook(playbook):
     q = playbook()
-    assert "Twelve is too young to need papers for maths." in q.CATCHPHRASES
-    assert q.copied_runs("If they won't show you the list, vote No. Twelve is too young to need papers for maths.") == set()
+    assert "Baristas, not border guards." in q.CATCHPHRASES and len(q.CATCHPHRASES) == 5
+    assert q.copied_runs("Don't know? Vote No. Baristas, not border guards.") == set()
     c = quality.content                       # content.py may merge craft/characters itself; nothing else counts
     own = ([f["text"] for f in c.fact_store.TABLE.values()] + [f["angle"] for f in c.FRAMES.values()] +
            [s for f in c.FRAMES.values() for s in q._texts(f.get("stakes")) + q._texts(f.get("heat"))] +

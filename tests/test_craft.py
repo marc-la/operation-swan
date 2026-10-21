@@ -24,7 +24,10 @@ def all_text():
     for p in craft.PILLARS.values():
         yield p["name"]
         yield p["claim"]
-        yield from p["catchphrases"]
+    for t in craft.THEMES.values():
+        yield t["belief"]
+        yield t["slogan"]
+        yield from t["echo"] + list(t.get("echo_speaker") or [])
     for c in craft.CRAFT.values():
         yield from c["stakes"]
         yield c["heat"]
@@ -57,16 +60,35 @@ def test_stakes_not_repeated_across_frames():
     assert len(stakes) == len(set(stakes))
 
 
-def test_pillar_fields_and_catchphrases():
+def test_pillar_fields():
     for key, p in craft.PILLARS.items():
         assert p["name"] and p["claim"], key
-        assert 5 <= len(p["catchphrases"]) <= 8, key
-        for cp in p["catchphrases"]:
-            assert len(cp.split()) <= 7, cp
-            assert "#" not in cp, cp
-    phrases = [cp.lower() for p in craft.PILLARS.values() for cp in p["catchphrases"]]
-    assert len(phrases) == len(set(phrases))
-    assert 0 < craft.CATCHPHRASE_SHARE <= 0.34
+
+
+def test_theme_fields():
+    """Playbook §3: five themes, each a short slogan on a belief, carried by real personas on frames that exist."""
+    assert len(craft.THEMES) == 5
+    personas = set(content.PERSONA_BY_KEY)
+    slogans = [t["slogan"].lower() for t in craft.THEMES.values()]
+    assert len(slogans) == len(set(slogans))
+    for key, t in craft.THEMES.items():
+        assert t["belief"].strip() and t["echo"], key
+        assert 2 <= len(t["slogan"].split()) <= 5, t["slogan"]       # punch: 2-5 words
+        assert t["personas"] is None or set(t["personas"]) <= personas, key
+        assert t["verbatim"] is None or set(t["verbatim"]) <= set(t["personas"] or personas), key
+        assert t["frames"] is None or set(t["frames"]) <= set(content.FRAMES), key
+        assert set(t["requires"]) <= set(content.fact_store.TABLE), key
+        assert re.search(t["marks"], t["slogan"], re.I), key           # the key words are in the slogan
+        assert t["weight"] > 0, key
+    assert craft.THEMES["own_party"]["verbatim"] == ["josh"]          # only Josh voted Hawthorne
+
+
+def test_no_jabbed_claims_in_themes():
+    """The jab isn't out until the last week of October: no theme text says anyone has had it."""
+    for t in craft.THEMES.values():
+        for text in [t["belief"], t["slogan"]] + t["echo"] + list(t.get("echo_speaker") or []):
+            said = re.sub(r"\bnever [^.;)]*", "", text, flags=re.I)            # an instruction against it is fine
+            assert not re.search(r"\bjabbed\b|\b(had|got) (the|my|our|their) (jab|dose)", said, re.I), text
 
 
 def test_tags_in_allowlist():

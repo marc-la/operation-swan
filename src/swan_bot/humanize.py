@@ -6,7 +6,7 @@ Habits are stable per persona (that is what tells them apart); slips are rare an
 come out with no typo at all. Some texts are typed carefully and keep only the habits.
 
 Never touched: hashtags, numbers and money (K$14, 120,000), acronyms (KU, GP, H2D2), the side words (no, not,
-yes, never, vote...), catchphrases, and short words; typos also skip capitalised words, so names stay right. The result must still fit the gate's length bounds, else the
+yes, never, vote...), theme slogans, and short words; typos also skip capitalised words, so names stay right. The result must still fit the gate's length bounds, else the
 clean text goes out. bot.py logs the clean draft and the changes beside the text that was sent.
 """
 import random
@@ -73,14 +73,13 @@ _NEIGHBOURS = {r: c for row in ("qwertyuiop", "asdfghjkl", "zxcvbnm") for r, c i
 
 
 def _protected_spans(text):
-    """(start, end) of catchphrases and hashtags: no typos or dropped commas in there."""
+    """(start, end) of theme slogans and hashtags: no typos or dropped commas in there."""
     spans = [m.span() for m in re.finditer(r"#\w+", text)]
     low = text.lower()
-    for p in content.PILLARS.values():
-        for c in p["catchphrases"]:
-            i = low.find(c.lower().rstrip(".?!"))
-            if i >= 0:
-                spans.append((i, i + len(c)))
+    for c in content.SLOGANS:
+        i = low.find(c.lower().rstrip(".?!"))
+        if i >= 0:
+            spans.append((i, i + len(c)))
     return spans
 
 

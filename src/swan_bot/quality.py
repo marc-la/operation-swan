@@ -6,7 +6,7 @@ emoji, links, mentions), length, side (never endorse Yes; posts must say No, wit
 or bot-like phrasing, rhetorical questions, made-up numbers, specificity (a reply must name the target's point or
 an in-world fact; a post needs a local detail and ends on a question), copying sources or the prompt,
 near-duplicates. shape_ok() is the separate variety check on post shapes.
-Content v2 data (src/swan_bot/playbook/: craft tags/stakes/catchphrases, character people/lines) is optional:
+Content v2 data (src/swan_bot/playbook/: craft tags/stakes/themes, character people/lines) is optional:
 without it the built-in defaults below apply.
 """
 import re
@@ -24,7 +24,7 @@ except ImportError:
     _characters = None
 
 # the model must put facts in its own words: any 7-word run copied from the fact list, a frame angle, a craft stake
-# or heat line, or a character's past lines (gist only) is rejected
+# or heat line, a theme's belief, or a character's past lines (gist only) is rejected
 _CRAFT = getattr(_craft, "CRAFT", None) or {}
 _CHARS = getattr(_characters, "CHARACTERS", None) or {}
 
@@ -36,20 +36,14 @@ def _texts(value):
 SOURCES = ([f["text"] for f in fact_store.TABLE.values()] + [f["angle"] for f in content.FRAMES.values()] +
            [s for f in list(_CRAFT.values()) + list(content.FRAMES.values())
             for s in _texts(f.get("stakes")) + _texts(f.get("heat"))] +
-           [s for c in list(_CHARS.values()) + content.PERSONAS for s in _texts(c.get("lines"))])
+           [s for c in list(_CHARS.values()) + content.PERSONAS for s in _texts(c.get("lines"))] +
+           [t["belief"] for t in (getattr(_craft, "THEMES", None) or {}).values()])
 _SOURCE_TEXT = " ".join(SOURCES)
-# ...except lines meant to repeat verbatim across accounts: the catchphrases (playbook §3) and REPEATABLE
-_BUILTIN_CATCHPHRASES = [
-    "No list. No end date. No deal.", "Sign first, read later? Not me.", "If they won't show you the list, vote No.",
-    "If you don't know, vote No.", "There's no \"Yes, but\" box.", "Temporary means a date on paper.",
-    "Parliament said no. Now they want your signature.", "Papers for the bus? Papers for the bakery? No.",
-    "A choice that costs you your job isn't a choice.", "Twelve is too young to need papers for maths.",
-    "A scanner at the door fills no nursing post.", "Who's paying for the person on the door?",
-    "Open doors, open island.", "Nobody should need a permit to buy milk.", "Jabbed. Voting No.",
-    "Pro-vaccine. Anti-pass.", "My jab, my call.", "Low nineties on kids' jabs. No papers at the gate.",
-    "Too new to be compulsory.", "Not here yet. Not this far.", "Free either way. This vote is about the pass."]
-CATCHPHRASES = [c for p in (getattr(_craft, "PILLARS", None) or {}).values() for c in _texts(p.get("catchphrases"))] \
-    or _BUILTIN_CATCHPHRASES
+# ...except lines meant to repeat verbatim across accounts: the five theme slogans (playbook §3; how often they may
+# go out is themes.py's job) and REPEATABLE
+_BUILTIN_CATCHPHRASES = ["Don't know? Vote No.", "No list, no Yes.", "Get the jab. Vote No.",
+                         "Voted Hawthorne. Voting No.", "Baristas, not border guards."]
+CATCHPHRASES = [t["slogan"] for t in (getattr(_craft, "THEMES", None) or {}).values()] or _BUILTIN_CATCHPHRASES
 REPEATABLE = ["they pick the places after the vote"] + _texts(getattr(_craft, "REPEATABLE", None))
 _EXEMPT_RUNS = {tuple(re.findall(r"[a-z']+", p.lower())) for p in CATCHPHRASES + REPEATABLE} - {()}
 

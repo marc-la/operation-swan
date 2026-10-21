@@ -1,6 +1,6 @@
 """What we say: world facts, frames (arguments), personas, Yes rebuttals, and the prompts built from them.
 
-Humans own this file. Frames: docs/06-strategy/frames-and-messengers.md. How to say it (hooks, catchphrases, tags,
+Humans own this file. Frames: docs/06-strategy/frames-and-messengers.md. How to say it (hooks, themes, tags,
 voices, post anatomy, reply shape): docs/06-strategy/message-playbook.md. Facts: content/facts.toml (todo/16),
 checked against docs/01-competition/setting.md and the papers.
 Content v2 data (swan_bot/playbook/: craft, voices, characters) is copied onto FRAMES and PERSONAS at import; a
@@ -10,7 +10,7 @@ October). Never claim otherwise.
 
 Paused facts (facts.py): anything that states one leaves the prompts. Each frame, rebuttal, storyline, lever and
 WORLD sentence names the facts its own wording states in `requires`; while one is paused it is not used (a frame
-also goes when all its facts are paused). Character, persona and catchphrase text is filtered by the paused facts'
+also goes when all its facts are paused). Character, persona and theme text is filtered by the paused facts'
 `says` wording, and the quality gate rejects drafts that use it. tests/test_facts.py checks the two agree.
 """
 import datetime as dt
@@ -259,26 +259,24 @@ PILLAR_OF = {"F14_no_yes_but": "A", "F1_blank_cheque": "A", "F2_no_end": "A", "F
              "F7_livelihoods": "B", "F13_age12": "B", "F6_islands": "B", "F10_staff_and_livelihoods": "B",
              "F12_open_island": "B", "F3_provax_antipass": "C", "F5_not_here_yet": "C"}
 _PILLARS_V1 = {
-    "A": dict(name="Don't sign a blank cheque", tags=["#VoteNo", "#H2D2No"], catchphrases=[]),
-    "B": dict(name="Ordinary life shouldn't need papers", tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"],
-              catchphrases=[]),
-    "C": dict(name="Jabbed, and voting No", tags=["#ChoiceNotCoercion"], catchphrases=[]),
+    "A": dict(name="Don't sign a blank cheque", tags=["#VoteNo", "#H2D2No"]),
+    "B": dict(name="Ordinary life shouldn't need papers", tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"]),
+    "C": dict(name="Jabbed, and voting No", tags=["#ChoiceNotCoercion"]),
 }
 _VOICES_V1 = {r: dict(instruction="You are cheerful and reasonable, never angry.", reply_instruction="")
               for r in ("warm", "fed_up", "plain")}
 CHARACTER_FIELDS = ("age", "people", "problem", "covid", "arc", "lines", "now")
 _LIST_FIELDS = {"people", "lines", "now"}
 HEALTH_WORKERS = {"ana", "sione", "ruth", "priya"}      # the only ones who may say they're in the first lot of doses
-PILLARS, VOICES, CATCHPHRASE_SHARE = {}, {}, 0.33
+PILLARS, VOICES, SLOGANS = {}, {}, []
 
 
 def merge_playbook(craft=None, voices=None, characters=None):
-    """Copy the playbook data onto FRAMES, PERSONAS, PILLARS and VOICES. Idempotent; run at import."""
-    global PILLARS, VOICES, CATCHPHRASE_SHARE
-    PILLARS = {k: dict(v, tags=list(v["tags"]), catchphrases=list(v.get("catchphrases") or []))
-               for k, v in getattr(craft, "PILLARS", _PILLARS_V1).items()}
+    """Copy the playbook data onto FRAMES, PERSONAS, PILLARS, VOICES and SLOGANS. Idempotent; run at import."""
+    global PILLARS, VOICES, SLOGANS
+    PILLARS = {k: dict(v, tags=list(v["tags"])) for k, v in getattr(craft, "PILLARS", _PILLARS_V1).items()}
     VOICES = {k: dict(v) for k, v in getattr(voices, "VOICES", _VOICES_V1).items()}
-    CATCHPHRASE_SHARE = getattr(craft, "CATCHPHRASE_SHARE", 0.33)
+    SLOGANS = [t["slogan"] for t in (getattr(craft, "THEMES", None) or {}).values()]
     per_frame = getattr(craft, "CRAFT", {})
     for key, f in FRAMES.items():
         c = per_frame.get(key, {})
@@ -627,10 +625,30 @@ NO_FACT_SHAPES = {"conversion", "defiance", "number", "did_you_know"}
 CONCEDE_SHARE = 0.35        # 7 of 12 drafts shared one concession formula (20 Oct)
 
 
-def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, persona=None):
+def _says_no(line):
+    return bool(re.search(r"\bvot(e|ing) no\b", line or "", re.I))
+
+
+def theme_line(theme):
+    """The theme's instruction as one sentence (batched drafts and replies; post_prompt places its own), or ""."""
+    if not theme:
+        return ""
+    belief = theme["belief"]
+    return {
+        "implicit": f"Let this idea sit under your point, through one detail of your own life, with no slogan: {belief}.",
+        "echo": f"Through one detail of your own life, land it in {theme['echo']}, carrying this idea: {belief}.",
+        "attributed": f"Have one person from your life say this idea in their own short words, as something they "
+                      f"told you: {belief}.",
+        "verbatim": f"Include this line word for word, as its own sentence: {theme['slogan']}",
+    }[theme["level"]]
+
+
+def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, persona=None, theme=None):
     """One new post along the playbook §5 anatomy: opening -> one beat (stake, lever or turning point) -> the point
-    -> one fact or a short concession -> "I'm voting No" -> catchphrase (about 1 in 3, never with a concession) -> a
-    question from the reader's life (before the verdict in ~1 in 4) -> one tag. `ask` is kept for old callers; pass
+    -> one fact, a short concession or the theme's line -> "I'm voting No" -> a question from the reader's life
+    (before the verdict in ~1 in 4) -> one tag. `theme` (themes.Ledger.pick) says how its idea comes in: through the
+    point (implicit), a line of the persona's own (echo), someone they know (attributed) or the slogan word for word,
+    mid-post or as the verdict; never with a concession (then it goes implicit). `ask` is kept for old callers; pass
     `persona` to unlock the fed-up hook and the conversion arc."""
     f = FRAMES[frame_key]
     key, text = pick_shape(frame_key, headline, shape, persona)
@@ -640,7 +658,6 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
     tag = random.choice(pillar["tags"])
     arc = (persona or {}).get("arc") if key == "conversion" else None
     arc = None if fact_store.paused_in(arc) else arc
-    catches = [c for c in pillar["catchphrases"] if not fact_store.paused_in(c)]
     asks = [a for a in f["asks"] if not fact_store.paused_in(a)]
     # the experiment arms (todo/13): drawn independently per draft and logged from meta
     arms = {}
@@ -652,9 +669,15 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
         experiment.draw("beat", ["stake", "lever"] if stake else ["lever"], arms)
     lever = experiment.draw("lever", live_levers(), arms) if arms["beat"] == "lever" else arms.setdefault("lever", None)
     concede = experiment.draw("concede", {True: CONCEDE_SHARE, False: 1 - CONCEDE_SHARE}, arms)
-    # the catchphrase replaces the concession, never joins it: drawn only without one, so still ~1 post in 3
-    catch = (random.choice(catches) if catches and not concede
-             and random.random() < CATCHPHRASE_SHARE / (1 - CONCEDE_SHARE) else None)
+    # a theme's own line replaces the concession, never joins it (the concession arm stays unbiased: the theme gives way)
+    if theme and concede and theme["level"] != "implicit":
+        theme = dict(theme, level="implicit", slogan=None, echo=None, position=None)
+        if meta is not None:
+            meta.setdefault("theme_level_drawn", meta.get("theme_level"))
+            meta["theme_level"] = "implicit"
+    level = theme and theme["level"]
+    slogan = theme["slogan"] if level == "verbatim" else None
+    at_end = slogan and theme.get("position") != "middle"
     ask_kind = experiment.draw("ask_kind", experiment.ASK_WEIGHTS, arms)
     close = experiment.draw("close", experiment.CLOSES, arms) if ask_kind != "none" else arms.setdefault("close", None)
     sentences, lo, hi = experiment.length_line("post", arms)
@@ -663,9 +686,12 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
               (f", along the lines of this one but in your own words: {question}" if question else ".")
               if ask_kind == "frame" else experiment.ASK_KINDS[ask_kind])
     # the confession opening already says "voting No": a second verdict beat made drafts say it twice (21 Oct smoke)
-    verdict = ["" if key == "confession" else "Then say plainly that you're voting No.",
-               f"{'Then' if key == 'confession' else 'Right after that,'} add this line word for word: {catch}"
-               if catch else ""]
+    if at_end and _says_no(slogan) and key != "confession":     # the slogan is the verdict
+        verdict = [f"Then say you're voting No with this line, word for word: {slogan}"]
+    else:
+        verdict = ["" if key == "confession" else "Then say plainly that you're voting No.",
+                   f"{'Then' if key == 'confession' else 'Right after that,'} add this line word for word: {slogan}"
+                   if at_end else ""]
     if close == "verdict_last":                 # the question moves before the verdict; the post ends on the No
         closing = [ending.replace("End with one", "Then ask one", 1)] + verdict
     else:
@@ -678,26 +704,43 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
                   f"Take the gist only, never these words: {stake}"),
         "lever": f"Then make it land through this: {LEVERS[lever]}" if lever else "",
     }[arms["beat"]]
+    point = f"The point underneath it, in your own words: {f['gist']}."
+    if level == "implicit":
+        point = f"The point underneath it, in your own words: {f['gist']}; let it carry this idea, with no slogan: " \
+                f"{theme['belief']}."
+    # the theme's own line takes the fact beat (its idea carries the fact): still 4 content beats at most (todo/14)
+    line = ""
+    if level == "echo":
+        line = f"Then land the point in {theme['echo']}, carrying this idea: {theme['belief']}."
+    elif level == "attributed":
+        line = (f"Then have one person from your life say this idea in their own short words, as something they "
+                f"told you: {theme['belief']}.")
+    elif slogan and not at_end:
+        line = f"Then this line, word for word, as its own sentence: {slogan}"
     beats = [
         f"Write one new post of {sentences} short sentences, between {lo} and {hi} words in all, as one flowing post "
         f"(no numbers or labels). Use contractions (I'm, don't, it's). Build it in this order.",
         text.format(headline=headline),
         beat,
-        f"The point underneath it, in your own words: {f['gist']}.",
+        point,
         "Then grant the other side in 8 words or fewer, without repeating their reasons." if concede else
-        "" if key in NO_FACT_SHAPES else "Use one fact, in plain words. Appeal to feeling, not to the fine print.",
+        line or ("" if key in NO_FACT_SHAPES else "Use one fact, in plain words. Appeal to feeling, not to the fine print."),
         *closing,
         f"Then finish with exactly one hashtag, {tag}, and nothing after it.",
     ]
     _fill(meta, frame=frame_key, shape=key, hook=HOOKS.get(key, key), pillar=f["pillar"], stake=stake, tag=tag,
-          catchphrase=catch, ask=question, closing_question=close == "question_last", **arms)
+          slogan=slogan, ask=question, closing_question=close == "question_last", **arms)
     return " ".join(b for b in beats if b)
 
 
 def catchphrase_in(text):
-    """The catchphrase a draft actually used, if any (for logging and the variety check)."""
-    low = (text or "").lower()
-    return next((c for p in PILLARS.values() for c in p["catchphrases"] if c.lower().rstrip(".?!") in low), None)
+    """The theme slogan a draft says word for word, if any (logged as `catchphrase`; themes.slogans_in has the keys)."""
+    said = " " + " ".join(_slogan_words(text)) + " "
+    return next((c for c in SLOGANS if " " + " ".join(_slogan_words(c)) + " " in said), None)
+
+
+def _slogan_words(text):
+    return re.findall(r"[a-z0-9']+", (text or "").replace("’", "'").lower())
 
 
 # Own-thread replies under our amplified posts (docs/06-strategy/amplification.md). Each is a real neighbour's reaction, readable on its own:
@@ -767,8 +810,9 @@ def _reply_voice(persona):
     return f"{VOICES[register_of(persona)].get('reply_instruction', '')} " if persona else ""
 
 
-def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None):
-    """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back."""
+def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None):
+    """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A
+    `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life."""
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
     arms = {}
     # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
@@ -799,7 +843,8 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
         f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} words. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
-        f"through this: {LEVERS[lever]} {experiment.ASK_KINDS[ask_kind]} {_reply_voice(persona)}{REPLY_RULES}"
+        f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}{experiment.ASK_KINDS[ask_kind]} "
+        f"{_reply_voice(persona)}{REPLY_RULES}"
     )
 
 

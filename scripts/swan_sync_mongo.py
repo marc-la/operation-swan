@@ -35,7 +35,7 @@ HOST = ""
 USER = ""
 SECRET_FIELDS = {"password", "token"}
 EXPERIMENT_FIELDS = ("ts", "act", "post_id", "username", "account_id", "owner", "persona", "frame", "source",
-                     "target_post", "target_author", "shape", "voice", "opener", "tag", "catchphrase", "identity",
+                     "target_post", "target_author", "shape", "voice", "opener", "tag", "catchphrase", "theme", "identity",
                      "messenger_match", "amp_level", "style", "exp", "git_sha", "target_stance", "target_class",
                      "soft_yes", "yes_reason") + ARMS
 

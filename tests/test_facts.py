@@ -13,7 +13,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from swan_bot import content, factdesk, quality, targeting  # noqa: E402
+from swan_bot import content, factdesk, quality, targeting, themes  # noqa: E402
 from swan_bot import facts as fact_store  # noqa: E402
 from swan_bot.playbook import characters, craft  # noqa: E402
 
@@ -97,7 +97,8 @@ def _all_prompt_texts():
     out += [("rebuttal", line) for _, line, _ in content.REBUTTALS]
     out += [(k, s) for k, s, _ in content.STORYLINES + [content.STORYLINE_FALLBACK]]
     out += [(k, v) for k, v in content.LEVERS.items()] + [("world", content.WORLD)]
-    out += [("catchphrase", c) for p in craft.PILLARS.values() for c in p["catchphrases"]]
+    out += [(f"theme {k}", x) for k, t in craft.THEMES.items()
+            for x in [t["belief"], t["slogan"]] + t["echo"] + list(t.get("echo_speaker") or [])]
     for key, c in characters.CHARACTERS.items():
         for field in content.CHARACTER_FIELDS:
             v = c.get(field)
@@ -136,6 +137,8 @@ def _requiring():
     out += [(k, v, content.LEVER_REQUIRES.get(k, [])) for k, v in content.LEVERS.items()]
     out += [("world", t, req) for t, req, _ in content.WORLD_PARTS]
     out += [("world (paused)", instead, []) for _, _, instead in content.WORLD_PARTS]
+    out += [(f"theme {k}", x, t["requires"]) for k, t in craft.THEMES.items()
+            for x in [t["belief"], t["slogan"]] + t["echo"] + list(t.get("echo_speaker") or [])]
     out += [("exempt", content.EXEMPT_NOTE, content.EXEMPT_REQUIRES), ("jab", content.JAB_RULE, ["first_doses"]),
             ("jab", content.JAB_FIRST_LOT, ["first_doses"]), ("jab (paused)", content.JAB_RULE_PAUSED, [])]
     return out
@@ -163,6 +166,11 @@ def _prompts(persona, frame, seed):
            content.reply_prompt(TARGET, frame, [], persona=persona),
            content.second_voice_prompt(TARGET, frame, [], persona=persona),
            content.journalist_prompt(3, NEUTRAL, persona=persona)]
+    for key, t in themes.live().items():                 # a theme whose fact is paused is not live
+        for level in ("implicit", "echo", "attributed", "verbatim"):
+            theme = dict(key=key, level=level, belief=t["belief"], echo=t["echo"][0], position="middle",
+                         slogan=t["slogan"] if level == "verbatim" else None)
+            out.append(content.post_prompt(frame, persona=persona, theme=theme))
     return [p.replace(TARGET, "").replace(NEUTRAL, "") for p in out]
 
 

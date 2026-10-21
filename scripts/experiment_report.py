@@ -35,6 +35,8 @@ DIMS = [  # (dimension, what it tests)
     ("length_band", "length"),
     ("concede", "concession beat (posts)"),
     ("rebuttal", "a Yes reason was found and answered (replies)"),
+    ("theme", "wedge theme (playbook §3)"),
+    ("theme_level", "how the theme is said: implicit / echo / attributed / verbatim"),
     ("shape", "post opening (H4)"),
     ("voice", "register"),
     ("opener", "reply opening"),
