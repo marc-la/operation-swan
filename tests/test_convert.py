@@ -99,3 +99,89 @@ def test_other_modes_keep_two_calls():
     gen = Gen([BAD, BAD, BAD])
     text, _, _ = bot.draft_checked(gen, dict(mode="thread_answer"), "sys", "user", [])
     assert text is None and len(gen.calls) == 2 and config.GATE_TRIES.get("thread_answer") is None
+
+
+# ---- G8: a failed draft is requeued or logged as lost, never dropped silently ----
+class Targeter:
+    def __init__(self):
+        self.requeued = []
+
+    def requeue(self, cand, why):
+        cand["tries"] = cand.get("tries", 0) + 1
+        self.requeued.append((cand["post"]["post_id"], why))
+
+
+def test_failed_reply_is_requeued(monkeypatch):
+    logged = []
+    monkeypatch.setattr(bot, "log", logged.append)
+    t, queue = Targeter(), []
+    cand = dict(post=dict(post_id=7, author_id=500))
+    assert bot.lose(t, queue, dict(mode="reply", target=cand["post"], cand=cand), "gate:copied_fact") == "requeued"
+    assert t.requeued == [(7, "gate:copied_fact")] and logged[-1]["act"] == "requeue"
+    # without the candidate (or a targeter without requeue) the loss is logged with its reason
+    assert bot.lose(t, queue, dict(mode="reply", target=cand["post"]), "no_model") == "lost"
+    assert logged[-1] == dict(act="lost", why="no_model", mode="reply", target_post=7, target_author=500, draft_id=None)
+
+
+def test_failed_reply_back_goes_round_the_queue_then_is_lost(monkeypatch):
+    logged = []
+    monkeypatch.setattr(bot, "log", logged.append)
+    queue, job = [], dict(mode="reply_back", target=dict(post_id=8, author_id=501))
+    outcomes = [bot.lose(None, queue, job, "gate:near_duplicate") for _ in range(bot.REPLY_BACK_TRIES)]
+    assert outcomes == ["requeued"] * (bot.REPLY_BACK_TRIES - 1) + ["lost"]
+    assert len(queue) == bot.REPLY_BACK_TRIES - 1
+
+
+# ---- G7: reply-backs (and mentions), resolved only once dealt with; turn cap and thread depth ----
+class Acc:
+    def __init__(self, notes):
+        self.notes, self.resolved = notes, []
+
+    def notifications(self, unresolved, limit):
+        return self.notes
+
+    def resolve_notification(self, nid):
+        self.resolved.append(nid)
+
+
+def poll(posts, notes, monkeypatch, **kw):
+    import types
+    monkeypatch.setattr(bot, "log", lambda rec: None)
+    acc = Acc(notes)
+
+    def get_post(pid):
+        p = posts[pid]
+        if isinstance(p, Exception):
+            raise p
+        return p
+
+    accounts = types.SimpleNamespace(voices=lambda: [dict(username="v0")], session=lambda rec: acc)
+    return bot.reply_back_jobs(types.SimpleNamespace(get_post=get_post), accounts, None, **kw), acc
+
+
+def note(nid, pid, kind="reply"):
+    return dict(kind=kind, post=dict(post_id=pid), notification_id=nid)
+
+
+def test_mentions_are_answered_and_failed_reads_stay_unresolved(monkeypatch):
+    import capturethenarrative as ctn
+    posts = {1: dict(post_id=1, author_id=500, body="what does @lani think?"),
+             2: ctn.APIError("GET", "/posts/2", 503, "busy"), 3: ctn.APIError("GET", "/posts/3", 404, "gone"),
+             4: dict(post_id=4, author_id=9000, reply_to_post_id=900, body="a team bot")}
+    jobs, acc = poll(posts, [note(11, 1, "mention"), note(12, 2), note(13, 3), note(14, 4)], monkeypatch)
+    assert [(j["target"]["post_id"], j["via"], j["our_text"]) for j in jobs] == [(1, "mention", "")]
+    assert acc.resolved == [11, 13, 14], "a 503 stays unresolved for the next poll"
+    assert "mentioned you" in bot.content.reply_back_prompt("", "what does @lani think?")
+
+
+def test_turn_cap_and_deep_threads(monkeypatch):
+    import time
+    chain = {900 + i: dict(post_id=900 + i, author_id=500, reply_to_post_id=899 + i if i else None) for i in range(10)}
+    posts = {**chain, 1: dict(post_id=1, author_id=500, reply_to_post_id=901, body="fair, but"),
+             2: dict(post_id=2, author_id=502, reply_to_post_id=909, body="deep down"),
+             3: dict(post_id=3, author_id=503, reply_to_post_id=901, body="third time")}
+    now = time.time()
+    turns = {"503": [now - 60, now - 120, now - 180]}
+    jobs, acc = poll(posts, [note(11, 1), note(12, 2), note(13, 3)], monkeypatch, turns=turns)
+    assert [j["target"]["post_id"] for j in jobs] == [1] and acc.resolved == [11, 12, 13]
+    assert bot.turns_left({"503": [now - 3600] * 3}, 503), "an old session doesn't count"

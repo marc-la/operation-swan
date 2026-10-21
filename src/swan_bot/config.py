@@ -153,6 +153,12 @@ FOLLOWUP_MAX_READS = 600               # per run (every 30 min); the read budget
 # and then repairs with the exact problem. A model that failed twice is left out of the next call (Kimi -> GLM-5 ->
 # the next in the chain). Code fixes (quality.fix: trim, drop a sentence) cost no call. Other modes: 2.
 GATE_TRIES = {"reply": 4, "reply_back": 4, "second_voice": 3}
+# G7 conversation turns: a citizen who answers us is looked for this often (was 5 min), and gets our reply-backs at
+# most this many times in one session, never once their reply sits this deep in a thread (citizens stop there).
+NOTIF_EVERY_S = 60
+TURNS_PER_SESSION = 3
+TURN_SESSION_S = 30 * 60
+THREAD_MAX_DEPTH = 8
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 

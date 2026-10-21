@@ -28,6 +28,8 @@ from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
 
+REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3)
+
 
 def now_iso():
     return dt.datetime.now(dt.timezone.utc).isoformat()
@@ -184,33 +186,78 @@ class Accounts:
         return next((r for r in self.voices() if r["persona"] == key), None)
 
 
-def reply_back_jobs(social, accounts, targeter, limit=3, roots=None):
-    """Citizens who replied to our posts. Reads at most `limit` replies; only those are marked resolved.
-    roots: only replies under these posts of ours (our amplified posts), the rest are resolved and skipped."""
+def thread_depth(social, post, cap):
+    """How many posts sit above `post` in its thread, counted up to `cap` (one read per level, stopping there)."""
+    depth, parent = 0, post.get("reply_to_post_id")
+    while parent and depth < cap:
+        depth += 1
+        parent = social.get_post(parent).get("reply_to_post_id")
+    return depth
+
+
+def turns_left(turns, citizen, now=None):
+    """Our reply-backs to this citizen may continue: fewer than TURNS_PER_SESSION in the last TURN_SESSION_S."""
+    now = time.time() if now is None else now
+    return sum(now - t < config.TURN_SESSION_S for t in (turns or {}).get(str(citizen), [])) < config.TURNS_PER_SESSION
+
+
+def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=None, turns=None, replied=()):
+    """Citizens who replied to us or mentioned one of our voices (todo/20 G7). Reads at most `limit` jobs' worth.
+    A notification is resolved once it has been dealt with: queued, or skipped for a reason (logged). A read that
+    fails for a moment (5xx, rate limit) leaves it unresolved for the next poll; 403/404/410 resolve it.
+    roots: only replies under these posts of ours (our amplified posts), the rest are resolved and skipped.
+    turns: {citizen id: [times of our reply-backs]} for the session cap; replied: posts we already answered."""
     jobs = []
     for rec in accounts.voices():
         if len(jobs) >= limit:
             break
         try:
             acc = accounts.session(rec)
-            for n in acc.notifications(unresolved=True, limit=10):
-                if len(jobs) >= limit:
-                    break
-                try:
-                    if n.get("kind") != "reply":
-                        continue
-                    theirs = social.get_post(n["post"]["post_id"])
-                    if not targeter.is_citizen(theirs["author_id"]) or not theirs.get("reply_to_post_id"):
-                        continue
-                    if roots is not None and theirs["reply_to_post_id"] not in roots \
-                            and theirs.get("root_post_id") not in roots:
-                        continue
-                    ours = social.get_post(theirs["reply_to_post_id"])
-                    jobs.append(dict(mode="reply_back", rec=rec, target=theirs, our_text=ours.get("body") or "", tries=0))
-                finally:
-                    acc.resolve_notification(n["notification_id"])
+            notes = acc.notifications(unresolved=True, limit=10)
         except ctn.APIError as e:
             print("notifications:", rec["username"], e.status, e.message)
+            continue
+        for n in notes:
+            if len(jobs) >= limit:
+                break
+            if n.get("kind") not in ("reply", "mention"):
+                continue
+            try:
+                theirs = social.get_post(n["post"]["post_id"])
+                skip = None
+                if not config.is_citizen(theirs.get("author_id")):
+                    skip = "not_citizen"
+                elif theirs["post_id"] in replied:
+                    skip = "replied"
+                elif n["kind"] == "reply" and not theirs.get("reply_to_post_id"):
+                    skip = "not_a_reply"
+                elif roots is not None and theirs.get("reply_to_post_id") not in roots \
+                        and theirs.get("root_post_id") not in roots:
+                    skip = "not_our_thread"
+                elif not turns_left(turns, theirs["author_id"]):
+                    skip = "turn_cap"
+                ours = None
+                if not skip and theirs.get("reply_to_post_id"):
+                    ours = social.get_post(theirs["reply_to_post_id"])
+                    if thread_depth(social, ours, config.THREAD_MAX_DEPTH) + 1 >= config.THREAD_MAX_DEPTH:
+                        skip = "deep_thread"
+                if skip:
+                    if skip not in ("not_citizen", "not_our_thread"):
+                        log({"act": "skip", "why": skip, "mode": "reply_back", "target_post": theirs["post_id"],
+                             "target_author": theirs.get("author_id"), "username": rec["username"]})
+                else:
+                    jobs.append(dict(mode="reply_back", rec=rec, target=theirs, tries=0, via=n["kind"],
+                                     our_text=(ours or {}).get("body") or ""))
+            except ctn.RateLimited:
+                continue                                  # unresolved: the next poll tries again
+            except ctn.APIError as e:
+                if e.status not in (403, 404, 410):
+                    print("reply-back read:", e.status, e.message)
+                    continue
+            try:
+                acc.resolve_notification(n["notification_id"])
+            except ctn.APIError as e:
+                print("resolve:", rec["username"], e.status, e.message)
     return jobs
 
 
@@ -368,6 +415,7 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
             meta["fixes"] = fixes
             return text, backend, repair
         failed[backend] = failed.get(backend, 0) + 1
+        meta["last_reject"] = why
         if on_reject:
             on_reject(why, raw, backend, repair)
         note = (themes.repair_note(why, job.get("theme")) if why in THEME_REASONS else
@@ -375,6 +423,30 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
         prompt, repair = (repair_prompt(user, raw, note), why) if note else (user, None)
         meta["repairs"] += bool(note)
     return None, backend, repair
+
+
+REPLY_BACK_TRIES = 3          # a citizen who answered us is drafted for this many slots before they're lost (G8)
+
+
+def lose(targeter, queue, job, why):
+    """A job whose draft failed (G8/G12). A reply to a citizen goes back to the targeter (its requeue backs off and
+    logs the expiry); a reply-back goes to the back of the queue, REPLY_BACK_TRIES times; everything else, and
+    anything that can't be put back, is logged as lost with the reason."""
+    mode, target = job["mode"], job.get("target") or {}
+    if mode == "reply" and job.get("cand") and hasattr(targeter, "requeue"):
+        targeter.requeue(job["cand"], why)
+        log({"act": "requeue", "why": why, "mode": mode, "target_post": target.get("post_id"),
+             "draft_id": job.get("draft_id"), "tries": job["cand"].get("tries")})
+        return "requeued"
+    if mode == "reply_back" and job.get("tries", 0) < REPLY_BACK_TRIES - 1:
+        job["tries"] = job.get("tries", 0) + 1
+        queue.append(job)
+        log({"act": "requeue", "why": why, "mode": mode, "target_post": target.get("post_id"),
+             "draft_id": job.get("draft_id"), "tries": job["tries"]})
+        return "requeued"
+    log({"act": "lost", "why": why, "mode": mode, "target_post": target.get("post_id"),
+         "target_author": target.get("author_id"), "draft_id": job.get("draft_id")})
+    return "lost"
 
 
 def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted):
@@ -440,7 +512,7 @@ def main():
     state = load_json(config.STATE_FILE, {})
     for key, default in (("replied_posts", []), ("contacted", {}), ("recent_texts", []), ("second_voice", []),
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
-                         ("theme_log", [])):
+                         ("theme_log", []), ("turns", {})):
         state.setdefault(key, default)
     ledger = themes.Ledger(state["theme_log"])          # the themes we sent, team-wide (saved with the state)
 
@@ -562,8 +634,11 @@ def main():
                 amp.tick()
             if args.live and (config.REPLY_BACK or config.REPLY_BACK_AMP) and time.time() >= next_notif:
                 roots = None if config.REPLY_BACK else {int(k) for k in (state.get("amp_posts") or {})}
-                queue += reply_back_jobs(social, accounts, targeter, roots=roots)
-                next_notif = time.time() + 300
+                queued = {j["target"]["post_id"] for j in queue}
+                queue += [j for j in reply_back_jobs(social, accounts, targeter, roots=roots, turns=state["turns"],
+                                                     replied=set(state["replied_posts"]))
+                          if j["target"]["post_id"] not in queued]
+                next_notif = time.time() + config.NOTIF_EVERY_S
 
             wait = next_write - time.time()
             if wait > 0:
@@ -699,9 +774,9 @@ def main():
                 text, backend, repair = draft_checked(gen, job, system, user, state["recent_texts"][-300:], rejected,
                                                       ledger)
             if not text and mode != "repost":
-                if mode == "reply_back" and job.get("tries", 0) < 2:
-                    job["tries"] = job.get("tries", 0) + 1      # a citizen who answered us is worth another try
-                    queue.append(job)
+                # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
+                lose(targeter, queue, job, "no_model" if backend is None else
+                     f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
                 continue
             # the slogan budget again at send time (a pooled draft waited; another account may have used it since)
             thread = themes.thread_of(target) if target else None
@@ -761,6 +836,10 @@ def main():
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
             if mode in ("reply", "reply_back"):           # either way, don't approach them again for 3 days
                 state["contacted"][str(target["author_id"])] = time.time()
+            if mode == "reply_back":                      # a conversation turn (todo/20: TURNS_PER_SESSION)
+                t_now, who = time.time(), str(target["author_id"])
+                state["turns"] = {k: v for k, v in state["turns"].items() if t_now - v[-1] < config.TURN_SESSION_S}
+                state["turns"][who] = state["turns"].get(who, []) + [t_now]
             if mode == "reply_back":                      # they're talking to us: no extra persona joins in
                 state["second_voice"] = [s for s in state["second_voice"] if s["author"] != target["author_id"]]
             if mode == "reply" and config.SECOND_VOICE:

@@ -873,8 +873,11 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
 
 
 def reply_back_prompt(our_text, their_text):
+    """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7)."""
+    said = (f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
+            if our_text else f"A neighbour mentioned you in this post:\n<<<{their_text[:500]}>>>\n")
     return (
-        f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
+        f"{said}"
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "
         f"and specifically, and stay with your view. If they agreed, start with a short thanks (Cheers, Thanks, "
         f"Ta) or go straight to one small new thing; never start with Spot on, Exactly or Too right. "
