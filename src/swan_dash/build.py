@@ -128,8 +128,8 @@ def sydney_midnight(day):
 
 
 def bundle(rows):
-    """Runs of back-to-back rows of one family (LLM parks, deploys) become one row that opens to show them.
-    rows are newest first; so is each bundle."""
+    """Runs of back-to-back ops rows (LLM parks and deploys: each deploy restarts the bot, which re-parks the models)
+    become one row that opens to show them. rows are newest first; so is each bundle."""
     items = []
     for r in rows:
         last = items[-1] if items else None
@@ -144,17 +144,18 @@ def bundle(rows):
         if g["kind"] != "group":
             continue
         g["id"] = f"g-{g['family']}-{int(g['t'].timestamp())}"
-        g["what"] = f"{'LLM parked' if g['family'] == 'llm' else 'deploys'} ×{len(g['rows'])}"
-        if g["family"] == "llm":                # newest park per model, models with the same reason together
-            newest = {}
-            for r in g["rows"]:
-                newest.setdefault(r["model"], r)
-            by_reason = {}
-            for r in newest.values():
-                by_reason.setdefault(f"{r['why']} until {r['until']}", []).append(r["model"])
-            g["text"] = short(" · ".join(f"{', '.join(ms)}: {why}" for why, ms in by_reason.items()), 200)
-        else:
-            g["text"] = f"latest: {g['rows'][0]['text']}"
+        parks = [r for r in g["rows"] if r.get("model")]
+        deploys = [r for r in g["rows"] if not r.get("model")]
+        g["what"] = f"{'LLM parked' if not deploys else 'deploys' if not parks else 'ops'} ×{len(g['rows'])}"
+        parts = [f"{len(deploys)} deploy{'s' if len(deploys) > 1 else ''} (latest {deploys[0]['text']})"] if deploys else []
+        newest = {}                             # newest park per model, models with the same reason together
+        for r in parks:
+            newest.setdefault(r["model"], r)
+        by_reason = {}
+        for r in newest.values():
+            by_reason.setdefault(f"{r['why']} until {r['until']}", []).append(r["model"])
+        parts += [f"{', '.join(ms)}: {why}" for why, ms in by_reason.items()]
+        g["text"] = short(" · ".join(parts), 220)
     return items
 
 
@@ -281,7 +282,7 @@ def gather(root, now, service):
         elif act == "llm_park":
             u = ts(a.get("until"))
             if u and (u - a["_t"]).total_seconds() >= LONG_PARK_S:
-                rows.append(dict(t=a["_t"], who="", what="LLM parked", kind="event", family="llm",
+                rows.append(dict(t=a["_t"], who="", what="LLM parked", kind="event", family="ops",
                                  model=a.get("model"), why=a.get("why"), until=hm(u),
                                  text=f"{a.get('model')}: {a.get('why')} until {hm(u)}"))
     for e in points:                           # the outcome, interleaved with what we did
@@ -293,7 +294,7 @@ def gather(root, now, service):
             msg = msg.removeprefix("[swan-ec2] ")
             if msg.startswith("deployed"):
                 rows.append(dict(t=ts(t), who="", what="deploy", text=short(msg.removeprefix("deployed ")),
-                                 kind="event", family="deploy"))
+                                 kind="event", family="ops"))
             elif "hidden by the moderator" in msg:          # deploy/healthcheck + swan-watch: a voice lost a post
                 rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="bad"))
             else:
