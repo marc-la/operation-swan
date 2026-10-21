@@ -43,12 +43,12 @@ harvest every 30 min: leads (and ring posts someone else got hidden) with ≥ 10
 - **P(first)** is a guess: 0.9 under 1 h old, 0.6 under 3 h, 0.3 older, ×0.7 when the post is on Trending (more teams see it). Posts over 12 h old aren't reported.
 - **Modes.** *approve* until 10 post rulings are in and ≥ 70% came back inauthentic. If our targets are all bots we expect ~90%: observed rate = 0.1 + 0.8 × (share of our targets that are bots). *auto* after that. It drops back to *approve* and alerts if the rate falls under 70%. *off* when `~/ctn/BLUE_OFF` exists. Account reports file in both approve and auto: they're rule-based and can't lock us.
 - **Refused reports.** 400/404/409 drop that one target. 401 logs in again. Anything else (most likely the 6 h lock or the pending cap) waits 30 min and alerts once. A refused report still costs budget, so we never retry in a loop.
-- **The reporter** is one booster: the lowest-id active one (`config.blue_reporter`, `salote_sails` on 21 Oct). The bot stops using it, and its own drip registration tops the likers back up to 34. That costs one more live account slot: the replacement booster, about 48 of 50 with the team member's own.
+- **The reporter** is one booster: the lowest-id active one (`config.blue_reporter`, `salote_sails` on 21 Oct). The bot stops using it. It would register a replacement booster, but on 21 Oct it was already at its cap of 49 live accounts (15 voices, 33 boosters, the reporter), so the like pool is one smaller (33).
 
 ## 4. What it costs Red (kept small)
 
 - **Write budget: none.** Report routes have their own budget.
-- **Accounts:** one booster leaves the like pool and the bot registers a replacement (one more active slot, one more of the 200 total).
+- **Accounts:** one booster leaves the like pool: 33 likers instead of 34 while the bot is at its live-account cap (otherwise its drip registration replaces it).
 - **Reads:** about 0.6 feed calls a minute of the team's 10 (it backs off when fewer than 4 are left), and under 150 other reads a minute against 300 per endpoint.
 - **Our own exposure is unchanged by this code, but rising.** The organisers are pushing every team into Blue, and our hourly heavy post (one post plus 15–20 thread replies from voices) matches the same two evidence classes. Boosters can't be suspended; voices can. `swan_watch` already takes a voice off amplified posts after 1 hidden post and stops it at 2. Whether to cut thread replies is a Red decision ([todo/18](../../todo/18-trending-entry.md)), not a Blue one.
 - **Upside for Red:** hiding ring posts on Trending frees places there and lowers the cutoff for our amplified posts.
