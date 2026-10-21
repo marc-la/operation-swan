@@ -3,7 +3,8 @@ of main: the EC2 box can't push, and the commit author is the approver (attribut
 
     python scripts/facts_review.py                     # one by one: accept, edit, reject or skip
     python scripts/facts_review.py --list              # open proposals and the pauses that hold now
-    python scripts/facts_review.py --accept 7 --text "..." --note "..."    # reworded; --retire: pause it for good
+    python scripts/facts_review.py --accept 7 --text "..." --note "..."    # contradicted: retired, new key added
+    python scripts/facts_review.py --accept 31 --same-key --note "..."     # only the wording changed: in place
     python scripts/facts_review.py --accept 7 --text "..." --says '\blimited spread\b' --says '\blocal cases\b'
     python scripts/facts_review.py --accept 9 --key polls_latest --frames F1_blank_cheque
     python scripts/facts_review.py --reject 8          # a contradiction: re-affirms the fact (lifts its pause)
@@ -27,7 +28,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from swan_bot import config, factdesk  # noqa: E402
+from swan_bot import config, content, factdesk  # noqa: E402
 from swan_bot import facts as fact_store  # noqa: E402
 
 FACTS = fact_store.FILE
@@ -84,7 +85,9 @@ def show(p):
     head = f"#{p['id']} {p['kind']}"
     if p["kind"] in ("contradiction", "reword"):
         now = fact_store.TABLE.get(p["fact"], {})
-        print(f"{head}  {p['fact']}{'  [paused]' if p.get('paused') else ''}")
+        held = content.requiring(p["fact"]) if p["kind"] == "contradiction" else []
+        print(f"{head}  {p['fact']}{'  [paused]' if p.get('paused') else ''}"
+              + (f"  (stated in: {', '.join(held)})" if held else ""))
         print(f"   now:      {now.get('text')}\n             note: {now.get('note')}")
         if p.get("text"):
             print(f"   suggests: {p['text']}\n             note: {p['note']}")
@@ -187,7 +190,8 @@ def interactive(store):
     for p in opened:
         show(p)
         choices = "[a]ccept [e]dit [r]eject [s]kip [q]uit" + (" [t] retire" if p["kind"] in ("contradiction", "reword")
-                                                             else "")
+                                                             else "") + (" [k] same key" if p["kind"] == "contradiction"
+                                                                         else "")
         c = input(f"{choices}? ").strip().lower()[:1]
         if c == "q":
             break
@@ -197,6 +201,8 @@ def interactive(store):
             decisions.append((p, False, {}))
         elif c == "t" and p["kind"] in ("contradiction", "reword"):
             decisions.append((p, True, {"retire": True}))
+        elif c == "k" and p["kind"] == "contradiction":
+            decisions.append((p, True, {"same_key": True, "note": input("note (Enter keeps it): ").strip() or None}))
         elif c == "e":
             kw = {}
             if p["kind"] == "angle":
@@ -227,6 +233,8 @@ def main():
     ap.add_argument("--frames", help="a new fact's frames, comma-separated")
     ap.add_argument("--says", action="append", help="replace the fact's `says` patterns (repeat; '' for none)")
     ap.add_argument("--retire", action="store_true", help="accept a contradiction by pausing the fact for good")
+    ap.add_argument("--same-key", action="store_true",
+                    help="accept a contradiction in place: the code that requires the fact still holds")
     ap.add_argument("--yes", action="store_true", help="don't ask before rejecting a contradiction")
     ap.add_argument("--local", action="store_true", help="read data/ instead of Mongo")
     args = ap.parse_args()
@@ -239,7 +247,7 @@ def main():
         p = store.proposals().get(pid)
         if not p or p.get("status") != "open":
             raise SystemExit(f"no open proposal #{pid}")
-        kw = dict(text=args.text, note=args.note, key=args.key, retire=args.retire,
+        kw = dict(text=args.text, note=args.note, key=args.key, retire=args.retire, same_key=args.same_key,
                   frames=args.frames.split(",") if args.frames else None,
                   says=[x for x in args.says if x] if args.says is not None else None)
         apply(store, [(p, bool(args.accept), {k: v for k, v in kw.items() if v not in (None, False)})], yes=args.yes)

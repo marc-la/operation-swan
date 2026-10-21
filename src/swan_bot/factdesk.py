@@ -598,14 +598,19 @@ def stamp(now=None):
     return dt.datetime.fromtimestamp(now or time.time(), dt.timezone.utc).replace(microsecond=0)
 
 
-def decide(p, accept, toml_text, text=None, note=None, key=None, frames=None, says=None, retire=False, now=None):
+def decide(p, accept, toml_text, text=None, note=None, key=None, frames=None, says=None, retire=False,
+           same_key=False, now=None):
     """(new facts.toml text, angle line or None, one-line summary) for accepting or rejecting proposal p. text, note,
     key and frames override the proposal's; says replaces the fact's `says` patterns (needed when the new wording
     no longer matches them: then the old claim may belong in false_claims). Raises ValueError if the result would
     not be a valid fact.
-      contradiction / reword  accept: the fact gets the new text and note (retire: status "paused" instead);
-                              reject: a contradiction's fact is re-affirmed as it is (lifts the pause), a reword
-                              changes nothing
+      contradiction           accept: the old fact is retired (status "paused") and the new wording added under a
+                              new key (key, default <fact>_<MMDD>), so the code written for the old fact (its
+                              `requires`: frames, WORLD, rebuttals...) stays out until a human points it at the new
+                              key. same_key: reword in place instead, when that code still holds (only the wording
+                              changed). retire: retire it with no replacement.
+                              reject: the fact is re-affirmed as it is (lifts the pause)
+      reword                  accept: new text and note in place (the fact is still true); reject: nothing
       new_fact                accept: added as active; reject: nothing
       angle                   accept: an "angle ideas" line for docs/06-strategy/frames-and-messengers.md
     Every change to a fact stamps `checked`, which is what lifts a runtime pause once the commit is deployed."""
@@ -637,6 +642,19 @@ def decide(p, accept, toml_text, text=None, note=None, key=None, frames=None, sa
     text, note = text or p.get("text"), note or p.get("note")
     if not text or not note:
         raise ValueError(f"#{p['id']} has no usable suggestion: give the new text and note")
+    if kind == "contradiction" and not same_key:
+        key = key or f"{fact}_{checked:%m%d}"
+        old = tomllib.loads(toml_text)[fact]
+        frames = list(frames if frames is not None else old.get("frames") or
+                      [k for k, f in content.FRAMES.items() if fact in f["facts"] and fact not in f["requires"]])
+        new = toml_add(toml_set(toml_text, fact, status="paused", checked=checked), key,
+                       comment=f"replaces {fact} (contradicted: fact desk proposal {p['id']}), accepted {checked.date()}",
+                       text=text, note=note, status="active", source=src, checked=checked, numbers=[],
+                       says=list(says or []), frames=frames)
+        _valid(new, key)
+        held = content.requiring(fact)
+        return new, None, (f"{fact} retired, {key} added (#{p['id']})" +
+                           (f"; still out until pointed at {key} in content.py: {', '.join(held)}" if held else ""))
     new = toml_set(toml_text, fact, text=text, note=note, source=src, checked=checked,
                    **({"says": list(says)} if says is not None else {}))
     try:

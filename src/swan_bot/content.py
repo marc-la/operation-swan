@@ -444,6 +444,17 @@ LEVERS = {
 LEVER_REQUIRES = {"status_quo": ["free_either_way", "no_end"], "fear_answer": ["first_doses"], "permanence": ["no_end"]}
 
 
+def requiring(key):
+    """What in this file states the fact (its `requires` lists): frames, rebuttals, storylines, levers, rules."""
+    out = [k for k, f in FRAMES.items() if key in f["requires"]]
+    out += [f"rebuttal {i + 1}" for i, (_, _, req) in enumerate(REBUTTALS) if key in req]
+    out += [f"storyline {k}" for k, _, req in STORYLINES if key in req]
+    out += [f"lever {k}" for k, req in LEVER_REQUIRES.items() if key in req]
+    out += ["WORLD"] if any(key in req for _, req, _ in WORLD_PARTS) else []
+    out += ["EXEMPT_NOTE"] if key in EXEMPT_REQUIRES else []
+    return out + (["JAB_RULE"] if key == "first_doses" else [])
+
+
 def live_levers():
     """The levers whose wording states no paused fact, in LEVERS order."""
     return [k for k in LEVERS if fact_store.ok(LEVER_REQUIRES.get(k, ()))]

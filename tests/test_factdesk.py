@@ -260,8 +260,22 @@ def test_toml_set_changes_only_those_lines():
         factdesk.toml_set(TOML, "nope", text="x")
 
 
+def test_a_contradiction_retires_the_fact_and_adds_a_new_key():
+    """The code written for the old fact (F5's gist, the COVID rebuttal...) must not come back with the new wording."""
+    p = prop("contradiction", fact="no_spread", text="H2D2 in Kingstonia: a handful of local cases; spread is limited "
+             "so far.", note="a few local cases; limited spread so far")
+    new, _, summary = factdesk.decide(p, True, TOML, says=[r"\blimited spread\b"], now=time.mktime(
+        (2026, 10, 23, 12, 0, 0, 0, 0, 0)))
+    t = tomllib.loads(new)
+    assert t["no_spread"]["status"] == "paused" and t["no_spread"]["text"] == tomllib.loads(TOML)["no_spread"]["text"]
+    assert t["no_spread_1023"]["text"] == p["text"] and t["no_spread_1023"]["status"] == "active"
+    assert t["no_spread_1023"]["frames"] == ["F12_open_island"]          # F5 requires no_spread: it stays out
+    assert "F5_not_here_yet" in summary and "rebuttal 2" in summary
+    assert not factdesk.problems("no_spread_1023", t["no_spread_1023"])
+
+
 def test_decide_reword_lifts_the_pause_once_committed():
-    p = prop("contradiction", fact="no_spread", text="H2D2 in Kingstonia: a handful of local cases; spread is "
+    p = prop("reword", fact="no_spread", text="H2D2 in Kingstonia: a handful of local cases; spread is "
              "limited so far.", note="a few local cases; limited spread so far")
     with pytest.raises(ValueError, match="false_claims"):                       # the meaning changed: new `says`
         factdesk.decide(p, True, TOML)
@@ -290,6 +304,10 @@ def test_decide_reject_retire_new_fact_and_angle():
     t = tomllib.loads(new)["polls"]
     assert t["text"] == tomllib.loads(TOML)["polls"]["text"]
     assert not fact_store.holds("polls", {"since": "2026-10-21T05:00:00Z"}, tomllib.loads(new))
+    new, _, _ = factdesk.decide(prop("contradiction", fact="bill_failed", text="On 15 Oct the Assembly voted the "
+                                     "bill down, some of the President's own party too.", note="Assembly said no on "
+                                     "15 Oct, some of the President's own party too"), True, TOML, same_key=True)
+    assert tomllib.loads(new)["bill_failed"]["text"].startswith("On 15 Oct") and "bill_failed_" not in new
     new, _, _ = factdesk.decide(prop("contradiction", fact="polls"), True, TOML, retire=True)
     assert tomllib.loads(new)["polls"]["status"] == "paused"
     nf = prop("new_fact", key="polls_latest", text="Latest poll: No 36.2%, Yes 33.8%, unsure 29.5%; within the "
@@ -322,6 +340,8 @@ def test_review_applies_tests_and_records(tmp_path, monkeypatch):
     assert facts.read_text() == TOML and store.proposals()[1]["status"] == "open"          # undone, not recorded
     monkeypatch.setattr(review, "run_tests", lambda: (True, []))
     assert review.apply(store, [(store.proposals()[1], True, {}), (store.proposals()[2], True, {})])
-    assert tomllib.loads(facts.read_text())["polls"]["text"].startswith("Polls: No and Yes close")
+    t = tomllib.loads(facts.read_text())
+    new_key = next(k for k in t if k.startswith("polls_"))
+    assert t["polls"]["status"] == "paused" and t[new_key]["text"].startswith("Polls: No and Yes close")
     assert review.ANGLES_HEADING in angles.read_text() and "every unsure vote" in angles.read_text()
     assert {p["status"] for p in store.proposals().values()} == {"accepted"}
