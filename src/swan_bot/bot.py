@@ -127,7 +127,8 @@ class Accounts:
         """Drip registration: at most one new account per call, 20-40 min apart, never more than MAX_ACCOUNTS."""
         voices_ever = [r for r in self.records if r.get("role", "voice") != "booster"]
         if (len(self.voices()) >= k or len(voices_ever) >= config.MAX_ACCOUNTS
-                or len(self.active()) >= config.MAX_ACTIVE or time.time() < self.next_register):
+                or len(self.active()) + config.swarm_active() >= config.MAX_ACTIVE
+                or time.time() < self.next_register):
             return
         used = {r["persona"] for r in self.records}
         spare = [p for p in content.PERSONAS if p["key"] not in used]

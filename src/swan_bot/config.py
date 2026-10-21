@@ -203,6 +203,34 @@ PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
 # 3.8 and 3.6 Flash are 20 a day each on the bot's free key and shared with the amplified posts (AMP_MODELS).
 FACTDESK_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "openai/gpt-oss-120b", "gemini-3.5-flash-lite")
 
+# ---- swarm (src/swan_bot/swarm.py, docs/04-technical/swarm.md): like + repost other Vote No posts every 5 min ----
+SWARM_ACCOUNTS_FILE = SECRETS / "swarm_accounts.json"   # its own file: the bot process never writes it
+SWARM_STATE_FILE = DATA / "swarm_state.json"
+SWARM_OFF_FILE = ROOT / "SWARM_OFF"  # touch it to pause the swarm (no registrations, likes or reposts)
+SWARM_SIZE = 20                     # lifetime swarm accounts; registration also stops at MAX_ACTIVE (team total)
+SWARM_OWNER = "minhnguyenhoang"     # accountable team member for every swarm account and action
+SWARM_REGISTER_GAP_S = (4 * 60, 9 * 60)  # one registration per run at most, 4-9 min apart
+SWARM_TAGS = {192: "keepkingstoniaopen", 113: "voteno", 193: "choicenotcoercion"}
+SWARM_MAX_AGE_H = 24                # only posts from the last day
+SWARM_LIKERS_PER_POST = (2, 5)      # swarm accounts that like each new qualifying post
+SWARM_LIKES_PER_SCAN = 25           # likes per run (a run every 5 min, so <= 5/min of the team's 30/min)
+SWARM_LIKE_RESERVE = 12             # stop liking when the team's like budget drops below this (amplifier's share)
+SWARM_REPOSTS_PER_SCAN = 2          # reposts share the team's 3/min write route with the bot
+SWARM_WRITE_RESERVE = 2             # repost only while >= this many writes are left in the team budget
+SWARM_LIKE_GAP_S = (3, 9)           # pause between likes inside a run
+SWARM_REPOST_GAP_S = 75             # never two swarm reposts within this many seconds
+
+
+def swarm_active():
+    """Active swarm accounts (read from their own file), so the bot counts them against MAX_ACTIVE."""
+    import json
+    try:
+        recs = json.loads(SWARM_ACCOUNTS_FILE.read_text())
+    except (FileNotFoundError, ValueError):
+        return 0
+    return sum(1 for r in recs if r.get("status", "active") == "active")
+
+
 # ---- experiment arms (swan_bot/experiment.py). The overnight experiments stopped 2026-10-21 (too little data) ----
 PIN = {"reply_mode": "reason_first"}   # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
 # One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).

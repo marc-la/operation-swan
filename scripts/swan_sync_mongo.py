@@ -3,7 +3,7 @@
     python scripts/swan_sync_mongo.py          # run any time; safe to repeat
 
 Collections:
-  accounts   our accounts: username, account_id, persona, owner, status, writes (NO passwords or tokens)
+  accounts   our accounts (bot + swarm): username, account_id, role, persona, owner, status (NO passwords or tokens)
   actions    every live write: mode, persona, frame, target, text, post_id, owner
   contacted  one doc per citizen we've replied to: when, by whom, with which frame
   activity   target refreshes: candidate counts and citizen replies in the news threads in the last hour
@@ -68,6 +68,8 @@ def main():
         print("note added")
 
     accounts = json.loads(config.ACCOUNTS_FILE.read_text()) if config.ACCOUNTS_FILE.exists() else []
+    if config.SWARM_ACCOUNTS_FILE.exists():          # swarm accounts (role "swarm", owner minhnguyenhoang)
+        accounts += json.loads(config.SWARM_ACCOUNTS_FILE.read_text())
     for a in accounts:
         doc = {k: v for k, v in a.items() if k not in SECRET_FIELDS}
         db.accounts.replace_one({"username": a["username"]}, doc, upsert=True)

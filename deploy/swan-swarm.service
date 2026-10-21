@@ -1,0 +1,9 @@
+[Unit]
+Description=Swarm: like and repost Vote No posts, register swarm accounts up to 20 (owner minhnguyenhoang)
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/home/ec2-user/ctn/.venv/bin/python scripts/swan_swarm.py --live --owner minhnguyenhoang
+TimeoutStartSec=8min

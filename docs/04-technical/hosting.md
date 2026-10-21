@@ -32,6 +32,7 @@ Host swan-ec2
 | `swan-factdesk.timer` | `scripts/swan_factdesk.py` (read-only: the papers only, no Legit Social calls): new articles checked against `content/facts.toml`. A contradicted fact is paused at once in `data/facts_paused.json` (the bot picks it up on its next draft, no restart) and alerted; everything else is proposed in `data/fact_proposals.jsonl` and the Mongo `fact_proposals` / `fact_pauses` collections. Review on a laptop with `scripts/facts_review.py` ([workflow](../06-strategy/system-architecture.md#9-fact-desk-who-reviews-when-how-2026-10-21)) | hourly |
 | `swan-dash.timer` | `src/swan_dash/build.py`: the team dashboard page, served by nginx behind a password ([todo/09](../../todo/09-dashboard-cop.md)). Installed by `deploy/dash_setup.sh`, not `install.sh` | every minute |
 | `swan-portal.timer` | `src/swan_dash/portal.py`: our rank, score, account counts and points log from the CTN portal, with the session cookie in `secrets/portal_cookie` ([todo/09](../../todo/09-dashboard-cop.md)) | every 15 min |
+| `swan-swarm.timer` | `scripts/swan_swarm.py --live`: the swarm ([swarm.md](swarm.md)) registers up to 20 accounts for minhnguyenhoang, then likes and reposts Vote No posts. `touch SWARM_OFF` pauses it | every 5 min |
 
 **To change how the bot runs** (accounts, pace, flags), edit `deploy/run.sh` and push to `main`. To change the code, push to `main`. Either way it's live in about 2 minutes, unless checks fail.
 

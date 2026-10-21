@@ -146,7 +146,7 @@ class Amplifier:
     # ---- boosters ----------------------------------------------------------------------------
     def maybe_register_booster(self):
         acc = self.accounts
-        if (len(acc.boosters()) >= self.boosters_target or len(acc.active()) >= config.MAX_ACTIVE
+        if (len(acc.boosters()) >= self.boosters_target or len(acc.active()) + config.swarm_active() >= config.MAX_ACTIVE
                 or len([r for r in acc.records if r.get("role") == "booster"]) >= config.MAX_BOOSTERS
                 or time.time() < self.next_register):
             return
