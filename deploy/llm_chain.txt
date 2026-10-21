@@ -4,6 +4,8 @@
 # A line whose provider has no key in .env is skipped. LLM_CHAIN in .env, if set, overrides this file.
 #
 # Bake-off 2026-10-20 (scripts/llm_compare.py, small samples): flash-lite best and fastest; gpt-oss-120b solid.
+# 2026-10-21 CORRECTION: the Tier 1 upgrade below never happened (email misread); the key is still on the FREE tier
+# (flash-lite 500/day, 3.6 and 3.8 Flash 20/day each). The Tier 1 limits apply only once billing is enabled.
 # 2026-10-20 19:30 Perth: project "capture the narrative" upgraded to Gemini paid Tier 1. Per-day limits there:
 # 3.5 Flash Lite 150K, 3.6 Flash 10K, 3.8 Flash 10K, Gemma 4 31B 14.4K. gemini-3.5-flash is NOT on the Tier 1 list
 # (it 429s after ~1 call), so it's out. At that time only flash-lite answered on our key (3.6: quota 429,

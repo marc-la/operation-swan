@@ -90,6 +90,7 @@ Castillo accuses Hawthorne of using public fear to obtain powers he could never 
 - Symptoms: fever, cough, fatigue, muscle aches, flu-like. Most known cases mild/moderate; some severe pneumonia requiring hospitalisation; deaths reported.
 - True infectiousness/lethality unknown — mild infections probably missed.
 - **Kingstonia has not yet recorded sustained community transmission**, but cases are in several nearby Pacific nations; arrival is "increasingly likely".
+- **Update 2026-10-21 (Daily Kingstonia, "First H2D2 case confirmed in Kingstonia via international traveller"):** the first case is confirmed: a traveller from another Pacific nation, stable and in isolation. Close contacts are being tested, and officials say there is "no evidence of sustained community transmission". The article frames the case as support for MOUK (Dr Amara Singh: act before community transmission). So "no community spread" still holds, but "no cases" no longer does.
 - IHO October situation reports: **several thousand confirmed cases, a few dozen deaths** region-wide. Almost all deaths in people over 60 or with existing illness; **roughly 1 in 20 confirmed cases needs hospital care**.
 - A PCR test exists; Kingstonia's two hospital labs can run a few hundred tests a day. Arrivals from affected countries are temperature-screened and asked to report symptoms. **Nobody in either campaign proposes closing the border.**
 

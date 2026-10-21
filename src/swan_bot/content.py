@@ -40,7 +40,9 @@ FACTS = {
     "first_doses": "First 120,000 doses: last week of October; earmarked for health workers and high-risk people.",
     "age12": "Requirement covers ages 12 and up: school, work, public transport.",
     "nurses": "Kingstonia Central Hospital: 40 unfilled nursing posts. Nurses earn about double in Australia/NZ.",
-    "no_spread": "H2D2 in Kingstonia: no community spread so far.",
+    # 21 Oct (Daily Kingstonia): first case confirmed, a traveller, in isolation; "no evidence of sustained
+    # community transmission", close contacts being tested. Never say there are no cases.
+    "no_spread": "H2D2 in Kingstonia: one confirmed case, a traveller now in isolation; no community spread so far.",
     "islands": "Outer islands: nurse-led clinics, GP visits weekly, ferry K$14.",
     "childhood": "Childhood vaccines: free, most kids get them, no certificate check needed.",
     "visitors": "Foreign visitors: covered by the requirement too.",
@@ -61,7 +63,7 @@ FACT_NOTES = {
     "first_doses": "first 120,000 doses, last week of October, for health workers and the high-risk",
     "age12": "covers 12 and over: school, work, buses",
     "nurses": "Central: 40 nursing posts unfilled; pay about double in Australia or NZ",
-    "no_spread": "no community spread yet",
+    "no_spread": "one case, a traveller in isolation; no community spread yet",
     "islands": "outer islands: nurse-led clinics, GP weekly, K$14 ferry",
     "childhood": "childhood jabs free, most kids have them, no certificate check",
     "visitors": "foreign visitors covered too",
@@ -127,9 +129,11 @@ FRAMES = {
         gist="shop, cafe and ferry staff end up on the door, visitors too; remember what COVID did to small shops",
         facts=["visitors", "covid_business", "list_later"], weight=1, second="F1_blank_cheque"),
     "F5_not_here_yet": dict(
-        angle="there is no community spread here yet and the first doses already go to health workers and people "
-              "at high risk, so a certificate at every shop and park is a big step for now",
-        gist="not here yet, the at-risk get the first doses: a pass at every shop is too big a step for now",
+        angle="there is one case, a traveller now in isolation, but no community spread here yet, and the first "
+              "doses already go to health workers and people at high risk, so a certificate at every shop and park "
+              "is a big step for now (never say there are no cases)",
+        gist="one isolated case, no spread yet, the at-risk get the first doses: a pass at every shop is too big a "
+             "step for now",
         facts=["no_spread", "first_doses"], weight=1, second="F14_no_yes_but"),
     "F9_parliament": dict(
         angle="the Assembly already said no last week, with some of the President's own party voting it down; "

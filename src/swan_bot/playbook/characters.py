@@ -276,7 +276,7 @@ CHARACTERS = {
              ("Wednesday's squall kept every boat in, so he spent the day mending nets on the wharf with Gordon "
               "Pike, arguing about the referendum."),
              ("Read in the paper that the first doses had landed for the hospitals and the rest homes in Kingstonia "
-              "City and Crown Harbour; his turn comes later, and there's still no spread on the island."),
+              "City and Crown Harbour; his turn comes later, and there's still no community spread on the island."),
              ("Saturday market on the thirty-first: a tourist couple buying tuna steaks asked if they'd need papers "
               "at the market under a Yes, and visitors are covered too."),
              ("A Crown Harbour restaurant ordered extra tuna for Regatta Week, and the chef asked on the phone "
