@@ -1,0 +1,101 @@
+"""todo/20: replies that convert. G9 first: a citizen may not be lost to the gate (code fixes, repairs, model switch)."""
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+
+from swan_bot import bot, config, quality  # noqa: E402
+
+# Kimi's drafts that were rejected live on 21 Oct (logs/swan_actions.jsonl on swan-ec2)
+KIMI_404 = ("Aroha's 12 this month, same age your safeguards would need to reach. Medical exemptions are covered, but "
+            "there's no end date, no list of venues, no review built in, just a binding Yes that lets them decide the "
+            "details later. My girl could be turned away at her own school gate with no date when the rule lifts. Do "
+            "you know anyone who's shifted from Yes to No once they saw what's actually on the ballot?")
+AGE_81 = ("Sunset clauses and oversight sound sensible. The question has no end date, no review, and the list of "
+          "venues comes after the vote. Mrs Florence Tuilagi, 81, would need papers for the ferry to see her sister.")
+
+
+def test_too_long_is_trimmed_at_a_sentence_boundary():
+    assert quality.check(KIMI_404, "reply")[1].startswith("length_")
+    cut = quality.fix(KIMI_404, quality.check(KIMI_404, "reply")[1], "reply")
+    assert cut and len(cut) <= quality.LENGTHS["reply"][1] and cut.startswith("Aroha's 12")
+    assert quality.check(cut, "reply")[0]
+
+
+def test_trim_keeps_the_opening_and_the_no():
+    text = ("No end date anywhere in the question. " + "The list of places comes later, after the vote is done. " * 4 +
+            "So I'm voting No.")
+    cut = quality.trim(text, "reply")
+    assert cut.startswith("No end date") and cut.endswith("I'm voting No.") and len(cut) <= 290
+    assert quality.trim("x" * 400 + ".", "reply") is None          # one sentence too long: nothing to cut
+
+
+def test_a_characters_age_is_not_a_statistic():
+    assert quality.check(AGE_81, "reply")[0]
+    assert quality.check("Aroha at 15, still showing papers at the school gate because nothing ends it. I'm voting No.",
+                         "reply")[0]
+    assert quality.unapproved_number("a poll at 87.3% says so") == "87.3%"
+
+
+def test_an_unapproved_number_loses_its_sentence():
+    text = ("The list of places comes after the vote, so a Yes is signing first. 37 venues are already pencilled in. "
+            "That's why I'm voting No.")
+    why = quality.check(text, "reply")[1]
+    assert why == "unapproved_number_37"
+    fixed = quality.fix(text, why, "reply")
+    assert "37" not in fixed and quality.check(fixed, "reply")[0]
+
+
+def test_same_opening_drops_the_first_clause():
+    old = "Medical exemptions are in the plan, but nothing in the question says when it ends."
+    new = ("Medical exemptions are in the plan, but the list of places only comes after the vote, and that's a "
+           "blank cheque for the ferry and the market. I'm voting No.")
+    why = quality.check(new, "reply", recent_texts=[old])[1]
+    assert why == "same_opening"
+    fixed = quality.fix(new, why, "reply")
+    assert fixed.startswith("The list of places") and quality.check(fixed, "reply", recent_texts=[old])[0]
+
+
+def test_short_reply_passes_when_it_says_no():
+    assert quality.check("No end date in the question, so I'm voting No.", "reply")[1].startswith("length_")
+    assert quality.check("No end date anywhere in the question, so I'm voting No on it.", "reply")[0]
+
+
+class Gen:
+    """Answers each call from a list of drafts and records which models it was allowed."""
+    chain = [("bedrock", "moonshotai.kimi-k2.5"), ("bedrock", "zai.glm-5"), ("gemini", "gemini-3.8-flash")]
+
+    def __init__(self, drafts):
+        self.drafts, self.calls = list(drafts), []
+
+    def complete(self, system, user, models=None, **kw):
+        self.calls.append((models, user))
+        allowed = [m for _, m in self.chain if not models or m in models]
+        return self.drafts.pop(0), allowed[0]
+
+
+BAD = "I hear you, and the list of places only comes after the vote, which is the whole trouble with a Yes."  # no code fix
+
+
+def test_reply_gets_three_repairs_and_switches_model(monkeypatch):
+    gen = Gen([BAD, BAD, BAD, "No end date anywhere in the question, and nobody can say which places count. I'm voting No."])
+    job = dict(mode="reply", target=dict(body="only if there is an end date"))
+    rejects = []
+    text, backend, repair = bot.draft_checked(gen, job, "sys", "user", [], on_reject=lambda *a: rejects.append(a))
+    assert text and backend == "zai.glm-5" and len(gen.calls) == 4 and len(rejects) == 3
+    assert "moonshotai.kimi-k2.5" not in gen.calls[2][0]               # Kimi failed twice: left out after that
+    assert "Cut «I hear you»" in gen.calls[1][1]                          # the repair names the exact problem
+    assert job["meta"]["llm_calls"] == 4 and job["meta"]["repairs"] == 3
+
+
+def test_a_long_draft_costs_one_call(monkeypatch):
+    gen = Gen([KIMI_404])
+    job = dict(mode="reply", target=dict(body="safeguards first"))
+    text, _, _ = bot.draft_checked(gen, job, "sys", "user", [])
+    assert text and len(gen.calls) == 1 and job["meta"]["fixes"] == ["length"]
+
+
+def test_other_modes_keep_two_calls():
+    gen = Gen([BAD, BAD, BAD])
+    text, _, _ = bot.draft_checked(gen, dict(mode="thread_answer"), "sys", "user", [])
+    assert text is None and len(gen.calls) == 2 and config.GATE_TRIES.get("thread_answer") is None

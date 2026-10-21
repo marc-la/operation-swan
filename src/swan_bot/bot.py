@@ -309,14 +309,40 @@ def repair_prompt(user, raw, note):
             f"the rest. Output only the fixed text.")
 
 
-def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=None):
-    """Draft and gate, two calls at most: quality.check, then the theme check (themes.draft_problem). A reject the
-    gate can name a fix for (quality / themes repair_note) sends the draft back with that fix (the smallest edit);
-    any other reject gets a fresh draft. Returns (text, backend, repair):
-    text is None when both failed, backend None when no model answered, repair the reject reason the last draft
-    was repaired from. on_reject(why, raw, backend, repair) is called for each reject."""
+THEME_REASONS = {"unplanned_slogan", "slogan_missing", "theme_without_reason", "theme_echo_repeat"}   # themes.draft_problem
+
+
+def gate(raw, job, user, recent_texts, ledger=None):
+    """(text, why, fixes): quality.check, the code fixes for what it rejects (quality.fix, at most 3, no LLM call),
+    then the theme check. text is None when the draft still fails; fixes names the fixes that were applied."""
     mode, meta = job["mode"], job.get("meta") or {}
-    target_text = (job.get("target") or {}).get("body") or ""
+    kw = dict(prompt_text=user, target_text=(job.get("target") or {}).get("body") or "",
+              wants=job.get("wants") or (), closing_question=meta.get("closing_question", True))
+    draft, fixes = raw, []
+    text, why = quality.check(draft, mode, recent_texts, **kw)
+    while why and len(fixes) < 3:
+        fixed = quality.fix(draft, why, mode)
+        if not fixed or fixed == draft:
+            break
+        fixes.append(why.split("_")[0] if why.startswith(("length_", "unapproved_")) else why)
+        draft = fixed
+        text, why = quality.check(draft, mode, recent_texts, **kw)
+    theme_why = text and themes.draft_problem(text, job.get("theme"), mode, ledger)
+    if theme_why:
+        return None, theme_why, fixes
+    return text, why, fixes
+
+
+def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=None):
+    """Draft and gate (todo/20 G9: a citizen may not be lost to the gate). Each draft goes through gate(): the quality
+    check and the code fixes, then the theme check. A draft that still fails goes back to the model with the exact
+    problem (quality / themes repair_note; a fresh draft when there is no note), up to config.GATE_TRIES calls for
+    the mode (2 otherwise). A model that failed twice is left out of the calls after that. Returns (text, backend,
+    repair): text is None when every call failed, backend None when no model answered, repair the reject reason the
+    last draft was repaired from. on_reject(why, raw, backend, repair) is called for each reject. job["meta"] gets
+    llm_calls, repairs and fixes."""
+    mode = job["mode"]
+    meta = job.setdefault("meta", {})
     prompt, repair, backend = user, None, None
     if job.get("amp") or mode in config.STRONG_MODES:          # our best content and where minds change
         models = config.AMP_MODELS
@@ -324,26 +350,30 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
         models = [m for _, m in getattr(gen, "chain", ()) if m not in config.LLM_PRICES]
     else:
         models = None
-    for _ in range(2):
+    failed = {}                                                 # model -> rejected drafts this job
+    meta.update(llm_calls=0, repairs=0, fixes=[])
+    for _ in range(config.GATE_TRIES.get(mode, 2)):
+        tired = {m for m, n in failed.items() if n >= 2}
+        use = [m for m in (models or [m for _, m in getattr(gen, "chain", ())]) if m not in tired] if tired else models
         raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
-                                    models=models, priority=bool(job.get("amp")))
-        if raw is None and models:                             # out of quota: the usual chain
-            models = None
+                                    models=use or models, priority=bool(job.get("amp")))
+        if raw is None and use:                                 # out of quota: the usual chain
             raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
                                         priority=bool(job.get("amp")))
         if raw is None:
             break
-        text, why = quality.check(raw, mode, recent_texts, prompt_text=user, target_text=target_text,
-                                  wants=job.get("wants") or (), closing_question=meta.get("closing_question", True))
-        theme_why = text and themes.draft_problem(text, job.get("theme"), mode, ledger)
-        if text and not theme_why:
+        meta["llm_calls"] += 1
+        text, why, fixes = gate(raw, job, user, recent_texts, ledger)
+        if text:
+            meta["fixes"] = fixes
             return text, backend, repair
-        why = theme_why or why
+        failed[backend] = failed.get(backend, 0) + 1
         if on_reject:
             on_reject(why, raw, backend, repair)
-        note = (themes.repair_note(why, job.get("theme")) if theme_why else
-                quality.repair_note(why, raw, mode, meta.get("tag")))
+        note = (themes.repair_note(why, job.get("theme")) if why in THEME_REASONS else
+                quality.repair_note(why, raw, mode, meta.get("tag"), recent=recent_texts))
         prompt, repair = (repair_prompt(user, raw, note), why) if note else (user, None)
+        meta["repairs"] += bool(note)
     return None, backend, repair
 
 
@@ -767,6 +797,7 @@ def main():
                  **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
                                              "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
                  **{k: meta.get(k) for k in ARMS}, **experiment_fields(target),
+                 "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
                  "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
                  **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})

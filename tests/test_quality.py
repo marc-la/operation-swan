@@ -515,7 +515,8 @@ def test_repair_notes():
     assert quality.repair_note("length_50", "", "reply") is None          # too short: fresh draft
     assert "#VoteNo" in quality.repair_note("too_many_tags", "", "post", "#VoteNo")
     assert quality.repair_note("tag_in_reply", "", "reply") == "Remove every hashtag."
-    assert quality.repair_note("near_duplicate", "", "post") is None
+    # todo/20 G9: a near duplicate gets the exact problem, and the reply it is close to
+    assert "different opening" in quality.repair_note("near_duplicate", "x", "post")
 
 
 def test_spelled_numbers_rejected():

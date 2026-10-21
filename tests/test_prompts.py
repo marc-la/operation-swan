@@ -334,7 +334,10 @@ def test_one_length_and_ending_instruction_per_prompt():
         v = content.second_voice_prompt("not sure, the hospitals scare me", p["frames"][0], [], persona=p)
         for prompt in (u, v):
             assert len(counts.findall(prompt)) == 1, (p["key"], counts.findall(prompt))
-        assert "characters" not in u + v and "one to three" not in s
+        # todo/20 G9 (2026-10-22): one cap in characters as well (Kimi keeps to characters, not word counts)
+        assert u.count("characters") == 1 and f"{content.CHAR_CAP['reply']} characters at most" in u
+        assert v.count("characters") == 1 and f"({content.CHAR_CAP['second_voice']} characters at most)" in v
+        assert "one to three" not in s
 
 
 PULSE = dict(id="abc12345", ts=1_790_000_000.0,

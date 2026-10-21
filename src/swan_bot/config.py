@@ -148,6 +148,12 @@ FOLLOWUP_AT_S = (2 * 3600, 12 * 3600)  # re-read a citizen we replied to this lo
 OUTCOME_AT_S = (3600, 6 * 3600)        # read each of our posts' likes, replies and views this long after
 FOLLOWUP_MAX_READS = 600               # per run (every 30 min); the read budgets are 300/min per endpoint
 
+# ---- todo/20 conversion (replies that change minds; todo/20-replies-that-convert.md) ----
+# G9 (2026-10-22, "we cannot afford a rejection"): LLM calls per draft before it is given up, by mode: the first draft
+# and then repairs with the exact problem. A model that failed twice is left out of the next call (Kimi -> GLM-5 ->
+# the next in the chain). Code fixes (quality.fix: trim, drop a sentence) cost no call. Other modes: 2.
+GATE_TRIES = {"reply": 4, "reply_back": 4, "second_voice": 3}
+
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 

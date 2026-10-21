@@ -134,7 +134,11 @@ ALLOWED_NUMBERS = {
 ALLOWED_PERCENTS = {"35.2", "29", "51.28", "48.72", "9", "12"}
 # a person's age or how long something has gone on in their own story is not a statistic ("her 13-year-old",
 # "at the market 30 years")
-LIFE_SPAN = re.compile(r"\b\d{1,2}(-| )years?(-| )olds?\b|\b\d{1,2} years\b(?! (from|after|before|of))", re.I)
+# 2026-10-22 (todo/20 G9): also an age after a name ("Mrs Tuilagi, 81, would need papers") or "at 15" / "aged 81"
+# (4 of 11 non-length reply rejects on 21 Oct were a character's age)
+LIFE_SPAN = re.compile(r"\b\d{1,2}(-| )years?(-| )olds?\b|\b\d{1,2} years\b(?! (from|after|before|of))|"
+                       r"(?<=[A-Za-z]), \d{1,3}(?=,)|\b(aged|turns?|turning) \d{1,2}\b(?![%\d])|"
+                       r"\bat \d{1,2}(?=[,;!?]|\.(?!\d)| and | or )", re.I)
 # dates already past in the timeline (setting.md): bill introduced 9 Oct, voted down 15 Oct, question confirmed
 # 17 Oct. Not voting logistics; every other day-and-month date still is
 HISTORY_DATES = re.compile(r"\b(9|15|17)(th)? oct(ober)?\b", re.I)
@@ -209,6 +213,7 @@ LOCAL_NAME = re.compile(r"\b(" + "|".join(sorted(map(re.escape, LOCAL_NAMES), ke
     if LOCAL_NAMES else None
 LENGTHS = {"post": (200, 495), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
            "journalist": (90, 290), "thread": (18, 250), "thread_answer": (50, 250)}
+SHORT_OK = 60               # a reply under its kind's floor still passes from here when it states our No (todo/20 G9)
 
 
 def _shingles(text, n=5):
@@ -329,7 +334,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     if any(ord(ch) > 0x2600 for ch in t):        # emoji and other symbols
         return None, "emoji"
     lo, hi = LENGTHS[kind]
-    if not lo <= len(t) <= hi:
+    short_ok = kind != "post" and len(t) >= SHORT_OK and VOTES_NO.search(t)     # todo/20 G9: short but says No
+    if len(t) > hi or (len(t) < lo and not short_ok):
         return None, f"length_{len(t)}"
     if ENDORSES_YES.search(t):
         return None, "endorses_yes"
@@ -377,6 +383,65 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     return t, None
 
 
+# ---- code fixes (todo/20 G9: "we cannot afford a rejection"): a soft failure, or a made-up number, is fixed here with
+# no LLM call when what's left still stands; bot.draft_checked runs the gate again on the result.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def sentences(text):
+    return [s for s in _SENTENCE_END.split(normalise(text)) if s]
+
+
+def trim(text, kind):
+    """text cut at sentence boundaries to fit the kind's cap, or None: the last sentences go first, but never the
+    opening one or one that says we're voting No; what's left must be over the floor and, if the draft said No,
+    still say it."""
+    lo, hi = LENGTHS[kind]
+    parts = sentences(TRAILING_TAGS.sub("", normalise(text)) if kind != "post" else text)
+    keep = [i == 0 or bool(VOTES_NO.search(s)) for i, s in enumerate(parts)]
+    while len(" ".join(parts)) > hi:
+        drop = next((i for i in range(len(parts) - 1, -1, -1) if not keep[i]), None)
+        if drop is None:
+            return None
+        del parts[drop], keep[drop]
+    out = " ".join(parts)
+    return out if len(out) >= min(lo, SHORT_OK) else None
+
+
+def drop_number(text, num, kind):
+    """text without the sentences holding the number `num`, or None when nothing worth sending is left."""
+    bare = num.rstrip(",.%")
+    parts = [s for s in sentences(text) if bare not in {n.rstrip(",.%") for n in NUMBER.findall(s)}]
+    out = " ".join(parts)
+    return out if parts and len(out) >= min(LENGTHS[kind][0], SHORT_OK) else None
+
+
+def drop_first_clause(text):
+    """text without its opening clause (a shared opening is a template fingerprint), or None."""
+    t = normalise(text)
+    m = re.match(r"^[^,;:.!?]{3,70}?(?:[,;:]| -)\s+", t)
+    if m:
+        rest = t[m.end():]
+    else:
+        parts = sentences(t)
+        rest = " ".join(parts[1:]) if len(parts) > 1 else ""
+    rest = re.sub(r"^(and|but|so|or)\s+", "", rest, flags=re.I)
+    return rest[:1].upper() + rest[1:] if len(rest) >= SHORT_OK else None
+
+
+def fix(text, why, kind):
+    """A code fix for a rejected draft (no LLM call), or None when this reason has none or nothing usable is left.
+    Too long -> trim; same opening -> drop the first clause; an unapproved number -> drop its sentence."""
+    why = why or ""
+    if why.startswith("length_") and int(why.split("_")[1]) > LENGTHS[kind][1]:
+        return trim(text, kind)
+    if why == "same_opening":
+        return drop_first_clause(text)
+    if why.startswith("unapproved_number_"):
+        return drop_number(text, why[len("unapproved_number_"):], kind)
+    return None
+
+
 # Repair-on-reject (todo/14): for these reasons the second call sends the draft back with what to fix (the smallest
 # edit), instead of a fresh roll that repeats the failure. Sentence counts, not characters: this model ignores counts.
 # (sentences, words) to cut a too-long draft to; words, because a "cut to 1 sentence" second voice stayed at 316
@@ -385,9 +450,42 @@ REPAIR_LENGTH = {"post": (4, 65), "reply": (2, 40), "second_voice": (2, 35), "jo
                  "reply_back": (2, 30), "thread_answer": (2, 30)}
 
 
-def repair_note(why, raw, kind, tag=None):
-    """What to tell the model to fix in a rejected draft, or None (then the retry is a fresh draft)."""
+def _close_to(raw, recent):
+    body = strip_tag(normalise(raw))
+    best = max(recent or [""], key=lambda old: similar(body, strip_tag(old.strip())))
+    return best if best and similar(body, strip_tag(best.strip())) > 0.25 else None
+
+
+def repair_note(why, raw, kind, tag=None, recent=()):
+    """What to tell the model to fix in a rejected draft, or None (then the retry is a fresh draft). todo/20 G9: every
+    reason a draft fails on in practice has a note, so a retry gets the exact problem, not a fresh roll."""
     why = why or ""
+    if why == "near_duplicate":
+        old = _close_to(raw, recent)
+        return ("This is too close to something we already posted" + (f", which went: «{old[:200]}»" if old else "") +
+                ". Make the same point with a different opening, a different detail and different words.")
+    if why == "same_opening":
+        return "Start with different words: the first four words are the same as something we already posted."
+    if why.startswith("unapproved_number_"):
+        return (f"Remove the number {why[len('unapproved_number_'):].rstrip(',.')}: use no number except the ones you "
+                f"were given, as digits.")
+    if why == "not_specific":
+        return "Name the exact thing they raised, in a few of their own words, or one of your facts."
+    if why == "parrots_target":
+        return "Don't repeat their words back to them: say it in your own words."
+    if why == "rhetorical_question":
+        return "Replace the rhetorical question with a plain statement, or a question they can answer from their own life."
+    if why == "hedges_no":
+        return "Say plainly that you're voting No, with no hedging."
+    if why in ("wrong_claim", "false_claim") or why.startswith("paused_fact_"):
+        return ("Remove the claim that isn't true: medical exemptions are in the plan, the certificate is separate from "
+                "the ID card, and nobody has had the H2D2 jab yet. Keep the rest.")
+    if why == "wrong_logistics":
+        return "Remove any day or date and anything about how, when or where to vote. Keep the rest."
+    if why == "emoji":
+        return "Remove the emoji and symbols."
+    if why == "llm_artefact":
+        return "Output only the reply itself: no label, no preface, no notes."
     if why.startswith("length_") and kind in REPAIR_LENGTH:
         n = int(why.split("_")[1])
         if n <= LENGTHS[kind][1]:

@@ -797,6 +797,11 @@ REPLY_RULES = (
 )
 
 
+# todo/20 G9 (2026-10-22): the cap in characters as well as words. Kimi K2.5 keeps to characters, not word counts: 47
+# of its 64 rejects on 21 Oct were too long (306-668 characters against quality.LENGTHS' 290). Under the gate's cap.
+CHAR_CAP = {"reply": 260, "second_voice": 240}
+
+
 EXEMPT_NOTE = ("They mention exemptions: medical exemptions ARE in the plan, so never lump exemptions in with what's "
                "missing. Say exemptions are covered, then name what isn't (an end date, the list of places, any review).\n")
 EXEMPT_REQUIRES = ["exemptions", "no_end", "list_later"]
@@ -841,7 +846,8 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         reb = f"Note: {reb}\n" if reb else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
-        f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} words. "
+        f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} words, "
+        f"{CHAR_CAP['reply']} characters at most in all. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
         f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}{experiment.ASK_KINDS[ask_kind]} "
         f"{_reply_voice(persona)}{REPLY_RULES}"
@@ -859,7 +865,8 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
         f"Someone else has already replied to them. Add a different angle, as yourself, in {sentences} short "
-        f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} words: {FRAMES[frame_key]['gist']}. "
+        f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} words ({CHAR_CAP['second_voice']} "
+        f"characters at most): {FRAMES[frame_key]['gist']}. "
         f"{opener} Make it land through this: {LEVERS[lever]} Don't mention the other reply or repeat its argument. "
         f"{_reply_voice(persona)}{REPLY_RULES}"
     )
