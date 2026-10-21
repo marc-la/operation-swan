@@ -32,7 +32,7 @@ def pause(tmp_path, monkeypatch):
     yield go
     monkeypatch.undo()
     fact_store.refresh(force=True)
-    assert not fact_store.PAUSED
+    assert not fact_store.pauses()
 
 
 # ---- the file -----------------------------------------------------------------------------------------------------
@@ -55,6 +55,7 @@ def test_validator_rejects_broken_edits():
                 dict(good, note="Marina Castillo says so")):
         assert factdesk.problems("no_spread", bad), bad
     assert factdesk.problems("No Spread", good)
+    assert factdesk.problems("no_spread", dict(good, note="one confirmed case, a traveller now in isolation"))
 
 
 def test_every_key_the_code_names_exists():
@@ -73,7 +74,8 @@ def test_every_key_the_code_names_exists():
 
 
 def test_notes_and_texts_cover_the_same_facts():
-    assert set(content.FACT_NOTES) == set(content.FACTS) == set(fact_store.TABLE)
+    active = {k for k, f in fact_store.TABLE.items() if f["status"] == "active"}
+    assert set(content.FACT_NOTES) == set(content.FACTS) == active
     assert content.FACTS is fact_store.TEXTS and content.FACT_NOTES is fact_store.NOTES
 
 
@@ -200,7 +202,8 @@ def test_every_frame_paused_is_a_named_error(pause):
 
 
 def test_no_pause_means_everything_is_live():
-    assert not fact_store.PAUSED and content.live_frames() == list(content.FRAMES)
+    assert not fact_store.pauses() and content.live_frames() == list(content.FRAMES)
+    assert set(fact_store.PAUSED) == {k for k, f in fact_store.TABLE.items() if f["status"] != "active"}
     assert content.world() == content.WORLD and content.live_levers() == list(content.LEVERS)
 
 

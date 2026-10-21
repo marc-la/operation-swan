@@ -117,7 +117,7 @@ FRAMES = {
         facts=["no_spread", "first_doses"],
         requires=["no_spread", "first_doses"], weight=1, second="F14_no_yes_but"),
     "F9_parliament": dict(
-        angle="the Assembly already said no last week, with some of the President's own party voting it down; "
+        angle="the Assembly already said no on 15 Oct, with some of the President's own party voting it down; "
               "this isn't a party thing, plenty of people who voted Hawthorne are voting No",
         gist="the Assembly already said no, the President's own people too; not a party thing",
         facts=["bill_failed", "no_binds"],
@@ -414,7 +414,7 @@ STYLE_RULES = (
 WORLD_PARTS = [
     ("Background (don't restate it): Kingstonia votes in a binding referendum on requiring proof of H2D2 (Dolphin "
      "Flu) vaccination to enter public spaces.", [], ""),
-    (" The polls are level and the unsure will decide it.", ["polls"], ""),
+    (" The latest poll has No narrowly ahead, within the margin, and the unsure will decide it.", ["polls_1021"], ""),
     (" Most who lean Yes are afraid, after what COVID did to the hospitals; a No keeps life as it is, with the jab "
      "free either way.", ["free_either_way"], " Most who lean Yes are afraid, after what COVID did to the hospitals."),
 ]

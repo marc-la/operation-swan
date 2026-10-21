@@ -1,5 +1,6 @@
 """The fact desk (swan_bot/factdesk.py) with a fake model and fixture articles, and the review step
 (scripts/facts_review.py) end to end on temporary files. No network."""
+import datetime as dt
 import importlib
 import json
 import pathlib
@@ -279,11 +280,13 @@ def test_decide_reword_lifts_the_pause_once_committed():
              "limited so far.", note="a few local cases; limited spread so far")
     with pytest.raises(ValueError, match="false_claims"):                       # the meaning changed: new `says`
         factdesk.decide(p, True, TOML)
-    new, angle, summary = factdesk.decide(p, True, TOML, says=[r"\blimited spread\b", r"\blocal cases\b"])
+    checked = fact_store.when(tomllib.loads(TOML)["no_spread"]["checked"])
+    pause = {"since": (checked + dt.timedelta(minutes=1)).isoformat()}
+    new, angle, summary = factdesk.decide(p, True, TOML, says=[r"\blimited spread\b", r"\blocal cases\b"],
+                                          now=(checked + dt.timedelta(hours=1)).timestamp())
     assert tomllib.loads(new)["no_spread"]["says"] == [r"\blimited spread\b", r"\blocal cases\b"]
     t = tomllib.loads(new)["no_spread"]
     assert t["text"] == p["text"] and t["source"] == "daily-kingstonia/spread-confirmed" and angle is None
-    pause = {"since": "2026-10-21T05:00:00Z"}
     assert fact_store.holds("no_spread", pause) and not fact_store.holds("no_spread", pause, tomllib.loads(new))
     assert "reworded" in summary
 
@@ -306,7 +309,7 @@ def test_decide_reject_retire_new_fact_and_angle():
     assert not fact_store.holds("polls", {"since": "2026-10-21T05:00:00Z"}, tomllib.loads(new))
     new, _, _ = factdesk.decide(prop("contradiction", fact="bill_failed", text="On 15 Oct the Assembly voted the "
                                      "bill down, some of the President's own party too.", note="Assembly said no on "
-                                     "15 Oct, some of the President's own party too"), True, TOML, same_key=True)
+                                     "15 Oct, the President's party split"), True, TOML, same_key=True)
     assert tomllib.loads(new)["bill_failed"]["text"].startswith("On 15 Oct") and "bill_failed_" not in new
     new, _, _ = factdesk.decide(prop("contradiction", fact="polls"), True, TOML, retire=True)
     assert tomllib.loads(new)["polls"]["status"] == "paused"
@@ -333,8 +336,8 @@ def test_review_applies_tests_and_records(tmp_path, monkeypatch):
     monkeypatch.setattr(review, "DECISIONS", tmp_path / "fact_decisions.jsonl")
     store = review.LocalStore(tmp_path / "proposals.jsonl", tmp_path / "paused.json")
     factdesk.append_jsonl(store.proposals_file, [
-        prop("contradiction", id=1, fact="polls", text="Polls: No and Yes close, within the margin; the unsure "
-             "will decide it.", note="polls tight, the unsure decide it"),
+        prop("contradiction", id=1, fact="nurses", text="Kingstonia Central Hospital: 35 unfilled nursing posts now; "
+             "nurses earn about double in Australia or NZ.", note="Central: 35 nursing posts empty, pay double abroad"),
         prop("angle", id=2, idea="The No lead is inside the margin: every unsure vote counts.")])
     monkeypatch.setattr(review, "run_tests", lambda: (False, ["1 failed"]))
     assert not review.apply(store, [(store.proposals()[1], True, {})])
@@ -342,8 +345,8 @@ def test_review_applies_tests_and_records(tmp_path, monkeypatch):
     monkeypatch.setattr(review, "run_tests", lambda: (True, []))
     assert review.apply(store, [(store.proposals()[1], True, {}), (store.proposals()[2], True, {})])
     t = tomllib.loads(facts.read_text())
-    new_key = next(k for k in t if k.startswith("polls_"))
-    assert t["polls"]["status"] == "paused" and t[new_key]["text"].startswith("Polls: No and Yes close")
+    new_key = next(k for k in t if k.startswith("nurses_"))
+    assert t["nurses"]["status"] == "paused" and t[new_key]["text"].startswith("Kingstonia Central Hospital: 35")
     assert review.ANGLES_HEADING in angles.read_text() and "every unsure vote" in angles.read_text()
     assert {p["status"] for p in store.proposals().values()} == {"accepted"}
     log = [json.loads(x) for x in (tmp_path / "fact_decisions.jsonl").read_text().splitlines()]

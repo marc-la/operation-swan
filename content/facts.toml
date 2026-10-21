@@ -27,11 +27,11 @@ false_claims = [
 ]
 
 [list_later]
-text = "Designated public spaces: list set by regulation after the vote; not published yet."
-note = "venue list: decided after the vote, by regulation; unpublished"
+text = "Designated public spaces: set by regulation; the government says the full list won't be published until after the result."
+note = "venue list: government says it won't be published until after the vote"
 status = "active"
-source = "setting.md"
-checked = 2026-10-21
+source = "daily-kingstonia/tourism-operators-demand-clarity-on-public-space-definitions-ahead-of-referendum"
+checked = 2026-10-21T08:26:06+00:00
 numbers = []
 says = [
     '\b(the|a|no|that|this|any|venue|venues|spaces?|places?) list\b',
@@ -141,11 +141,11 @@ says = [
 # 21 Oct (Daily Kingstonia): first case confirmed, a traveller, in isolation; "no evidence of sustained community
 # transmission", close contacts being tested. Never say there are no cases (false_claims above).
 [no_spread]
-text = "H2D2 in Kingstonia: one confirmed case, a traveller now in isolation; no community spread so far."
-note = "one case, a traveller in isolation; no community spread yet"
+text = "H2D2 in Kingstonia: one confirmed case, a traveller now in isolation; no evidence of sustained community transmission."
+note = "one case, a traveller in isolation; no sign of community spread"
 status = "active"
 source = "daily-kingstonia/first-h2d2-case-confirmed-in-kingstonia-via-international-traveller"
-checked = 2026-10-21
+checked = 2026-10-21T08:26:06+00:00
 numbers = []
 says = [
     '\bno (\w+ ){0,2}(spread|transmission)\b',
@@ -227,11 +227,11 @@ numbers = []
 says = ['\b(fresh|new|another) referendum\b', '\b(life|term) of (this|the) assembly\b', '\bassembly term\b']
 
 [bill_failed]
-text = "Last week: Assembly voted the bill down; several of the President's own People's Alliance members joined the Democratic-Republicans."
-note = "Assembly voted the bill down last week, some of the President's own party too"
+text = "On 15 Oct the Assembly voted the bill down; several of the President's own People's Alliance members joined the Democratic-Republicans."
+note = "Assembly voted the bill down on 15 Oct, some of the President's own party too"
 status = "active"
-source = "setting.md"
-checked = 2026-10-21
+source = "kingstonia-herald/referendum-campaign-begins-as-nation-splits-over-h2d2-mandates"
+checked = 2026-10-21T08:26:06+00:00
 numbers = []
 says = [
     '\bassembly\b[^.?!]{0,40}\b(voted|threw|binned|said no|down|rejected|couldn.?t|wouldn.?t)',
@@ -245,8 +245,129 @@ says = [
 [polls]
 text = "Polls: Yes and No level at 35.2% each, 29% unsure; the unsure will decide it."
 note = "polls level, the unsure decide it"
-status = "active"
+status = "paused"
 source = "setting.md"
-checked = 2026-10-21
+checked = 2026-10-21T08:26:06+00:00
 numbers = []
-says = ['\bpolls? (are |is )?(level|tied|even|neck and neck)\b', '\bdead heat\b', '\b35\.2\b', '\bthe unsure (will )?decide\b']
+says = ["\\bpolls? (are |is )?(level|tied|even|neck and neck)\\b", "\\bdead heat\\b", "\\b35\\.2\\b"]
+
+# replaces polls (contradicted: fact desk proposal 7), accepted 2026-10-21
+[polls_1021]
+text = "Polls (latest): No 36.2%, Yes 33.8%, 29.5% unsure; No narrowly ahead, within the margin; the unsure will decide it."
+note = "No just ahead, inside the margin; the unsure decide it"
+status = "active"
+source = "daily-kingstonia/no-campaign-gains-slight-edge-in-new-referendum-polling"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = ["\\bnarrowly ahead\\b", "\\b36\\.2\\b", "\\bthe unsure (will )?decide\\b"]
+frames = []
+
+# fact desk proposal 2, accepted 2026-10-21
+[ferry_reduction]
+text = "Ferry service to outer islands reduced for up to two weeks due to urgent engine repairs, with priority given to residents and essential supplies."
+note = "outer-island ferry cut back for up to two weeks; residents and supplies first"
+status = "active"
+source = "daily-kingstonia/outer-island-ferry-service-reduced-as-engine-repairs-begin"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = ["F6_islands", "F7_livelihoods"]
+
+# fact desk proposal 3, accepted 2026-10-21
+[first_case_confirmed]
+text = "The first H2D2 case in Kingstonia is an imported traveller currently in isolation, with no evidence of community transmission."
+note = "imported case"
+status = "active"
+source = "daily-kingstonia/first-h2d2-case-confirmed-in-kingstonia-via-international-traveller"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = []
+
+# fact desk proposal 9, accepted 2026-10-21
+[definitely_no_rises]
+text = "Definitely No: 19.3%; definitely Yes: 11.7%, down from 16.0% in the previous poll."
+note = "definite No 19.3% vs definite Yes 11.7% (was 16.0%)"
+status = "active"
+source = "daily-kingstonia/no-campaign-gains-slight-edge-in-new-referendum-polling"
+checked = 2026-10-21T08:26:06+00:00
+numbers = ["19.3%", "11.7%", "16.0%"]
+says = []
+frames = ["F1_blank_cheque", "F2_no_end"]
+
+# fact desk proposal 10, accepted 2026-10-21
+[overseas_certs_accepted]
+text = "Foreign visitors: covered by requirement, but recognised overseas vaccination certificates accepted to facilitate travel."
+note = "visitors covered too; recognised overseas certificates accepted"
+status = "active"
+source = "daily-kingstonia/tourism-operators-demand-clarity-on-public-space-definitions-ahead-of-referendum"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = ["F7_livelihoods"]
+
+# fact desk proposal 15, accepted 2026-10-21
+[president_supports_yes]
+text = "President Victor Hawthorne has publicly signaled support for a Yes vote, aiming to implement access requirements."
+note = "President Hawthorne backs Yes"
+status = "active"
+source = "kingstonia-herald/advisory-panel-finds-h2d2-vaccine-shows-strong-immune-response-despite-data-gaps"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = ["F9_parliament"]
+
+# fact desk proposal 19, accepted 2026-10-21
+[referendum_binding]
+text = "Referendum result is binding; Yes allows phased regulation, No blocks requirements for this Assembly term."
+note = "binding: a Yes is phased in by regulation; a No blocks it this Assembly term"
+status = "active"
+source = "kingstonia-herald/hawthorne-commits-to-yes-vote-despite-assembly-deadlock"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = []
+
+# fact desk proposal 20, accepted 2026-10-21
+[bill_defeat_details]
+text = "Vaccination-access bill introduced 9 October, failed 15 October; People's Alliance members joined Democratic-Republicans."
+note = "bill brought in 9 Oct, voted down 15 Oct; some of the President's party joined the D-Rs"
+status = "active"
+source = "daily-kingstonia/hawthorne-declares-support-for-vaccine-mandate-despite-party-split"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = ["F9_parliament"]
+
+# fact desk proposal 24, accepted 2026-10-21
+[reef_recovery]
+text = "Recent reef survey shows improved coral cover at multiple northern reef sites."
+note = "Coral recovery noted"
+status = "active"
+source = "daily-kingstonia/reef-survey-shows-coral-recovery-amid-rising-erosion-concerns"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = []
+
+# fact desk proposal 25, accepted 2026-10-21
+[coastal_erosion]
+text = "Three exposed coastal communities are experiencing worsening shoreline loss."
+note = "Erosion affecting three communities"
+status = "active"
+source = "daily-kingstonia/reef-survey-shows-coral-recovery-amid-rising-erosion-concerns"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = []
+
+# fact desk proposal 32, accepted 2026-10-21
+[mouk_campaign]
+text = "The Medical Officers Union of Kingstonia is leading the Yes campaign for the referendum."
+note = "Yes campaign lead."
+status = "active"
+source = "daily-kingstonia/formal-campaign-opens-for-h2d2-vaccination-referendum"
+checked = 2026-10-21T08:26:06+00:00
+numbers = []
+says = []
+frames = []

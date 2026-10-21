@@ -132,8 +132,10 @@ def test_true_in_game_numbers_pass():
 
 
 def test_listed_percentages_pass_others_fail():
-    for pct in ("35.2%", "29%", "51.28%", "9%"):
+    for pct in ("36.2%", "29%", "51.28%", "9%"):
         ok(PLAIN.format(x=f"a poll at {pct} and a scanner"))
+    # the 17 Oct poll (35.2% each) belongs to the retired `polls` fact: still a true figure, but its wording is out
+    assert bad(PLAIN.format(x="a poll at 35.2% and a scanner")) == "paused_fact_polls"
     assert bad(PLAIN.format(x="a poll at 87% and a scanner")) == "unapproved_number_87%"
     assert bad(PLAIN.format(x="a poll at 35% and a scanner")) == "unapproved_number_35%"
 

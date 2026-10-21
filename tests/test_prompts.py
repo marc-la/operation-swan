@@ -129,7 +129,7 @@ def test_shape_selection_rules():
     assert "fed_up" not in seen["none"] | seen["lani"] and "fed_up" in seen["josh"]
     assert "defiance" not in seen["josh"] and "news" not in seen["none"]
     assert len(seen["lani"]) == 7
-    assert all(content.pick_shape("F1_blank_cheque")[0] != "number" for _ in range(200))  # no number in its facts
+    assert all(content.pick_shape("F8_powers")[0] != "number" for _ in range(200))  # no number in its facts
     assert content.pick_shape("F1_blank_cheque", shape="conversion")[0] == "conversion"
     assert content.pick_shape("F1_blank_cheque", shape=content.POST_SHAPES[1])[0] == "named_loss"
     assert content.pick_shape("F1_blank_cheque", shape="Say something.")[0] == "custom"

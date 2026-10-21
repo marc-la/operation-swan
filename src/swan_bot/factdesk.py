@@ -152,6 +152,10 @@ def problems(key, fact):
         else:
             if rx and not (rx.search(fact.get("text") or "") or rx.search(fact.get("note") or "")):
                 out.append("says: matches neither the text nor the note")
+    if isinstance(fact.get("text"), str) and isinstance(fact.get("note"), str) and \
+            quality.copied_runs(fact["note"]) & quality._shingles(fact["text"], 7):
+        out.append("note: repeats 7+ words of the text in a row (drafts that reuse the note would be rejected as "
+                   "copied): word it differently")
     frames = fact.get("frames", [])
     if not isinstance(frames, list) or not all(f in content.FRAMES for f in frames):
         out.append(f"frames: keys of content.FRAMES only, got {frames!r}")
