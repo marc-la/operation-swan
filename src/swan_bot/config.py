@@ -255,6 +255,12 @@ OWN_LIKE_DELAY_S = (60, 4 * 60)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
+# ---- todo/22 reader/writer split (bot.py; docs/04-technical/swan-bot-runbook.md) ----
+SPLIT_LOOP = True                   # reader, drafter, writer threads. False + a restart: the serial loop (rollback)
+DRAFT_AHEAD = 2                     # drafts waiting for the writer, at most (more would go stale)
+READER_SILENT_S = 20 * 60           # the watchdog stops the bot when the reader goes this long without a round
+DRAFTER_SILENT_S = 30 * 60          # ...or the drafter (one draft may try several models with 90 s timeouts)
+
 # ---- Blue track (todo/07, src/swan_blue): a separate process reports from one booster the bot no longer uses ----
 BLUE_OFF_FILE = ROOT / "BLUE_OFF"       # touch it to stop filing reports (the scan and rulings carry on)
 

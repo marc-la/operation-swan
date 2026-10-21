@@ -145,6 +145,8 @@ The "fitness landscape" idea, made concrete. Full reinforcement learning is over
 - **Teammates don't SSH in to post.** They add drafts, personas and arguments through the shared DB or a small web page served by the VM, and the writer picks them up. The kill switch is a flag in the DB.
 - **Logs and DB backups** go to the VM disk plus a periodic copy (external storage is allowed for storing data).
 
+- **Inside the bot process (2026-10-22, todo/22):** a reader, a drafter and one writer thread; see [swan-bot runbook](../04-technical/swan-bot-runbook.md#how-the-bot-runs-reader-drafter-writer-2026-10-22-todo22).
+
 ## 9. Fact desk: who reviews, when, how (2026-10-21)
 
 **Why.** The news moves daily, and our prompts state facts (on 21 Oct "no community spread" was one paper away from false). Not every edit is made by a strong model or a teammate who knows the setting. So the facts live in one validated file, and the papers are checked every hour.

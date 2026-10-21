@@ -2,6 +2,12 @@
 
 **Owner:** Marc + a fresh Claude session · **Depends on:** [todo/20](20-replies-that-convert.md) and todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c) finished · **When:** right after them
 
+## Status (2026-10-22): built, on main with `SPLIT_LOOP = True`; first live hour and before/after still to note
+- **How it works:** [runbook: How the bot runs](../docs/04-technical/swan-bot-runbook.md#how-the-bot-runs-reader-drafter-writer-2026-10-22-todo22). The serial loop and the threads call the same steps (`choose`, `draft`, `send`), so the rollback (`SPLIT_LOOP = False`, push) runs the same decisions on one thread.
+- **Added on request (ctn-2a, Marc):** a watchdog (a dead or silent thread → alert, state saved, exit 1), a clean stop on SIGTERM/SIGINT, and the heartbeat and queues in `status.json` (`threads`, `queue`, `oldest_queued_s`).
+- **Tests:** `tests/test_bot_split.py` runs `main()` end to end against a fake Legit Social, sockets blocked, in both loops: the checklist, the core rules, the watchdog and the stop. A dry run (fixture plus the real chain) gave 10 replies, 0 rejects, 11 Kimi calls.
+- **Left:** the first live hour (write rate, 429s, the funnel, alerts), the before/after numbers below, then delete the serial loop after a clean day. The lighter refresh (news threads every 30 min) is a separate commit.
+
 ## Read first
 `CLAUDE.md`, [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md), [research E: throughput](../docs/06-strategy/research-2026-10-21/E-throughput.md) §a.3, `src/swan_bot/bot.py` (`main()` is one ~430-line loop with closures: `write_status`, `pause`, `save_state`, `desk_fill`), `targeting.py` (`Targeter.refresh`), `amplify.py` (`tick`), `llm.py`.
 

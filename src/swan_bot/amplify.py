@@ -188,7 +188,8 @@ class Amplifier:
         replies and views per post; config.AMP_AUTHOR_PRIOR for a voice not yet measured), or a random one
         config.AMP_AUTHOR_EXPLORE of the time."""
         hidden = self.accounts.hidden()
-        ready = [r for r in self.accounts.voices() if self.accounts.ready(r)
+        reserved = getattr(self.accounts, "reserved", ())     # a draft of theirs waits to be sent (bot.py, todo/22)
+        ready = [r for r in self.accounts.voices() if self.accounts.ready(r) and r["persona"] not in reserved
                  and hidden.get(r["username"], 0) < config.HIDDEN_OFF_AMP]          # a voice with a hidden post stays off
         if not ready:
             return None

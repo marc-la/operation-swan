@@ -336,3 +336,20 @@ def test_citizen_watch_flags_a_long_steady_run_and_not_bursts():
     assert cw.suspect_runs(steady, ours={base + 7}) == [], "one of ours inside: not a citizen run"
     assert cw.suspect_runs([dict(a, account_id=a["account_id"] - 200) for a in steady
                             if a["account_id"] - 200 <= cw.REVIEWED_TO], set()) == []
+
+
+def test_oldest_pending_counts_from_when_we_found_it_and_skips_deliberate_waits():
+    """todo/22 status.json: oldest_queued_s is time since an item entered our queue, not since the citizen wrote it;
+    items waiting on purpose (session cap, firm-Yes cap, the reply-back path) don't count."""
+    import time as _time
+    t = targeting.Targeter(social=None, log=lambda rec: None)
+    now = _time.time()
+    t.items = {1: dict(h="x", c=now - 3600, f=now - 60, o="pending", why="queued", src="news", reply=True),
+               2: dict(h="x", c=now - 7200, f=now - 900, o="pending", why="session_cap", src="news", reply=True),
+               3: dict(h="x", c=now - 9000, f=now - 9000, o="answered", why="reply", src="latest", reply=False),
+               4: dict(h="x", c=now - 5000, f=now - 5000, o="pending", why="queued", src="sweep", reply=False,
+                       g="sweep")}                                  # todo/23: old by design
+    written, queued = t.oldest_pending()
+    assert 7190 <= written <= 7210 and 55 <= queued <= 65, (written, queued)
+    t.items = {}
+    assert t.oldest_pending() == (None, None)

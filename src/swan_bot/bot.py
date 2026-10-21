@@ -8,6 +8,10 @@ Every write slot goes to the most valuable job (docs/06-strategy/second-mover-pl
   5. persona post, at most 1 in every 4 writes
 If nothing is worth writing, it waits. Accounts are registered one at a time, 20-40 min apart.
 
+With config.SPLIT_LOOP (todo/22) the same decisions run on three threads, so no write waits for a read or a draft: a
+reader (targets and reply-backs), a drafter (chooses the next job in the order above and drafts it ahead) and the
+writer (this main thread, the only one that writes to Legit Social). docs/04-technical/swan-bot-runbook.md.
+
 With --amplify (todo/04-reach-amplification.md), persona posts are replaced by one amplified original every 10-16 min:
 like-only booster accounts and the other voices like it on an organic-looking schedule, other voices reply in its
 thread and repost it (those writes come first in the order above, after reply-backs). See amplify.py.
@@ -19,7 +23,11 @@ import os
 import pathlib
 import random
 import secrets
+import signal
+import subprocess
+import threading
 import time
+import traceback
 
 import openai
 import capturethenarrative as ctn
@@ -30,16 +38,24 @@ from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
 
 REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3)
+REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's last write (not the 4-min gap)
+WAIT_S = dict(no_voice=30, nothing=45, priority=15)   # a loop with nothing to do waits this long (s)
+IDLE_S = 1.0                  # split loop: the writer looks for a ready draft this often (s)
+JOIN_S = 10.0                 # split loop: on a stop, how long the writer waits for the other threads (s)
 
 
 def now_iso():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+_LOG_LOCK = threading.Lock()  # the split loop's threads all log
+
+
 def log(rec):
     config.LOGS.mkdir(exist_ok=True)
-    with open(config.ACTIONS_LOG, "a") as f:
-        f.write(json.dumps({"ts": now_iso(), **rec}) + "\n")
+    line = json.dumps({"ts": now_iso(), **rec}) + "\n"
+    with _LOG_LOCK, open(config.ACTIONS_LOG, "a") as f:
+        f.write(line)
 
 
 def load_json(path, default):
@@ -58,6 +74,19 @@ def save_json(path, obj, private=False):
     os.replace(tmp, path)
 
 
+def pace_gap(per_min):
+    """Seconds from one write to the next: 60 / per_min, times 0.7-1.5 (the live pace since todo/03)."""
+    return 60.0 / per_min * random.uniform(0.7, 1.5)
+
+
+def alert(msg):
+    """deploy/alert.sh: a line in logs/alerts.log and the team webhook, like the BOT CRASHED alert. Never raises."""
+    try:
+        subprocess.run([str(config.ROOT / "deploy" / "alert.sh"), msg], timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        print("alert not sent:", e)
+
+
 class Accounts:
     """Registry of our accounts in secrets/swan_accounts.json (passwords, tokens, owner)."""
 
@@ -67,6 +96,7 @@ class Accounts:
         self.open = {}
         self.next_register = 0.0
         self._hidden, self._hidden_mtime = {}, None
+        self.reserved = set()        # personas with a draft not sent yet (split loop): not picked for another
         created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records
                    if r.get("created") and r.get("role", "voice") != "booster"]
         if created:                      # a restart must not register straight after the last registration
@@ -159,7 +189,8 @@ class Accounts:
 
     def assignable(self, frame=None, exclude=(), prefer=()):
         """Like eligible(), but the voice may still be in its gap: for batched drafts that wait in the pool."""
-        free = [r for r in self.voices() if r["persona"] not in exclude and not self.parked(r)]
+        free = [r for r in self.voices() if r["persona"] not in exclude and r["persona"] not in self.reserved
+                and not self.parked(r)]
         mine = [r for r in free if r["persona"] in prefer]
         if mine:
             free = mine
@@ -174,7 +205,7 @@ class Accounts:
         if gap is None or not self.live:                         # dry runs rotate personas without waiting
             gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
         ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude
-                 and not self.parked(r)]
+                 and r["persona"] not in self.reserved and not self.parked(r)]
         mine = [r for r in ready if r["persona"] in prefer]
         if mine:
             ready = mine
@@ -185,6 +216,76 @@ class Accounts:
 
     def by_persona(self, key):
         return next((r for r in self.voices() if r["persona"] == key), None)
+
+
+class Sessions:
+    """The reader thread's own sessions (todo/22): a client keeps the X-RateLimit-* of its last answer, so the reader
+    must not share the writer's. A token the writer renewed (Accounts.relogin) is picked up on the next poll."""
+
+    def __init__(self, social):
+        self.social, self.open = social, {}
+
+    def get(self, rec):
+        acc, token = self.open.get(rec["username"], (None, None))
+        if acc is None or token != rec["token"]:
+            acc, token = self.social.account_from_token(rec["token"]), rec["token"]
+            self.open[rec["username"]] = (acc, token)
+        return acc
+
+
+class Worker(threading.Thread):
+    """One of the split loop's threads: runs step() until stop is set, noting each round in beats (todo/22). An
+    exception ends it and is kept for the writer's watchdog, which stops the bot (problem())."""
+
+    def __init__(self, name, step, stop, beats, silent_s):
+        super().__init__(name=name, daemon=True)
+        self.step, self.stop, self.beats, self.silent_s = step, stop, beats, silent_s
+        self.error = None
+
+    def run(self):
+        try:
+            while not self.stop.is_set():
+                self.beats[self.name] = time.time()
+                self.step()
+        except BaseException as e:               # noqa: B036 - kept for the watchdog, which exits the process
+            self.error = e
+            traceback.print_exc()
+
+    def problem(self, now=None):
+        """Why this thread can't be relied on (it died, stopped, or went silent for silent_s), or None."""
+        now = time.time() if now is None else now
+        if self.error is not None:
+            return f"{type(self.error).__name__}: {self.error}"[:300]
+        if not self.is_alive():
+            return "stopped"
+        silent = now - self.beats.get(self.name, now)
+        return f"no heartbeat for {silent:.0f} s" if silent > self.silent_s else None
+
+
+def voice_wait(job, accounts, live, t=None):
+    """Seconds until this job's voice may write: its last write plus the gap the choosing code used (a reply-back 60 s,
+    a repost or an own-thread answer REPOST_MIN_GAP_S, everything else the 4-min ACCOUNT_MIN_GAP_S). 0 in a dry run.
+    The split loop's writer checks it at send time, since a draft may have waited (todo/22)."""
+    if not live:
+        return 0.0
+    mode = job["mode"]
+    gap = (REPLY_BACK_GAP_S if mode == "reply_back" else config.REPOST_MIN_GAP_S if mode in ("repost", "thread_answer")
+           else config.ACCOUNT_MIN_GAP_S)
+    return max(0.0, job["rec"].get("last_write", 0) + gap - (time.time() if t is None else t))
+
+
+def gone_at_send(job, state, t=None):
+    """Why a draft that waited may no longer go out (split loop, todo/22), or None: its target was answered meanwhile
+    ("replied"), or the citizen is now talking with SESSION_VOICES of our voices ("session_cap"). The serial loop
+    checks the same when it chooses, right before it sends."""
+    mode, target = job["mode"], job.get("target") or {}
+    if mode in ("reply", "reply_back") and target.get("post_id") in state["replied_posts"]:
+        return "replied"
+    if mode in ("reply", "second_voice"):
+        voices = set(sessions(state["contacted"], t).get(str(target.get("author_id")), ())) | {job["rec"]["persona"]}
+        if len(voices) > config.SESSION_VOICES:
+            return "session_cap"
+    return None
 
 
 def thread_depth(social, post, cap):
@@ -202,18 +303,20 @@ def turns_left(turns, citizen, now=None):
     return sum(now - t < config.TURN_SESSION_S for t in (turns or {}).get(str(citizen), [])) < config.TURNS_PER_SESSION
 
 
-def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=None, turns=None, replied=()):
+def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=None, turns=None, replied=(),
+                    session=None):
     """Citizens who replied to us or mentioned one of our voices (todo/20 G7). Reads at most `limit` jobs' worth.
     A notification is resolved once it has been dealt with: queued, or skipped for a reason (logged). A read that
     fails for a moment (5xx, rate limit) leaves it unresolved for the next poll; 403/404/410 resolve it.
     roots: only replies under these posts of ours (our amplified posts), the rest are resolved and skipped.
-    turns: {citizen id: [times of our reply-backs]} for the session cap; replied: posts we already answered."""
+    turns: {citizen id: [times of our reply-backs]} for the session cap; replied: posts we already answered.
+    session: rec -> logged-in Account (default accounts.session; the split loop's reader has its own, Sessions)."""
     jobs = []
     for rec in accounts.voices():
         if len(jobs) >= limit:
             break
         try:
-            acc = accounts.session(rec)
+            acc = (session or accounts.session)(rec)
             notes = acc.notifications(unresolved=True, limit=10)
         except ctn.APIError as e:
             print("notifications:", rec["username"], e.status, e.message)
@@ -596,13 +699,15 @@ def main():
     k = max(1, min(args.accounts, config.MAX_ACCOUNTS))
     per_min = max(0.1, min(args.per_min, 2.5))
 
+    split = config.SPLIT_LOOP                           # todo/22: reader, drafter and writer threads
     social = ctn.LegitSocial()
+    rsocial = ctn.LegitSocial() if split else social    # the reader's own client: X-RateLimit-* is per client
     gen = Generator(code, allow_qwen=args.allow_qwen)
     gen.on_park = lambda model, until, why: log({"act": "llm_park", "model": model, "why": why,
                                                  "until": dt.datetime.fromtimestamp(until, dt.timezone.utc).isoformat()})
     # the live bot is the one Latest reader and shares what it read (feeds.py); a dry run reads a saved fixture
-    targeter = (Targeter(social, log=log, snapshot=feeds.SNAPSHOT_FILE) if args.live else
-                Targeter(feeds.FixtureFeeds(social, feeds.fixture(social, args.fixture)), log=log))
+    targeter = (Targeter(rsocial, log=log, snapshot=feeds.SNAPSHOT_FILE) if args.live else
+                Targeter(feeds.FixtureFeeds(rsocial, feeds.fixture(rsocial, args.fixture)), log=log))
     accounts = Accounts(social, args.live)
     state = load_json(config.STATE_FILE, {})
     targeter.load(state.pop("targeter", None))          # read position, queue and funnel survive a restart (G3)
@@ -617,23 +722,41 @@ def main():
         amp = Amplifier(social, accounts, state, args.live, log, targeter=targeter, code=code, owner=owner,
                         boosters=args.boosters, save=lambda: save_state())
 
+    # todo/22: what the threads share. mu guards state, queue, stats, the account records, the ledger and the amplifier
+    # (the targeter has its own lock); only the writer saves files. The serial loop uses the same, uncontended.
+    mu = threading.RLock()
+    stop = threading.Event()             # SIGTERM/SIGINT (split loop), the watchdog, or the end of --hours/--samples
+    woken = threading.Event()            # the reader found something new: the drafter stops waiting
+    save_due = threading.Event()         # the reader asks the writer to save the state
+    ready = []                           # drafts waiting for the writer, in the order chosen (at most DRAFT_AHEAD)
+    inflight = [None]                    # the job the drafter is drafting now
+    beats = {}                           # thread name -> time its loop last went round (status.json, the watchdog)
+    workers = []
     rate_limited = []                    # times of 429s in the last hour (dashboard)
     last_status = [0.0]
 
     def write_status():
-        """data/status.json for the dashboard (todo/09), at most every 30 s. Counts and model names only, no secrets."""
+        """data/status.json for the dashboard (todo/09), at most every 30 s. Counts and model names only, no secrets.
+        The split loop adds each thread's heartbeat and the queues between them (todo/22)."""
         t = time.time()
         if not args.live or t - last_status[0] < 30:
             return
         last_status[0] = t
         rate_limited[:] = [x for x in rate_limited if t - x < 3600]
         recs = accounts.records
+        limits = {w.name: w.silent_s for w in workers}
         try:                             # the dashboard must never stop the bot
             save_json(config.STATUS_FILE, dict(
                 ts=now_iso(), per_min=per_min, llm=gen.status(), rate_limited_last_hour=len(rate_limited),
                 accounts=dict(live=len(accounts.active()), voices=len(accounts.voices()),
                               boosters=len(accounts.boosters()), used=len(recs),
-                              suspended=sum(r.get("status") == "suspended" for r in recs))))
+                              suspended=sum(r.get("status") == "suspended" for r in recs)),
+                # todo/22: each thread's heartbeat (max_silent_s: the watchdog's limit) and the queues between them
+                **(dict(loop="split", threads={name: dict(
+                    last_run=dt.datetime.fromtimestamp(b, dt.timezone.utc).isoformat(), age_s=round(t - b),
+                    **({"max_silent_s": limits[name]} if name in limits else {})) for name, b in sorted(beats.items())},
+                    queue=dict(reply_backs=len(queue), candidates=len(targeter.candidates), drafts_ready=len(ready)),
+                    **dict(zip(("oldest_waiting_s", "oldest_queued_s"), targeter.oldest_pending()))) if split else {})))
         except OSError as e:
             print("status.json not written:", e)
 
@@ -641,11 +764,13 @@ def main():
         """Sleep, but keep the amplifier's likes and views going meanwhile."""
         until = time.time() + seconds
         while True:
+            beats["writer"] = time.time()
             write_status()
             if amp:
-                amp.tick()
+                with mu:
+                    amp.tick()
             left = until - time.time()
-            if left <= 0:
+            if left <= 0 or stop.is_set():
                 return
             time.sleep(min(2.0, left))
 
@@ -655,19 +780,27 @@ def main():
             raise SystemExit(f"feed is locked: {lock.get('reason')}")
         print(f"LIVE: Vote No | owner {owner} | {len(accounts.active())} active accounts, growing to {k} "
               f"(one every 20-40 min) | up to {per_min}/min for {args.hours} h | LLM: {gen.describe()}"
-              + (f" | AMPLIFY: {len(accounts.boosters())} boosters, growing to {amp.boosters_target}" if amp else ""))
+              + (f" | AMPLIFY: {len(accounts.boosters())} boosters, growing to {amp.boosters_target}" if amp else "")
+              + (" | split loop" if split else " | serial loop"))
         if not args.yes and input("Type GO to continue: ").strip() != "GO":
             raise SystemExit("aborted")
     else:
         print(f"DRY RUN: nothing will be registered or posted. LLM: {gen.describe()}")
         accounts.next_register = 0.0
 
+    def held(mode=None):
+        """Jobs chosen and not yet sent (split loop: drafting or waiting for the writer). choose() counts them as
+        written, so draft-ahead makes the decisions the serial loop would."""
+        jobs = [d["job"] for d in ready] + ([inflight[0]] if inflight[0] else [])
+        return [j for j in jobs if mode is None or j["mode"] == mode]
+
     def save_state():
         if args.live:
-            # pending reply-backs survive a restart (their notifications are already marked resolved)
-            state["queue"] = [dict(username=j["rec"]["username"], target=j["target"], our_text=j["our_text"],
-                                   tries=j.get("tries", 0)) for j in queue if j["mode"] == "reply_back"]
-            save_json(config.STATE_FILE, {**state, "targeter": targeter.dump()})
+            with mu:
+                # pending reply-backs survive a restart (their notifications are already marked resolved)
+                state["queue"] = [dict(username=j["rec"]["username"], target=j["target"], our_text=j["our_text"],
+                                       tries=j.get("tries", 0)) for j in queue + held() if j["mode"] == "reply_back"]
+                save_json(config.STATE_FILE, {**state, "targeter": targeter.dump()})
 
     end = time.time() + args.hours * 3600
     next_write = next_notif = 0.0
@@ -697,196 +830,214 @@ def main():
             if cand:                                          # a rejected reply target goes back, with a backoff
                 targeter.requeue(cand, f"rejected:{r['why']}")
 
-    while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
-        job = None
-        write_status()
-        try:
-            # dry runs register a fake account instantly so drafts can be read without waiting
+    def register():
+        """Drip registration; a dry run registers fake accounts instantly so drafts can be read without waiting."""
+        with mu:
             if args.live:
                 accounts.maybe_register(k, code, owner)
-            else:
-                while len(accounts.voices()) < k and len(accounts.records) < len(content.PERSONAS) + 50:
-                    accounts.next_register = 0.0
-                    before = len(accounts.records)
-                    accounts.maybe_register(k, code, owner)
-                    if len(accounts.records) == before:
-                        break
-                while amp and len(accounts.boosters()) < amp.boosters_target:
-                    amp.next_register = 0.0
-                    before = len(accounts.records)
-                    amp.maybe_register_booster()
-                    if len(accounts.records) == before:
-                        break
-            if not accounts.voices():
-                pause(30)
-                continue
-            # No retirement by action count: accounts are lost through moderator-hidden posts, not actions
-            # (scoring guide s3). Parking by hidden-post count is a TODO (TODO.md, "Hidden-post watch").
-            our_ids = {r.get("account_id") for r in accounts.records if r.get("account_id")}
-            if targeter.refresh():
-                save_state()
-            own_likes(state, accounts, args.live)
-            pulse_now = pulse.update(state, targeter, our_ids, gen, log)
-            if amp:
-                amp.tick()
-            if args.live and (config.REPLY_BACK or config.REPLY_BACK_AMP) and time.time() >= next_notif:
-                roots = None if config.REPLY_BACK else {int(k) for k in (state.get("amp_posts") or {})}
-                queued = {j["target"]["post_id"] for j in queue}
-                queue += [j for j in reply_back_jobs(social, accounts, targeter, roots=roots, turns=state["turns"],
-                                                     replied=set(state["replied_posts"]))
-                          if j["target"]["post_id"] not in queued]
-                next_notif = time.time() + config.NOTIF_EVERY_S
+                return
+            while len(accounts.voices()) < k and len(accounts.records) < len(content.PERSONAS) + 50:
+                accounts.next_register = 0.0
+                before = len(accounts.records)
+                accounts.maybe_register(k, code, owner)
+                if len(accounts.records) == before:
+                    break
+            while amp and len(accounts.boosters()) < amp.boosters_target:
+                amp.next_register = 0.0
+                before = len(accounts.records)
+                amp.maybe_register_booster()
+                if len(accounts.records) == before:
+                    break
 
-            wait = next_write - time.time()
-            if wait > 0:
-                pause(min(wait, 30))
-                continue
-            if gen.next_available_in() > 0 and not args.allow_qwen:
-                print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
-                pause(min(gen.next_available_in() + 1, 600))
-                continue
+    def our_ids():
+        # No retirement by action count: accounts are lost through moderator-hidden posts, not actions
+        # (scoring guide s3). Parking by hidden-post count is a TODO (TODO.md, "Hidden-post watch").
+        return {r.get("account_id") for r in accounts.records if r.get("account_id")}
 
-            # ---- choose the job (greedy order) ----
-            t = time.time()
-            contacted = sessions(state["contacted"], t)        # our voices per citizen this session (todo/21)
-            engaged = set(state["engaged"])
-            if queue:
-                job = queue.pop(0)
-                job["frame"] = content.PERSONA_BY_KEY[job["rec"]["persona"]]["frames"][0]
-                # the conversation goes on in the style of our reply they answered (todo/20 step 3)
-                job["style"] = state["styles"].get(str(job["target"].get("reply_to_post_id")))
-                if job["rec"].get("last_write", 0) + 60 > t:      # don't double-post from one account
-                    queue.insert(0, job)
-                    job = None
-            # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
-            job = pick_job(job, (lambda: None) if desk else
-                           (lambda: citizen_reply(targeter, accounts, our_ids, state["replied_posts"], contacted, engaged)), amp)
-            drafted = None
-            if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
-                pause(15)
-                continue
-            gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
-                              or (j["mode"] == "reply"
-                                  and len(contacted.get(str(j["target"]["author_id"]), ())) >= config.SESSION_VOICES))
-            if job is None and desk and config.SECOND_VOICE:
+    def poll_reply_backs(session=None):
+        """Citizens who replied to us or mentioned us, every NOTIF_EVERY_S (todo/20 G7): new jobs join the queue.
+        session: the reader thread's own sessions (split loop). True when it queued any."""
+        nonlocal next_notif
+        if not (args.live and (config.REPLY_BACK or config.REPLY_BACK_AMP)) or time.time() < next_notif:
+            return False
+        with mu:
+            roots = None if config.REPLY_BACK else {int(k) for k in (state.get("amp_posts") or {})}
+            turns, replied = json.loads(json.dumps(state["turns"])), set(state["replied_posts"])
+        jobs = reply_back_jobs(rsocial, accounts, targeter, roots=roots, turns=turns, replied=replied, session=session)
+        with mu:
+            queued = {j["target"]["post_id"] for j in queue + held("reply_back")}
+            new = [j for j in jobs if j["target"]["post_id"] not in queued]
+            queue.extend(new)
+        next_notif = time.time() + config.NOTIF_EVERY_S
+        return bool(new)
+
+    def choose(t, ids):
+        """The next job in the greedy order, and its pooled draft when --batch made one: (job, drafted, None), or
+        (None, None, seconds to wait) when nothing is worth writing. The caller holds mu."""
+        contacted = sessions(state["contacted"], t)        # our voices per citizen this session (todo/21)
+        engaged = set(state["engaged"])
+        pending = [j["mode"] for j in held()]               # chosen but not sent yet: counted as written (todo/22)
+        job = None
+        if queue:
+            job = queue.pop(0)
+            job["frame"] = content.PERSONA_BY_KEY[job["rec"]["persona"]]["frames"][0]
+            # the conversation goes on in the style of our reply they answered (todo/20 step 3)
+            job["style"] = state["styles"].get(str(job["target"].get("reply_to_post_id")))
+            if job["rec"].get("last_write", 0) + REPLY_BACK_GAP_S > t:      # don't double-post from one account
+                queue.insert(0, job)
+                job = None
+        # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
+        job = pick_job(job, (lambda: None) if desk else
+                       (lambda: citizen_reply(targeter, accounts, ids, state["replied_posts"], contacted, engaged)), amp)
+        drafted = None
+        if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
+            return None, None, WAIT_S["priority"]
+        gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
+                          or (j["mode"] == "reply"
+                              and len(contacted.get(str(j["target"]["author_id"]), ())) >= config.SESSION_VOICES))
+        if job is None and desk and config.SECOND_VOICE:
+            drafted = desk.take("second_voice", t, gone)
+        if job is None and drafted is None and config.SECOND_VOICE:
+            state["second_voice"] = [s for s in state["second_voice"] if t - s["due"] < 3600]   # stale after 1 h
+            due = [s for s in state["second_voice"] if s["due"] <= t]
+            picked = []
+            for sv in due:
+                rec = (accounts.assignable(sv["frame"], exclude={sv["first_persona"]} | desk.busy("second_voice", picked))
+                       if desk else accounts.eligible(sv["frame"], exclude={sv["first_persona"]}))
+                if not rec:
+                    continue                                     # keep it until another persona is free
+                state["second_voice"].remove(sv)
+                if len(contacted.get(str(sv["author"]), set()) | {rec["persona"]}) > config.SESSION_VOICES:
+                    continue                                     # the session cap (todo/21)
+                try:
+                    target = social.get_post(sv["post_id"])
+                    thread = list(social.replies(sv["post_id"], limit=20))
+                except ctn.APIError:
+                    continue
+                if len(thread) > 8 or any(r["author_id"] == target["author_id"] for r in thread):
+                    continue                                     # busy thread, or they already answered us
+                job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
+                           wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"))
+                if not desk:
+                    break
+                picked.append(job)
+                job = None
+                if len(picked) >= desk.size:
+                    break
+            if picked:
+                desk_fill(picked)
                 drafted = desk.take("second_voice", t, gone)
-            if job is None and drafted is None and config.SECOND_VOICE:
-                state["second_voice"] = [s for s in state["second_voice"] if t - s["due"] < 3600]   # stale after 1 h
-                due = [s for s in state["second_voice"] if s["due"] <= t]
-                picked = []
-                for sv in due:
-                    rec = (accounts.assignable(sv["frame"], exclude={sv["first_persona"]} | desk.busy("second_voice", picked))
-                           if desk else accounts.eligible(sv["frame"], exclude={sv["first_persona"]}))
-                    if not rec:
-                        continue                                     # keep it until another persona is free
-                    state["second_voice"].remove(sv)
-                    if len(contacted.get(str(sv["author"]), set()) | {rec["persona"]}) > config.SESSION_VOICES:
-                        continue                                     # the session cap (todo/21)
-                    try:
-                        target = social.get_post(sv["post_id"])
-                        thread = list(social.replies(sv["post_id"], limit=20))
-                    except ctn.APIError:
-                        continue
-                    if len(thread) > 8 or any(r["author_id"] == target["author_id"] for r in thread):
-                        continue                                     # busy thread, or they already answered us
-                    job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
-                               wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"))
-                    if not desk:
+        if job is None and drafted is None and desk:
+            drafted = desk.take("reply", t, gone)
+            if drafted is None:
+                picked, authors = [], set()
+                skip = set(state["replied_posts"]) | desk.pending_targets()
+                while len(picked) < desk.size:
+                    cand = targeter.next_target(ids, skip, contacted, engaged)
+                    if not cand:
                         break
-                    picked.append(job)
-                    job = None
-                    if len(picked) >= desk.size:
+                    rec = candidate_voice(accounts.assignable, cand, exclude=desk.busy("reply", picked))
+                    if not rec or cand["post"]["author_id"] in authors:
+                        targeter.requeue(cand, "no_voice")                       # keep it for the next slot
                         break
+                    authors.add(cand["post"]["author_id"])
+                    picked.append(reply_job(cand, rec))
                 if picked:
                     desk_fill(picked)
-                    drafted = desk.take("second_voice", t, gone)
-            if job is None and drafted is None and desk:
-                drafted = desk.take("reply", t, gone)
-                if drafted is None:
-                    picked, authors = [], set()
-                    skip = set(state["replied_posts"]) | desk.pending_targets()
-                    while len(picked) < desk.size:
-                        cand = targeter.next_target(our_ids, skip, contacted, engaged)
-                        if not cand:
-                            break
-                        rec = candidate_voice(accounts.assignable, cand, exclude=desk.busy("reply", picked))
-                        if not rec or cand["post"]["author_id"] in authors:
-                            targeter.requeue(cand, "no_voice")                       # keep it for the next slot
-                            break
-                        authors.add(cand["post"]["author_id"])
-                        picked.append(reply_job(cand, rec))
-                    if picked:
-                        desk_fill(picked)
-                        drafted = desk.take("reply", t, gone)
-            if job is None and drafted is None and t - state["journalist_any"] > config.JOURNALIST_GAP_S:
-                jp = targeter.next_journalist(set(state["replied_posts"]), state["journalist_last"])
-                if jp:
-                    frame, _ = classify(jp.get("body") or "")
-                    rec = accounts.eligible(frame or "F14_no_yes_but")
-                    if rec:
-                        job = dict(mode="journalist", rec=rec, target=jp, frame=frame or "F14_no_yes_but")
-            idle_post = t - state.get("last_post", 0) > config.IDLE_POST_GAP_S
-            plain_posts = not amp or amp.paused()                    # amplified originals replace plain persona posts
-            post_ok = plain_posts and ("post" not in state["modes"][-(config.POST_EVERY_N - 1):] or idle_post)
-            if job is None and drafted is None and post_ok and desk:
-                drafted = desk.take("post", t, gone)
-                if drafted is None:
-                    picked = []
-                    while len(picked) < desk.size:
-                        rec = accounts.assignable(exclude=desk.busy("post", picked))
-                        if not rec:
-                            break
-                        picked.append(dict(mode="post", rec=rec,
-                                           frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]])))
-                    if picked:
-                        desk_fill(picked)
-                        drafted = desk.take("post", t, gone)
-            if drafted:
-                job = drafted["job"]
-            if job is None and post_ok and not desk:
-                rec = accounts.eligible()
+                    drafted = desk.take("reply", t, gone)
+        if (job is None and drafted is None and t - state["journalist_any"] > config.JOURNALIST_GAP_S
+                and "journalist" not in pending):
+            jp = targeter.next_journalist(set(state["replied_posts"]), state["journalist_last"])
+            if jp:
+                frame, _ = classify(jp.get("body") or "")
+                rec = accounts.eligible(frame or "F14_no_yes_but")
                 if rec:
-                    job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
-            if job is None:
-                pause(45)
-                continue
+                    job = dict(mode="journalist", rec=rec, target=jp, frame=frame or "F14_no_yes_but")
+        idle_post = t - state.get("last_post", 0) > config.IDLE_POST_GAP_S and "post" not in pending
+        plain_posts = not amp or amp.paused()                    # amplified originals replace plain persona posts
+        post_ok = plain_posts and ("post" not in (state["modes"] + pending)[-(config.POST_EVERY_N - 1):] or idle_post)
+        if job is None and drafted is None and post_ok and desk:
+            drafted = desk.take("post", t, gone)
+            if drafted is None:
+                picked = []
+                while len(picked) < desk.size:
+                    rec = accounts.assignable(exclude=desk.busy("post", picked))
+                    if not rec:
+                        break
+                    picked.append(dict(mode="post", rec=rec,
+                                       frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]])))
+                if picked:
+                    desk_fill(picked)
+                    drafted = desk.take("post", t, gone)
+        if drafted:
+            job = drafted["job"]
+        if job is None and post_ok and not desk:
+            rec = accounts.eligible()
+            if rec:
+                job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
+        if job is None:
+            return None, None, WAIT_S["nothing"]
+        return job, drafted, None
 
-            # ---- draft and check (batched drafts were checked when drafted) ----
-            rec, mode, target = job["rec"], job["mode"], job.get("target")
-            job.setdefault("draft_id", secrets.token_hex(4))     # ties this job's rejected drafts to its write
-            persona = content.PERSONA_BY_KEY[rec["persona"]]
-            text = backend = user = repair = None
-            if mode == "repost":
-                text, backend = "", "none"
-            elif drafted:
-                text, backend = drafted["text"], drafted["backend"]
-            else:
-                persona, system, user = build_prompt(job, targeter, state["recent_shapes"], pulse_now,
-                                                     recent_texts=state["recent_texts"])
+    def draft(job, drafted, pulse_now):
+        """Draft and check one job (batched drafts were checked when drafted). Returns what send() needs, or None
+        when the light read skipped the target or every draft failed (then it is requeued or logged lost, G8)."""
+        rec, mode, target = job["rec"], job["mode"], job.get("target")
+        job.setdefault("draft_id", secrets.token_hex(4))     # ties this job's rejected drafts to its write
+        persona = content.PERSONA_BY_KEY[rec["persona"]]
+        text = backend = user = repair = None
+        if mode == "repost":
+            text, backend = "", "none"
+        elif drafted:
+            text, backend = drafted["text"], drafted["backend"]
+        else:
+            with mu:                                 # drafts waiting to be sent count as sent (todo/22)
+                recent_texts = state["recent_texts"] + [d["text"] for d in ready if d["text"]]
+                recent_shapes = state["recent_shapes"] + [d["job"]["meta"]["shape"] for d in ready
+                                                          if (d["job"].get("meta") or {}).get("shape")]
+                persona, system, user = build_prompt(job, targeter, recent_shapes, pulse_now, recent_texts=recent_texts)
 
-                def rejected(why, raw, backend, repaired):
+            def rejected(why, raw, backend, repaired):
+                with mu:
                     stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
-                    log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
-                         "backend": backend, "raw": raw, "repair": repaired, "draft_id": job["draft_id"],
-                         "target_post": target and target["post_id"],
-                         **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
-                    print(f"  rejected [{mode}] ({why}{', after repair' if repaired else ''}): {raw[:160]!r}")
+                log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
+                     "backend": backend, "raw": raw, "repair": repaired, "draft_id": job["draft_id"],
+                     "target_post": target and target["post_id"],
+                     **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
+                print(f"  rejected [{mode}] ({why}{', after repair' if repaired else ''}): {raw[:160]!r}")
 
-                text, backend, repair = draft_checked(gen, job, system, user, state["recent_texts"][-300:], rejected,
-                                                      ledger)
-            if job.get("read_skip"):                      # the light read: hostile or not about the vote (final)
-                if hasattr(targeter, "skip"):
-                    targeter.skip(target, f"light_read:{job['read_skip'][:60]}", job.get("source"))
-                log({"act": "skip", "why": "read", "detail": job["read_skip"][:200], "mode": mode,
-                     "target_post": target["post_id"], "target_author": target["author_id"],
-                     "target_class": target_class(target.get("body") or ""), "backend": backend,
-                     "draft_id": job["draft_id"]})
-                continue
-            if not text and mode != "repost":
-                # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
+            text, backend, repair = draft_checked(gen, job, system, user, recent_texts[-300:], rejected, ledger)
+        if job.get("read_skip"):                      # the light read: hostile or not about the vote (final)
+            if hasattr(targeter, "skip"):
+                targeter.skip(target, f"light_read:{job['read_skip'][:60]}", job.get("source"))
+            log({"act": "skip", "why": "read", "detail": job["read_skip"][:200], "mode": mode,
+                 "target_post": target["post_id"], "target_author": target["author_id"],
+                 "target_class": target_class(target.get("body") or ""), "backend": backend,
+                 "draft_id": job["draft_id"]})
+            return None
+        if not text and mode != "repost":
+            # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
+            with mu:
                 lose(targeter, queue, job, "no_model" if backend is None else
                      f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
-                continue
+            return None
+        return dict(job=job, drafted=drafted, text=text, backend=backend, repair=repair, persona=persona)
+
+    def send(d):
+        """Send one checked draft and record it: the send-time checks, the write, then the state and the log."""
+        nonlocal next_write
+        job, drafted, text, backend, repair, persona = (d[k] for k in ("job", "drafted", "text", "backend", "repair",
+                                                                       "persona"))
+        rec, mode, target = job["rec"], job["mode"], job.get("target")
+        with mu:
+            if split:                                 # what changed while the draft waited (todo/22)
+                gone = gone_at_send(job, state)
+                if gone:
+                    log({"act": "skip", "why": f"{gone}_at_send", "mode": mode, "persona": persona["key"],
+                         "target_post": target and target["post_id"], "draft_id": job["draft_id"]})
+                    if job.get("cand") and gone == "session_cap":
+                        targeter.requeue(job["cand"], "held")     # answered once their session is over
+                    return
             # the slogan budget again at send time (a pooled draft waited; another account may have used it since)
             thread = themes.thread_of(target) if target else None
             why = text and (ledger.send_problem(text, persona["key"], thread) or
@@ -898,45 +1049,46 @@ def main():
                      "target_post": target and target["post_id"],
                      **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
                 print(f"  dropped at send [{mode}] ({why}): {text[:160]!r}")
-                continue
-            clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
-            if text and not args.no_humanize:
-                text, hand = humanize.apply(text, persona["key"], mode)
+                return
+        clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
+        if text and not args.no_humanize:
+            text, hand = humanize.apply(text, persona["key"], mode)
 
-            # ---- send ----
-            post_id = None
-            if args.live:
-                def send(acc):
-                    if mode == "post":
-                        return acc.post(text)
-                    if mode == "repost":
-                        return acc.repost(target["post_id"])
-                    return acc.reply(target["post_id"], text)
+        # ---- send ----
+        post_id = None
+        if args.live:
+            def write(acc):
+                if mode == "post":
+                    return acc.post(text)
+                if mode == "repost":
+                    return acc.repost(target["post_id"])
+                return acc.reply(target["post_id"], text)
 
-                acc = accounts.session(rec)
+            acc = accounts.session(rec)
+            try:
+                r = write(acc)
+            except ctn.APIError as e:
+                if e.status != 401:
+                    raise
+                acc = accounts.relogin(rec)
+                r = write(acc)
+            post_id = r["post_id"]
+            rl = acc.rate_limit                      # the team-wide write budget, as this answer reported it
+            if rl and rl.remaining == 0:
+                pause(rl.reset / max(rl.limit, 1) + 1)
+            # a citizen who talks back to us: follow them from that persona (separate follow budget)
+            if mode == "reply_back" and target["author_id"] not in rec.setdefault("followed", []):
                 try:
-                    r = send(acc)
+                    acc.follow(target["author_id"])
+                    rec["followed"].append(target["author_id"])
+                    log({"act": "follow", "username": rec["username"], "account_id": target["author_id"]})
                 except ctn.APIError as e:
-                    if e.status != 401:
-                        raise
-                    acc = accounts.relogin(rec)
-                    r = send(acc)
-                post_id = r["post_id"]
-                rl = acc.rate_limit                      # the team-wide write budget, as this answer reported it
-                if rl and rl.remaining == 0:
-                    pause(rl.reset / max(rl.limit, 1) + 1)
-                # a citizen who talks back to us: follow them from that persona (separate follow budget)
-                if mode == "reply_back" and target["author_id"] not in rec.setdefault("followed", []):
-                    try:
-                        acc.follow(target["author_id"])
-                        rec["followed"].append(target["author_id"])
-                        log({"act": "follow", "username": rec["username"], "account_id": target["author_id"]})
-                    except ctn.APIError as e:
-                        print("follow:", e.status, e.message)
+                    print("follow:", e.status, e.message)
+        with mu:
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
             accounts.save()
             if args.live:
-                next_write = time.time() + 60.0 / per_min * random.uniform(0.7, 1.5)
+                next_write = time.time() + pace_gap(per_min)
             stats["accepted"] += 1
             stats["by_mode"][mode] = stats["by_mode"].get(mode, 0) + 1
             state["modes"] = (state["modes"] + [mode])[-20:]
@@ -986,64 +1138,252 @@ def main():
             if mode == "post" and meta.get("shape"):
                 state["recent_shapes"] = (state["recent_shapes"] + [meta["shape"]])[-30:]
             save_state()
-            log({"act": mode, "live": args.live, "post_id": post_id, "username": rec["username"],
-                 "account_id": rec.get("account_id"), "owner": rec.get("owner", owner), "persona": persona["key"],
-                 "frame": job["frame"], "backend": backend, "source": job.get("source"),
-                 "target_post": target and target["post_id"], "target_author": target and target["author_id"],
-                 "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
-                 "parent_post": target and target.get("reply_to_post_id"),       # what the target was answering
-                 "parent_text": (job.get("our_text") or "")[:300] or None, "draft_id": job["draft_id"],
-                 "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
-                 "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
-                 **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
-                                             "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
-                 **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
-                 **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
-                 "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
-                 # todo/20: the reply style arm and the light read; todo/21's arm and priority, next to target_class
-                 "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
-                 "sv_delay": job.get("sv_delay"),
-                 "own_like": job.get("own_like"),
-                 "frame_in": job.get("frame_in"),
-                 **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame")},
-                 "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
-                 "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
-                 **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})
-            where = ""
-            if target:
-                ctx = f" [under: {job['context'][:60]!r}]" if job.get("context") else ""
-                where = f"\n    -> #{target['post_id']} (author {target['author_id']}){ctx}: {(target.get('body') or '')[:200]!r}"
-            via = f"|{drafted['batch_id']} #{drafted['batch_pos'] + 1}/{drafted['batch_size']}" if drafted else ""
-            tags = "|".join(str(meta[k]) for k in ("voice", "shape") if meta.get(k))
-            print(f"[{mode}|{job['frame']}|{tags}|{backend}{via}] {persona['name']}{where}\n    {text}\n")
+        log({"act": mode, "live": args.live, "post_id": post_id, "username": rec["username"],
+             "account_id": rec.get("account_id"), "owner": rec.get("owner", owner), "persona": persona["key"],
+             "frame": job["frame"], "backend": backend, "source": job.get("source"),
+             "target_post": target and target["post_id"], "target_author": target and target["author_id"],
+             "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
+             "parent_post": target and target.get("reply_to_post_id"),       # what the target was answering
+             "parent_text": (job.get("our_text") or "")[:300] or None, "draft_id": job["draft_id"],
+             "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
+             "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
+             **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
+                                         "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
+             **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
+             **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
+             "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
+             # todo/20: the reply style arm and the light read; todo/21's arm and priority, next to target_class
+             "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
+             "net": job.get("net"),                       # todo/23: the arm it counts against (engaged + off_topic)
+             "sv_delay": job.get("sv_delay"),
+             "own_like": job.get("own_like"),
+             "frame_in": job.get("frame_in"),
+             **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame")},
+             "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
+             "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
+             "thread": threading.current_thread().name,                                   # todo/22: the writer
+             **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})
+        where = ""
+        if target:
+            ctx = f" [under: {job['context'][:60]!r}]" if job.get("context") else ""
+            where = f"\n    -> #{target['post_id']} (author {target['author_id']}){ctx}: {(target.get('body') or '')[:200]!r}"
+        via = f"|{drafted['batch_id']} #{drafted['batch_pos'] + 1}/{drafted['batch_size']}" if drafted else ""
+        tags = "|".join(str(meta[k]) for k in ("voice", "shape") if meta.get(k))
+        print(f"[{mode}|{job['frame']}|{tags}|{backend}{via}] {persona['name']}{where}\n    {text}\n")
 
-        except ctn.RateLimited as e:
+    def handle(e, job, wait):
+        """What every loop does with an API, LLM or fact-desk error (wait: that loop's sleep). The rest is raised."""
+        if isinstance(e, ctn.RateLimited):
             rate_limited.append(time.time())
-            pause((e.retry_after or 30) + 1)
-        except ctn.APIError as e:
+            wait((e.retry_after or 30) + 1)
+        elif isinstance(e, ctn.APIError):
             print("API error", e.status, e.message)
             msg = (e.message or "").lower()
             if e.status == 403 and "suspended" in msg and job:
-                job["rec"]["status"] = "suspended"
-                accounts.save()
+                with mu:
+                    job["rec"]["status"] = "suspended"
+                    accounts.save()
                 log({"act": "suspended", "username": job["rec"]["username"]})
             elif e.status == 403 and "locked" in msg:
-                pause(300)
-            pause(10)
-        except openai.APIError as e:
+                wait(300)
+            wait(10)
+        elif isinstance(e, openai.APIError):
             print("LLM error", type(e).__name__, str(e)[:120])
-            pause(20)
-        except content.AllPaused as e:                # the fact desk paused every frame: wait for a review
+            wait(20)
+        elif isinstance(e, content.AllPaused):        # the fact desk paused every frame: wait for a review
             print(e)
-            pause(300)
-        except KeyboardInterrupt:
-            if job and job.get("mode") == "reply_back" and job not in queue:
-                queue.insert(0, job)                  # stopped mid-draft: keep the citizen's reply for next run
-            break
+            wait(300)
+        else:
+            raise e
 
-    save_state()
+    LOOP_ERRORS = (ctn.APIError, openai.APIError, content.AllPaused)
+
+    # ---- the serial loop (config.SPLIT_LOOP off): read, draft and write in turn, as before todo/22 ----
+    def serial_loop():
+        while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
+            job = None
+            write_status()
+            try:
+                register()
+                if not accounts.voices():
+                    pause(WAIT_S["no_voice"])
+                    continue
+                ids = our_ids()
+                if targeter.refresh():
+                    save_state()
+                own_likes(state, accounts, args.live)
+                pulse_now = pulse.update(state, targeter, ids, gen, log)
+                if amp:
+                    amp.tick()
+                poll_reply_backs()
+
+                wait = next_write - time.time()
+                if wait > 0:
+                    pause(min(wait, 30))
+                    continue
+                if gen.next_available_in() > 0 and not args.allow_qwen:
+                    print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
+                    pause(min(gen.next_available_in() + 1, 600))
+                    continue
+                job, drafted, wait = choose(time.time(), ids)
+                if job is None:
+                    pause(wait)
+                    continue
+                d = draft(job, drafted, pulse_now)
+                if d:
+                    send(d)
+            except LOOP_ERRORS as e:
+                handle(e, job, pause)
+            except KeyboardInterrupt:
+                if job and job.get("mode") == "reply_back" and job not in queue:
+                    queue.insert(0, job)                  # stopped mid-draft: keep the citizen's reply for next run
+                break
+        save_state()
+
+    # ---- the split loop (todo/22): the reader and the drafter work ahead; the writer only sends ----
+    reader_sessions = Sessions(rsocial)
+
+    def reader_step():
+        """Read targets and reply-backs (the only feed reader), then sleep until the next one is due."""
+        try:
+            if targeter.refresh():
+                save_due.set()
+                woken.set()
+            if poll_reply_backs(session=reader_sessions.get):
+                woken.set()
+        except ctn.APIError as e:
+            handle(e, None, stop.wait)
+        due = targeter.next_refresh
+        if args.live and (config.REPLY_BACK or config.REPLY_BACK_AMP):
+            due = min(due, next_notif)
+        stop.wait(min(60.0, max(1.0, due - time.time())))
+
+    def drafter_step():
+        """Choose the next job and draft it while the writer waits for its slot (at most DRAFT_AHEAD waiting)."""
+        if len(ready) >= config.DRAFT_AHEAD:
+            stop.wait(IDLE_S)
+            return
+        if not accounts.voices():
+            stop.wait(WAIT_S["no_voice"])
+            return
+        job = d = None
+        try:
+            ids = our_ids()
+            with mu:
+                kept = {k: state[k] for k in ("pulse", "pulse_next") if k in state}
+            pulse_now = pulse.update(kept, targeter, ids, gen, log)       # the LLM call happens outside the lock
+            with mu:
+                state.update(kept)
+            if gen.next_available_in() > 0 and not args.allow_qwen:
+                print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
+                stop.wait(min(gen.next_available_in() + 1, 600))
+                return
+            woken.clear()
+            with mu:
+                job, drafted, wait = choose(time.time(), ids)
+                if job:
+                    accounts.reserved.add(job["rec"]["persona"])        # no second draft for this voice meanwhile
+                    inflight[0] = job
+            if job is None:
+                woken.wait(wait)                                      # or until the reader finds something
+                return
+            d = draft(job, drafted, pulse_now)
+        except LOOP_ERRORS as e:
+            handle(e, job, stop.wait)
+        finally:
+            with mu:
+                inflight[0] = None
+                if d:
+                    ready.append(d)
+                elif job:
+                    accounts.reserved.discard(job["rec"]["persona"])
+
+    def check_workers():
+        """The watchdog (todo/22): a thread that died or went silent stops the bot. It logs, alerts like BOT CRASHED,
+        saves the state and exits 1, so systemd restarts it. Never runs on without its reader or drafter."""
+        if stop.is_set():
+            return
+        for w in workers:
+            why = w.problem()
+            if why:
+                log({"act": "thread_died", "thread": w.name, "why": why})
+                print(f"watchdog: {w.name} {why}")
+                if args.live:
+                    alert(f"BOT THREAD DIED: {w.name} ({why}) at {experiment.git_sha()}; state saved, exiting so "
+                          f"systemd restarts it. Logs: journalctl -u swan-bot -n 50")
+                shutdown()
+                raise SystemExit(1)
+
+    def shutdown():
+        """Stop the threads, put back what was chosen and not sent (a reply-back stays in the saved queue, a citizen
+        goes back to the targeter's queue), and save. A send in progress has finished: only the writer sends."""
+        stop.set()
+        woken.set()
+        for w in workers:
+            w.join(timeout=JOIN_S)
+        with mu:
+            for j in held():
+                if j.get("cand"):
+                    targeter.requeue(j["cand"], "held")
+                accounts.reserved.discard(j["rec"]["persona"])
+        save_state()
+
+    def write_loop():
+        while time.time() < end and not stop.is_set() and not (args.samples and stats["accepted"] >= args.samples):
+            beats["writer"] = time.time()
+            check_workers()
+            write_status()
+            job = None
+            try:
+                register()
+                if save_due.is_set():
+                    save_due.clear()
+                    save_state()
+                with mu:
+                    own_likes(state, accounts, args.live)
+                    if amp:
+                        amp.tick()
+                wait = next_write - time.time()
+                if wait > 0:
+                    pause(min(wait, 30))
+                    continue
+                with mu:                     # the first draft whose voice may write now, in the order chosen
+                    t = time.time()
+                    d = next((d for d in ready if voice_wait(d["job"], accounts, args.live, t) <= 0), None)
+                    if d:
+                        ready.remove(d)
+                if d is None:
+                    pause(IDLE_S)
+                    continue
+                job = d["job"]
+                send(d)
+            except LOOP_ERRORS as e:
+                handle(e, job, pause)
+            finally:
+                if job:
+                    with mu:
+                        accounts.reserved.discard(job["rec"]["persona"])
+
+    if not split:
+        serial_loop()
+    else:
+        def on_signal(signum, frame):
+            print(f"signal {signum}: stopping after the current step")
+            stop.set()
+            woken.set()
+
+        old = {s: signal.signal(s, on_signal) for s in (signal.SIGTERM, signal.SIGINT)}
+        try:
+            workers += [Worker("reader", reader_step, stop, beats, config.READER_SILENT_S),
+                        Worker("drafter", drafter_step, stop, beats, config.DRAFTER_SILENT_S)]
+            for w in workers:
+                w.start()
+            write_loop()
+            shutdown()
+        finally:
+            for s, h in old.items():
+                signal.signal(s, h)
     print("done:", json.dumps({**stats, "llm_calls": gen.calls, **({"pool_left": len(desk.pool)} if desk else {})}))
-
 
 if __name__ == "__main__":
     main()
