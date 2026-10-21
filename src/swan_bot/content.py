@@ -432,8 +432,8 @@ LEVERS = {
             "of (school, a shift, the ferry, church, visiting family).",
     "switching": "Show people changing their minds: you or someone you name was Yes or unsure and is now voting No; "
                  "say what turned them. Make it feel like a lot of people are moving.",
-    "status_quo": "Speak to the unsure: a No keeps life as it is and stops nobody getting the jab, while a Yes can't "
-                  "be undone; if you're not sure, No is the safe choice.",
+    "status_quo": "Speak to the unsure: a No keeps life as it is and stops nobody getting the jab, while after a Yes "
+                  "the government has to bring it in, with no end date; if you're not sure, No is the safe choice.",
     "fear_answer": "Answer the hospital fear head-on and with feeling: the people H2D2 puts in hospital are mostly "
                    "older or already ill, they get the first doses, and a pass at the shop door adds no nurse and no bed.",
     "in_group": "Speak as one of us: how this rule lands on ordinary islanders like you and the reader (workers, "

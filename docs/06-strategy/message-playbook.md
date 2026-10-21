@@ -51,7 +51,7 @@ Rules: a catchphrase is **≤ 7 words**, concrete, and rhythmic (contrast, tripl
 
 **Power words** (use freely): open, door, walk in, turned away, locked out, papers, permit, pass, blank cheque, fine print, small print, signed off, in writing, finish line, no end date, second-class, the person on the door, my shift, my kid, my neighbour, our island, free either way, your call.
 
-**Dead words** (cut on sight): venue list, designated, regulation, review point, ballot question (say "what we're voting on"), safeguards, as written, as it stands, binding (say "no take-backs"), hospitals stretched (say "40 empty nursing posts"), medical exemptions are covered (unless they raised it), I hear you, I'd want that too, fair point, blank page, sensible, just feels wrong.
+**Dead words** (cut on sight): venue list, designated, regulation, review point, ballot question (say "what we're voting on"), safeguards, as written, as it stands, binding (say "the government has to bring it in"; never "no take-backs" or "can't be undone": a Yes binds the government, and nothing says it can never be changed), hospitals stretched (say "40 empty nursing posts"), medical exemptions are covered (unless they raised it), I hear you, I'd want that too, fair point, blank page, sensible, just feels wrong.
 
 ## 4. Hashtags
 

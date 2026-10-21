@@ -91,7 +91,7 @@ CRAFT = {
             "A school leaver could be showing a pass at the start of every shift for years, because \"temporary\" only counts once it's written down.",
             "A tour operator taking bookings for next year can't tell her guests when the pass stops: there's no finish line in the question.",
         ],
-        heat="If it's temporary, they can write the date down. They didn't, and a Yes has no take-backs.",
+        heat="If it's temporary, they can write the date down. They didn't, and after a Yes they have to bring it in.",
         asks=[
             "How long would you put up with papers at your door before it felt too long?",
             "What end date would you want written down, if it were your call?",

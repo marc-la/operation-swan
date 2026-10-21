@@ -25,6 +25,15 @@ def test_every_persona_has_a_hand():
     assert set(humanize.HANDS) == {p["key"] for p in content.PERSONAS}
 
 
+def test_candidate_hands_are_new_and_complete():
+    from swan_bot.playbook.characters import CANDIDATES
+    assert set(humanize.CANDIDATE_HANDS) <= {c["key"] for c in CANDIDATES}
+    assert not set(humanize.CANDIDATE_HANDS) & set(humanize.HANDS)
+    hands = list(humanize.HANDS.values()) + list(humanize.CANDIDATE_HANDS.values())
+    for h in humanize.CANDIDATE_HANDS.values():
+        assert set(h) == set(humanize._DEFAULT) and hands.count(h) == 1
+
+
 def test_tags_numbers_acronyms_and_side_words_survive():
     for key, text, out, _ in runs():
         assert TOKENS.findall(out) == TOKENS.findall(text), (key, out)

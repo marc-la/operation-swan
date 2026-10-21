@@ -39,5 +39,30 @@ Also add the matching identities in `targeting.IDENTITIES` (tourism, farming, te
 3. **Owner records:** every new account is attributed to a team member in `secrets/swan_accounts.json` (`owner`), as the bot already does (CLAUDE.md rule 6).
 4. Dry run (`python scripts/run_swan.py --samples 12`) and read the new voices' drafts next to the old ones (`scripts/swan_view.py`). Ship by merging to `main`.
 
+## Drafted 2026-10-21: five candidates, not yet live
+Five voices are drafted, chosen for the shapes that trend (conversion story, named loss, long memory) and for the biggest gaps. They are in `characters.CANDIDATES` (the last five) with their typing hands in `humanize.CANDIDATE_HANDS`, and the tests pass. Because none is in `content.PERSONAS`, **the bot registers none of them yet**. Why each one should trend, plus gold texts to read: [new-voices-2026-10-21](../docs/06-strategy/new-voices-2026-10-21.md).
+
+| Key | Who | Replaces / fills | Register | Identities to add to `targeting.IDENTITIES` |
+|---|---|---|---|---|
+| `esther` | Bakery owner by the Kingstonia City markets (idea 1's small-business slot, not tourism) | **Lani's slot**: `shop` has no live messenger | warm | shop, parent |
+| `paulo` | Warehouse dad; daughter turns 12 in March; was leaning Yes after losing his father in COVID | ideas 5 + 10: the conversion voice; the first father | warm | parent |
+| `ngaire` | Volunteer netball coach, Crown Harbour; freight clerk by day | idea 6: sport, parks, volunteers | fed_up | **sport** (new), parent |
+| `wally` | Retired New Haven harbour-master, 74 | idea 8: older men; Yes wins older readers | warm | **older** (new), parent |
+| `kai` | Marine-monitoring software developer, Kingstonia City | idea 4: tech, ID card and data for the "Yes, but" crowd | plain | **tech** (new) |
+
+Not drafted: the resort housekeeper (idea 2), because "resort" is in `content._OFF_LIMITS`, so most of her profile would be cut from every prompt. Tourism is covered by the earlier candidate `rafa`. The earlier candidates `kiri`, `rafa` and `leo` remain as reserves. Note that kiri has a line about having "had every childhood jab" and a COVID line mentioning resorts, and the prompt filter drops both.
+
+**For a person to decide before promoting:**
+Decided 2026-10-21 (Marc):
+- Paulo's late father stays as written.
+- Claims now say only what the question or setting.md says. "Nobody has said who checks" became "the question doesn't say who checks" (Ngaire, Kai, and Dan's existing line). "A Yes has no take-backs" / "can't be undone" became "after a Yes the government has to bring it in", with no end date (isla's line, the F2 heat in `craft.py`, the `status_quo` lever in `content.py`, and the playbook's dead-word note).
+
+Still open:
+1. Kai and his partner Vika share first names with boosters (`amplify.FIRST`). Existing characters already share some names (Kalo, Noa, Salote), so this is minor.
+2. Wally dropped F9 (parliament) for F12. Wally's "green bananas" mortality joke: keep it?
+3. Invented local colour: Saltworks Park (Ngaire) and "keke" doughnuts (Esther).
+
+**To promote one:** move its dict from `CANDIDATES` into `content.PERSONAS` (the `key/name/handle/role/place/voice/details/frames` fields) and `CHARACTERS` (the profile fields), add its register to `voices.VOICE_OF` and its hand from `CANDIDATE_HANDS` to `HANDS`, add its identities to `targeting.IDENTITIES` (new `sport`, `older` and `tech` patterns too), update the counts in `test_characters.py` and `test_prompts.py`, then dry-run (`scripts/run_swan.py --samples 12`). Registration then starts on deploy.
+
 ## Done when
 6 new personas are in `content.PERSONAS`, reviewed by a person, with tests passing. The bot registers them as room allows, and the team knows which voice replaces whom.

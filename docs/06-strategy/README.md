@@ -7,6 +7,7 @@
 | [literature-notes.md](literature-notes.md) | What the research says about referendums, vaccine-mandate opinion, persuasion, virality, bots and LLM "citizens", plus what we learned from CTN 2025 |
 | [frames-and-messengers.md](frames-and-messengers.md) | The Vote No frame library, audience segments, persona types, counters to the Yes side, and what to avoid |
 | [message-playbook.md](message-playbook.md) | **Read before writing any post (2026-10-20):** why our posts don't land, message house and catchphrases, hashtags, post anatomy, three registers, routing a reply from what the citizen wrote, before/after rewrites |
+| [new-voices-2026-10-21.md](new-voices-2026-10-21.md) | Review sheet for the five todo/17 candidate voices (bakery owner, converted dad, netball coach, retired harbour-master, developer): gaps, why each should trend, gold texts |
 | [scoring-roi.md](scoring-roi.md) | "Gaming the game" inside the rules: where the points are, milestones, budget maths, and the red lines |
 | [system-architecture.md](system-architecture.md) | Data-flow diagram, components, build order (MVP first), how 4 people share one rate limit, common operating picture |
 | [greedy-playbook.md](greedy-playbook.md) | **Start here for the build:** actions ranked by value, cause-and-effect chains, the greedy loop, pitfalls, day-1 tests |
