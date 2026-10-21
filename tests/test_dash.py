@@ -256,28 +256,44 @@ def refresh(minutes_ago, funnel, candidates=3):
     return {"ts": iso(minutes_ago), "act": "refresh", "candidates": candidates, "funnel": funnel}
 
 
-def test_reach_green_when_every_citizen_answered(tmp_path):
+def rowof(ctx, start):
+    return next(r for r in ctx["reach"]["rows"] if r["name"].startswith(start))
+
+
+def test_reach_green_when_every_citizen_answered_and_collapsed(tmp_path):
     f = {"2026-10-22T04": {"seen": 10, "answered": 8, "skipped": {"off_topic": 2}, "lost": {}, "pending": {}},
          "2026-10-22T05": {"seen": 2, "answered": 1, "skipped": {}, "lost": {}, "pending": {"queued": 1}}}
     ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
     r = ctx["reach"]
-    assert r["verdict"] == "KEEPING UP" and r["tile"]["answered"] == 8 and r["tile"]["answerable"] == 8
-    assert "none lost" in r["lines"][0]["text"] and "Citizens answered" in html and "Reach: keeping up" in html
+    assert r["verdict"] == "keeping up" and not r["open"] and not r["fixes"]
+    assert r["tile"]["answered"] == 8 and r["tile"]["answerable"] == 8 and "8/8 answered" in r["summary"]
+    assert "Citizens answered" in html and "Reach: keeping up" in html and "2 off topic" in r["extra"][0]
 
 
-def test_reach_losing_citizens_is_red_with_the_reason(tmp_path):
+def test_reach_losing_citizens_is_red_open_with_the_reason(tmp_path):
     f = {"2026-10-22T04": {"seen": 5, "answered": 3, "skipped": {}, "lost": {"gate:near_duplicate": 2}, "pending": {}},
          "2026-10-22T05": {"seen": 0, "answered": 0, "skipped": {}, "lost": {}, "pending": {}}}
     ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
-    cov = ctx["reach"]["lines"][0]
-    assert ctx["reach"]["verdict"] == "LOSING CITIZENS" and cov["light"] == "red"
-    assert "2 lost (2 gate:near_duplicate)" in cov["text"] and "If not green" in html
+    row = rowof(ctx, "Citizens answered")
+    assert ctx["reach"]["verdict"] == "losing citizens" and ctx["reach"]["open"] and row["light"] == "red"
+    assert "2 lost" in row["now"] and "2 gate:near_duplicate" in row["fix"] and "→ Citizens answered" in html
 
 
 def test_reach_no_funnel_yet_is_amber_and_page_renders(tmp_path):
     ctx, html = page(make_root(tmp_path, [write(5)]))
-    assert ctx["reach"]["tile"] is None and ctx["reach"]["lines"][0]["light"] == "amber"
+    assert ctx["reach"]["tile"] is None and rowof(ctx, "Citizens answered")["light"] == "amber"
     assert "posts last hour" in html
+
+
+def test_reach_queue_uses_time_in_our_queue_not_post_age(tmp_path):
+    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
+    old_post = {"ts": iso(1), "act": "wait", "why": "drafting", "age_min": 29.0}
+    ctx, _ = page(make_root(tmp_path, [refresh(1, f), old_post]))
+    q = rowof(ctx, "Longest wait")
+    assert q["light"] == "green" and q["now"].startswith("not measured yet")
+    ctx, _ = page(make_root(tmp_path / "b", [refresh(1, f)], status={"oldest_queued_s": 900}))
+    q = rowof(ctx, "Longest wait")
+    assert q["light"] == "amber" and q["now"].startswith("15 min") and ctx["reach"]["verdict"] == "falling behind"
 
 
 def test_reach_dates_citizen_posts_from_our_post_ids():
@@ -295,14 +311,3 @@ def test_reach_counts_changes_of_mind_from_portal_messages():
            {"_t": NOW - dt.timedelta(hours=9), "message": "NPC engagement: 9 contributions to changes of mind towards your side"}]
     m = build._minds(pts, since)
     assert m == {"toward": 3, "away": 1, "neither": 4, "primary_toward": 1}
-
-
-def test_reach_queue_uses_time_in_our_queue_not_post_age(tmp_path):
-    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
-    old_post = {"ts": iso(1), "act": "wait", "why": "drafting", "age_min": 29.0}
-    ctx, _ = page(make_root(tmp_path, [refresh(1, f), old_post]))
-    q = next(l for l in ctx["reach"]["lines"] if l["name"] == "Queue")
-    assert q["light"] == "green" and "isn't measured yet" in q["text"]
-    ctx, _ = page(make_root(tmp_path / "b", [refresh(1, f)], status={"oldest_queued_s": 900}))
-    q = next(l for l in ctx["reach"]["lines"] if l["name"] == "Queue")
-    assert q["light"] == "amber" and "15 min since we found it" in q["text"] and ctx["reach"]["verdict"] == "FALLING BEHIND"

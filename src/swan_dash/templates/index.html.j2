@@ -33,14 +33,15 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .sub { color: var(--muted); font-size: 13px; }
 .up { color: var(--green); } .down { color: var(--red); } .warn { color: var(--amber); }
-.reach { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: -10px 0 22px; }
-.reach .verdict { display: inline-block; padding: 4px 10px; border-radius: 8px; font-weight: 600; margin-bottom: 6px; }
-.reach ul { list-style: none; margin: 0; padding: 0; }
-.reach li.rl { display: flex; gap: 8px; padding: 5px 0; border: 0; grid-template-columns: none; }
-.reach .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--green); }
+.reach { margin: -10px 0 22px; }
+.reach > summary { padding: 10px 12px; cursor: pointer; }
+.reach .pill { display: inline-block; padding: 2px 10px; border-radius: 8px; font-weight: 600; }
+.reach table { width: 100%; border-collapse: collapse; margin: 0 12px 6px; width: calc(100% - 24px); }
+.reach td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.reach .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
 .reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); }
-.reach .fix { display: block; color: var(--muted); font-size: 13px; }
-.reach details { margin-top: 8px; }
+.reach p { margin: 4px 12px; } .reach .fix { color: var(--amber); font-size: 13px; }
+@media (max-width: 640px) { .reach td:last-child { display: none; } }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
 @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
@@ -198,20 +199,16 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     {% else %}<div class="val">—</div><div class="sub">{{ writes.hour }} posts last hour</div>{% endif %}</div>
 </div>
 
-<div class="reach">
-  <div class="verdict {{ 'green' if reach.verdict == 'KEEPING UP' and reach.light != 'red' else reach.light }}">Reach: {{ reach.verdict | lower }}{% if reach.why %} · flagged: {{ reach.why }}{% endif %}</div>
-  <ul>
-  {% for l in reach.lines %}
-    <li class="rl"><span class="dot {{ l.light }}"></span><span><b>{{ l.name }}:</b> {{ l.text }}{% if l.light != 'green' and l.fix %}<span class="fix">If not green: {{ l.fix }}</span>{% endif %}</span></li>
+<details class="reach" id="reach"{% if reach.open %} open{% endif %}>
+  <summary><span class="pill {{ reach.light }}">Reach: {{ reach.verdict }}</span> <span class="sub">{{ reach.summary }}</span></summary>
+  <table>
+  {% for r in reach.rows %}
+    <tr><td><span class="dot {{ r.light }}"></span></td><td>{{ r.name }}</td><td><b>{{ r.now }}</b></td><td class="sub">{{ r.target }}</td></tr>
   {% endfor %}
-  </ul>
-  {% if reach.skipped or reach.groups %}
-  <details id="reach-more"><summary>Reach details</summary><div>
-    {% if reach.skipped %}<p class="sub">Skipped on purpose, last full hour: {% for k, v in reach.skipped | dictsort %}{{ v }} {{ k | replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}. Hard skips only: off topic, hostile, deep thread, already answered (todo/21).</p>{% endif %}
-    {% if reach.groups %}<p class="sub">Extra groups, last hour (todo/23): {% for k, v in reach.groups | dictsort %}{{ v }} {{ k | replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
-  </div></details>
-  {% endif %}
-</div>
+  </table>
+  {% for r in reach.fixes %}<p class="fix">→ {{ r.name }}: {{ r.fix }}</p>{% endfor %}
+  {% for x in reach.extra %}<p class="sub">{{ x }}</p>{% endfor %}
+</details>
 
 <div class="label">Activity</div>
 <ol class="activity">
