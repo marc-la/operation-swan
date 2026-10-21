@@ -79,7 +79,7 @@ The box holds the team code, every bot password and the only live writer, so thi
 | Risk | Control |
 |---|---|
 | Someone reads the page | HTTPS + nginx basic auth. One long random password (≥20 chars) shared in the team password manager or a DM, never in git or Discord channels. `limit_req` on the location to slow guessing |
-| No domain for a certificate | Use `3-107-41-124.sslip.io` (resolves to our IP) with certbot/Let's Encrypt. Needs the Elastic IP first, or the name breaks when the IP changes |
+| No domain for a certificate | Use `13-210-120-238.sslip.io` (resolves to our Elastic IP) with certbot/Let's Encrypt |
 | Secrets end up on the page | The builder never opens `.env` or `secrets/`; it renders an explicit list of fields, not whole records. `swan-dash.service` makes `.env`, `secrets/` and `~/.ssh` inaccessible to it and gives it no network. `tests/test_dash.py` puts a fake team code in `.env`, `secrets/` and the environment and fails if it appears on the page |
 | Untrusted text (rivals' and citizens' posts in `target_text`, LLM output) carries script | Jinja autoescape on; we don't render `target_text` at all; header `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self'` so no script can run even if escaping fails |
 | nginx itself has a bug | Security group opens only 80 (redirect + certificate renewal) and 443. nginx runs as its own user and can read only `/var/www/swan`. `dnf-automatic` applies security updates. `server_tokens off`, `autoindex off`, no proxy or CGI blocks |
@@ -90,9 +90,9 @@ The box holds the team code, every bot password and the only live writer, so thi
 **Higher-assurance alternative (if we want no public port at all):** teammates join a Tailscale network and nginx listens only on the Tailscale interface; port 443 stays closed to the internet. It costs each teammate an app install. Pick this if the team would rather not have any public page.
 
 ## Setup on the box (once, Marc)
-1. AWS console: attach an **Elastic IP** to `ctn_server`, update `~/.ssh/config` and [hosting](../docs/04-technical/hosting.md).
+1. ~~AWS console: attach an Elastic IP~~ Done 2026-10-21: `13.210.120.238`. Teammates update `Hostname` in their `~/.ssh/config`; Atlas *Network Access* needs the new IP.
 2. Security group: allow inbound **80 and 443 from anywhere** (80 is for the certificate check and the redirect).
-3. On the box, after the code is on `main`: `cd ~/ctn && sudo deploy/dash_setup.sh <elastic-ip-with-dashes>.sslip.io`. It installs nginx, asks you to choose the password (user `swan`), gets the certificate, installs the timers and turns on automatic security updates.
+3. On the box: `cd ~/ctn && sudo deploy/dash_setup.sh 13-210-120-238.sslip.io`. It installs nginx, asks you to choose the password (user `swan`), gets the certificate, installs the timers and turns on automatic security updates.
 4. Check: `systemctl status swan-dash`, open `https://<ip-with-dashes>.sslip.io` on a phone, and send the URL and password to the team privately.
 
 ## Done when

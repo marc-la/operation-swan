@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time setup of the team dashboard on the EC2 box (todo/09). Safe to run again.
-#   sudo deploy/dash_setup.sh 3-107-41-124.sslip.io
+#   sudo deploy/dash_setup.sh 13-210-120-238.sslip.io
 # Before: attach the Elastic IP (the hostname is the IP with dashes), and open ports 80 and 443 in the security
 # group. It asks you to type the dashboard password (user "swan"); the password is never echoed or stored in git.
 set -euo pipefail

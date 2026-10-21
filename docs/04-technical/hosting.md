@@ -8,14 +8,14 @@ The bot moved from Marc's laptop (tmux) to EC2 on 2026-10-20 at 10:17 UTC. **It 
 | Instance | `i-06471b75b0166b3c7` (`ctn_server`), region **ap-southeast-2** (Sydney) |
 | Type | t3.micro: 2 vCPU, 913 MB RAM + 1 GB swap (`/swapfile`); credit spec *unlimited* |
 | OS | Amazon Linux 2023, user **`ec2-user`**, Python 3.13 venv at `~/ctn/.venv` |
-| Address | `3.107.41.124` / `ec2-3-107-41-124.ap-southeast-2.compute.amazonaws.com`. **Auto-assigned, so it changes if the instance is stopped and started.** Attach an Elastic IP to keep it |
+| Address | **Elastic IP `13.210.120.238`** (attached 2026-10-21; stays the same across stop/start). Was auto-assigned `3.107.41.124` before |
 | SSH | key pair `ctn_server_key` (Marc holds the PEM). Teammates: send Marc your **public** key to add to `~ec2-user/.ssh/authorized_keys`; don't share the PEM |
 | GitHub access | read-only deploy key `~/.ssh/ctn_deploy` on the box (GitHub deploy key id 167049318) |
 
 Local SSH config (`~/.ssh/config`):
 ```
 Host swan-ec2
-    Hostname 3.107.41.124
+    Hostname 13.210.120.238
     User ec2-user
     IdentityFile ~/.ssh/ctn_server_key.pem
 ```
@@ -51,8 +51,8 @@ cd ~/ctn && git log -1 --oneline
 Stopping sends SIGINT. The bot saves state and pending reply-backs, then exits. A stop that lands mid-request can, rarely, lose the log line for that one post.
 
 ## To do on the AWS side (Marc)
-- Attach an **Elastic IP**, then update `~/.ssh/config` and this file.
+- [x] Elastic IP `13.210.120.238` attached (2026-10-21).
 - Turn on **termination protection**.
 - Security group: SSH only from team IPs.
 - **Budget alert** (Billing → Budgets, e.g. $10/month). t3 *unlimited* credits can bill if CPU stays high; the bot is I/O bound, so it shouldn't.
-- MongoDB Atlas: if `swan-sync` fails with a timeout, add `3.107.41.124` (or the Elastic IP) to Atlas *Network Access*.
+- MongoDB Atlas: `13.210.120.238` must be in Atlas *Network Access*, or `swan-sync` times out (the old `3.107.41.124` can be removed).
