@@ -207,10 +207,11 @@ class Generator:
             self._count(model)
             self._local.finish = r.choices[0].finish_reason
             text = (r.choices[0].message.content or "").strip()
-            if not text and cap and r.choices[0].finish_reason == "length":
-                # a reasoning model (gpt-oss-120b) thinks inside max_tokens: 96 empty drafts on 20-21 Oct at 600
+            if cap and r.choices[0].finish_reason == "length":
+                # a thinking model spends max_tokens on thinking: at 600, gpt-oss-120b answered "" 96 times on 20-21
+                # Oct and gemini-3.6-flash stopped mid-sentence ("...if she'd need papers to get on")
                 self.no_cap.add(model)
-                print(f"{prov} {model}: empty answer at max_tokens={cap} (thinking); asking again without the cap")
+                print(f"{prov} {model}: cut off at max_tokens={cap} (thinking); asking again without the cap")
                 return self._call(prov, model, system, user, json_mode, schema, reasoning, None, temperature)
             return text
 

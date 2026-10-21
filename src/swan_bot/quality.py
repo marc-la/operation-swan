@@ -77,7 +77,7 @@ ENDORSES_YES = re.compile(r"\b(i'?m|i am|we'?re|i'?ll be) (voting|marking|tickin
                           r"\bi'?m (a )?yes (now|on this)\b|\bmy vote('?s| is) yes\b|\byes from me\b|"
                           r"\bi'?m (choosing|going) yes\b", re.I)
 GENERIC = re.compile(r"^(exactly|absolutely|great point|good point|well said|i hear you|i understand|totally agree|"
-                     r"spot on|agreed|this\b|so true|100%)|\b(delve|foster|navigate|landscape|crucial|vital|"
+                     r"spot on|agreed|this[.!]|this is (so )?(true|it)\b|so true|100%)|\b(delve|foster|navigate|landscape|crucial|vital|"
                      r"it'?s important to|at the end of the day|in today'?s|food for thought|tapestry|testament|"
                      r"fellow (citizens|kingstonians)|dear neighbours|let'?s be clear|make no mistake|"
                      r"slippery slope|fundamental rights?)\b", re.I)
@@ -103,6 +103,9 @@ HEDGES = re.compile(r"\bi'?m (still )?(deciding|undecided|on the fence|torn|not 
                     r"\bi haven'?t (decided|made up my mind)\b|\bi'?m still (thinking it over|mulling it over|making up my mind)\b|"
                     r"\b(voting|vote) no,? for now\b|\bprobably (a )?no from me\b", re.I)
 CLOSING_QUESTION = re.compile(r"\?['\")]*$")
+# a closing question that lost its "?" ("...moved from Yes to No yet #VoteNo"): the mark is added, not rejected
+UNMARKED_QUESTION = re.compile(r"(?:^|[.!?]\s+)((?:what|who|which|where|when|why|how|does|do|did|is|are|was|have|has|"
+                               r"would|could|will|can|should)\b[^.!?]{8,})$", re.I)
 REQUIRE_CLOSING_QUESTION = True                 # posts end on a question the reader can answer (todo/05, playbook §5)
 # connector phrases the model leans on; one is fine, the same one in consecutive posts is a template fingerprint
 STOCK = re.compile(r"the (trouble|catch|problem|thing) is|as (it'?s )?written|as it stands|set in stone|strictly|locks? (it|this|that|the \w+) in|"
@@ -320,6 +323,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     if kind == "post" and not (LOCAL.search(t) or (LOCAL_NAME and LOCAL_NAME.search(t))):
         return None, "no_local_detail"
     body = strip_tag(t)                            # a shared tag is not a shared sentence
+    if kind == "post" and closing_question and UNMARKED_QUESTION.search(body):
+        t, body = f"{body}?{t[len(body):]}", f"{body}?"
     if kind == "post" and REQUIRE_CLOSING_QUESTION and closing_question and not CLOSING_QUESTION.search(body):
         return None, "no_closing_question"
     if copied_runs(body) & _SOURCE_SHINGLES:
@@ -343,19 +348,23 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
 
 # Repair-on-reject (todo/14): for these reasons the second call sends the draft back with what to fix (the smallest
 # edit), instead of a fresh roll that repeats the failure. Sentence counts, not characters: this model ignores counts.
-REPAIR_SENTENCES = {"post": 4, "reply": 2, "second_voice": 1, "journalist": 2, "reply_back": 2}
+# (sentences, words) to cut a too-long draft to; words, because a "cut to 1 sentence" second voice stayed at 316
+# characters (21 Oct). Each sits under quality.LENGTHS at ~5.4 characters a word.
+REPAIR_LENGTH = {"post": (4, 65), "reply": (2, 40), "second_voice": (2, 35), "journalist": (2, 40),
+                 "reply_back": (2, 30), "thread_answer": (2, 30)}
 
 
 def repair_note(why, raw, kind, tag=None):
     """What to tell the model to fix in a rejected draft, or None (then the retry is a fresh draft)."""
     why = why or ""
-    if why.startswith("length_") and kind in REPAIR_SENTENCES:
+    if why.startswith("length_") and kind in REPAIR_LENGTH:
         n = int(why.split("_")[1])
         if n <= LENGTHS[kind][1]:
             return None                            # too short: a fresh draft does better than padding
-        k = REPAIR_SENTENCES[kind]
-        return (f"Too long ({n} characters). Cut it to {k} sentence{'s' if k > 1 else ''}, keeping the opening"
-                + (", the line saying you're voting No and the last line." if kind == "post" else " and the ending."))
+        k, words = REPAIR_LENGTH[kind]
+        return (f"Too long ({n} characters). Cut it to {k} sentences and under {words} words in all, keeping the "
+                f"opening" + (", the line saying you're voting No and the last line." if kind == "post" else
+                              " and the ending."))
     if why == "copied_fact":
         quoted = "; ".join(f"«{p}»" for p in copied_phrases(raw)) or "a phrase"
         return f"This copies the brief word for word: {quoted}. Say it in your own words."
@@ -363,7 +372,14 @@ def repair_note(why, raw, kind, tag=None):
         return f"Use exactly one hashtag, {tag}, as the very last word." if kind == "post" and tag else \
             "Remove every hashtag."
     if why == "no_closing_question":
-        return "End with one question the reader answers from their own life."
+        if "?" in strip_tag(normalise(raw)):       # it asked, then wrote the verdict after: move, don't reword
+            return ("Move your question to the very end, after the line saying you're voting No and just before "
+                    "the hashtag, with its question mark.")
+        return "End with one question the reader answers from their own life, with a question mark."
+    if why in ("consoling_phrase", "generic_phrase"):
+        m = (CONSOLING if why == "consoling_phrase" else GENERIC).search(normalise(raw))
+        quoted = f"«{m.group(0).strip()}»" if m else "the stock phrase"
+        return f"Cut {quoted} and say your own point straight out; change nothing else."
     if why == "no_vote_statement":
         return "Say plainly that you're voting No."
     if why == "spelled_number":

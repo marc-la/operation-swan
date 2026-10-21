@@ -507,7 +507,7 @@ def test_repair_notes():
     assert quality.check(copied, "post")[1] == "copied_fact"
     note = quality.repair_note("copied_fact", copied, "post", "#VoteNo")
     assert "«keep kingstonia open the ordinary island life you love" in note
-    assert "4 sentences" in quality.repair_note("length_600", "", "post")
+    assert "4 sentences and under 65 words" in quality.repair_note("length_600", "", "post")
     assert "2 sentences" in quality.repair_note("length_340", "", "reply")
     assert quality.repair_note("length_50", "", "reply") is None          # too short: fresh draft
     assert "#VoteNo" in quality.repair_note("too_many_tags", "", "post", "#VoteNo")
@@ -528,3 +528,20 @@ def test_prompt_notes_dont_trip_the_copy_check():
     for text in [f["gist"] for f in c.FRAMES.values()] + list(c.FACT_NOTES.values()):
         assert not quality.copied_runs(text) & quality._SOURCE_SHINGLES, text
     assert set(c.FACT_NOTES) == set(c.FACTS)
+
+
+def test_live_reject_fixes():
+    """From the 20-21 Oct live rejects: a post opening "This pass rule..." isn't a "This!" cheer; a closing question
+    that lost its "?" gets it back; repairs quote the stock phrase and move a question asked too early."""
+    post = ("This pass rule is a mess for the Crown Harbour wharf cafe, where Keli works the counter between lectures "
+            "and could end up checking papers. I'm voting No. Does anyone know someone who moved from Yes to No #VoteNo")
+    clean, why = quality.check(post, "post")
+    assert clean and clean.endswith("from Yes to No? #VoteNo"), why
+    assert quality.check("This! The ferry from Crown Harbour costs K$14 and nobody can say yet if the ferry counts as a public space.", "reply")[1] \
+        == "generic_phrase"
+    early = ("Litia rides the K$14 ferry in every week for her shop at the Crown Harbour market, and under a Yes she "
+             "might need papers to board. Why fix what isn't broken "
+             "for your own family? I'm voting No. #WorkersRights")
+    assert quality.check(early, "post")[1] == "no_closing_question"
+    assert quality.repair_note("no_closing_question", early, "post").startswith("Move your question to the very end")
+    assert "«Fair point»" in quality.repair_note("consoling_phrase", "Fair point, but there's no end date.", "reply")
