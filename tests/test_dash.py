@@ -295,3 +295,14 @@ def test_reach_counts_changes_of_mind_from_portal_messages():
            {"_t": NOW - dt.timedelta(hours=9), "message": "NPC engagement: 9 contributions to changes of mind towards your side"}]
     m = build._minds(pts, since)
     assert m == {"toward": 3, "away": 1, "neither": 4, "primary_toward": 1}
+
+
+def test_reach_queue_uses_time_in_our_queue_not_post_age(tmp_path):
+    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
+    old_post = {"ts": iso(1), "act": "wait", "why": "drafting", "age_min": 29.0}
+    ctx, _ = page(make_root(tmp_path, [refresh(1, f), old_post]))
+    q = next(l for l in ctx["reach"]["lines"] if l["name"] == "Queue")
+    assert q["light"] == "green" and "isn't measured yet" in q["text"]
+    ctx, _ = page(make_root(tmp_path / "b", [refresh(1, f)], status={"oldest_queued_s": 900}))
+    q = next(l for l in ctx["reach"]["lines"] if l["name"] == "Queue")
+    assert q["light"] == "amber" and "15 min since we found it" in q["text"] and ctx["reach"]["verdict"] == "FALLING BEHIND"

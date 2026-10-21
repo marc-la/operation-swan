@@ -596,17 +596,17 @@ def reach(actions, status, points, now, day_start):
 
     # 3) queue
     q = status.get("queue") or {}
-    oldest = status.get("oldest_waiting_s")
-    if oldest is None:
-        waits = [float(a["age_min"]) for a in actions if a.get("act") == "wait" and a.get("age_min") not in (None, "None")
-                 and (now - a["_t"]).total_seconds() < 300]
-        oldest = max(waits) * 60 if waits else None
+    # time an item has sat in OUR queue since we found it, deliberate waits (session cap, firm-Yes cap) left out.
+    # Only the bot knows it (status.json, todo/22's heartbeat). A post's own age is no measure: thread items are
+    # often found when they are already old.
+    oldest = status.get("oldest_queued_s")
     waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
     if waiting is not None:
         old_min = oldest / 60 if oldest is not None else None
         lines.append(dict(name="Queue", light="amber" if old_min and old_min > REACH_QUEUE_MIN else "green",
                           text=f"{waiting} citizen item{'s' if waiting != 1 else ''} in the queue (all hours)"
-                               + (f", the oldest for {old_min:.0f} min (target < {REACH_QUEUE_MIN})" if old_min is not None else "")
+                               + (f"; the longest has waited {old_min:.0f} min since we found it (target < {REACH_QUEUE_MIN})"
+                                  if old_min is not None else "; how long they wait isn't measured yet (comes with the bot's heartbeat)")
                                + (f"; {q['drafts_ready']} drafts ready" if q.get("drafts_ready") is not None else "") + ".",
                           fix="The bot isn't keeping up: free voices, a parked LLM, or a stuck loop. Check alerts and Bot."))
 
