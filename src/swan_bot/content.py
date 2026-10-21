@@ -15,6 +15,7 @@ also goes when all its facts are paused). Character, persona and theme text is f
 """
 import datetime as dt
 import itertools
+import json
 import random
 import re
 from zoneinfo import ZoneInfo
@@ -839,9 +840,12 @@ REPLY_RULES = (
 CHAR_CAP = {"reply": 260, "second_voice": 240}
 
 
-EXEMPT_NOTE = ("They mention exemptions: medical exemptions ARE in the plan, so never lump exemptions in with what's "
-               "missing. Say exemptions are covered, then name what isn't (an end date, the list of places, any review).\n")
-EXEMPT_REQUIRES = ["exemptions", "no_end", "list_later"]
+# 2026-10-22 (todo/20): the note used to script a sentence ("say exemptions are covered, then name what isn't"), and
+# replies to the many citizens who mention exemptions all opened "Medical exemptions are covered, but there's no end
+# date, no review..." until the gate rejected them as near duplicates. Now it is only a fact to respect.
+EXEMPT_NOTE = ("They mention exemptions: medical exemptions ARE in the plan, so never say or suggest they're missing. "
+               "You needn't bring exemptions up at all; answer the rest of what they said.\n")
+EXEMPT_REQUIRES = ["exemptions"]
 
 
 def exempt_note(target_text):
@@ -852,9 +856,80 @@ def _reply_voice(persona):
     return f"{VOICES[register_of(persona)].get('reply_instruction', '')} " if persona else ""
 
 
-def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None):
+# ---- the light read (todo/20 step 2): one drafting call reads the citizen and answers them ----
+READ_STANCES = ("firm_yes", "yes_but", "unsure", "unclear", "lean_no", "firm_no")
+# what the reply does, by the stance the model reads (todo/20: the stance picks the approach)
+APPROACH = (
+    "How to answer, by their stance: yes_but, unsure or unclear: answer the condition or worry they name and make "
+    "the No case on it. firm_yes: concede first, granting what is true in their reason in a few words; never attack, "
+    "correct or lecture them; then one calm reason a No still protects what they care about. lean_no or firm_no: "
+    "affirm their No in their own terms, then add one reason that matters on the day.")
+MIRROR_CHARS = (150, 280)          # what citizens answered in another team's replies (median ~260, research D §8)
+
+
+def frame_menu(rng=random):
+    """(lines, keys): the live frames as '- key: gist' for the light read to pick from; a frame down-weighted in
+    config.FRAME_SCALE is listed only that share of the time."""
+    keys = [k for k in live_frames() if rng.random() < frame_scale(k)] or live_frames()
+    return "\n".join(f"- {k}: {FRAMES[k]['gist']}" for k in keys), keys
+
+
+def read_block(hint=None, rng=random):
+    """The light read's instruction: read the post, then answer as JSON (or skip). `hint`: the frame a keyword match
+    picked, offered as a suggestion only."""
+    menu, _ = frame_menu(rng)
+    hint = (f"A keyword match suggests {hint}; pick another if one fits their doubt better.\n"
+            if hint in FRAMES else "")
+    return (
+        f"\n\nFirst read them, then write. Output one JSON object and nothing else (this replaces 'output only the "
+        f"text'): {{\"stance\": one of {'|'.join(READ_STANCES)}, \"doubt\": their concern in 10 words or fewer, "
+        f"\"frame\": the key of the angle that answers it best, \"reply\": your reply}}. If the post is hostile or "
+        f"abusive, or not really about the referendum, output {{\"skip\": why, in a few words}} instead.\n"
+        f"Stances: firm_yes = set on Yes; yes_but = Yes with conditions or worries; unsure = undecided; unclear = on "
+        f"the vote but no stance; lean_no / firm_no = leaning or set on No.\n{APPROACH}\n"
+        f"Angles (the point your reply makes):\n{menu}\n{hint}")
+
+
+def _unescape(v):
+    try:
+        return json.loads(f'"{v}"')
+    except ValueError:
+        return v
+
+
+def parse_read(raw):
+    """The light read from a draft: {ok, stance, doubt, frame, reply, skip}. JSON is read leniently (code fences,
+    text around it, a broken object field by field); a draft with no JSON at all is taken as the reply itself
+    (ok False: the read fell back to the regex class). Unknown stances and frames come back as None."""
+    t = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip())
+    i, j = t.find("{"), t.rfind("}")
+    if i < 0:
+        return dict(ok=False, stance=None, doubt=None, frame=None, reply=t or None, skip=None)
+    try:
+        d = json.loads(t[i:j + 1])
+        d = d if isinstance(d, dict) else {}
+    except ValueError:
+        d = {k: _unescape(m.group(1)) for k in ("stance", "doubt", "frame", "reply", "skip")
+             for m in [re.search(rf'"{k}"\s*:\s*"((?:[^"\\]|\\.)*)"', t)] if m}
+    text = lambda k: d.get(k).strip() if isinstance(d.get(k), str) and d.get(k).strip() else None
+    stance, frame = text("stance"), text("frame")
+    out = dict(stance=stance.lower() if stance and stance.lower() in READ_STANCES else None,
+               doubt=(text("doubt") or "")[:120] or None,
+               frame=frame if frame in FRAMES and frame_live(frame) else None,
+               reply=text("reply"), skip=text("skip"))
+    out["ok"] = bool(out["reply"] or out["skip"])
+    return out
+
+
+def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,
+                 style="current", read=False, hint=None):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A
-    `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life."""
+    `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life.
+    todo/20: style "mirror_concede" is the other arm (mirror_prompt). read=True asks for the light read: the reply
+    comes back inside JSON with the citizen's stance, doubt and the frame the model picked (parse_read); `hint` is
+    the frame a keyword match picked."""
+    if style == "mirror_concede":
+        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint)
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
     arms = {}
     # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
@@ -872,21 +947,46 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
     lever = experiment.draw("lever", lever_weights(exclude={"fear_answer"} if reb and reason_first else ()), arms)
     ask_kind = experiment.draw("ask_kind", {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"}, arms)
     sentences, lo, hi = experiment.length_line("reply", arms)
-    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), **arms)
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), style=style,
+          **arms)
+    gist = "the angle you pick below" if read else FRAMES[frame_key]["gist"]
+    undecided = "" if read else "They haven't fully decided. "        # the light read finds out instead
     if reason_first:
-        point = "answer the reason above" if reb else FRAMES[frame_key]["gist"]
+        point = "answer the reason above" if reb else gist
         why = "Answer WHY they lean Yes (the fear or hope underneath, not the conditions they list). "
         reb = f"{reb}\n" if reb else ""
     else:
-        point, why = FRAMES[frame_key]["gist"], ""
+        point, why = gist, ""
         reb = f"Note: {reb}\n" if reb else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
-        f"They haven't fully decided. {why}Reply in {sentences} short sentences, between {lo} and {hi} words, "
-        f"{CHAR_CAP['reply']} characters at most in all. "
+        f"{undecided}{why}Reply in {sentences} short sentences, between {lo} "
+        f"and {hi} words, {CHAR_CAP['reply']} characters at most in all. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
         f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}{experiment.ASK_KINDS[ask_kind]} "
-        f"{_reply_voice(persona)}{REPLY_RULES}"
+        f"{_reply_voice(persona)}{REPLY_RULES}" + (read_block(hint) if read else "")
+    )
+
+
+def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None):
+    """todo/20 step 4, the mirror_concede arm: what citizens answered in another team's replies (research D §8):
+    mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact), then state
+    No plainly; 150-280 characters and no question. No lever, theme or opener: four beats only."""
+    ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
+    asks = f"What they raised: {', '.join(wants)}.\n" if wants else ""
+    reb = rebuttal_for(target_text)
+    point = ("the angle you pick below" if read else FRAMES[frame_key]["gist"]) + (
+        f" (their reason is fear: {reb})" if reb else "")
+    lo, hi = MIRROR_CHARS
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], style="mirror_concede", rebuttal=bool(reb),
+          opener=None, lever=None, ask_kind="none", length_band="mirror", reply_mode=None)
+    return (
+        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
+        f"Reply in 2 or 3 short sentences, {lo} to {hi} characters in all, in this order. First, mirror one concrete "
+        f"detail they wrote, in a few of your own words (never their whole sentence). Then concede what is fair in it, "
+        f"in 8 words or fewer (if they lean No, agree with their reason instead). Then one anchor that carries the "
+        f"point: a detail from your own life or one of your facts; the point: {point}. Then say plainly that you're "
+        f"voting No. No question anywhere, and no closing question. {REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
@@ -908,10 +1008,17 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
     )
 
 
-def reply_back_prompt(our_text, their_text):
-    """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7)."""
+def reply_back_prompt(our_text, their_text, style=None):
+    """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7). style: the
+    style of our reply they answered; a mirror_concede conversation goes on in that style (todo/20 step 3)."""
     said = (f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
             if our_text else f"A neighbour mentioned you in this post:\n<<<{their_text[:500]}>>>\n")
+    if style == "mirror_concede":
+        return (
+            f"{said}Reply to them in 1 or 2 sentences, between 60 and 220 characters: pick up one thing they actually "
+            f"said, grant what is fair in it in a few words, then stay with your No with one detail from your own life "
+            f"or one fact. If they asked a question, answer it with one fact; otherwise no question. Never start with "
+            f"Spot on, Exactly or Too right. No hashtags.")
     return (
         f"{said}"
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "

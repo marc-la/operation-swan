@@ -306,13 +306,19 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
     hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest. With a ledger, posts
     and replies may carry a theme (themes.Ledger.pick)."""
     persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
+    job.setdefault("frame_in", job.get("frame"))                 # the keyword match's frame, or None (todo/21)
     job["frame"] = content.live_frame(job["frame"], persona)      # a fact paused since the job was queued
     target = job.get("target") or {}
     body = target.get("body") or ""
     mode = job["mode"]
     meta = job["meta"] = {}
     parts = ()
-    theme = pick_theme(job, ledger, meta) if mode in themes.MODES else None
+    if mode == "reply":                  # todo/20: the style arm in turn (the firm-Yes arm concedes first) and the read
+        job["style"] = ("mirror_concede" if job.get("arm") == "firm_yes" else
+                        experiment.alternate("style", config.REPLY_STYLES))
+        job["read"] = config.LIGHT_READ
+    mirror = job.get("style") == "mirror_concede"                 # four beats: no theme
+    theme = pick_theme(job, ledger, meta) if mode in themes.MODES and not mirror else job.setdefault("theme", None)
     if mode == "post":
         headline = targeter.headline if random.random() < 0.3 else None
         shape = None
@@ -334,14 +340,15 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
     elif mode == "reply":
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
-                                    theme=theme)
+                                    theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"])
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
                                            persona=persona)
     elif mode == "journalist":
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
-        user = content.reply_back_prompt(job["our_text"], body)
+        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"))
+        meta["style"] = job.get("style")
     return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
                                           pulse_parts=parts), user
 
@@ -412,7 +419,19 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
         if raw is None:
             break
         meta["llm_calls"] += 1
-        text, why, fixes = gate(raw, job, user, recent_texts, ledger)
+        draft = raw
+        if job.get("read"):                     # the light read: JSON on a fresh draft; a repair may answer plainly
+            r = content.parse_read(raw)
+            if prompt is user and not meta.get("read_ok"):
+                meta.update(read_ok=r["ok"], read_stance=r["stance"],
+                            read_doubt=r["doubt"], read_frame=r["frame"], read_skip=r["skip"])
+                if r["frame"]:
+                    job["frame"] = r["frame"]
+            if r["skip"] and prompt is user:
+                job["read_skip"] = r["skip"]
+                return None, backend, None
+            draft = r["reply"] or ""
+        text, why, fixes = gate(draft, job, user, recent_texts, ledger)
         if text:
             meta["fixes"] = fixes
             return text, backend, repair
@@ -422,7 +441,9 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
             on_reject(why, raw, backend, repair)
         note = (themes.repair_note(why, job.get("theme")) if why in THEME_REASONS else
                 quality.repair_note(why, raw, mode, meta.get("tag"), recent=recent_texts))
-        prompt, repair = (repair_prompt(user, raw, note), why) if note else (user, None)
+        if note and job.get("read"):
+            note += " Output only the fixed reply text, not JSON."
+        prompt, repair = (repair_prompt(user, draft, note), why) if note else (user, None)
         meta["repairs"] += bool(note)
     return None, backend, repair
 
@@ -448,6 +469,8 @@ def lose(targeter, queue, job, why):
         return "requeued"
     log({"act": "lost", "why": why, "mode": mode, "target_post": target.get("post_id"),
          "target_author": target.get("author_id"), "draft_id": job.get("draft_id")})
+    if target and mode in ("reply", "reply_back") and hasattr(targeter, "lose"):
+        targeter.lose(target, why, job.get("source"))             # ends the citizen item in todo/21's funnel
     return "lost"
 
 
@@ -525,7 +548,7 @@ def main():
     targeter.load(state.pop("targeter", None))          # read position, queue and funnel survive a restart (G3)
     for key, default in (("replied_posts", []), ("contacted", {}), ("engaged", {}), ("recent_texts", []), ("second_voice", []),
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
-                         ("theme_log", []), ("turns", {})):
+                         ("theme_log", []), ("turns", {}), ("styles", {})):
         state.setdefault(key, default)
     ledger = themes.Ledger(state["theme_log"])          # the themes we sent, team-wide (saved with the state)
 
@@ -669,6 +692,8 @@ def main():
             if queue:
                 job = queue.pop(0)
                 job["frame"] = content.PERSONA_BY_KEY[job["rec"]["persona"]]["frames"][0]
+                # the conversation goes on in the style of our reply they answered (todo/20 step 3)
+                job["style"] = state["styles"].get(str(job["target"].get("reply_to_post_id")))
                 if job["rec"].get("last_write", 0) + 60 > t:      # don't double-post from one account
                     queue.insert(0, job)
                     job = None
@@ -790,6 +815,14 @@ def main():
 
                 text, backend, repair = draft_checked(gen, job, system, user, state["recent_texts"][-300:], rejected,
                                                       ledger)
+            if job.get("read_skip"):                      # the light read: hostile or not about the vote (final)
+                if hasattr(targeter, "skip"):
+                    targeter.skip(target, f"light_read:{job['read_skip'][:60]}", job.get("source"))
+                log({"act": "skip", "why": "read", "detail": job["read_skip"][:200], "mode": mode,
+                     "target_post": target["post_id"], "target_author": target["author_id"],
+                     "target_class": target_class(target.get("body") or ""), "backend": backend,
+                     "draft_id": job["draft_id"]})
+                continue
             if not text and mode != "repost":
                 # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
                 lose(targeter, queue, job, "no_model" if backend is None else
@@ -867,6 +900,9 @@ def main():
                                                   frame=second_frame(job["frame"]),
                                                   first_persona=persona["key"], wants=job.get("wants"),
                                                   context=job.get("context")))
+            if mode in ("reply", "reply_back") and job.get("style") and post_id:     # reply-backs keep the style
+                state["styles"][str(post_id)] = job["style"]
+                state["styles"] = dict(list(state["styles"].items())[-3000:])
             if mode == "post":
                 state["last_post"] = time.time()
                 if job.get("amp"):
@@ -897,6 +933,10 @@ def main():
                  **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
                  **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
                  "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
+                 # todo/20: the reply style arm and the light read; todo/21's arm and priority, next to target_class
+                 "arm": job.get("arm"), "priority": job.get("priority"),
+                 "frame_in": job.get("frame_in"),
+                 **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame")},
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
                  "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
                  **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})

@@ -242,3 +242,79 @@ def test_vaccine_advocacy_is_off():
     fixed = quality.fix(text, "vaccine_advocacy", "reply")
     assert "Get the jab" not in fixed and quality.check(fixed, "reply")[0]
     assert "Never urge anyone to get vaccinated" in content.system_prompt(content.PERSONAS[1], "F3_provax_antipass")
+
+
+# ---- step 2: the light read; step 4: the style arm ----
+def test_parse_read_is_lenient():
+    from swan_bot import content
+    good = content.parse_read('```json\n{"stance": "yes_but", "doubt": "wants an end date", '
+                              '"frame": "F14_no_yes_but", "reply": "No end date in it."}\n```')
+    assert good == dict(ok=True, stance="yes_but", doubt="wants an end date", frame="F14_no_yes_but",
+                        reply="No end date in it.", skip=None)
+    broken = content.parse_read('Here: {"stance": "Unsure", "frame": "F99", "reply": "Line one \\"quoted\\" ok", }')
+    assert broken["ok"] and broken["stance"] == "unsure" and broken["frame"] is None
+    assert broken["reply"] == 'Line one "quoted" ok'
+    assert content.parse_read('{"skip": "about reef restoration"}')["skip"] == "about reef restoration"
+    plain = content.parse_read("Just a reply, no JSON.")
+    assert plain["ok"] is False and plain["reply"] == "Just a reply, no JSON."
+
+
+def test_read_and_mirror_prompts():
+    from swan_bot import content
+    meta = {}
+    u = content.reply_prompt("only if there's an end date", "F14_no_yes_but", ["end date"], meta=meta, read=True,
+                             hint="F14_no_yes_but")
+    assert '"stance"' in u and "- F1_blank_cheque:" in u and "keyword match suggests F14_no_yes_but" in u
+    assert "They haven't fully decided" not in u and meta["style"] == "current"
+    assert "They haven't fully decided" in content.reply_prompt("x", "F14_no_yes_but", [])
+    meta = {}
+    m = content.reply_prompt("only if there's an end date", "F14_no_yes_but", [], meta=meta, style="mirror_concede")
+    assert "150 to 280 characters" in m and "No question anywhere" in m and "JSON" not in m
+    assert meta["style"] == "mirror_concede" and meta["lever"] is None and meta["ask_kind"] == "none"
+    assert "grant what is fair" in content.reply_back_prompt("ours", "theirs", style="mirror_concede")
+
+
+def test_styles_alternate():
+    from swan_bot import experiment
+    arms = [experiment.alternate("style_t", ["a", "b"]) for _ in range(6)]
+    assert arms in (["a", "b"] * 3, ["b", "a"] * 3)
+
+
+def job_for(frame=None, arm=None):
+    return dict(mode="reply", rec=dict(persona="lani"), frame=frame, arm=arm, wants=[], context=None,
+                target=dict(post_id=5, author_id=500, body="Not sure how I'll vote on the referendum yet."))
+
+
+def test_build_prompt_takes_no_frame_and_the_firm_yes_arm():
+    import types
+    targeter = types.SimpleNamespace(headline=None)
+    job = job_for(frame=None, arm="firm_yes")
+    _, system, user = bot.build_prompt(job, targeter)
+    assert job["frame_in"] is None and job["frame"] in bot.content.FRAMES and job["style"] == "mirror_concede"
+    assert job["read"] and '"stance"' in user and job["theme"] is None
+
+
+READ = ('{"stance": "unsure", "doubt": "which places count", "frame": "F1_blank_cheque", "reply": '
+        '"Which places count is the whole question, and nobody will say until after the vote. I\'m voting No."}')
+
+
+def test_draft_checked_reads_the_json(monkeypatch):
+    gen = Gen([READ])
+    job = dict(job_for(), read=True, meta={})
+    text, _, _ = bot.draft_checked(gen, job, "sys", "user", [])
+    assert text.startswith("Which places count") and job["frame"] == "F1_blank_cheque"
+    assert job["meta"]["read_stance"] == "unsure" and job["meta"]["read_ok"]
+
+
+def test_draft_checked_read_skip_and_plain_repair(monkeypatch):
+    gen = Gen(['{"skip": "a comment about reef restoration"}'])
+    job = dict(job_for(), read=True, meta={})
+    assert bot.draft_checked(gen, job, "sys", "user", [])[0] is None
+    assert job["read_skip"] == "a comment about reef restoration" and len(gen.calls) == 1
+    bad = READ.replace("whole question", "whole question. I hear you")          # consoling: a repair, answered plainly
+    gen = Gen([bad, "Which places count is the whole question, and nobody says until after the vote. I'm voting No."])
+    job = dict(job_for(), read=True, meta={})
+    text, _, repair = bot.draft_checked(gen, job, "sys", "user", [])
+    assert text and repair == "consoling_phrase" and "not JSON" in gen.calls[1][1]
+    assert "I hear you" in gen.calls[1][1] and '"stance"' not in gen.calls[1][1].split("Your draft was:")[1]
+    assert job["meta"]["read_stance"] == "unsure"

@@ -192,6 +192,14 @@ FRAME_SCALE = {"F2_no_end": 0.25, "F3_provax_antipass": 0.25}
 # the vaccine, is rejected by the gate (content.ADVOCACY), and the get_jab theme ("Get the jab. Vote No.") is off.
 NO_VACCINE_ADVOCACY = True
 THEMES_OFF = {"get_jab"}
+# The light read (todo/20 step 2): a reply to a citizen is drafted as JSON with their stance, their doubt and the
+# frame that answers it (content.read_block / parse_read), or a skip; the stance picks the approach. False: plain
+# replies, the frame from the keyword match only.
+LIGHT_READ = True
+# Reply style arm, taken in turn per reply (experiment.alternate): "mirror_concede" (mirror one detail, concede, one
+# anchor, state No; 150-280 characters, no question) against "current". The firm-Yes arm (todo/21) is always
+# mirror_concede. To keep a winner, list only it here.
+REPLY_STYLES = ["mirror_concede", "current"]
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 

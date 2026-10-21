@@ -14,8 +14,9 @@ import time
 
 from . import config
 
-VERSION = 2             # bump when the arms or their wording change, so reports don't pool unlike drafts
+VERSION = 3             # bump when the arms or their wording change, so reports don't pool unlike drafts
                         # 2: lengths in words, one post beat (todo/14)
+                        # 3: the light read, reply styles, levers reweighted, no vaccine advocacy (todo/20)
 
 # How each draft ends (H7). `frame` (posts only) is the curated question from the frame's craft `asks`.
 ASK_KINDS = {
@@ -81,6 +82,23 @@ def draw(dim, arms, meta=None, rng=random, t=None):
         meta[dim] = arm
         if block_id:
             meta["block_id"] = block_id
+    return arm
+
+
+_TURN = {}
+
+
+def alternate(dim, arms, meta=None, rng=random):
+    """The arm for this draft, taking `arms` strictly in turn (todo/20: alternate replies, so both arms see the same
+    hours and supply), from a random start per process. config.PIN still wins. Writes meta[dim] when meta is given."""
+    pinned = getattr(config, "PIN", {}).get(dim)
+    if pinned in arms:
+        arm = pinned
+    else:
+        n = _TURN.setdefault(dim, rng.randrange(len(arms)))
+        arm, _TURN[dim] = arms[n % len(arms)], n + 1
+    if meta is not None:
+        meta[dim] = arm
     return arm
 
 
