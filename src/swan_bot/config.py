@@ -106,14 +106,16 @@ GROUP_QUEUE_S = 12 * 3600           # a swept (or engaged) candidate not handed 
 OLDER_ARM = True
 OLDER_MAX_AGE_H = 72
 OLDER_PER_H = 10
-# C, off-topic citizen posts: a warm reply on their topic, no pivot to the vote (content.off_topic_prompt). Off until
-# bot.py copies the candidate's group into the job (todo/22's session): without it the reply prompt would pivot.
+# C, off-topic citizen posts: a warm reply on their topic, no pivot to the vote (content.off_topic_prompt). Off:
+# 2026-10-22 dry run, 1 of 4 Kimi drafts still turned to the vote ("it's the pass I can't stand... Voting No") and the
+# gate doesn't catch it. On once the gate rejects a referendum turn in an off_topic reply (todo/20's quality.py).
 OFF_TOPIC_ARM = False
 OFF_TOPIC_PER_H = 3
 OFF_TOPIC_RECONTACT_S = 3 * 86400
 # D, engaged quiet citizens: citizens who liked our voices' recent posts or follow a voice; we answer their most
-# recent post from the voice they engaged with (job["prefer"]). Their off-topic posts need OFF_TOPIC_ARM too.
-ENGAGED_ARM = False
+# recent post from the voice they engaged with (job["prefer"], bot.candidate_voice). Their off-topic posts need
+# OFF_TOPIC_ARM too. 2026-10-22 dry run: 32 reads, 4 candidates, 4 drafts passed the gate first time.
+ENGAGED_ARM = True
 ENGAGED_PER_H = 5
 ENGAGED_RECONTACT_S = 2 * 86400
 ENGAGED_POSTS_H = 48                # our posts this recent are read for citizen likers, one voice per refresh
