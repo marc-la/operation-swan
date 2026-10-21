@@ -50,6 +50,15 @@ FIRM_YES = re.compile(r"\b(vot(e|ing)|mark(ing)?|tick(ing)?) yes\b|#voteyes|prot
                       r"\bi'?m a yes\b", re.I)
 SOFT = re.compile(r"\bbut\b|only if|unless|as long as|provided|not sure|unsure|undecided|leaning|torn|guarantee|"
                   r"safeguard|worr|need(s)? (to|clear|real|a)|should|must|\?|if they want|before (i|we)", re.I)
+# A citizen who names the conditions they want ("Publish the venue list now, with a clear sunset") is a Yes-but
+# without a hedge word. 2026-10-21: 53 of 159 citizen texts on the vote fell out of classify() for want of SOFT;
+# ASKS with WANTS brings back 43 of them, while "No sunset clause, no list, no thanks" stays out.
+ASKS = re.compile(r"\b(i|we)('d| would)? (want|need|expect)|\bneeds? (to|a|an|the|targeted|real|clear|proper|strong)\b|"
+                  r"\b(publish|spell out|define|set|keep|give us|write|put|build|tie|lock)\b|would make me|"
+                  r"\bi'?d (back|support|feel|be)|\bif (a |the )?yes\b|\bif (they|we|it|the)\b|\bwith (a |an )?(clear|real|"
+                  r"hard|firm|binding|concrete|proper|published|independent|transparent|genuine)\b|\btied to\b|"
+                  r"in the (actual )?law\b|\bbefore (voting|we vote|polling)|\bmake (it|them|the)\b|\bget (it|the plan)\b|"
+                  r"\b(has|have) to be\b|\bessential\b|\bi.?d push\b|\bi could (back|support|vote)\b", re.I)
 HOSTILE = re.compile(r"resort (profits|owners|bookings)|profits|castillo|kitb|tourism board|\bsheep\b|idiots?|"
                      r"conspiracy|tyrann", re.I)
 ON_TOPIC = re.compile(r"referendum|h2d2|dolphin flu|vaccin|\bjabs?\b|mandate|ballot|certificate|health pass|"
@@ -102,15 +111,20 @@ def loud(text):
     return len(letters) > 20 and sum(c.isupper() for c in letters) / len(letters) > 0.6
 
 
+def hedged(text):
+    """A hedge word, or the conditions they want named (ASKS): the Yes-but and the unsure we can still move."""
+    return bool(SOFT.search(text) or (ASKS.search(text) and WANTS.search(text)))
+
+
 def classify(text):
     """(frame, wants) to answer with, or (None, None) to skip this text."""
     if not text or FIRM_NO.search(text) or LEAN_NO.search(text) or loud(text) or HOSTILE.search(text):
         return None, None
-    if FIRM_YES.search(text) and not SOFT.search(text):
+    if FIRM_YES.search(text) and not hedged(text):
         return None, None
     for pattern, frame in DOUBTS:
         if pattern.search(text) and content.frame_live(frame):     # a paused fact takes its frame out (todo/16)
-            if not SOFT.search(text):
+            if not hedged(text):
                 return None, None
             wants = []
             for m in WANTS.finditer(text):
@@ -123,7 +137,7 @@ def classify(text):
 def stance(text):
     """Where a post stands on the vote, by the keyword rules: "no" (firm or leaning), "yes" (firm, unhedged),
     "unsure" (hedged or undecided, incl. a Yes-but), "unclear" (on the referendum, no stance), None (off topic).
-    Used to label targets and the follow-up reads (todo/13)."""
+    Used to label targets and the follow-up reads (todo/13). Keeps SOFT, not hedged(), so labels compare across days."""
     text = text or ""
     if not REFERENDUM.search(text):
         return None
@@ -144,7 +158,7 @@ def target_class(text):
 
 
 def soft_yes(text):
-    return bool(FIRM_YES.search(text or "") and SOFT.search(text or ""))
+    return bool(FIRM_YES.search(text or "") and hedged(text or ""))
 
 
 def age_h(post):
@@ -167,6 +181,7 @@ class Targeter:
         self.trending_posts = []     # last Trending read, with rank_position and global_hot_score (pulse.py)
         self.headlines = []          # the papers' article titles of the last 24 h, newest first (pulse.py)
         self.next_refresh = 0.0
+        self.latest_seen = 0         # newest Latest post id read so far: each refresh pages back to it
 
     # ---- who is a citizen -------------------------------------------------------------------
     def account(self, account_id):
@@ -197,7 +212,7 @@ class Targeter:
                 for p in self.social.account_posts(account_id, limit=15):
                     body = p.get("body") or ""
                     if (FIRM_NO.search(body) or LEAN_NO.search(body)
-                            or (FIRM_YES.search(body) and not SOFT.search(body))):
+                            or (FIRM_YES.search(body) and not hedged(body))):
                         verdict = "firm"
                         break
             except ctn.APIError:
@@ -265,35 +280,68 @@ class Targeter:
             except ctn.APIError:
                 pass
         # 3) feeds: citizen posts in Latest/Trending, and citizen replies under top referendum posts in Trending
-        feed_posts = []
-        for name, feed in (("latest", self.social.feed_latest), ("trending", self.social.feed_trending)):
+        latest = self._latest()
+        for p in latest["posts"]:
+            self._consider(p, "latest")
+        try:
+            trending = list(self.social.feed_trending(limit=50))
+        except ctn.APIError:
+            trending = []
+        for p in trending:
+            self._consider(p, "trending")
+        if trending:
+            self.trending_ids = [p["post_id"] for p in trending]
+            self.trending_posts = trending
+        top = [p for p in trending if REFERENDUM.search(p.get("body") or "")][:config.TRENDING_THREADS]
+        for p in top:
             try:
-                posts = list(feed(limit=50))
+                for r in self.social.replies(p["post_id"], limit=50):
+                    self._consider(r, "thread", context=(p.get("body") or "")[:200])
             except ctn.APIError:
-                continue
-            feed_posts += posts
-            for p in posts:
-                self._consider(p, name)
-            if name == "trending":
-                self.trending_ids = [p["post_id"] for p in posts]
-                self.trending_posts = posts
-                top = [p for p in posts if REFERENDUM.search(p.get("body") or "")][:config.TRENDING_THREADS]
-                for p in top:
-                    try:
-                        for r in self.social.replies(p["post_id"], limit=50):
-                            self._consider(r, "thread", context=(p.get("body") or "")[:200])
-                    except ctn.APIError:
-                        pass
+                pass
+        feed_posts = latest["posts"] + trending
         self.feed_posts = feed_posts or self.feed_posts
         # forget stale candidates
         self.candidates = {k: c for k, c in self.candidates.items() if age_h(c["post"]) <= config.TARGET_MAX_AGE_H}
+        cit = [p for p in latest["posts"] if config.is_citizen(p["author_id"]) and p.get("kind") != "repost"]
         self.log({"act": "refresh", "candidates": len(self.candidates), "new": len(self.candidates) - before,
-                  "journalist_posts": len(self.journalist), "citizen_news_replies_last_hour": fresh_citizen})
+                  "journalist_posts": len(self.journalist), "citizen_news_replies_last_hour": fresh_citizen,
+                  # citizen hours (todo/19): what citizens wrote in Latest since the last refresh, and whether we
+                  # read all of it (gap: the page cap or the feed budget stopped us short of the last post seen)
+                  "latest_read": len(latest["posts"]), "latest_pages": latest["pages"], "latest_gap": latest["gap"],
+                  "citizen_latest_posts": sum(not p.get("reply_to_post_id") for p in cit),
+                  "citizen_latest_replies": sum(bool(p.get("reply_to_post_id")) for p in cit),
+                  "citizen_latest_authors": len({p["author_id"] for p in cit})})
+
+    def _latest(self):
+        """Latest back to the newest post the last refresh saw, in 100-post pages, while the feed budget lasts."""
+        posts, cursor, pages, gap = [], None, 0, False
+        while True:
+            try:
+                page = self.social.feed_latest(limit=100, cursor=cursor)
+            except ctn.APIError:
+                gap = True
+                break
+            pages += 1
+            new = [p for p in page if p["post_id"] > self.latest_seen]
+            posts += new
+            if len(new) < len(page) or not page.next_cursor or not self.latest_seen:
+                break                                 # caught up (the first refresh reads one page)
+            rl = self.social.rate_limit
+            if pages >= config.LATEST_PAGES or (rl and rl.remaining <= config.FEED_READS_SPARE):
+                gap = True
+                break
+            cursor = page.next_cursor
+        if posts:
+            self.latest_seen = max(self.latest_seen, max(p["post_id"] for p in posts))
+        return dict(posts=posts, pages=pages, gap=gap)
 
     # ---- hand out targets -------------------------------------------------------------------
     def next_target(self, our_ids, replied_posts, contacted):
-        """Best candidate whose author is undecided and not contacted recently, or None."""
-        for pid, c in sorted(self.candidates.items(), key=lambda kv: -kv[1]["score"]):
+        """Best candidate whose author is undecided and not contacted recently, or None. Posts under FRESH_MIN old
+        go first: their author may still be online to answer."""
+        fresh = lambda c: config.FRESH_BONUS if age_h(c["post"]) * 60 < config.FRESH_MIN else 0.0
+        for pid, c in sorted(self.candidates.items(), key=lambda kv: -(kv[1]["score"] + fresh(kv[1]))):
             author = c["post"]["author_id"]
             if pid in replied_posts or author in our_ids or str(author) in contacted:
                 self.candidates.pop(pid, None)

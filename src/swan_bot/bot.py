@@ -347,6 +347,35 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
     return None, backend, repair
 
 
+def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted):
+    """The best waiting citizen candidate with a voice free to answer it, as a reply job, or None."""
+    cand = targeter.next_target(our_ids, set(replied_posts), contacted)
+    if not cand:
+        return None
+    rec = accounts.eligible(cand["frame"], prefer=messengers(cand.get("identity")))
+    if not rec:
+        targeter.candidates[cand["post"]["post_id"]] = cand      # keep it for the next slot
+        return None
+    return dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"], wants=cand["wants"],
+                context=cand["context"], source=cand["source"], identity=cand.get("identity"))
+
+
+def pick_job(job, citizen, amp):
+    """Greedy order, 2026-10-21 (todo/19): a citizen reply goes before the amplifier's own-thread jobs and its next
+    post. On 21 Oct the amplifier went first and citizen-facing writes fell from 12-23/h to 1/h, though a reply to a
+    citizen earns ~5x the citizen likes and replies of a thread reply. job: a queued reply-back, or None."""
+    if job is None:
+        job = citizen()
+    if job is None and amp:                                  # own-thread replies, answers, reposts (due)
+        job = amp.next_write_job()
+    if job is None and amp and amp.amp_post_due():            # the next amplified original
+        rec = amp.pick_author()
+        if rec:
+            job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]),
+                       amp=True, level=amp.choose_level())
+    return job
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--live", action="store_true", help="really register accounts and post (default: dry run)")
@@ -524,13 +553,9 @@ def main():
                 if job["rec"].get("last_write", 0) + 60 > t:      # don't double-post from one account
                     queue.insert(0, job)
                     job = None
-            if job is None and amp:                                  # own-thread replies, answers, reposts (due)
-                job = amp.next_write_job()
-            if job is None and amp and amp.amp_post_due():            # the next amplified original
-                rec = amp.pick_author()
-                if rec:
-                    job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]),
-                               amp=True, level=amp.choose_level())
+            # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
+            job = pick_job(job, (lambda: None) if desk else
+                           (lambda: citizen_reply(targeter, accounts, our_ids, state["replied_posts"], contacted)), amp)
             drafted = None
             if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
                 pause(15)
@@ -588,16 +613,6 @@ def main():
                     if picked:
                         desk_fill(picked)
                         drafted = desk.take("reply", t, gone)
-            if job is None and drafted is None and not desk:
-                cand = targeter.next_target(our_ids, set(state["replied_posts"]), contacted)
-                if cand:
-                    rec = accounts.eligible(cand["frame"], prefer=messengers(cand.get("identity")))
-                    if rec:
-                        job = dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"],
-                                   wants=cand["wants"], context=cand["context"], source=cand["source"],
-                                   identity=cand.get("identity"))
-                    else:
-                        targeter.candidates[cand["post"]["post_id"]] = cand      # keep it for the next slot
             if job is None and drafted is None and t - state["journalist_any"] > config.JOURNALIST_GAP_S:
                 jp = targeter.next_journalist(set(state["replied_posts"]), state["journalist_last"])
                 if jp:

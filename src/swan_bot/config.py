@@ -17,6 +17,13 @@ OFFICIAL_MAX_ID = 11                # ids 1-11: papers, journalists, campaign le
 NEWS_IDS = (1, 2)                   # DailyKingstonia, KingstoniaHerald: citizens reply under their article posts
 JOURNALIST_IDS = (3, 4, 5, 6)       # amanda_rivera, muzhi_wong, julio_morales, lisa_podworth (verified)
 
+
+def is_citizen(account_id):
+    """The one id rule for 'a citizen did this' in every metric (todo/19): seeded before launch, not an organiser
+    persona (1-11). Ids above CITIZEN_MAX_ID are team accounts, ours or another team's."""
+    return OFFICIAL_MAX_ID < (account_id or 0) <= CITIZEN_MAX_ID
+
+
 MAX_ACCOUNTS = 21                   # lifetime cap on voices: 12 used + 5 promoted 21 Oct + 4 replacements; boosters: MAX_BOOSTERS
 REGISTER_GAP_S = (20 * 60, 40 * 60) # drip registration: one new account every 20-40 min, never a burst
 ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03)
@@ -25,7 +32,15 @@ ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (
 HIDDEN_OFF_AMP = 1                  # this many: off amplified posts and threads (less on show, fewer reports)
 HIDDEN_STOP = 2                     # this many: stops writing (one more hidden post would suspend it)
 
-REFRESH_S = 4 * 60                  # collect targets every 4 min (cheap reads)
+# 2026-10-21 late: every 2 min (was 4). Citizens are online a few minutes per session, and the replies they answer
+# in-session landed in the first ~5 min (ctn-68's reach study, 2 posts: 5 of 9 and 4 of 8 team replies answered).
+REFRESH_S = 2 * 60
+FRESH_MIN = 10                      # a citizen post this new is answered first (they may still be online)...
+FRESH_BONUS = 4.0                   # ...by this much on top of its score (scores run ~1.5-10)
+# 2026-10-21: Latest runs at ~47 posts/min, nearly all team bots (500 posts in 10.7 min, 7 by citizens), so one
+# 50-post read every 4 min saw ~1 min in 4. Each refresh now pages back to the newest post the last one saw.
+LATEST_PAGES = 3                    # at most this many 100-post reads per refresh (~6 min of Latest)
+FEED_READS_SPARE = 3                # stop paging when the team-wide feed budget (10/min) has this few left
 TARGET_MAX_AGE_H = 36               # citizens' notifications are near-empty, so a day-old comment still lands
 # Citizens replying under Trending posts: a reply there is read by the thread's viewers (300-480 views per Trending
 # post), not just by the citizen. 2026-10-21: read 12 threads (was 6) and rank these targets above news replies.
@@ -33,9 +48,12 @@ TRENDING_THREADS = 12
 TRENDING_THREAD_BONUS = 1.5
 CONTACT_COOLDOWN_S = 72 * 3600      # first contact with a given citizen at most every 3 days
 SECOND_VOICE_S = (10 * 60, 30 * 60) # a second persona follows up on the same doubt 10-30 min later
-SECOND_VOICE = False                # 2026-10-21: off. ~2 views each; the write slots go to amplified threads
-REPLY_BACK = False                  # 2026-10-21: off, same reason (~2 views, 0.07 citizen replies each)
-REPLY_BACK_AMP = True               # ...except to citizens replying in our amplified threads, where people are reading
+# 2026-10-21 late (todo/19): back on. Citizen likes / replies per write, all measured writes: reply 0.17 / 0.15,
+# reply_back 0.11 / 0.07, second_voice 0.06 / 0.08, own-thread reply 0.03 / 0.03. Both beat the thread replies they
+# had given their slots to, and citizen replies on the portal fell from 4-12/h to 1-4/h while they were off.
+SECOND_VOICE = True
+REPLY_BACK = True
+REPLY_BACK_AMP = True               # with REPLY_BACK off: still answer citizens replying in our amplified threads
 JOURNALIST_MAX_AGE_H = 12
 JOURNALIST_GAP_S = 45 * 60          # at most one journalist reply per 45 min
 JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
@@ -54,13 +72,17 @@ BOOSTER_REGISTER_GAP_S = (4 * 60, 9 * 60)
 # (each voice may reply twice) on top of the reposts (the fit's heaviest signal; the write budget was 83% idle).
 AMP_POST_GAP_S = (50 * 60, 70 * 60) # one amplified original an hour
 # per level: own likes, own-thread replies, reposts (ranges, inclusive). Likes are capped by the accounts awake.
-AMP_LEVELS = {"heavy": dict(likes=(36, 46), replies=(15, 20), reposts=(5, 6)),
+# 2026-10-21 late (todo/19): heavy back to 4-6 thread replies (was 15-20 for ~8 h: 0 Trending entries in 40 posts,
+# 0.03 citizen likes per thread reply, and the citizen replies starved). todo/18's booster reposts take those slots.
+AMP_LEVELS = {"heavy": dict(likes=(36, 46), replies=(4, 6), reposts=(5, 6)),
               "light": dict(likes=(10, 16), replies=(1, 2), reposts=(0, 1)),
               "none": dict(likes=(0, 0), replies=(0, 0), reposts=(0, 0))}
 AMP_PRIOR = {"heavy": 1.0, "light": 0.0, "none": 0.0}   # 2026-10-21: always heavy (was 0.8 / 0.1 / 0.1)
 AMP_EXPLORE = 0.0
 THREAD_PER_VOICE = 2                # thread replies one voice may write under one amplified post
-AMP_PRIORITY_S = 20 * 60            # priority lane: other writes wait this long after an amplified post (thread first)
+# priority lane: other writes wait this long after an amplified post (thread first). Citizen replies never wait
+# (bot.pick_job puts them first); it holds second voices, journalist replies and plain posts. 2026-10-21: 20 -> 5 min.
+AMP_PRIORITY_S = 5 * 60
 # The amplified post is our best content: drafted on the strongest models first, the usual chain if they are out.
 # The bot's key is on the free project: 3.8 and 3.6 Flash have 20 requests a day each (deploy/llm_chain.txt).
 # 2026-10-21: Kimi K2.5 and GLM-5 on Bedrock lead (best drafts in llm_compare, paid from the AWS credits); then the

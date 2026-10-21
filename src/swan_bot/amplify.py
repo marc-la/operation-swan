@@ -84,8 +84,7 @@ def side_of(text):
     return "neutral" if REFERENDUM.search(t) else "off"
 
 
-def is_citizen_id(account_id):
-    return config.OFFICIAL_MAX_ID < (account_id or 0) <= config.CITIZEN_MAX_ID
+is_citizen_id = config.is_citizen
 
 
 def author_stats_from_log(path):

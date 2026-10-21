@@ -74,7 +74,7 @@ def test_thread_jobs_come_from_other_voices():
         seen.append((job["mode"], job["rec"]["persona"]))
     replies = [p for m, p in seen if m == "thread"]
     reposts = [p for m, p in seen if m == "repost"]
-    assert len(replies) >= 15, "heavy posts get a deep thread"
+    assert len(replies) >= config.AMP_LEVELS["heavy"]["replies"][0], "heavy posts get their thread"
     assert max(replies.count(p) for p in replies) <= config.THREAD_PER_VOICE
     assert 5 <= len(reposts) == len(set(reposts)), "heavy posts keep their reposts, one per voice"
 
