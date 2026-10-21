@@ -258,4 +258,5 @@ def test_dashboard_verdict_names_the_weakest_lever():
     assert [r["today"] for r in rows] == [True, False]
     y = rows[1]
     assert y["pct"] == 53 and y["level"] == "down"
+    assert y["day"] == "Wed 21 9pm → Thu 22 9pm"                                   # a competition day, in Perth hours
     assert y["lever"] == "moderator: only 67% of rulings hidden (about 90% expected)"   # filed 68 is fine, hit isn't

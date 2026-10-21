@@ -399,6 +399,14 @@ def blue_row(r, teams):
                 status=r.get("status"), word=BLUE_WORDS.get(r.get("status"), r.get("status")), at=hm(t) if t else "")
 
 
+def perth_span(day):
+    """A competition (Sydney) day as the Perth hours it covers, e.g. 'Wed 21 9pm → Thu 22 9pm'."""
+    start = perth(sydney_midnight(day))
+    end = perth(sydney_midnight(day + dt.timedelta(days=1)))
+    fmt = lambda t: t.strftime("%a %-d %-I%p").replace("AM", "am").replace("PM", "pm")
+    return f"{fmt(start)} → {fmt(end)}"
+
+
 def blue_days(days, points, now):
     """By Sydney day, newest first: Blue points and first/later awards from the portal log (the ground truth),
     joined with swan-blue's own counts; for each finished day, its share of target and its weakest lever."""
@@ -414,7 +422,7 @@ def blue_days(days, points, now):
     for d in sorted(set(days) | set(portal), reverse=True):
         a, p = days.get(d, {}), portal.get(d, {})
         ruled, paid = a.get("hidden", 0) + a.get("genuine", 0), p.get("first", 0) + p.get("later", 0)
-        r = dict(day=dt.date.fromisoformat(d).strftime("%a %-d %b"), today=d == today, points=p.get("points", 0),
+        r = dict(day=perth_span(dt.date.fromisoformat(d)), today=d == today, points=p.get("points", 0),
                  filed=a.get("filed", 0), hidden=a.get("hidden", 0), genuine=a.get("genuine", 0),
                  accounts=a.get("accounts", 0), first=p.get("first", 0), paid=paid, locked_h=a.get("locked_h", 0),
                  lever=None)
@@ -449,7 +457,7 @@ def blue_panel(data, now, points, day_start):
     waiting, teams = len(s.get("waiting") or []), {}
     history = blue_days(s.get("days") or {}, points, now)
     last = next((r for r in history if not r["today"]), None)       # the last finished day decides the verdict
-    bits = ([f"yesterday {last['pct']}% of target"] if last else []) + \
+    bits = ([f"last day {last['pct']}% of target"] if last else []) + \
         ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked until {hm(locked)}"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
