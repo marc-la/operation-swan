@@ -2,6 +2,21 @@
 
 **Owner:** Marc + a fresh Claude session · **Depends on:** todo/19 (shipped 2026-10-21, d99bd34) · **Pairs with:** [todo/21](21-reach-every-citizen.md) (who we reply to) · **When:** tonight, 21–22 Oct
 
+## Status (2026-10-21 ~15:20 UTC): built and live; the 24 h read-out is due ~22 Oct 15:00 UTC
+| Item | Commit | Live since (UTC) |
+|---|---|---|
+| G9 gate: code fixes (trim, drop the sentence with a bad number or advocacy, drop a shared opening), up to 3 repairs with the exact problem, model switch after 2 fails, cap in characters | 413be20 | 21 Oct 14:29 |
+| G8 failed drafts requeued (`targeter.requeue`) or logged `lost(reason)`; G7 reply-backs every 60 s, 10 jobs, mentions, resolve after queueing, 3 turns per citizen per 30 min, depth < 8 | 1b80f82 | ~14:45 |
+| Step 1: followup counts only posts we wrote (test); Trending read via `feeds.read` | b05a412, 1bf2a04 | ~14:50 |
+| Step 5: fear_answer cut, in_group/permanence ×2, F2/F3 at 0.25, no vaccine advocacy (gate + prompt rule + `get_jab` theme off) | 00ca381 | ~14:50 |
+| Steps 2–4: the light read (JSON stance/doubt/frame/reply or skip), `mirror_concede` vs `current` in turn, reply-backs in the same style; exemptions note no longer scripts a sentence | 693ebb7 | 14:56 |
+| Steps 7–8: second voice fast (1–4 min) vs slow (10–30 min); one booster like on alternate replies; todo/23 `content.group_style` hook | 0926de7 | 15:00 |
+| Step 1: `scripts/conversion_report.py`; the read skips only hostile or plainly unrelated posts | 0c7edc4 | ~15:20 |
+
+Baseline (24 h to 21 Oct 15:00 UTC, the box's logs): 255 citizen-facing writes; portal towards 1.6, away 2.4, neither 9.0 per 100 writes. Before G9, Kimi needed 2.8 calls per accepted reply; 74 of the 92 citizen-facing drafts rejected live on 21 Oct pass the new gate with no extra call (offline replay).
+
+**Read-out (step 9 "Measure"):** on the box, `python scripts/conversion_report.py --split 2026-10-21T15:00 --hours 24 --out docs/06-strategy/conversion-2026-10-22.md`, then write the result into the message-playbook and the direction doc, and pin the winning style in `config.REPLY_STYLES` (Marc's call). Not done yet: the read-out itself, and calibrating the read against the regex class (the report has the cross-table).
+
 ## Read first
 `CLAUDE.md`, [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md) (why this is the top lever), [research C: our data](../docs/06-strategy/research-2026-10-21/C-ourdata.md) §5, [research D: other teams](../docs/06-strategy/research-2026-10-21/D-competitors.md) §8, [research A: rules](../docs/06-strategy/research-2026-10-21/A-rules.md) M4–M6, [message-playbook](../docs/06-strategy/message-playbook.md), [frames](../docs/06-strategy/frames-and-messengers.md). Code: `src/swan_bot/content.py` (reply prompts, frames, levers, reply modes), `quality.py` (the gate, length checks, `repair_note`), `bot.py` (reply_back, second voice), `followup.py`.
 
