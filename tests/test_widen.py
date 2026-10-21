@@ -219,6 +219,15 @@ def test_the_refresh_record_has_a_line_per_group(only):
     g = t.groups()
     assert set(g) == {"sweep", "older", "off_topic", "engaged", "turnout"}
     assert g["sweep"]["queued"] == 1 and g["sweep"]["funnel"] and g["sweep"]["of"] == 1
+    assert g["sweep"]["visits"] == {"queued": 1}
+
+
+def test_the_engaged_cursor_survives_a_restart():
+    t = tgt()
+    t.engaged_next = 7
+    u = tgt()
+    u.load(json.loads(json.dumps(t.dump())))
+    assert u.engaged_next == 7, "a deploy mustn't send D back to the first voice"
 
 
 # ---- C's gate: their topic only (2026-10-22 dry run) ----
@@ -261,3 +270,28 @@ def test_the_off_topic_system_prompt_leaves_the_referendum_out():
     off = content.system_prompt(persona, frame, meta={"style": "off_topic"})
     assert content.STANCE_RULE not in off and "What a Yes would cost you" not in off and content.OFF_TOPIC_RULE in off
     assert content.STANCE_RULE in content.system_prompt(persona, frame, meta={})
+
+
+def test_the_report_applies_the_kill_and_raise_rules(tmp_path):
+    import subprocess
+    now = time.time()
+    iso = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).isoformat()
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "data").mkdir()
+    w = lambda pid, **kw: dict(ts=iso(now - 3600), act="reply", live=True, post_id=pid, target_author=500 + pid, **kw)
+    rows = [w(1, source="latest"), w(2, source="news"), w(3, group="sweep", source="sweep"),
+            w(4, group="sweep", source="sweep"), w(5, group="off_topic", source="latest"),
+            w(6, group="off_topic", source="engaged", prefer="mere")]
+    (tmp_path / "logs" / "swan_actions.jsonl").write_text("\n".join(map(json.dumps, rows)))
+    (tmp_path / "logs" / "swan_outcomes.jsonl").write_text("\n".join(json.dumps(
+        dict(act="outcome", post_id=pid, check=0, citizen_replies=int(pid in (1, 3, 4)), citizen_likes=1))
+        for pid in range(1, 7)))
+    (tmp_path / "data" / "swan_watch.json").write_text(json.dumps(dict(hidden={"someone": [5]})))
+    out = subprocess.run([sys.executable, "scripts/conversion_report.py", "--root", str(tmp_path), "--hours", "6",
+                          "--by", "group,source"], capture_output=True, text=True,
+                         cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
+    table = {line.split("|")[1].strip(): line for line in out.splitlines() if line.startswith("| ")}
+    assert "| 2 | 2 | 50% [" in table["baseline"]
+    assert "raise" in table["sweep"] and "**kill** (hidden post)" in table["off_topic"]
+    assert "| engaged | 1 |" in table["engaged"], "an engaged citizen's off-topic post counts for D, not C"
+    assert "### source:" in out and "### lever" not in out and "Skipped by the read" not in out

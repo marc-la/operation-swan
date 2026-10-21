@@ -3,6 +3,7 @@
     python scripts/conversion_report.py                       # last 24 h, from logs/ and data/ here (run it on the box)
     python scripts/conversion_report.py --split 2026-10-21T15:30   # the 24 h before against the 24 h after a deploy
     python scripts/conversion_report.py --hours 12 --out docs/06-strategy/conversion-2026-10-22.md
+    python scripts/conversion_report.py --by group,source        # only these arms, plus todo/23's kill/raise table
 
 Reads logs/swan_actions.jsonl, logs/swan_outcomes.jsonl, logs/swan_followups.jsonl and data/portal.json (the portal's
 hourly points log, kept 48 h; --activity takes a portal CSV export for longer windows). Read-only: no platform calls.
@@ -31,6 +32,7 @@ DIMS = [("style", "reply style (mirror_concede vs current)"), ("read_stance", "t
         ("target_class", "regex class"), ("own_like", "one own like on the reply"),
         ("sv_delay", "second-voice delay (second voices)"), ("lever", "lever"), ("read_frame", "frame the read picked"),
         ("frame", "frame written"), ("reply_mode", "reply mode (current style)"), ("group", "todo/23 group"),
+        ("source", "where the target came from (todo/23: sweep, engaged; else latest, news, thread...)"),
         ("arm", "todo/21 arm"), ("backend", "model"), ("act", "kind of write")]
 
 
@@ -104,7 +106,7 @@ def share_events(writes, events, dim):
     return out
 
 
-def window_report(rows, outcomes, followups, events, since, until, title):
+def window_report(rows, outcomes, followups, events, since, until, title, dims=DIMS):
     writes = citizen_writes(rows, since, until)
     evs = [e for e in events if since <= e["ts"] < until + LAG_S]
     tot = {k: sum(e[k] for e in evs if since <= e["ts"] < until) for k in
@@ -118,9 +120,9 @@ def window_report(rows, outcomes, followups, events, since, until, title):
            f"{tot['neither_vaccination']}).",
            f"- Per 100 citizen-facing writes: towards **{per100(tot['towards'], n)}**, away {per100(tot['away'], n)}, "
            f"neither {per100(tot['neither'], n)}. Goal: towards > away + neither.", ""]
-    for dim, what in DIMS:
+    for dim, what in dims:
         scope = [w for w in writes if dim != "sv_delay" or w["act"] == "second_voice"]
-        if dim in ("style", "read_stance", "own_like", "read_frame", "reply_mode", "lever", "group", "arm"):
+        if dim in ("style", "read_stance", "own_like", "read_frame", "reply_mode", "lever", "group", "arm", "source"):
             scope = [w for w in scope if w["act"] == "reply" or (dim == "style" and w["act"] == "reply_back")]
         groups = collections.defaultdict(list)
         for w in scope:
@@ -140,6 +142,59 @@ def window_report(rows, outcomes, followups, events, since, until, title):
             out.append(f"| {arm} | {len(ws)} | {len(got)} | {pct(rate)} [{pct(lo)}–{pct(hi)}] | {like_rate} | {portal} |")
         out.append("")
     return out
+
+
+WIDEN_SOURCES = ("sweep", "engaged")          # todo/23 arms that are a source, not only a group (D's off-topic posts)
+
+
+def arm23(w):
+    """The todo/23 arm a write counts against: engaged or sweep by source (an engaged citizen's off-topic post has
+    group off_topic), else its group; None for an ordinary write (the baseline)."""
+    return w.get("source") if w.get("source") in WIDEN_SOURCES else w.get("group")
+
+
+def widen_report(rows, outcomes, followups, events, hidden, since, until):
+    """todo/23's kill and raise rules, per arm against the ordinary replies (the on-topic baseline): kill when its
+    portal "away" per 100 writes (shared) is over the baseline's, or a write of it was hidden; raise when its citizen
+    reply rate is at or over the baseline's (over 24 h). Replies only. A verdict on under 20 writes is marked thin."""
+    writes = [w for w in citizen_writes(rows, since, until) if w["act"] == "reply"]
+    evs = [e for e in events if since <= e["ts"] < until + LAG_S]
+    for w in writes:
+        w["arm23"] = arm23(w) or "baseline"
+    shared = share_events(writes, evs, "arm23")
+    by = collections.defaultdict(list)
+    for w in writes:
+        by[w["arm23"]].append(w)
+
+    def stats(arm):
+        ws = by.get(arm, [])
+        got = [a for a in (answered(w, outcomes, followups) for w in ws) if a is not None]
+        likes = [outcomes[w["post_id"]].get("citizen_likes") or 0 for w in ws if w["post_id"] in outcomes]
+        away = 100 * shared.get(arm, {}).get("away", 0) / len(ws) if ws else 0.0
+        return dict(n=len(ws), read=len(got), rate=wilson(sum(got), len(got)), likes=likes, away=away,
+                    hidden=sum(w["post_id"] in hidden for w in ws))
+
+    base = stats("baseline")
+    out = ["### todo/23 groups: kill and raise (replies; the baseline is the ordinary on-topic replies)", "",
+           "| arm | writes | read | citizen replied [90%] | cit. likes/write | away per 100 (shared) | hidden | verdict |",
+           "|---|---|---|---|---|---|---|---|"]
+    for arm in ["baseline"] + sorted(a for a in by if a != "baseline"):
+        st = stats(arm)
+        rate, lo, hi = st["rate"]
+        like_rate = f"{sum(st['likes']) / len(st['likes']):.2f}" if st["likes"] else "–"
+        verdict = "–"
+        if arm != "baseline":
+            if st["hidden"] or st["away"] > base["away"]:
+                verdict = "**kill**" + (" (hidden post)" if st["hidden"] else " (away over baseline)")
+            elif rate is not None and base["rate"][0] is not None and rate >= base["rate"][0]:
+                verdict = "raise (reply rate at or over baseline)"
+            else:
+                verdict = "hold"
+            verdict += " (thin)" if st["n"] < 20 else ""
+        out.append(f"| {arm} | {st['n']} | {st['read']} | {pct(rate)} [{pct(lo)}–{pct(hi)}] | {like_rate} | "
+                   f"{st['away']:.1f} | {st['hidden']} | {verdict} |")
+    return out + ["", "Raise needs the rate to hold for 24 h: run it with --hours 24. Kill and raise are a human call "
+                      "on these numbers (config, the todo/23 block).", ""]
 
 
 def read_report(rows, since, until):
@@ -202,7 +257,16 @@ def main():
     ap.add_argument("--root", default=str(config.ROOT), help="where logs/ and data/ are")
     ap.add_argument("--activity", help="a portal activity CSV export instead of data/portal.json")
     ap.add_argument("--out", help="write the markdown here instead of printing it")
+    ap.add_argument("--by", help="comma-separated arms to report (e.g. group,source); default all. With group or "
+                    "source: the todo/23 kill/raise table, and the read and gate sections are left out")
     args = ap.parse_args()
+    dims = [d for d in DIMS if not args.by or d[0] in args.by.split(",")]
+    widen = not args.by or {"group", "source"} & set(args.by.split(","))
+    try:
+        hidden = {pid for pids in json.loads((pathlib.Path(args.root) / "data" / "swan_watch.json").read_text())
+                  .get("hidden", {}).values() for pid in pids}
+    except (OSError, ValueError):
+        hidden = set()
     root = pathlib.Path(args.root)
     rows = jsonl(root / "logs" / "swan_actions.jsonl")
     outcomes = latest_by_post([o for o in jsonl(root / "logs" / "swan_outcomes.jsonl") if o.get("act") == "outcome"])
@@ -220,8 +284,11 @@ def main():
            "prove effects. Citizen replies come from the outcome and follow-up reads, so the last ~6 h are partly "
            "unread.", ""]
     for since, until, title in windows:
-        out += window_report(rows, outcomes, followups, events, since, until, title)
-        out += read_report(rows, since, until) + gate_report(rows, since, until)
+        out += window_report(rows, outcomes, followups, events, since, until, title, dims)
+        if widen:
+            out += widen_report(rows, outcomes, followups, events, hidden, since, until)
+        if not args.by:
+            out += read_report(rows, since, until) + gate_report(rows, since, until)
     text = "\n".join(out)
     if args.out:
         pathlib.Path(args.out).write_text(text + "\n")

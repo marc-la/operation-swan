@@ -304,6 +304,7 @@ class Targeter:
         self.sweep_next = 0          # index into citizen_ids(): where the sweep carries on
         self.engaged_pool = {}       # citizen id -> persona: liked or follows that voice, not read yet
         self.engaged_next = 0        # which voice's likers and followers are read next
+        self.visits = {}             # group -> {what a citizen visit came to: n} since start (the groups line)
         self.reads = 0               # account_posts / get_post / likers / followers reads made by this targeter
         self._rl = None              # the rate limit as our last widen read saw it
         self._ours, self._ours_mtime = [], None
@@ -319,6 +320,7 @@ class Targeter:
                     items={str(k): v for k, v in list(self.items.items()) if self._deadline(v) >= cut},
                     unjudged=list(self.unjudged.values()),
                     group_out=self.group_out, sweep_next=self.sweep_next, engaged_pool=dict(self.engaged_pool),
+                    engaged_next=self.engaged_next,
                     touched={a: x for a, x in list(self.touched.items()) if t - x < config.SWEEP_RECONTACT_S},
                     swept={a: x for a, x in list(self.swept.items()) if x > t - 2 * config.SWEEP_REVISIT_S})
 
@@ -335,6 +337,7 @@ class Targeter:
         self.group_out = saved.get("group_out", {})
         self.sweep_next = saved.get("sweep_next", 0)
         self.engaged_pool = saved.get("engaged_pool", {})
+        self.engaged_next = saved.get("engaged_next", 0)
         self.swept = saved.get("swept", {})
         if "touched" in saved:
             self.touched = saved["touched"]
@@ -780,6 +783,7 @@ class Targeter:
         v = voices[self.engaged_next % len(voices)]
         self.engaged_next += 1
         found = set()
+        self._saw("engaged", "voices_read")
         try:
             posts = [p for p in self._read(self.social.account_posts, v["account_id"], limit=20)
                      if p.get("kind") != "repost" and age_h(p) <= config.ENGAGED_POSTS_H]
@@ -792,7 +796,13 @@ class Targeter:
             pass
         for aid in found:
             if config.is_citizen(aid):
+                self._saw("engaged", "citizens_found")
                 self.engaged_pool.setdefault(str(aid), v["persona"])
+
+    def _saw(self, net, what):
+        """Count what a widen step came to, for the groups line (why a group queues nothing, on the box)."""
+        seen = self.visits.setdefault(net, {})
+        seen[what] = seen.get(what, 0) + 1
 
     def _visit(self, aid, net, recontact_s, prefer=None):
         """Read one citizen's last posts and queue their most recent post on the vote, any age (A, D), or for D with
@@ -804,14 +814,14 @@ class Targeter:
             if t - self.touched.get(key, 0) < recontact_s or any(
                     c["post"].get("author_id") == aid for c in list(self.candidates.values())):
                 self.swept[key] = t
-                return
+                return self._saw(net, "recent")
         try:
             posts = self._read(self.social.account_posts, aid, limit=20)
         except ctn.RateLimited:
             raise
         except ctn.APIError as e:
             self.swept[key] = t + (6 * 86400 if e.status == 403 else 0)
-            return
+            return self._saw(net, "private" if e.status == 403 else "unreadable")
         self.swept[key] = t
         with self.lock:                               # the queue and the funnel (todo/22)
             self._judge_visit(aid, key, t, net, posts, prefer)
@@ -825,7 +835,7 @@ class Targeter:
               or (p.get("reply_to_post_id") and REFERENDUM.search(p.get("body") or ""))]
         pick = on[0] if on else (own[0] if own and net == "engaged" and config.OFF_TOPIC_ARM else None)
         if not pick or pick["post_id"] in self.items or pick["post_id"] in self.candidates:
-            return                                    # nothing to answer, or judged already (answered, skipped...)
+            return self._saw(net, "judged" if pick else "nothing")   # judged already: answered, skipped...
         body = pick.get("body") or ""
         parent = self.post(pick["reply_to_post_id"]) if pick.get("reply_to_post_id") else None
         d = self.depth(pick)
@@ -841,6 +851,7 @@ class Targeter:
             or ("deep_thread" if d >= config.DEEP_THREAD else None) \
             or ("reply_to_us" if parent and parent.get("author_id") in ours else None) \
             or ("firm_yes" if cls == "firm_yes" else None)
+        self._saw(net, why or "queued")
         if why:
             return self.skip(pick, why, net)
         self._queue(pick, net, context, parent, d, cls, group=net if on else "off_topic", net=net, prefer=prefer)
@@ -857,6 +868,7 @@ class Targeter:
             out[net] = dict(on=arm_on(net), cap=group_cap(net, t), queued=self.queued(net),
                             out_1h=sum(t - x < 3600 for x in self.group_out.get(net, [])),
                             answered_1h=sum(it["o"] == "answered" and t - it.get("a", 0) < 3600 for it in done),
+                            **({"visits": dict(self.visits[net])} if self.visits.get(net) else {}),
                             **({"funnel": f} if f else {}))
         out["sweep"].update(at=self.sweep_next, of=len(citizen_ids()),
                             read_24h=sum(t - x < 86400 for x in list(self.swept.values())))
