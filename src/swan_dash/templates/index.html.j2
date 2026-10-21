@@ -41,6 +41,7 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .reach .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
 .reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); }
 .reach p { margin: 4px 12px; } .reach .fix { color: var(--amber); font-size: 13px; }
+.reach .note { display: block; color: var(--ink); }
 @media (max-width: 640px) { .reach td:last-child { display: none; } }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
 @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
@@ -206,7 +207,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     <tr><td><span class="dot {{ r.light }}"></span></td><td>{{ r.name }}</td><td><b>{{ r.now }}</b></td><td class="sub">{{ r.target }}</td></tr>
   {% endfor %}
   </table>
-  {% for r in reach.fixes %}<p class="fix">→ {{ r.name }}: {{ r.fix }}</p>{% endfor %}
+  {% for r in reach.fixes %}<p class="fix">→ {{ r.name }}: {{ r.fix }}{% if r.note %} <span class="note">In hand: {{ r.note }}</span>{% endif %}</p>{% endfor %}
   {% for x in reach.extra %}<p class="sub">{{ x }}</p>{% endfor %}
 </details>
 

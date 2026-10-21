@@ -533,7 +533,7 @@ def _minds(points, since):
     return out
 
 
-def reach(actions, status, points, now, day_start):
+def reach(actions, status, points, now, day_start, notes=None):
     """The Reach block: one summary line, then one short row per check (light, now, target) and a fix only for rows
     that aren't green. Collapsed while everything is green (Marc, 2026-10-22: scannable, not sentences)."""
     hour_ago = now - dt.timedelta(hours=1)
@@ -592,10 +592,12 @@ def reach(actions, status, points, now, day_start):
     q = status.get("queue") or {}
     oldest = status.get("oldest_queued_s")
     waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
+    groups_q = sum((g or {}).get("queued") or 0 for g in ((refreshes[-1].get("groups") if refreshes else None) or {}).values())
     old_min = oldest / 60 if oldest is not None else None
     row("Longest wait in our queue", "amber" if old_min and old_min > REACH_QUEUE_MIN else "green",
         (f"{old_min:.0f} min" if old_min is not None else "not measured yet")
-        + (f" · {waiting} queued" if waiting is not None else ""), f"< {REACH_QUEUE_MIN} min",
+        + (f" · {max(waiting - groups_q, 0)} citizens waiting" if waiting is not None else "")
+        + (f" · {groups_q} extra-group posts queued" if groups_q else ""), f"< {REACH_QUEUE_MIN} min",
         "The bot isn't keeping up: free voices, a parked LLM or a stuck loop. Check alerts and Bot.")
 
     # writes (budget)
@@ -632,6 +634,7 @@ def reach(actions, status, points, now, day_start):
         f"{minds['toward']} toward No · {minds['away']} away · {minds['neither']} neither ({cit_today} replies)",
         "toward > away", "Replies aren't moving people toward No: see the todo/20 read-out.")
 
+    rows.insert(0, rows.pop())                    # changes of mind: the row that is about points, first
     bad = lambda names, levels=("red", "amber"): any(r["name"].startswith(names) and r["light"] in levels for r in rows)
     if bad(("Citizens answered", "Drafts passing"), ("red",)):
         verdict = "losing citizens"
@@ -643,14 +646,17 @@ def reach(actions, status, points, now, day_start):
         verdict = "keeping up"
     light = "red" if any(r["light"] == "red" for r in rows) else ("amber" if verdict != "keeping up" else "green")
     summary = " · ".join(x for x in (
+        f"today {minds['toward']} toward No / {minds['away']} away / {minds['neither']} neither",
         tile and f"{tile['answered']}/{tile['answerable']} answered", tile and f"{tile['lost']} lost",
-        mf is not None and f"reply {mf:.1f} min", f"{minds['toward']} toward No today") if x)
+        mf is not None and f"reply {mf:.1f} min") if x)
     extra = []
     if skipped:
         extra.append("Skipped on purpose (last full hour): "
                      + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(skipped.items(), key=lambda kv: -kv[1])))
     if by_group:
         extra.append("Extra groups (last hour): " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(by_group.items())))
+    for r in rows:
+        r["note"] = next((v for k, v in (notes or {}).items() if r["name"].startswith(k)), "")
     return dict(verdict=verdict, light=light, summary=summary, rows=rows, tile=tile, extra=extra,
                 open=light == "red", fixes=[r for r in rows if r["light"] != "green"])
 
@@ -831,7 +837,7 @@ def gather(root, now, service):
                  chain=states),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
         activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
-        blue=blue, reach=reach(actions, status, points, now, day_start),
+        blue=blue, reach=reach(actions, status, points, now, day_start, read_json(data / "reach_notes.json") or {}),
         built=perth(now).strftime("%H:%M:%S"))
 
 

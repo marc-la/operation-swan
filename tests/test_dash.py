@@ -311,3 +311,16 @@ def test_reach_counts_changes_of_mind_from_portal_messages():
            {"_t": NOW - dt.timedelta(hours=9), "message": "NPC engagement: 9 contributions to changes of mind towards your side"}]
     m = build._minds(pts, since)
     assert m == {"toward": 3, "away": 1, "neither": 4, "primary_toward": 1}
+
+
+def test_reach_outcome_first_queue_split_and_notes(tmp_path):
+    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
+    rf = dict(refresh(1, f, candidates=30), groups={"sweep": {"queued": 20}, "older": {"queued": 0}})
+    acc = [dict(write(5), llm_calls=2), dict(write(6), llm_calls=1)]
+    root = make_root(tmp_path, [rf] + acc)
+    (root / "data" / "reach_notes.json").write_text(json.dumps({"Drafts passing": "prompt fix live 15:20, recheck 16:30"}))
+    ctx, html = page(root)
+    r = ctx["reach"]
+    assert r["rows"][0]["name"].startswith("Changes of mind") and r["summary"].startswith("today 0 toward No")
+    assert "10 citizens waiting · 20 extra-group posts queued" in rowof(ctx, "Longest wait")["now"]
+    assert "In hand: prompt fix live 15:20, recheck 16:30" in html
