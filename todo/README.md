@@ -12,13 +12,10 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
-| [11](11-alert-channel.md) | Pick the alert channel (Discord webhook recommended) + dead-man switch | anyone | today | — |
-| [10](10-organiser-questions.md) | Post our rule questions in Discord `#questions` | Blue lead | **today** | — |
 | [07](07-blue-desk.md) | Blue desk: find ring bots, report them | Blue lead | **today → 21 Oct** | 08 helps but not needed for v0 |
 | [12](12-batched-drafting.md) | Batched drafting: fix `batch.py`, A/B vs single (≥95% quality), wire into the draft pool | Marc (ops) | 21 Oct | — |
-| [05](05-content-v2.md) | Content v2: emotive conversion stories, closing question, hashtags | Narrative lead | 21 Oct | — |
 | [08](08-intel-collector.md) | Collector into Mongo: snapshots, team clusters, our per-post metrics | Data lead | 21 Oct | — |
-| [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2) | Data lead | 22 Oct | 01, 08 |
+| [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2): primary, built 21 Oct, box setup left (Marc) | Marc | 22 Oct | 01, 08 |
 | [06](06-npc-simulator.md) | NPC simulator as a fitness landscape for drafts | Narrative lead | 22–23 Oct | 05, 10 |
 | [13](13-overnight-experiments.md) | Overnight experiments: random arms per draft, citizen follow-up reads, switchbacks, morning report | Marc + fresh session | 21 Oct, then nightly | 05 live |
 | [14](14-prompt-steering.md) | Prompt steering: built and live; left: same-seed flash-lite screen (after quota reset) + teammate read of 10 drafts | Marc + teammate | 21 Oct after 15:00 | 13 live |
