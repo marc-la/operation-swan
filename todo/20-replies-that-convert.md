@@ -104,3 +104,21 @@ Every point where a citizen item can be lost between "a citizen writes" and "we 
 | G12 | **No proof of coverage** | No skip or loss reasons are logged | Every citizen item seen ends as `answered`, `skipped(reason)` or `lost(reason)` in the log; a per-hour funnel line in the refresh record; the dashboard shows it | 21 (targeting) + 20 (drafting losses) |
 
 Not a gap: at Sydney night (01:00) Latest held 0–2 citizen items per refresh. Low supply is real, and the funnel line will show it.
+
+## G9 in full: no citizen lost to the gate (Marc, 2026-10-22: "we cannot afford a rejection")
+A rejected draft may never cost us the citizen. Today: one repair try, then the target is dropped. The new pipeline, in order:
+1. **Split the checks:**
+   - **Hard** (rules or facts): endorses Yes, prompt-injection-like text, links or @mentions, hate or harassment, false voting logistics, a number not in `facts.toml`.
+   - **Soft** (style): length, `near_duplicate`, `same_opening`, `copied_fact` wording, consoling or generic.
+2. **Fix soft failures in code, with no LLM call:**
+   - too long → cut at the last sentence boundary under the cap, if the rest still states No;
+   - too short → allowed if ≥ 60 characters and it states No;
+   - same opening → drop the first clause.
+   - `near_duplicate` and `copied_fact` go to step 3.
+3. **Repair with feedback** (the existing `repair_note`): give the model the exact problem and the failed text, and ask for the corrected version. Up to **3 repairs**, switching model after the second (Kimi → GLM-5 → the next in the chain).
+4. **Hard failures:** repair as in step 3. A number problem can also be fixed in code: drop the sentence that holds the number, if the rest still stands.
+5. **Last resort, never dropped:** put the target back (G8) with a note, and draft it again on the next slot with the strongest model free. It is lost only when it ages out, and it's logged as `lost(gate)`.
+6. **Measure:** reply targets lost at the gate ≤ **5%** (today ~45%); calls per accepted reply ≤ 1.5; log the repair count and which fix worked on each write.
+7. Loosen any soft check that fails more than 20% of drafts: re-check its threshold against what citizens actually answered (D §8: engaged replies ran ~260 characters).
+
+Hard checks stay hard: they protect our voices from hidden posts and our score from backfire.
