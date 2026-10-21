@@ -237,6 +237,18 @@ def copied_runs(text, n=7):
     return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1) if sum(covered[i:i + n]) < 3}
 
 
+def unapproved_number(t):
+    """The first number in t that isn't a true in-game figure (ALLOWED_NUMBERS / _PERCENTS, 0-12), or None."""
+    for num in NUMBER.findall(LIFE_SPAN.sub(" ", HISTORY_DATES.sub(" ", t))):
+        bare = num.rstrip("%").rstrip(",")
+        if num.endswith("%"):
+            if bare not in ALLOWED_PERCENTS:
+                return num
+        elif bare not in ALLOWED_NUMBERS and not (bare.isdigit() and int(bare) <= 12):
+            return num
+    return None
+
+
 def normalise(text):
     t = (text or "").strip().strip('"“”').strip()
     t = t.replace("—", " - ").replace("–", "-").replace("’", "'").replace("‘", "'")
@@ -310,13 +322,9 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, "rhetorical_question"
     if SPELLED_NUMBER.search(t):
         return None, "spelled_number"
-    for num in NUMBER.findall(LIFE_SPAN.sub(" ", HISTORY_DATES.sub(" ", t))):
-        bare = num.rstrip("%").rstrip(",")
-        if num.endswith("%"):
-            if bare not in ALLOWED_PERCENTS:
-                return None, f"unapproved_number_{num}"
-        elif bare not in ALLOWED_NUMBERS and not (bare.isdigit() and int(bare) <= 12):
-            return None, f"unapproved_number_{num}"
+    num = unapproved_number(t)
+    if num:
+        return None, f"unapproved_number_{num}"
     if kind in ("reply", "journalist"):            # second voices always carry a set angle, so not checked
         if not (FACT_ANCHORS.search(t) or any(w.lower() in t.lower() for w in wants)):
             return None, "not_specific"

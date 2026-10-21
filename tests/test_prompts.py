@@ -336,3 +336,46 @@ def test_one_length_and_ending_instruction_per_prompt():
         for prompt in (u, v):
             assert len(counts.findall(prompt)) == 1, (p["key"], counts.findall(prompt))
         assert "characters" not in u + v and "one to three" not in s
+
+
+PULSE = dict(id="abc12345", ts=1_790_000_000.0,
+             hooks=[dict(text="Dr Singh calling gate checks a small hassle", ts=None)],
+             no_shapes=["named worker + concrete inconvenience + the official's own words"],
+             yes_lines=["memories of goodbyes over video call"], avoid=["blank cheque"])
+
+
+def test_pulse_block_in_system_prompt_and_budget():
+    """With a pulse: the block right after WORLD, within SYSTEM_BUDGET, its id in meta. Without: as before."""
+    big = dict(PULSE, hooks=[dict(text="h" * 99, ts=None)] * 3, no_shapes=["n" * 139] * 3, yes_lines=["y" * 139] * 3,
+               avoid=["a" * 39] * 3)
+    for p in content.PERSONAS:
+        for fk in FRAME_KEYS:
+            random.seed(7)
+            plain_meta = {}
+            plain = content.system_prompt(p, fk, meta=plain_meta)
+            random.seed(7)
+            meta = {}
+            s = content.system_prompt(p, fk, meta=meta, pulse=PULSE)
+            block = content.pulse_block(PULSE)
+            assert s.startswith(f"{content.WORLD}\n{block}\n") and s.replace(f"{block}\n", "", 1) == plain
+            assert meta["pulse"] == "abc12345" and "pulse" not in plain_meta
+            random.seed(7)
+            assert len(content.system_prompt(p, fk, pulse=big)) <= content.SYSTEM_BUDGET + 200, (p["key"], fk)
+    random.seed(7)
+    assert content.system_prompt(P["lani"], "F1_blank_cheque", pulse=None) == \
+        (random.seed(7) or content.system_prompt(P["lani"], "F1_blank_cheque"))
+
+
+def test_pulse_parts():
+    full = content.pulse_block(PULSE)
+    assert "reacting to Dr Singh" in full and "what lands is named worker" in full
+    assert "Yes side is pushing memories" in full and "don't use: blank cheque" in full
+    hooks = content.pulse_block(PULSE, ("hooks",))
+    assert "Dr Singh" in hooks and "Yes side" not in hooks and "what lands" not in hooks
+    yes = content.pulse_block(PULSE, ("yes_lines",))
+    assert "Yes side is pushing" in yes and "Dr Singh" not in yes
+    assert content.pulse_block(None) == "" and content.pulse_block(dict(PULSE, yes_lines=[]), ("yes_lines",)) == ""
+    meta = {}
+    content.system_prompt(P["lani"], "F1_blank_cheque", meta=meta, pulse=dict(PULSE, yes_lines=[]),
+                          pulse_parts=("yes_lines",))
+    assert "pulse" not in meta                                           # nothing used: no id logged

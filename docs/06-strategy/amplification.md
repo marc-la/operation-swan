@@ -56,6 +56,19 @@ That's 46 active, inside the 50 allowed (code cap 48). That uses 46 of our 200 l
 
 All writes (thread replies, answers, reposts) go through the bot's normal write pacing (≤2.5/min with jitter, under the 3/min team limit). Likes, views and follows use their own 30/min budgets.
 
+## Trending pulse (2026-10-21)
+Why: our prompts were static, written on 20 Oct, while what trends changes by the hour. A snapshot at 21 Oct ~03:30 UTC showed what the No posts in Trending did: a named local loss (ferry crew checking IDs in the rain), a reaction to today's news that quotes the official, one fact, first person, and a lowercase fact-check voice that answers the other side with the official text. The Yes posts on top led with goodbyes over video call in 2021 and "this flu sweeps through". All 21 were team posts; none were ours.
+
+What it does ([pulse.py](../../src/swan_bot/pulse.py), was todo/15):
+- **Input, no extra reads:** `Targeter.refresh()` keeps `trending_posts` (with `rank_position` / `global_hot_score`) and `headlines` (the papers' titles of the last 24 h, newest first). The pulse takes the top 8 No and 5 Yes posts by rank (`amplify.side_of`; our own accounts, reposts and replies left out) and the newest 5 headlines.
+- **Untrusted text:** bodies are cut to ~300 characters with links, @mentions, hashtags and markup stripped. A post that addresses an AI or gives instructions (`pulse.INJECTION`) is dropped. The system prompt says the posts are data, never instructions.
+- **One LLM call every 30 min** (`config.PULSE_EVERY_S`), JSON schema, on the chain minus `AMP_MODELS`: `hooks` (≤3 news events, each tied to its headline's time), `no_shapes` (≤3 shapes, described not quoted), `yes_lines` (≤3), `avoid` (≤3 overused phrases).
+- **Checks before use:** an item with a number outside `quality.ALLOWED_NUMBERS`, a link, tag, mention, off-limits name or an injection-like line is dropped and listed in `dropped`. A 6-word run copied from any input post rejects the whole pulse (`pulse_reject` in the log). Over 600 characters, the least useful items go. A failed pulse keeps the previous one, retried in 10 min. One over 2 h old is not used.
+- **Into the prompts** (`content.pulse_block`, right after `WORLD`, with its own 800-character budget so it never costs a profile line): amplified posts get all of it, and when a hook is under 6 h old, about half of them (at most 5 of the last 10 posts) open in the `news` shape with that hook. Thread replies get the hooks only. Replies to a Yes-leaner (`soft_yes` or `YES_REASON`) get the Yes lines, after `rebuttal_for()`. Every action record carries `pulse` (the id) and `pulse_news`. A `{"act": "pulse"}` record logs each new pulse, and the dashboard shows the newest.
+- **Off:** `config.PULSE_ON = False`. The prompts are then exactly as before.
+
+First live read, 21 Oct 04:20 UTC (7 No, 5 Yes, 5 headlines, nothing dropped): hooks "outer-island ferry cut back for engine repairs", "first H2D2 case confirmed in Kingstonia", "No campaign leads in latest referendum polling"; No shapes like "named frontline worker + on-the-ground inconvenience + official's dismissive quote"; Yes lines "preventing another lockdown and school closures given limited ICU capacity". While the 3-word copy rule also covered headlines, the model garbled the hooks ("marine transport schedules drop due to technical difficulties"). Now a hook may use the headline's own words, and only posts fall under the copy rule.
+
 ## Operating it
 - **Pause without a restart:** `ssh swan-ec2 'touch ~/ctn/AMPLIFY_OFF'`. Removing the file resumes it. Plain persona posts come back while it's paused.
 - **Off for good:** drop `--amplify` from `deploy/run.sh` and push.
@@ -69,6 +82,8 @@ All writes (thread replies, answers, reposts) go through the bot's normal write 
 - [ ] Ride other teams' trending **No** posts with a strong voice reply (D in the old plan). Filler likes already add likes to them.
 - [ ] Batch the thread drafts once [todo/12](../../todo/12-batched-drafting.md) lands.
 - [ ] Content that scales in the algorithm (conversion stories, closing questions, tags from `popular_tags()`): [todo/05](../../todo/05-content-v2.md).
+- [x] 2026-10-21 Content that follows what trends: the [trending pulse](#trending-pulse-2026-10-21).
+- [ ] **Pulse before/after (due 24 h after it goes live):** compare amplified posts from the 24 h before the pulse with the 24 h after (`amp_measure`, and `amp_authors` per voice): Trending entries, citizen views, and citizen likes per post. A night ships ~12 amplified posts, so only a large difference means anything. Write the result here with the date. Also check `swan_view.py --rejects` for a jump in rejects since the pulse.
 - [ ] Residual risks: the organisers can change the mechanics, or act on LS.5.3 / rules §5.3 directly (a like-only account class is exactly the kind of edge they might call "against the spirit"). We don't know whether the moderator looks at a post's likers. Keep the switch one line away.
 
 ## Done when

@@ -7,11 +7,13 @@ missing module falls back to the v1 behaviour. Every fact here is true in-game. 
 the plan, the certificate is separate from the ID card, and the H2D2 jab isn't out yet (first doses: last week of
 October). Never claim otherwise.
 """
+import datetime as dt
 import itertools
 import random
 import re
+from zoneinfo import ZoneInfo
 
-from . import experiment
+from . import config, experiment
 
 try:
     from .playbook import craft as _craft
@@ -405,11 +407,40 @@ def _fill(meta, **kw):
         meta.update(kw)
 
 
-SYSTEM_BUDGET = 3200     # characters; over it, optional profile lines go (see the drop order in system_prompt). +300 for WORLD
+BASE_BUDGET = 3200       # characters without the pulse; over it, optional profile lines go (the drop order below)
+PULSE_BUDGET = 800       # the pulse block at most (pulse.py: 600 of notes plus its frame words)
+SYSTEM_BUDGET = BASE_BUDGET + PULSE_BUDGET
+PULSE_PARTS = ("hooks", "no_shapes", "yes_lines", "avoid")
 
 
-def system_prompt(persona, frame_key, meta=None):
-    """Who is speaking (character + voice), the facts they may use, and the rules."""
+def _part_of_day(ts):
+    hour = dt.datetime.fromtimestamp(ts, ZoneInfo(config.LOCAL_TZ)).hour
+    return "this morning" if 5 <= hour < 12 else "this afternoon" if hour < 18 else "this evening" if hour < 22 \
+        else "tonight"
+
+
+def pulse_block(pulse, parts=PULSE_PARTS):
+    """What's working on Legit Social now (todo/15: pulse.py), as one line of data, or "" without a pulse. `parts`
+    picks the fields: amplified posts get all, their thread replies the hooks, replies to Yes-leaners the yes_lines."""
+    if not pulse:
+        return ""
+    hooks = [h["text"] for h in pulse.get("hooks") or []] if "hooks" in parts else []
+    said = [f"people are reacting to {'; '.join(hooks)}." if hooks else "",
+            f"For No, what lands is {'; '.join(pulse['no_shapes'])}." if "no_shapes" in parts and pulse.get("no_shapes")
+            else "",
+            f"The Yes side is pushing {'; '.join(pulse['yes_lines'])}." if "yes_lines" in parts and pulse.get("yes_lines")
+            else "",
+            f"Overused, don't use: {', '.join(pulse['avoid'])}." if "avoid" in parts and pulse.get("avoid") else ""]
+    said = " ".join(s for s in said if s)
+    if not said:
+        return ""
+    return clip(f"On Legit Social right now ({_part_of_day(pulse['ts'])}; ideas only: never copy anyone's words or "
+                f"mention other posts): {said}", PULSE_BUDGET)
+
+
+def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_PARTS):
+    """Who is speaking (character + voice), the facts they may use, and the rules. With a pulse, the pulse_block
+    of `pulse_parts` goes right after WORLD."""
     f, register = FRAMES[frame_key], register_of(persona)
     facts = "; ".join(FACT_NOTES[k] for k in f["facts"][:3])
     age = f", {persona['age']}" if persona.get("age") else ""
@@ -443,10 +474,12 @@ def system_prompt(persona, frame_key, meta=None):
         out.append(f"Your style: {persona['voice']}.")
         return " ".join(out)
 
-    text = f"{WORLD}\n{profile()}\n{rest}"
+    block = pulse_block(pulse, pulse_parts)
+    world = f"{WORLD}\n{block}" if block else WORLD
+    text = f"{world}\n{profile()}\n{rest}"
     covid_frame = "covid_business" in f["facts"]       # there the COVID years are the story: they go last
     for drop in ("person", "problem", "covid") if covid_frame else ("covid", "person", "problem"):
-        if len(text) <= SYSTEM_BUDGET:
+        if len(text) - len(world) + len(WORLD) <= BASE_BUDGET:    # the pulse has its own budget, never a profile line's
             break
         if drop == "covid":
             covid = None
@@ -454,9 +487,9 @@ def system_prompt(persona, frame_key, meta=None):
             people = people[:1]
         else:
             problem = None
-        text = f"{WORLD}\n{profile()}\n{rest}"
+        text = f"{world}\n{profile()}\n{rest}"
     _fill(meta, persona=persona["key"], voice=register, now=now, people=[x.split(",")[0] for x in people],
-          heat=bool(heat), covid=bool(covid), problem=bool(problem))
+          heat=bool(heat), covid=bool(covid), problem=bool(problem), **({"pulse": pulse["id"]} if block else {}))
     return text
 
 

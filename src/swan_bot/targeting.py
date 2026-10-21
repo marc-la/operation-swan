@@ -158,6 +158,8 @@ class Targeter:
         self.headline = None         # latest referendum headline (for timely persona posts)
         self.feed_posts = []         # last Latest + Trending read (the amplifier's filler-like pool)
         self.trending_ids = []       # last Trending order (the amplifier records our posts' best rank)
+        self.trending_posts = []     # last Trending read, with rank_position and global_hot_score (pulse.py)
+        self.headlines = []          # the papers' article titles of the last 24 h, newest first (pulse.py)
         self.next_refresh = 0.0
 
     # ---- who is a citizen -------------------------------------------------------------------
@@ -221,7 +223,7 @@ class Targeter:
             return
         self.next_refresh = time.time() + config.REFRESH_S
         before = len(self.candidates)
-        fresh_citizen, newest = 0, None
+        fresh_citizen, newest, heads, papers_read = 0, None, [], False
         # 1) news threads: citizens reply under the papers' article posts
         for aid in config.NEWS_IDS:
             try:
@@ -229,8 +231,11 @@ class Targeter:
                             if not p.get("reply_to_post_id") and p.get("kind") != "repost"]
             except ctn.APIError:
                 continue
+            papers_read = True
             for art in articles:
                 title = (art.get("body") or "").split("\n")[0]
+                if title and age_h(art) <= 24:
+                    heads.append(dict(title=title, ts=art["created_at"], paper=aid, post_id=art["post_id"]))
                 if not REFERENDUM.search(art.get("body") or "") or age_h(art) > 72:
                     continue
                 newest = newest or title              # account_posts is newest first
@@ -242,6 +247,8 @@ class Targeter:
                 except ctn.APIError:
                     pass
         self.headline = newest or self.headline
+        if papers_read:
+            self.headlines = sorted(heads, key=lambda h: h["ts"], reverse=True)
         # 2) journalists' own referendum replies and posts (for the journalist storyline)
         for aid in config.JOURNALIST_IDS:
             try:
@@ -262,6 +269,7 @@ class Targeter:
                 self._consider(p, name)
             if name == "trending":
                 self.trending_ids = [p["post_id"] for p in posts]
+                self.trending_posts = posts
                 top = [p for p in posts if REFERENDUM.search(p.get("body") or "")][:6]
                 for p in top:
                     try:

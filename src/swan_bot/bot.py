@@ -23,7 +23,7 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, experiment, humanize, quality
+from . import batch, config, content, experiment, humanize, pulse, quality
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
@@ -187,7 +187,8 @@ def reply_back_jobs(social, accounts, targeter, limit=3):
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "block_id")
-REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close")
+REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
+               "pulse")
 
 
 def experiment_fields(target):
@@ -212,23 +213,36 @@ def pick_post_shape(frame, persona, headline, recent_shapes):
     return None                                       # let post_prompt pick freely rather than stall
 
 
-def build_prompt(job, targeter, recent_shapes=()):
-    """(persona, system, user). The choices made (shape, voice, tag, catchphrase, event...) land in job["meta"]."""
+def build_prompt(job, targeter, recent_shapes=(), pulse_now=None):
+    """(persona, system, user). The choices made (shape, voice, tag, catchphrase, event...) land in job["meta"].
+    pulse_now (todo/15): all of it for amplified posts (and a fresh hook as their news, about half the time), the
+    hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest."""
     persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
     target = job.get("target") or {}
     body = target.get("body") or ""
     mode = job["mode"]
     meta = job["meta"] = {}
+    parts = ()
     if mode == "post":
         headline = targeter.headline if random.random() < 0.3 else None
-        user = content.post_prompt(job["frame"], headline, shape=pick_post_shape(job["frame"], persona, headline,
-                                                                                 recent_shapes),
+        shape = None
+        if job.get("amp") and pulse_now:
+            parts = content.PULSE_PARTS
+            hook = pulse.fresh_hook(pulse_now)
+            if (hook and random.random() < config.PULSE_NEWS_SHARE
+                    and quality.shape_ok("news", recent_shapes, max_uses=5)):
+                headline, shape = hook, "news"
+                meta["pulse_news"] = True
+        user = content.post_prompt(job["frame"], headline,
+                                   shape=shape or pick_post_shape(job["frame"], persona, headline, recent_shapes),
                                    ask=bool(job.get("amp")), meta=meta, persona=persona)
     elif mode == "thread":
+        parts = ("hooks",) if pulse_now else ()
         user = content.thread_reply_prompt(body, job["frame"], job["style"])
     elif mode == "thread_answer":
         user = content.thread_answer_prompt(job["our_text"], body)
     elif mode == "reply":
+        parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona)
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
@@ -237,7 +251,8 @@ def build_prompt(job, targeter, recent_shapes=()):
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
         user = content.reply_back_prompt(job["our_text"], body)
-    return persona, content.system_prompt(persona, job["frame"], meta=meta), user
+    return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
+                                          pulse_parts=parts), user
 
 
 # Drafts at 0.7 keep to their shape and length better; own-thread reactions keep 0.9 for variety (todo/14)
@@ -421,6 +436,7 @@ def main():
             # (scoring guide s3). Parking by hidden-post count is a TODO (TODO.md, "Hidden-post watch").
             our_ids = {r.get("account_id") for r in accounts.records if r.get("account_id")}
             targeter.refresh()
+            pulse_now = pulse.update(state, targeter, our_ids, gen, log)
             if amp:
                 amp.tick()
             if args.live and time.time() >= next_notif:
@@ -558,7 +574,7 @@ def main():
             elif drafted:
                 text, backend = drafted["text"], drafted["backend"]
             else:
-                persona, system, user = build_prompt(job, targeter, state["recent_shapes"])
+                persona, system, user = build_prompt(job, targeter, state["recent_shapes"], pulse_now)
 
                 def rejected(why, raw, backend, repaired):
                     stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
@@ -649,7 +665,8 @@ def main():
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
                  "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
                  "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
-                 **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener")},
+                 **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
+                                             "pulse", "pulse_news")},
                  **{k: meta.get(k) for k in ARMS}, **experiment_fields(target),
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
                  "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),

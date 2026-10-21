@@ -58,6 +58,14 @@ REPOST_MIN_GAP_S = 60               # a voice may repost a minute after its last
 MEASURE_AT_S = (3600, 6 * 3600)
 FOLLOW_BACK_MAX = 3                 # per measurement, the author follows up to 3 citizens who liked the post
 
+# ---- trending pulse (todo/15, swan_bot/pulse.py): what's working in Trending now, as data in the prompts ----
+PULSE_ON = True                     # False: the prompts are exactly as before the pulse
+PULSE_EVERY_S = 30 * 60             # one LLM call per pulse, on the chain without AMP_MODELS
+PULSE_MAX_AGE_S = 2 * 3600          # an older pulse is not used
+PULSE_MAX_CHARS = 600               # all its notes together
+PULSE_HOOK_FRESH_S = 6 * 3600       # a hook from a headline this new may open an amplified post (the news shape)...
+PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
+
 # ---- experiments (todo/13-overnight-experiments.md; swan_bot/experiment.py) ----
 PIN = {}                            # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
 # One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).
