@@ -318,3 +318,56 @@ def test_draft_checked_read_skip_and_plain_repair(monkeypatch):
     assert text and repair == "consoling_phrase" and "not JSON" in gen.calls[1][1]
     assert "I hear you" in gen.calls[1][1] and '"stance"' not in gen.calls[1][1].split("Your draft was:")[1]
     assert job["meta"]["read_stance"] == "unsure"
+
+
+# ---- steps 7 and 8: the second-voice delay arm, one own like on alternate replies ----
+def test_own_likes_are_logged_with_owner_and_retried_on_rate_limit(monkeypatch):
+    import types
+    import capturethenarrative as ctn
+    logged = []
+    monkeypatch.setattr(bot, "log", logged.append)
+    calls = []
+
+    class Acc:
+        def view(self, pid):
+            calls.append(("view", pid))
+
+        def like(self, pid):
+            if pid == 2:
+                raise ctn.RateLimited("POST", "/like", 429, "slow down", retry_after=30)
+            calls.append(("like", pid))
+
+    booster = dict(username="b1", account_id=7001, role="booster", owner="marc")
+    accounts = types.SimpleNamespace(boosters=lambda: [booster], voices=lambda: [], parked=lambda r: False,
+                                     session=lambda r: Acc())
+    state = {"own_likes": [dict(post_id=1, due=0, author="v1", draft_id="d1"), dict(post_id=2, due=0, author="v1"),
+                           dict(post_id=3, due=10 ** 12, author="v1")]}
+    bot.own_likes(state, accounts, live=True, now=100)
+    assert calls == [("view", 1), ("like", 1), ("view", 2)]
+    assert logged == [dict(act="like", live=True, post_id=1, username="b1", account_id=7001, role="booster",
+                           owner="marc", own=True, purpose="reply_like", draft_id="d1")]
+    assert sorted(x["post_id"] for x in state["own_likes"]) == [2, 3]       # 2 retried in a minute, 3 not due
+
+
+def test_arm_settings():
+    assert set(config.SECOND_VOICE_ARMS) == {"fast", "slow"} and config.SECOND_VOICE_ARMS["fast"][1] <= 4 * 60
+    assert config.OWN_LIKE_DELAY_S[0] >= 60
+
+
+# ---- todo/23 hook: group_style, and the off-topic reply ----
+def test_group_style_hook():
+    import types
+    from swan_bot import content
+    assert content.group_style({}) == "" and content.group_style(dict(group=None)) == ""
+    assert "Never say when, where or how" in content.group_style(dict(group="turnout"))
+    targeter = types.SimpleNamespace(headline=None)
+    job = dict(job_for(frame="F14_no_yes_but"), group="turnout")
+    _, _, user = bot.build_prompt(job, targeter)
+    assert content.GROUP_STYLES["turnout"] in user.split("First read them")[0]
+    job = dict(job_for(), group="off_topic",
+               target=dict(post_id=6, author_id=500, body="Reef restoration day at the lagoon was brilliant"))
+    _, _, user = bot.build_prompt(job, targeter)
+    assert job["style"] == "off_topic" and not job["read"] and "Don't steer it to the referendum" in user
+    gen = Gen(["Brilliant to hear the lagoon got a hand, my nephew still talks about the coral nursery."])
+    text, _, _ = bot.draft_checked(gen, dict(job, meta={}), "sys", user, [])
+    assert text, "no fact anchor needed off topic"

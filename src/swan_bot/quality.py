@@ -307,9 +307,10 @@ def strip_tag(t):
     return TAG_AT_END.sub("", t)
 
 
-def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True):
+def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
-    closing_question=False lets a post end on its verdict instead (a draft told to end without a question)."""
+    closing_question=False lets a post end on its verdict instead (a draft told to end without a question).
+    specific=False: a reply needn't name an in-world fact (todo/23's off-topic replies)."""
     t = normalise(text)
     if kind != "post":
         t = TRAILING_TAGS.sub("", t).strip()
@@ -356,7 +357,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     num = unapproved_number(t)
     if num:
         return None, f"unapproved_number_{num}"
-    if kind in ("reply", "journalist"):            # second voices always carry a set angle, so not checked
+    if kind in ("reply", "journalist") and specific:   # second voices carry a set angle; off-topic replies (todo/23) none
         if not (FACT_ANCHORS.search(t) or any(w.lower() in t.lower() for w in wants)):
             return None, "not_specific"
     if kind == "post" and not (LOCAL.search(t) or (LOCAL_NAME and LOCAL_NAME.search(t))):

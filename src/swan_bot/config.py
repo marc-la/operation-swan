@@ -200,6 +200,14 @@ LIGHT_READ = True
 # anchor, state No; 150-280 characters, no question) against "current". The firm-Yes arm (todo/21) is always
 # mirror_concede. To keep a winner, list only it here.
 REPLY_STYLES = ["mirror_concede", "current"]
+# Second voice inside the citizen's session (step 7): sessions last 1-5 min, and the contribution pool counts only
+# posts read in the session where the change happens. Delays taken in turn, logged as sv_delay (was always 10-30 min).
+SECOND_VOICE_ARMS = {"fast": (60, 4 * 60), "slow": (10 * 60, 30 * 60)}
+# One own like on our reply to a citizen (step 8, never tried before): on alternate replies a booster likes it
+# 1-4 min after it goes out (logged as own_like on the reply, and as a like with purpose reply_like). Drop it if
+# citizen likes and replies don't rise.
+OWN_LIKE_ARM = True
+OWN_LIKE_DELAY_S = (60, 4 * 60)
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 

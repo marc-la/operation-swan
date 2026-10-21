@@ -921,6 +921,37 @@ def parse_read(raw):
     return out
 
 
+# todo/23 ("widen the net"): citizen groups beyond today's targets, as job["group"]. group_style() is the extra
+# guidance a reply gets; "off_topic" has its own prompt (off_topic_prompt), no light read and no fact anchor in the gate.
+GROUP_STYLES = {
+    "sweep": "This is the latest thing they posted about the vote, and it may be a day or more old: answer it as it "
+             "stands, without remarking on when they wrote it.",
+    "older": "Their post is a day or two old: speak to it as something they said earlier, without making a thing of "
+             "the delay.",
+    "engaged": "They have liked or followed you before: talk like someone they already know a little, warmly, with "
+               "no introduction.",
+    "turnout": "They already lean No. Affirm it in their own terms, then say why turning up matters this time: it's "
+               "close and every No counts. Never say when, where or how to vote.",
+}
+
+
+def group_style(job):
+    """The extra prompt guidance for job["group"] (todo/23), or "" (no group: today's behaviour)."""
+    return GROUP_STYLES.get((job or {}).get("group"), "")
+
+
+def off_topic_prompt(target_text, context=None, persona=None):
+    """todo/23's off_topic group: a warm reply on THEIR topic, light humour allowed, no pivot to the referendum. A
+    natural nod to it only when their topic genuinely connects."""
+    ctx = f"It was posted under this: <<<{context[:200]}>>>\n" if context else ""
+    return (
+        f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\nReply to them about what they actually wrote, as "
+        f"yourself, in 1 or 2 short sentences, 60 to 220 characters: warm, specific to one detail they mention, light "
+        f"humour is fine. Don't steer it to the referendum; mention the vote only if their topic truly connects to "
+        f"it, and then in a few words. No hashtags, no question unless it's a real one about their topic. "
+        f"{_reply_voice(persona)}")
+
+
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,
                  style="current", read=False, hint=None):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A

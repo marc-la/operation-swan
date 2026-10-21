@@ -313,11 +313,13 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
     mode = job["mode"]
     meta = job["meta"] = {}
     parts = ()
-    if mode == "reply":                  # todo/20: the style arm in turn (the firm-Yes arm concedes first) and the read
+    if mode == "reply" and job.get("group") == "off_topic":      # todo/23: on their topic, no read, no theme
+        job["style"], job["read"] = "off_topic", False
+    elif mode == "reply":                # todo/20: the style arm in turn (the firm-Yes arm concedes first) and the read
         job["style"] = ("mirror_concede" if job.get("arm") == "firm_yes" else
                         experiment.alternate("style", config.REPLY_STYLES))
         job["read"] = config.LIGHT_READ
-    mirror = job.get("style") == "mirror_concede"                 # four beats: no theme
+    mirror = job.get("style") in ("mirror_concede", "off_topic")  # four beats, or not about the vote: no theme
     theme = pick_theme(job, ledger, meta) if mode in themes.MODES and not mirror else job.setdefault("theme", None)
     if mode == "post":
         headline = targeter.headline if random.random() < 0.3 else None
@@ -337,10 +339,16 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
         user = content.thread_reply_prompt(body, job["frame"], job["style"])
     elif mode == "thread_answer":
         user = content.thread_answer_prompt(job["our_text"], body)
+    elif mode == "reply" and job["style"] == "off_topic":
+        user = content.off_topic_prompt(body, job.get("context"), persona)
+        meta["style"] = "off_topic"
     elif mode == "reply":
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
                                     theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"])
+        if content.group_style(job):                              # todo/23's groups: one line of guidance
+            user = user.replace("\n\nFirst read them", f" {content.group_style(job)}\n\nFirst read them", 1) \
+                if job["read"] else f"{user} {content.group_style(job)}"
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
                                            persona=persona)
@@ -373,7 +381,8 @@ def gate(raw, job, user, recent_texts, ledger=None):
     then the theme check. text is None when the draft still fails; fixes names the fixes that were applied."""
     mode, meta = job["mode"], job.get("meta") or {}
     kw = dict(prompt_text=user, target_text=(job.get("target") or {}).get("body") or "",
-              wants=job.get("wants") or (), closing_question=meta.get("closing_question", True))
+              wants=job.get("wants") or (), closing_question=meta.get("closing_question", True),
+              specific=job.get("group") != "off_topic")
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
@@ -474,6 +483,37 @@ def lose(targeter, queue, job, why):
     return "lost"
 
 
+def own_likes(state, accounts, live, now=None):
+    """todo/20 step 8: like our replies to citizens that are due a like (state["own_likes"]), one booster each, view
+    first. A rate limit puts the like back a minute (3 tries); any other error drops it. Every like is logged with
+    the account, its role and owner."""
+    now = time.time() if now is None else now
+    due = [x for x in state.get("own_likes", []) if x["due"] <= now]
+    for x in due:
+        state["own_likes"].remove(x)
+        likers = [r for r in accounts.boosters() if not accounts.parked(r)] or \
+                 [r for r in accounts.voices() if r["username"] != x["author"] and not accounts.parked(r)]
+        if not likers or x["post_id"] is None:
+            continue
+        rec = random.choice(likers)
+        entry = {"act": "like", "live": live, "post_id": x["post_id"], "username": rec["username"],
+                 "account_id": rec.get("account_id"), "role": rec.get("role", "voice"), "owner": rec.get("owner"),
+                 "own": True, "purpose": "reply_like", "draft_id": x.get("draft_id")}
+        if live:
+            try:
+                acc = accounts.session(rec)
+                acc.view(x["post_id"])
+                acc.like(x["post_id"])
+            except ctn.RateLimited:
+                if x.get("tries", 0) < 2:
+                    state["own_likes"].append(dict(x, due=now + 60, tries=x.get("tries", 0) + 1))
+                continue
+            except ctn.APIError as e:
+                log({**entry, "act": "like_failed", "error": e.status})
+                continue
+        log(entry)
+
+
 def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted, engaged=()):
     """The best waiting citizen candidate with a voice free to answer it, as a reply job, or None. contacted: our
     voices per citizen this session (targeting.sessions); engaged: citizens who replied to us before. frame is None
@@ -548,7 +588,7 @@ def main():
     targeter.load(state.pop("targeter", None))          # read position, queue and funnel survive a restart (G3)
     for key, default in (("replied_posts", []), ("contacted", {}), ("engaged", {}), ("recent_texts", []), ("second_voice", []),
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
-                         ("theme_log", []), ("turns", {}), ("styles", {})):
+                         ("theme_log", []), ("turns", {}), ("styles", {}), ("own_likes", [])):
         state.setdefault(key, default)
     ledger = themes.Ledger(state["theme_log"])          # the themes we sent, team-wide (saved with the state)
 
@@ -665,6 +705,7 @@ def main():
             our_ids = {r.get("account_id") for r in accounts.records if r.get("account_id")}
             if targeter.refresh():
                 save_state()
+            own_likes(state, accounts, args.live)
             pulse_now = pulse.update(state, targeter, our_ids, gen, log)
             if amp:
                 amp.tick()
@@ -729,7 +770,7 @@ def main():
                     if len(thread) > 8 or any(r["author_id"] == target["author_id"] for r in thread):
                         continue                                     # busy thread, or they already answered us
                     job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
-                               wants=sv.get("wants"), context=sv.get("context"))
+                               wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"))
                     if not desk:
                         break
                     picked.append(job)
@@ -894,12 +935,20 @@ def main():
             if mode == "reply_back":                      # they're talking to us: no extra persona joins in
                 state["second_voice"] = [s for s in state["second_voice"] if s["author"] != target["author_id"]]
                 state["engaged"][str(target["author_id"])] = time.time()     # ENGAGED_BONUS on their next post
-            if mode == "reply" and config.SECOND_VOICE and job.get("arm") != "firm_yes":   # no pile-on on a firm Yes
-                state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_S),
+            if (mode == "reply" and config.SECOND_VOICE and job.get("arm") != "firm_yes"     # no pile-on on a firm Yes
+                    and job.get("group") != "off_topic"):                 # nor a referendum angle on their own topic
+                job["sv_delay"] = experiment.alternate("sv_delay", list(config.SECOND_VOICE_ARMS))    # todo/20 step 7
+                state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_ARMS[job["sv_delay"]]),
+                                                  sv_delay=job["sv_delay"],
                                                   post_id=target["post_id"], author=target["author_id"],
                                                   frame=second_frame(job["frame"]),
                                                   first_persona=persona["key"], wants=job.get("wants"),
                                                   context=job.get("context")))
+            if mode == "reply" and config.OWN_LIKE_ARM:            # todo/20 step 8: one own like, alternate replies
+                job["own_like"] = experiment.alternate("own_like", [True, False])
+                if job["own_like"]:
+                    state["own_likes"].append(dict(post_id=post_id, due=time.time() + random.uniform(*config.OWN_LIKE_DELAY_S),
+                                                   author=rec["username"], draft_id=job["draft_id"]))
             if mode in ("reply", "reply_back") and job.get("style") and post_id:     # reply-backs keep the style
                 state["styles"][str(post_id)] = job["style"]
                 state["styles"] = dict(list(state["styles"].items())[-3000:])
@@ -934,7 +983,9 @@ def main():
                  **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
                  "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
                  # todo/20: the reply style arm and the light read; todo/21's arm and priority, next to target_class
-                 "arm": job.get("arm"), "priority": job.get("priority"),
+                 "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
+                 "sv_delay": job.get("sv_delay"),
+                 "own_like": job.get("own_like"),
                  "frame_in": job.get("frame_in"),
                  **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame")},
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
