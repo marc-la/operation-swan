@@ -1,0 +1,9 @@
+[Unit]
+Description=Portal score every 15 minutes (the portal posts points hourly, at about :53)
+
+[Timer]
+OnCalendar=*:02,17,32,47
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

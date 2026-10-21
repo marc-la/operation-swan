@@ -46,6 +46,9 @@ li .w { font-weight: 600; overflow-wrap: anywhere; }
 li .w span { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
 li.event, li.event .w { color: var(--muted); font-weight: 400; }
 li.bad .w, li.bad .x { color: var(--red); }
+li.gain, li.loss { border-left: 4px solid var(--green); background: var(--green-bg); }
+li.loss { border-left-color: var(--red); background: var(--red-bg); }
+li.gain .w { color: var(--green); } li.loss .w { color: var(--red); }
 li .x { min-width: 0; overflow-wrap: anywhere; }
 li .id { color: var(--muted); font-size: 12px; }
 details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; }
@@ -74,14 +77,14 @@ code { font-size: 12px; }
 <div class="kpis">
   <div class="kpi"><div class="label">Score</div>
     <div class="val">{{ score.points | n if score else '—' }}</div>
-    <div class="sub">{{ 'entered ' ~ score.ago if score else 'not entered yet' }}</div></div>
+    <div class="sub">{% if not score %}not entered yet{% elif score.by == 'portal' and portal_checked %}portal · checked {{ portal_checked }}{% else %}entered {{ score.ago }}{% endif %}</div></div>
   <div class="kpi"><div class="label">Rank</div>
     <div class="val">{{ ('#' ~ score.rank) if score and score.rank else '—' }}</div>
-    <div class="sub">{{ 'of ' ~ score.teams ~ ' teams' if score and score.teams else '' }}</div></div>
+    <div class="sub">{% if score and score.teams %}of {{ score.teams }}{% endif %}{% if board and board.above %} · {{ (board.above.score - board.score) | n }} behind #{{ board.above.rank }}{% endif %}</div></div>
   <div class="kpi"><div class="label">Today</div>
     {% if score and score.delta is not none %}
     <div class="val {{ 'up' if score.delta >= 0 else 'down' }}">{{ '+' if score.delta >= 0 else '' }}{{ score.delta | n }}</div>
-    <div class="sub">{% if score.per_hour is not none %}≈ {{ score.per_hour | n }} pts/hour · {% endif %}since {{ day_start }}</div>
+    <div class="sub">{% if score.last_hour is not none %}{{ '%+d' % score.last_hour }} at {{ score.last_hour_at }}{% elif score.per_hour is not none %}≈ {{ score.per_hour | n }} pts/hour{% endif %} · since {{ day_start }}</div>
     {% else %}<div class="val">—</div><div class="sub">since {{ day_start }}</div>{% endif %}</div>
   <div class="kpi"><div class="label">Posts, last hour</div>
     <div class="val">{{ writes.hour }}</div>
@@ -124,6 +127,7 @@ code { font-size: 12px; }
   <h3>Accounts</h3>
   <p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} writers, {{ accounts.boosters | n }} likers) ·
     <span class="{{ 'warn' if accounts.suspended else '' }}">{{ accounts.suspended | n }} suspended</span> · {{ accounts.used | n }} of {{ accounts.total_cap }} ever used</p>
+  {% if portal_accounts %}<p class="sub">Portal: {{ portal_accounts.registered }} registered, {{ portal_accounts.banned }} banned (caps {{ portal_accounts.max_total }} total, {{ portal_accounts.max_active }} at once).</p>{% endif %}
   <h3>Last hour</h3>
   <p>{{ writes.hour }} posts{% if writes.planned %} (bot's pace {{ writes.planned }}, team cap {{ writes.cap }}){% endif %} ·
     {{ errors.rate_limited | n }} rate-limited · {{ errors.rejects }} drafts rejected by our quality check</p>
@@ -137,7 +141,18 @@ code { font-size: 12px; }
 <div>
   {% if milestone %}<p>{{ milestone.name }} ({{ milestone.date }}): leading-side teams with at least {{ milestone.need | n }} points get the award.</p>{% endif %}
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
+  {% if board %}
+  <h3>Leaderboard</h3>
+  <table>
+    {% for r in [board.leader, board.above, {'rank': board.rank, 'team': 'Operation Swan (us)', 'score': board.score}, board.below] if r %}
+    {% if loop.index0 == 0 or r.rank != board.leader.rank %}
+    <tr{% if r.rank == board.rank %} class="up"{% endif %}><td>#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% endif %}
+    {% endfor %}
+  </table>
+  {% endif %}
   {% if history %}
+  <h3>Our score over time</h3>
   <table>
     <tr><th>When (Perth)</th><th class="num">Score</th><th class="num">Change</th><th class="num">Rank</th><th>By</th></tr>
     {% for h in history %}
@@ -147,7 +162,7 @@ code { font-size: 12px; }
     {% endfor %}
   </table>
   {% endif %}
-  <p class="sub">The portal score is typed in by hand: <code>ssh swan-ec2 'ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt; &lt;name&gt;'</code></p>
+  <p class="sub">Read from the portal every 15 minutes{% if portal_checked %} (last check {{ portal_checked }}){% endif %}. By hand if needed: <code>ssh swan-ec2 'ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt; &lt;name&gt;'</code></p>
 </div></details>
 
 <details id="pulse"><summary><b>Trending pulse</b><span class="sub {{ 'warn' if pulse and pulse.stale else '' }}">

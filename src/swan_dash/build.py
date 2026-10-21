@@ -30,6 +30,7 @@ POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2",
 MULTIPLIERS = [(dt.date(2026, 10, 26), 2), (dt.date(2026, 11, 1), 4)]     # derived, not confirmed by organisers
 LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; this covers several hours
 STALE_STATUS_S = 300
+PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15 min
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
 ACTIVITY_TOP, ACTIVITY_ALL = 12, 60          # rows always shown / rows behind "Older activity"
 LONG_PARK_S = 600                              # per-minute parks are noise; longer ones go in the activity log
@@ -132,6 +133,10 @@ def gather(root, now, service):
     hour_ago = now - dt.timedelta(hours=1)
     status = read_json(data / "status.json") or {}
     status_t = ts(status.get("ts"))
+    portal = read_json(data / "portal.json") or {}               # swan_dash/portal.py: leaderboard + points log
+    portal_t = ts(portal.get("ts"))
+    points = [dict(e, _t=ts(e["ts"])) for e in portal.get("events") or []
+              if ts(e.get("ts")) and e.get("points") is not None]
     actions = [a for a in tail_jsonl(logs / "swan_actions.jsonl") if ts(a.get("ts"))]
     for a in actions:
         a["_t"] = ts(a["ts"])
@@ -178,6 +183,10 @@ def gather(root, now, service):
         amber = f"ACCOUNT LOST: {len(banned_day)} suspended in the last 24 h ({banned_day[-1].get('username')})"
     elif status.get("rate_limited_last_hour"):
         amber = f"RATE-LIMITED: {status['rate_limited_last_hour']} × 429 in the last hour"
+    elif portal.get("error"):
+        amber = f"PORTAL: {portal['error']}"
+    elif portal and (portal_t is None or (now - portal_t).total_seconds() > PORTAL_STALE_S):
+        amber = "PORTAL: no score update for " + (ago(now - portal_t).replace(" ago", "") if portal_t else "a while")
     if red:
         banner = dict(level="red", text=red)
     elif amber:
@@ -195,7 +204,15 @@ def gather(root, now, service):
         hours = (ts(e["ts"]) - day_start).total_seconds() / 3600
         score = dict(points=e["score"], rank=e.get("rank"), teams=e.get("teams"), by=e.get("by", "?"),
                      ago=ago(now - ts(e["ts"])), delta=delta,
-                     per_hour=round(delta / hours) if delta is not None and hours >= 0.5 else None)
+                     per_hour=round(delta / hours) if delta is not None and hours >= 0.5 else None,
+                     last_hour=None, last_hour_at=None)
+        if points:                             # the portal's own points log is exact: use it for today and last hour
+            newest = max(e["_t"] for e in points)
+            score["delta"] = sum(e["points"] for e in points if e["_t"] >= day_start)
+            score["last_hour"] = sum(e["points"] for e in points if (newest - e["_t"]).total_seconds() < 600)
+            score["last_hour_at"] = hm(newest)
+    board = dict(leader=portal.get("leader"), above=portal.get("above"), below=portal.get("below"),
+                 rank=portal.get("rank"), score=portal.get("score")) if portal.get("rank") else None
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
                     change=x["score"] - entries[i - 1]["score"] if i else None, by=x.get("by", "?"))
                for i, x in enumerate(entries)][-10:][::-1]
@@ -231,6 +248,9 @@ def gather(root, now, service):
             if u and (u - a["_t"]).total_seconds() >= LONG_PARK_S:
                 rows.append(dict(t=a["_t"], who="", what="LLM parked",
                                  text=f"{a.get('model')}: {a.get('why')} until {hm(u)}", kind="event"))
+    for e in points:                           # the outcome, interleaved with what we did
+        rows.append(dict(t=e["_t"], who="", what=f"{e['points']:+,} pts", text=short(e.get("message"), 160),
+                         kind="gain" if e["points"] >= 0 else "loss"))
     for line in tail_lines(logs / "alerts.log"):
         t, _, msg = line.partition(" ")
         if ts(t):
@@ -255,7 +275,9 @@ def gather(root, now, service):
     running = dict(sha=deploys[-1]["new"][:7], when=hm(ts(deploys[-1]["ts"]))) if deploys else None
 
     return dict(
-        now=hm(now), banner=banner, score=score, history=history, milestone=milestone, multiplier=multiplier,
+        now=hm(now), banner=banner, score=score, history=history, board=board, milestone=milestone,
+        multiplier=multiplier, portal_accounts=portal.get("accounts"),
+        portal_checked=ago(now - portal_t) if portal_t else None,
         day_start=perth(day_start).strftime("%-I%p").lower(),
         writes=dict(hour=writes_hour, planned=round(per_min * 60) if per_min else None, cap=TEAM_CAP_PER_MIN * 60),
         accounts=dict(live=acc.get("live"), live_cap=LIVE_CAP, used=acc.get("used"), total_cap=TOTAL_CAP,

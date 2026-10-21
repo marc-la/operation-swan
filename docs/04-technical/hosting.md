@@ -27,7 +27,9 @@ Host swan-ec2
 | `swan-update.timer` | `deploy/update.sh`: if `origin/main` moved, pull, run `deploy/check.sh`, restart the bot. A failed check rolls back | every 2 min |
 | `swan-health.timer` | `deploy/healthcheck.sh`: alerts if the bot is down, logs nothing for 20 min, or makes no live write for 90 min | every 10 min |
 | `swan-sync.timer` | `scripts/swan_sync_mongo.py`: copies our records to the team MongoDB | every 15 min |
+| `swan-watch.timer` | `scripts/swan_watch.py` (read-only): finds our voices' moderator-hidden posts (alert; the bot takes a voice with 1 off amplification, stops it writing at 2) and, hourly, scores our amplified posts against Trending with `ring_audit.py` (alert when we look as coordinated as the leaders). Writes `data/swan_watch.json`, `logs/swan_watch.jsonl` | every 20 min |
 | `swan-dash.timer` | `src/swan_dash/build.py`: the team dashboard page, served by nginx behind a password ([todo/09](../../todo/09-dashboard-cop.md)). Installed by `deploy/dash_setup.sh`, not `install.sh` | every minute |
+| `swan-portal.timer` | `src/swan_dash/portal.py`: our rank, score, account counts and points log from the CTN portal, with the session cookie in `secrets/portal_cookie` ([todo/09](../../todo/09-dashboard-cop.md)) | every 15 min |
 
 **To change how the bot runs** (accounts, pace, flags), edit `deploy/run.sh` and push to `main`. To change the code, push to `main`. Either way it's live in about 2 minutes, unless checks fail.
 

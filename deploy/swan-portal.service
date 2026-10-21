@@ -1,0 +1,17 @@
+[Unit]
+Description=Read our score from the CTN portal for the dashboard (todo/09)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/ec2-user/ctn/.venv/bin/python -m swan_dash.portal
+# Sandbox: writes only data/; the bot's account passwords and SSH keys are invisible to it.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ec2-user/ctn/data
+InaccessiblePaths=-/home/ec2-user/ctn/secrets/swan_accounts.json -/home/ec2-user/.ssh

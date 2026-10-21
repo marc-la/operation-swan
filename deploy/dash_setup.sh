@@ -38,9 +38,10 @@ systemctl enable --now nginx
 systemctl reload nginx
 
 # 3. the page builder (every minute) and certificate renewal
-install -m 644 swan-dash.service swan-dash.timer swan-certbot.service swan-certbot.timer /etc/systemd/system/
+install -m 644 swan-dash.service swan-dash.timer swan-certbot.service swan-certbot.timer swan-portal.service swan-portal.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now swan-dash.timer swan-certbot.timer
+[ -s /home/ec2-user/ctn/secrets/portal_cookie ] && systemctl enable --now swan-portal.timer   # needs the cookie (todo/09)
 systemctl start swan-dash.service
 
 # 4. security updates, applied automatically
