@@ -883,8 +883,9 @@ def read_block(hint=None, rng=random):
     return (
         f"\n\nFirst read them, then write. Output one JSON object and nothing else (this replaces 'output only the "
         f"text'): {{\"stance\": one of {'|'.join(READ_STANCES)}, \"doubt\": their concern in 10 words or fewer, "
-        f"\"frame\": the key of the angle that answers it best, \"reply\": your reply}}. If the post is hostile or "
-        f"abusive, or not really about the referendum, output {{\"skip\": why, in a few words}} instead.\n"
+        f"\"frame\": the key of the angle that answers it best, \"reply\": your reply}}. Only if the post is hostile "
+        f"or abusive, or plainly about something with no link to the vote, output {{\"skip\": why, in a few words}} "
+        f"instead. When in doubt, answer: a citizen we skip may not come back.\n"
         f"Stances: firm_yes = set on Yes; yes_but = Yes with conditions or worries; unsure = undecided; unclear = on "
         f"the vote but no stance; lean_no / firm_no = leaning or set on No.\n{APPROACH}\n"
         f"Angles (the point your reply makes):\n{menu}\n{hint}")

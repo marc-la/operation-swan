@@ -371,3 +371,33 @@ def test_group_style_hook():
     gen = Gen(["Brilliant to hear the lagoon got a hand, my nephew still talks about the coral nursery."])
     text, _, _ = bot.draft_checked(gen, dict(job, meta={}), "sys", user, [])
     assert text, "no fact anchor needed off topic"
+
+
+# ---- step 1: the conversion report ----
+def test_conversion_report_on_a_tiny_log(tmp_path):
+    import json
+    import subprocess
+    import time
+    from datetime import datetime, timezone
+    iso = lambda t: datetime.fromtimestamp(t, timezone.utc).isoformat()
+    now = time.time()
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "data").mkdir()
+    rows = [dict(ts=iso(now - 7200), act="reply", live=True, post_id=1, target_author=500, style="mirror_concede",
+                 read_ok=True, read_stance="yes_but", target_class="conditions", backend="k", llm_calls=1),
+            dict(ts=iso(now - 5400), act="reply", live=True, post_id=2, target_author=501, style="current",
+                 read_ok=True, read_stance="unsure", target_class="unsure", backend="k", llm_calls=3, fixes=["length"]),
+            dict(ts=iso(now - 5000), act="skip", why="read", detail="about the reef", target_post=3,
+                 target_class="off_topic"),
+            dict(ts=iso(now - 4000), act="reply", live=True, post_id=4, target_author=9999)]          # a team bot
+    (tmp_path / "logs" / "swan_actions.jsonl").write_text("\n".join(map(json.dumps, rows)))
+    (tmp_path / "logs" / "swan_outcomes.jsonl").write_text(json.dumps(
+        dict(act="outcome", post_id=1, check=0, citizen_replies=1, citizen_likes=2)))
+    (tmp_path / "data" / "portal.json").write_text(json.dumps(dict(events=[dict(
+        ts=iso(now - 1800), type="SCORE_NARRATIVE", message="NPC engagement: 1 like and 1 primary contribution to a "
+        "change of mind towards your side")])))
+    out = subprocess.run([sys.executable, "scripts/conversion_report.py", "--root", str(tmp_path), "--hours", "6"],
+                         capture_output=True, text=True, cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
+    assert "Citizen-facing writes: **2**" in out and "towards **1** (primary 1)" in out
+    assert "| mirror_concede | 1 | 1 | 100% [" in out and "Skipped by the read: **1** (33%" in out
+    assert "| k | 2 | 2.00 |" in out
