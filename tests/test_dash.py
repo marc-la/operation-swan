@@ -96,7 +96,8 @@ def test_no_secret_and_no_script_reaches_the_page(tmp_path, monkeypatch):
     evil = write(3, text="<script>alert(1)</script><img src=x onerror=alert(2)>")
     _, html = page(make_root(tmp_path, [evil]))
     assert CANARY not in html
-    assert "<script" not in html and "<img" not in html and "&lt;script&gt;" in html
+    assert html.count("<script") == 1 and '<script src="app.js" defer></script>' in html    # no inline script
+    assert "<img" not in html and "&lt;script&gt;" in html
     assert "alert('target')" not in html                 # other people's text is never rendered
 
 
@@ -115,3 +116,27 @@ def test_tail_skips_cut_first_line(tmp_path):
     p.write_text("".join(json.dumps({"i": i, "pad": "x" * 50}) + "\n" for i in range(100)))
     recs = build.tail_jsonl(p, nbytes=1000)
     assert recs and recs[-1]["i"] == 99 and all("pad" in r for r in recs)
+
+
+def test_score_rate_history_and_llm_chain(tmp_path):
+    score = [{"ts": "2026-10-21T12:00:00+00:00", "score": 2500, "rank": 20, "teams": 145, "by": "marc"},
+             {"ts": "2026-10-22T01:00:00+00:00", "score": 2860, "rank": 16, "teams": 145, "by": "kim"},
+             {"ts": iso(0), "score": 3140, "rank": 14, "teams": 145, "by": "kim"}]
+    fallback = {"llm": [{"model": "flash-lite", "parked_until": 3600, "why": "daily quota"},
+                        {"model": "gpt-oss", "parked_until": None, "why": None}]}
+    ctx, html = page(make_root(tmp_path, [write(m) for m in range(40, 0, -1)], fallback, score=score))
+    assert ctx["score"]["per_hour"] == round(640 / 17)            # 13:00 UTC roll-over to 06:00 UTC = 17 h
+    assert [h["change"] for h in ctx["history"]] == [280, 360, None]
+    assert [m["state"] for m in ctx["llm"]["chain"]] == ["daily quota until 15:00", "in use"]
+    assert len(ctx["activity"]) == build.ACTIVITY_TOP and len(ctx["older"]) == 40 - build.ACTIVITY_TOP
+    assert '<details id="bot">' in html and "#14" in html
+
+
+def test_main_writes_page_robots_and_script(tmp_path, monkeypatch):
+    (tmp_path / "r").mkdir()
+    root, out = make_root(tmp_path / "r", [write(3)]), tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", ["build", "--root", str(root), "--out", str(out)])
+    monkeypatch.setattr(build, "service_state", lambda: "active")
+    build.main()
+    assert {p.name for p in out.iterdir()} == {"index.html", "robots.txt", "app.js"}
+    assert "location.reload" in (out / "app.js").read_text()

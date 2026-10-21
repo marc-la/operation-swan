@@ -30,6 +30,8 @@ POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2",
 MULTIPLIERS = [(dt.date(2026, 10, 26), 2), (dt.date(2026, 11, 1), 4)]     # derived, not confirmed by organisers
 LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; this covers several hours
 STALE_STATUS_S = 300
+PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
+ACTIVITY_TOP, ACTIVITY_ALL = 12, 60          # rows always shown / rows behind "Older activity"
 LONG_PARK_S = 600                              # per-minute parks are noise; longer ones go in the activity log
 
 
@@ -144,6 +146,10 @@ def gather(root, now, service):
     parked = [dict(model=m["model"], why=m.get("why") or "parked",
                    until=hm(dt.datetime.fromtimestamp(m["parked_until"], dt.timezone.utc)))
               for m in chain if m.get("parked_until")]
+    states = [dict(model=m["model"], state="in use" if i == current else
+                   f"{m.get('why') or 'parked'} until {hm(dt.datetime.fromtimestamp(m['parked_until'], dt.timezone.utc))}"
+                   if m.get("parked_until") else "ready", out=bool(m.get("parked_until")))
+              for i, m in enumerate(chain)]
     acc = status.get("accounts") or {}
     banned_day = [a for a in actions if a.get("act") == "suspended" and a["_t"] >= now - dt.timedelta(hours=24)]
     per_min = status.get("per_min")
@@ -179,15 +185,20 @@ def gather(root, now, service):
     else:
         banner = dict(level="green", text="RUNNING · last post " + (ago(now - last_write) if last_write else "—"))
 
-    # ---- score (typed in by hand: scripts/swan_score.py) ----
+    # ---- score (typed in by hand: scripts/score.sh) ----
     entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts"))]
     score = None
     if entries:
         e = entries[-1]
         before = [x for x in entries if ts(x["ts"]) < day_start]
+        delta = e["score"] - before[-1]["score"] if before else None
+        hours = (ts(e["ts"]) - day_start).total_seconds() / 3600
         score = dict(points=e["score"], rank=e.get("rank"), teams=e.get("teams"), by=e.get("by", "?"),
-                     ago=ago(now - ts(e["ts"])),
-                     delta=e["score"] - before[-1]["score"] if before else None)
+                     ago=ago(now - ts(e["ts"])), delta=delta,
+                     per_hour=round(delta / hours) if delta is not None and hours >= 0.5 else None)
+    history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
+                    change=x["score"] - entries[i - 1]["score"] if i else None, by=x.get("by", "?"))
+               for i, x in enumerate(entries)][-10:][::-1]
     today = now.astimezone(SYDNEY).date()
     poll = next(((d, name, need) for d, name, need in POLLS if d >= today), None)
     milestone = None
@@ -227,23 +238,33 @@ def gather(root, now, service):
             rows.append(dict(t=ts(t), who="", what="deploy" if msg.startswith("deployed") else "alert",
                              text=short(msg), kind="event"))
     rows.sort(key=lambda r: r["t"], reverse=True)
-    for r in rows[:30]:
+    for r in rows[:ACTIVITY_ALL]:
         r["time"] = hm(r["t"])
         r.setdefault("post", None)
+
+    # ---- the trending pulse the bot writes towards (todo/15): its newest "pulse" record ----
+    p = next((a for a in reversed(actions) if a.get("act") == "pulse"), None)
+    pulse = p and dict(id=p.get("id"), ago=ago(now - p["_t"]),
+                       stale=(now - p["_t"]).total_seconds() > PULSE_MAX_AGE_S,
+                       hooks=[short(h.get("text")) for h in p.get("hooks") or [] if isinstance(h, dict)],
+                       no_shapes=[short(x) for x in p.get("no_shapes") or []],
+                       yes_lines=[short(x) for x in p.get("yes_lines") or []],
+                       avoid=[short(x) for x in p.get("avoid") or []])
 
     deploys = [d for d in tail_jsonl(logs / "deploys.jsonl", 200_000) if d.get("result") == "ok"]
     running = dict(sha=deploys[-1]["new"][:7], when=hm(ts(deploys[-1]["ts"]))) if deploys else None
 
     return dict(
-        now=hm(now), banner=banner, score=score, milestone=milestone, multiplier=multiplier,
+        now=hm(now), banner=banner, score=score, history=history, milestone=milestone, multiplier=multiplier,
         day_start=perth(day_start).strftime("%-I%p").lower(),
         writes=dict(hour=writes_hour, planned=round(per_min * 60) if per_min else None, cap=TEAM_CAP_PER_MIN * 60),
         accounts=dict(live=acc.get("live"), live_cap=LIVE_CAP, used=acc.get("used"), total_cap=TOTAL_CAP,
                       suspended=acc.get("suspended"), voices=acc.get("voices"), boosters=acc.get("boosters")),
         llm=dict(model=chain[current]["model"] if current is not None else None,
-                 rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked),
+                 rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked,
+                 chain=states),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
-        activity=rows[:30], running=running, built=perth(now).strftime("%H:%M:%S"))
+        activity=rows[:ACTIVITY_TOP], older=rows[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, built=perth(now).strftime("%H:%M:%S"))
 
 
 def render(ctx):
@@ -270,6 +291,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     write_atomic(args.out / "index.html", html)
     write_atomic(args.out / "robots.txt", "User-agent: *\nDisallow: /\n")
+    write_atomic(args.out / "app.js", (pathlib.Path(__file__).parent / "templates" / "app.js").read_text())
 
 
 if __name__ == "__main__":
