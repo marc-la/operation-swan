@@ -38,6 +38,10 @@ PROVIDERS = {
     "deepseek": dict(key="DEEPSEEK_API_KEY", url="https://api.deepseek.com/v1", models="DEEPSEEK_MODEL", default=""),
     "mistral": dict(key="MISTRAL_API_KEY", url="https://api.mistral.ai/v1", models="MISTRAL_MODEL", default=""),
     "cerebras": dict(key="CEREBRAS_API_KEY", url="https://api.cerebras.ai/v1", models="CEREBRAS_MODEL", default=""),
+    # Model Studio, international (Singapore) endpoint: the only region our key works on. New accounts get ~1M free
+    # tokens per model for 90 days, then pay-as-you-go unless "stop when free quota is used up" is on (2026-10-21)
+    "alibaba": dict(key="ALIBABA_API_KEY", url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                    models="ALIBABA_MODEL", default=""),
 }
 CHAIN_FILE = config.ROOT / "deploy" / "llm_chain.txt"
 USAGE_FILE = config.DATA / "llm_usage.json"

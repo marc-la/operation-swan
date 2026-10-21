@@ -19,3 +19,7 @@ groq:openai/gpt-oss-120b
 groq:qwen/qwen3.8-27b
 openrouter:google/gemma-4-31b-it:free
 openrouter:nvidia/nemotron-3-ultra-550b-a55b:free
+# 2026-10-21: Alibaba free quota (1M tokens, Singapore). The only model on it that drafts well: 5/6 passed at 2 items
+# per call, but it drops items at 4 per call. Last here so it mostly serves the amplified post (config.AMP_MODELS).
+# Needs ALIBABA_API_KEY in .env (skipped without it). Other Alibaba models 403 until pay-as-you-go is set up.
+alibaba:qwen-plus-character
