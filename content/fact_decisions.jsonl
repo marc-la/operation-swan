@@ -13,3 +13,21 @@
 {"id": 24, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:26:06Z", "summary": "new fact reef_recovery (#24)"}
 {"id": 25, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:26:06Z", "summary": "new fact coastal_erosion (#25)"}
 {"id": 32, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:26:06Z", "summary": "new fact mouk_campaign (#32)", "frames": []}
+{"id": 4, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #4 rejected"}
+{"id": 5, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #5 rejected"}
+{"id": 6, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #6 rejected"}
+{"id": 12, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #12 rejected"}
+{"id": 13, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #13 rejected"}
+{"id": 14, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #14 rejected"}
+{"id": 16, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #16 rejected"}
+{"id": 17, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #17 rejected"}
+{"id": 18, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #18 rejected"}
+{"id": 21, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #21 rejected"}
+{"id": 22, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #22 rejected"}
+{"id": 23, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #23 rejected"}
+{"id": 26, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #26 rejected"}
+{"id": 27, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #27 rejected"}
+{"id": 28, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #28 rejected"}
+{"id": 29, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #29 rejected"}
+{"id": 30, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #30 rejected"}
+{"id": 33, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #33 rejected"}
