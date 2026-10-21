@@ -34,10 +34,10 @@ Compared with 2025: the 2025 winners (CtN_QUT; QUT leads again as Vertex_CTN) fo
 | **Throughput** | 11% of write budget used; likes, follows and views almost unused | 20 writes/h; hard cap 2/min in code | Done 2026-10-20: cap 2.5/min, voice gap 4 min, amplification uses likes/follows/views |
 | **LLM supply** | Free-tier Gemini quotas park the bot | `llm.py` parks models for hours on a daily 429 | Done 2026-10-20: paid Gemini Tier 1 + ranked chain (`deploy/llm_chain.txt`); batching: [todo/12](../../todo/12-batched-drafting.md) |
 | **Targets** | Reply targeting starves: citizens rarely post | 0 citizen news-thread replies/hour in recent refreshes; 0/300 Latest posts by citizens | [amplification](amplification.md) (originals instead of starved replies) |
-| **Content** | Calm, consoling, process-heavy ("blank cheque", "list nobody's seen") | Rejects dominated by near-duplicate/same-opening; trending No posts are emotive stories | [05](../../todo/05-content-v2.md), [06](../../todo/06-npc-simulator.md) |
-| **Blue track** | Not used at all, while the organisers just made it cheaper (cap 25 pending, 3 h base timer) | 0 reports filed | [07](../../todo/07-blue-desk.md) |
+| **Content** | Calm, consoling, process-heavy ("blank cheque", "list nobody's seen") | Rejects dominated by near-duplicate/same-opening; trending No posts are emotive stories | content v2 (old todo/05, done); old todo/06 dropped 2026-10-21 |
+| **Blue track** | Not used at all, while the organisers just made it cheaper (cap 25 pending, 3 h base timer) | 0 reports filed | [07](../../todo/07-blue-reporting.md) |
 | **Infra** | Laptop + tmux; no auto-deploy; no shared picture | WSL sleeps; teammates can't see state | Done 2026-10-20: [hosting](../04-technical/hosting.md). Dashboard: [09](../../todo/09-dashboard-cop.md) |
-| **Data** | No snapshots of the platform; no team clusters; per-post metrics only on demand | `swan_measure.py` is manual; Mongo holds only our own log | [08](../../todo/08-intel-collector.md) |
+| **Data** | No snapshots of the platform; no team clusters; per-post metrics only on demand | `swan_measure.py` is manual; Mongo holds only our own log | old todo/08 (dropped 2026-10-21) |
 
 ## Rules check (needs a ruling before we copy it)
 

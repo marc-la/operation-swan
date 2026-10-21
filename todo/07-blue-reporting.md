@@ -1,6 +1,12 @@
-# 07: Blue desk: report the ring bots (fastest catch-up)
+# 07: Blue reporting: report the ring bots (fastest catch-up)
 
-**Owner:** Blue lead · **Depends on:** nothing for v0 (08 makes it better) · **When:** start **today**
+**Owner:** Blue lead · **Depends on:** nothing · **When:** start **today (21 Oct)**
+
+## Status 2026-10-21
+- **0 reports filed, 0 Blue points.** Other teams do report: our voice @lani_wharfcafe23 was suspended on 20 Oct 19:17 UTC (reported as a bot, one post already hidden, over 100 actions).
+- The cap against each team resets at midnight Sydney (9pm Perth), so every day without reports is lost for good.
+- Our own amplified posts now get 15–20 thread replies and 36–46 likes from our accounts (2026-10-21). That's evidence class 1–2 below. Run the self-check on our posts too (last bullet of Build).
+- The intel collector (old todo/08) is dropped. Clusters come from `scripts/ring_audit.py` and the script below, not from Mongo.
 
 ## Why
 - Organisers, 20 Oct: the pending-report cap went 20 → **25**, and the automoderation base timer 24 h → 6 h → **3 h**. "If you're wondering how you might be able to catch up to the top teams, I hope that you will explore the reporting mechanics more! Every team only gets a finite number of bots."
@@ -24,9 +30,9 @@ Evidence classes, strongest first:
 **Cluster** accounts by co-liking and co-replying (a Jaccard over the post sets they touched). One cluster ≈ one team. That gives us the per-team diminishing-rate proxy: about 5 reports per cluster per Sydney day.
 
 ## Build (v0 today, by hand + script; v1 automated)
-- **v0 (today):** `scripts/blue_candidates.py`, read-only. Scan Trending + Latest, score posts on evidence 1–3, print the top 25 with the evidence sentence. A human reads each and files it from one of our accounts with `report_post(post_id, "inauthentic", "I think that this content is inauthentic (bot) activity because <evidence>")`. The detail must be specific (counts, timing, account ages). Log every report to `logs/blue_reports.jsonl` with owner, target, evidence, and later the ruling.
+- **v0 (today):** `scripts/blue_candidates.py`, read-only. Start from `scripts/ring_audit.py --trending`: it already scores team-like share, like bursts, id runs and liker overlap. Scan Trending + Latest, score posts on evidence 1–3, print the top 25 with the evidence sentence. A human reads each and files it from one of our accounts with `report_post(post_id, "inauthentic", "I think that this content is inauthentic (bot) activity because <evidence>")`. The detail must be specific (counts, timing, account ages). Log every report to `logs/blue_reports.jsonl` with owner, target, evidence, and later the ruling.
 - **v1:** a `blue` job type in the writer's process (it uses the report budgets, 3/min each, separate from posting). It auto-files only above a confidence threshold, keeps ≤ 25 pending, and caps per cluster per day. It reads rulings back (watch whether the post becomes hidden) and computes our precision. If precision drops below ~70%, it drops back to human approval.
-- **Protect ourselves:** the same detector runs on **our own** accounts. If we start looking like evidence 1–3 (after 04), we'll be reported the same way.
+- **Protect ourselves:** automated since 2026-10-21. `scripts/swan_watch.py` runs the ring audit on our posts hourly and watches each voice's hidden posts ([hosting](../docs/04-technical/hosting.md)). Boosters never post, so they can't be suspended. Voices can.
 
 ## Done when
 v0: 25 pending reports filed today with logged evidence. v1: precision measured over ≥ 50 rulings, auto-filing on, reports spread over ≥ 10 clusters per day.

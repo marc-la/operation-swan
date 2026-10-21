@@ -12,20 +12,16 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
-| [07](07-blue-desk.md) | Blue desk: find ring bots, report them | Blue lead | **today → 21 Oct** | 08 helps but not needed for v0 |
-| [12](12-batched-drafting.md) | Batched drafting: fix `batch.py`, A/B vs single (≥95% quality), wire into the draft pool | Marc (ops) | 21 Oct | — |
-| [08](08-intel-collector.md) | Collector into Mongo: snapshots, team clusters, our per-post metrics | Data lead | 21 Oct | — |
-| [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2): primary, built 21 Oct, box setup left (Marc) | Marc | 22 Oct | 01, 08 |
-| [06](06-npc-simulator.md) | NPC simulator as a fitness landscape for drafts | Narrative lead | 22–23 Oct | 05, 10 |
-| [13](13-overnight-experiments.md) | Overnight experiments: random arms per draft, citizen follow-up reads, switchbacks, morning report | Marc + fresh session | 21 Oct, then nightly | 05 live |
-| [14](14-prompt-steering.md) | Prompt steering: built and live; left: same-seed flash-lite screen (after quota reset) + teammate read of 10 drafts | Marc + teammate | 21 Oct after 15:00 | 13 live |
+| [07](07-blue-reporting.md) | Blue reporting: find ring bots, report them (0 reports so far) | Blue lead | **today, 21 Oct** | — |
+| [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2): built 21 Oct, box setup left | Marc | 22 Oct | — |
 
-**Critical path to catch up:** amplification is live (2026-10-20, [amplification](../docs/06-strategy/amplification.md)); next are 07 (Blue: the fastest points, and `scripts/ring_audit.py` already finds the rings) and 05 (content that ranks).
+**Critical path to catch up (2026-10-21):** Blue (07) starts today. Amplification went harder on 21 Oct: one post an hour, every one heavy, 15–20 thread replies on top of 5–6 reposts, best models and best-measured voices ([amplification](../docs/06-strategy/amplification.md)). The trending pulse (old 15, built 21 Oct: [amplification](../docs/06-strategy/amplification.md#trending-pulse-2026-10-21)) keeps that content current. Its 24 h before/after check is open there. Dropped 21 Oct: the overnight experiments (old 13; too little data), the NPC simulator (old 06), the intel collector (old 08), second voices and reply-backs.
 
 ## Ops leftovers (small, Marc)
 Done 2026-10-20 and deleted from this folder: bot on EC2 under systemd, plus auto-deploy from `main` with alerts and CI ([hosting](../docs/04-technical/hosting.md)); throughput (old 03: LLM chain, 2.5 writes/min, 4-min voice gap); amplification (old 04, now [amplification](../docs/06-strategy/amplification.md)). Still open:
-- [x] 2026-10-20: Gemini project upgraded to **paid Tier 1** (flash-lite 150K requests/day). Chain re-ranked in `deploy/llm_chain.txt`; qwen 3B fallback removed. Watch the monthly spend cap: when the billing account hits it, Gemini pauses until the 1st and the bot falls back to Groq.
-- [ ] AWS: Elastic IP (then update `~/.ssh/config` + hosting.md), termination protection, SSH from team IPs only, budget alert.
+- [ ] **LLM supply (do first):** the bot's Gemini key is on the *free* project (flash-lite 500/day; 3.6 and 3.8 Flash 20/day each). One heavy post an hour needs ~20 drafts an hour (the post plus 15–20 thread replies), about 480 a day before rejects and repairs. Move the key in EC2 `~/ctn/.env` to the paid Tier 1 project (3.8 Flash 10K/day), then check `data/llm_usage.json` the next day.
+- [ ] ~~2026-10-20: Gemini project upgraded to paid Tier 1~~ **Wrong (corrected 2026-10-21):** the email was misread. The project is still on the **free** tier (flash-lite 500/day; 3.6 and 3.8 Flash 20/day each). Chain re-ranked in `deploy/llm_chain.txt`; qwen 3B fallback removed. Still to do: enable billing on the bot's project with a spend cap.
+- [ ] AWS: ~~Elastic IP~~ (done 2026-10-21: `13.210.120.238`), termination protection, SSH from team IPs only, budget alert.
 - [ ] Teammates' public SSH keys → `~ec2-user/.ssh/authorized_keys` (don't share the PEM).
 - [ ] GitHub branch protection on `main`: require the `checks` job and PRs (today a direct push goes live in 2 min).
 - [ ] `tests/` for `quality.check` and `targeting.classify` (CI and the deploy checks run them when present). Log the git sha in each action record. Graceful stop via a signal flag instead of KeyboardInterrupt.
