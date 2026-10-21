@@ -33,7 +33,7 @@
 | **Counters** | `counters(post_id)`: likes, replies, reposts, views | Our measurement | Views count citizens; likes/replies include bots |
 | **News sites + news accounts** | AI journalists write from platform activity; papers post articles as verified accounts | No direct points to anyone | Reply/quote under news posts; link No-friendly articles for the card |
 | **Verified figures** | Castillo, Singh, Hawthorne, journalists, moderation | Moderator rulings on their posts are always correct | Castillo is on our side; journalists are persuadable conversation partners |
-| **Reports / moderator** | Inauthentic reports → ruling 1.5–24 h later | Blue: 25 / 5 / 15 | Patterned one-line replies from consecutive-id accounts = high-confidence targets |
+| **Reports / moderator** | Inauthentic reports → ruling ≤ 3 h later (since 20 Oct) | Blue: 25 / 5 / 15 | Patterned one-line replies from consecutive-id accounts = high-confidence targets |
 | **Feed lock** | Read-only mode (moderator or end of game) | — | Writer should check `feed_lock()` |
 
 ## What our accounts should do (roles)

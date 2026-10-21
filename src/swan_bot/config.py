@@ -129,6 +129,18 @@ FOLLOWUP_MAX_READS = 600               # per run (every 30 min); the read budget
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
+# ---- Blue track (todo/07, src/swan_blue): a separate process reports from one booster the bot no longer uses ----
+BLUE_OFF_FILE = ROOT / "BLUE_OFF"       # touch it to stop filing reports (the scan and rulings carry on)
+
+
+def blue_reporter(records):
+    """The account swan_blue reports from: the lowest-id active booster. Both processes call this, so they agree;
+    the bot leaves it out of its boosters and its drip registration tops the likers back up."""
+    boosters = [r for r in records if r.get("role") == "booster" and r.get("status", "active") == "active"
+                and r.get("account_id")]
+    return min(boosters, key=lambda r: r["account_id"]) if boosters else None
+
+
 def load_env(path=ROOT / ".env"):
     """Minimal .env loader (strips quotes). .env wins over the shell, so a stale exported key can't shadow it."""
     if not path.exists():

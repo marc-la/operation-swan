@@ -10,14 +10,14 @@
 |---|---|---|
 | Day −2 | 17 Oct | Baseline poll (no points; sets starting position): **Yes 35.2% / No 35.2% / Unsure 29%** (launch webinar). Electoral Commission confirms question/polling day |
 | Day 0 | **Mon 19 Oct, 6pm** | **Competition opens** — teams can create Legit Social accounts and start. Formal referendum campaign opens |
-| Day 2 | 21 Oct | **Poll 1** — 1,000 pts to each eligible team on leading side (needs score ≥ 1) |
-| Day 6 | 25 Oct | **Poll 2** — 1,000 / 500 (needs score ≥ 2,500) |
+| Day 2 | 21 Oct | **Poll 1** — 6,000 pts to each eligible team on leading side (needs score ≥ 1). **Result: too close to call (~2.4 points), 3,000 to every team with score ≥ 1; a shift towards No** |
+| Day 6 | 25 Oct | **Poll 2** — 6,000 / 3,000 (needs score ≥ 7,000) |
 | **Day 7** | **26 Oct** *(derived)* | **Red multiplier → ×2** |
-| Day 10 | 29 Oct | **Poll 3** — 1,000 / 500 (needs score ≥ 2,500) |
+| Day 10 | 29 Oct | **Poll 3** — 6,000 / 3,000 (needs score ≥ 7,000) |
 | — | 28 Oct | In-world early voting opens |
 | — | last week of Oct | In-world: first 120,000 vaccine doses arrive (setting colour) |
 | **Day 13** | **1 Nov** *(derived)* | **Red multiplier → ×4**; in-world campaign silence begins at 00:00 |
-| **Day 14** | **Mon 2 Nov** | **Referendum**: 5,000 base + share of 50,000 persuasion pool to winning-side teams. Competition ends (the feed locks) |
+| **Day 14** | **Mon 2 Nov** | **Referendum**: 20,000 base + share of 100,000 persuasion pool to winning-side teams (awards recalibrated 20 Oct). Competition ends (the feed locks) |
 | After | **December** (date TBC) | Top 3 by score present at the Sydney prizegiving. All members must complete the **post-competition survey** and finalists hand over all source code (rules §7.5) |
 
 > The "Day" numbers and calendar dates come straight from the scoring guide's poll table (Day 2 = 21 Oct, Day 6 = 25 Oct, Day 10 = 29 Oct, Day 14 = 2 Nov). Day 7 = 26 Oct and Day 13 = 1 Nov are our arithmetic.

@@ -47,4 +47,5 @@ Own-team likes and replies on our own posts is what the leaders do. In-game rule
 
 - Pending cap is 25; with one reporting team a ruling now comes about **3 h** after the first report. Full use is about 25 reports per 3 h, roughly 200 a day.
 - About 1 in 4 rulings is wrong. A "genuine" ruling locks *new* reports for 6 h, but pending reports still resolve. So a realistic **60–120 paid reports a day × 25 ≈ 1,500–3,000 Blue points a day**, before the per-team diminishing rate (5 full, 5 half, then 10%) is applied across many teams.
+- **Corrected 2026-10-21:** with 25 pending, a batch almost always contains one "genuine" ruling, so the cycle is about 3 h of rulings plus a 6 h lock. Modelled at about 70 reports and **~1,200 points a day** (the moderator is now wrong ~1 in 10). See [blue-reporting](blue-reporting.md).
 - That is more than our whole Red score so far. It also hides the ring posts that push the Yes side up Trending: 3 hides suspend an account, and a ring account with ≥100 actions and a hidden post can be suspended by an account report (15 each).

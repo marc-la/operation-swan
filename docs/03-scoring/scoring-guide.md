@@ -1,6 +1,8 @@
 # Scoring Guide — CTN 2026
 
-> Source: capturethenarrative.com/info/competitions/2026/scoring/ (captured 2026-10-19; **re-captured 2026-10-19 evening** after the organisers' clarifications below). Wording and numbers preserved; layout cleaned.
+> Source: capturethenarrative.com/info/competitions/2026/scoring/ (captured 2026-10-19; re-captured 2026-10-19 evening; **re-checked 2026-10-21** after the 20 Oct Blue changes and award recalibration below). Wording and numbers preserved; layout cleaned.
+>
+> **Changes since launch (2026-10-21):** on 20 Oct the moderator's ruling moved from 24 h to **6 h** after the first report (morning), then to **3 h** (evening), and the page says *"The moderator is also now more likely to rule accurately"*: about **one ruling in ten** is wrong (was one in four). Discord, 20 Oct: the **pending-report cap went 20 → 25**. That cap isn't on the scoring page. Award recalibration (Discord 20 Oct, now on the page): **poll win 1,000 → 6,000** (too close to call pays half, 3,000), Polls 2 & 3 need a team score **≥ 7,000**, **referendum win 20,000** (needs ≥ 7,500 or one qualifying persuasion), **persuasion pool 100,000**. Log: [open questions](../05-reference/discrepancies-and-open-questions.md).
 >
 > **Organisers' note:** *Updated 2026-10-19 to clarify that (1) account reports also count towards the five-report diminishing-return limit, (2) @mentions are limited to four per post and three per reply, (3) that citizens may be temporarily less receptive to same-opinion changes after they have already changed that view during a session, and (4) NPCs have less chance of replying in deep conversation threads. The scoring system itself has not changed.*
 >
@@ -28,14 +30,14 @@ The overall goal is to **persuade NPC citizens to vote in the referendum** on va
 | …your post contributes to that change | Share of **−40** | Red | Penalty; divided likewise |
 | A citizen's vaccination view changes but **favours neither side** | 20 | Red | Contributions share 10 |
 | Your post changes a citizen's **other** view | 20 | Red | Contributions share 10 |
-| Your team is **first to report** a post the moderator rules inauthentic | 25 | Blue | Paid when moderator rules (1½–24h after first report); a *genuine* ruling triggers a **6-hour reporting suspension** |
+| Your team is **first to report** a post the moderator rules inauthentic | 25 | Blue | Paid when moderator rules (3 h after the first report, less when more teams report); a *genuine* ruling triggers a **6-hour reporting suspension** |
 | Your team reports the **same post after** another team | 5 | Blue | Only first **5** reporting teams can score |
 | Paid **post and account** reports against the **same team in one day** | Full → half → 10% | Blue | Post and account awards are counted together: first 5 full; next 5 half; later 10% |
 | Your team reports an **account** that is then suspended via inauthentic-account review | 15 | Blue | Every reporting team gets it; needs ≥1 moderator-hidden post **and** ≥100 account actions |
-| Your side **leads an official poll** | 1,000 | Polling | Poll 1 needs team score ≥ 1; Polls 2 & 3 need ≥ 2,500 |
-| Poll **too close to call** | 500 per eligible team on both sides | Polling | 52–48 or closer; same score requirements |
-| Your side **wins the referendum** | 5,000 | Polling | Team needs ≥ 2,500 pts **or** to have helped move ≥1 citizen towards the winning side |
-| Referendum **persuasion share** | Your share of 50,000 | Polling | Winning-side teams only; by qualifying changes of mind and contributions |
+| Your side **leads an official poll** | 6,000 | Polling | Poll 1 needs team score ≥ 1; Polls 2 & 3 need ≥ 7,000 |
+| Poll **too close to call** | 3,000 (half) per eligible team on both sides | Polling | 52–48 or closer; same score requirements |
+| Your side **wins the referendum** | 20,000 | Polling | Team needs ≥ 7,500 pts **or** to have helped move ≥1 citizen towards the winning side |
+| Referendum **persuasion share** | Your share of 100,000 | Polling | Winning-side teams only; by qualifying changes of mind and contributions |
 
 **Multipliers (details in §5):** Red ×1 → **×2 from Day 7** → **×4 from Day 13**. Blue and Polling stay ×1.
 
@@ -131,19 +133,21 @@ If the moderator rules **inauthentic**, the post is **permanently hidden** and r
 Scored under **Blue** (always ×1).
 
 ### When the moderator rules
-Ruling is scheduled **24 hours after the first report**; each additional *distinct team* reporting **halves** the wait (always measured from the first report):
+Ruling is scheduled **3 hours after the first report** (since the evening of 20 Oct; it was 24 h at launch, then 6 h that morning); each additional *distinct team* reporting **halves** the wait (always measured from the first report):
 
 | Distinct reporting teams | Ruling time after first report |
 |---|---|
-| 1 | 24 h |
-| 2 | 12 h |
-| 3 | 6 h |
-| 4 | 3 h |
-| 5 | 1½ h |
+| 1 | 3 h |
+| 2 | 1½ h |
+| 3 | 45 min |
+| 4 | 22½ min |
+| 5 | 11¼ min |
+
+**Pending cap:** a team may have at most **25** reports pending at once (Discord, 20 Oct; was 20). Not stated on the scoring page.
 
 Multiple reports from accounts of the **same team count as one**. **No Blue points or suspensions apply until the moderator rules.** Unless five teams have reported it, the post stays visible while pending.
 
-### Moderator uncertainty (~1 in 4 rulings is wrong, either direction)
+### Moderator uncertainty (~1 in 10 rulings is wrong, either direction; was ~1 in 4 until 20 Oct)
 - Ruled **genuine** → **every team that reported it can't report any post or account for 6 hours**, even if it really was a competitor.
 - Ruled **inauthentic** → reporters get points and the post is permanently hidden, **even if a genuine citizen wrote it.**
 - **Verified-badge accounts are an exception:** the moderator's ruling on their posts is **always correct**.
@@ -182,34 +186,36 @@ Every team is assigned **Vote Yes** or **Vote No**. During the campaign the **In
 | Event | Day | In-world date | Award |
 |---|---|---|---|
 | Baseline poll | −2 | 17 Oct | no points; starting position |
-| Poll 1 | 2 | 21 Oct | 1,000 to each eligible team on the leading side |
-| Poll 2 | 6 | 25 Oct | 1,000 likewise |
-| Poll 3 | 10 | 29 Oct | 1,000 likewise |
-| Referendum result | 14 | 2 Nov | 5,000 to each eligible winning-side team **+ share of the 50,000 persuasion pool** |
+| Poll 1 | 2 | 21 Oct | 6,000 to each eligible team on the leading side (result: too close to call, 3,000 each; see below) |
+| Poll 2 | 6 | 25 Oct | 6,000 likewise |
+| Poll 3 | 10 | 29 Oct | 6,000 likewise |
+| Referendum result | 14 | 2 Nov | 20,000 to each eligible winning-side team **+ share of the 100,000 persuasion pool** |
 
 ### Official polls — eligibility
 - **Poll 1:** team score **≥ 1**.
-- **Polls 2 & 3:** team score **≥ 2,500**.
+- **Polls 2 & 3:** team score **≥ 7,000** (was 2,500 until the 20 Oct recalibration).
 - "Score" = your total portal score *at the moment the poll is counted*, **including points from earlier polls**. Below the threshold at that moment = no award, and it's not paid later.
-- **Too close to call:** result **52–48 or closer** (50–50 included) → eligible teams on **both** sides get **500** instead of 1,000. Only citizens choosing Yes or No count; undecided and non-voters are excluded.
+- **Too close to call:** result **52–48 or closer** (50–50 included) → eligible teams on **both** sides get **half the award (3,000)**. Only citizens choosing Yes or No count; undecided and non-voters are excluded.
+
+**Poll 1 result (Discord, 21 Oct 05:52):** too close to call (about 2 points apart, 2.4 before rounding), so every team with a score ≥ 1 got **3,000**. The organisers noted a shift towards Vote No.
 
 ### The referendum
 Uses every citizen's vote. **A dead heat pays no referendum points.** Otherwise only the winning side is rewarded:
 
-**Base award — 5,000** to a winning-side team if **either**:
-- its score is **≥ 2,500** when the referendum is counted; **or**
+**Base award — 20,000** to a winning-side team if **either**:
+- its score is **≥ 7,500** when the referendum is counted; **or**
 - at some point one of its posts changed, or contributed to changing, a citizen's vaccination view **towards the winning side** (one qualifying change/contribution is enough).
 A winning-side team meeting neither gets **nothing**.
 
-**Persuasion share — 50,000** divided between *qualifying* winning-side teams by how much they moved citizens' vaccination views toward that side:
+**Persuasion share — 100,000** divided between *qualifying* winning-side teams by how much they moved citizens' vaccination views toward that side:
 - each qualifying **change of mind** counts **1**;
 - each qualifying **contribution** counts its share of **0.5** (e.g. four posts sharing a pool → each counts 0.5 ÷ 4 = **0.125**).
-A winning-side team that never moved a citizen toward the winning side gets **no persuasion share** (though it may still get the 5,000 base via the score threshold). **Persuasion by losing-side teams doesn't count toward the pool.**
+A winning-side team that never moved a citizen toward the winning side gets **no persuasion share** (though it may still get the 20,000 base via the score threshold). **Persuasion by losing-side teams doesn't count toward the pool.**
 
 **Worked example** (Team A & B the only Vote Yes teams with qualifying persuasion):
 - Team A: 30 changes + 40 contributions each shared by 4 posts → weight 30 + 40×0.125 = **35**.
 - Team B: 10 changes + 20 contributions each shared by 2 posts → weight 10 + 20×0.25 = **15**.
-- Pool 50,000 → Team A **35,000**, Team B **15,000**. (Base award and persuasion share show together in the activity log.)
+- Pool 100,000 → Team A **70,000**, Team B **30,000**. (Base award and persuasion share show together in the activity log.)
 
 ## 5. Score multipliers
 
@@ -226,7 +232,7 @@ A winning-side team that never moved a citizen toward the winning side gets **no
 
 ## 6. Reading your activity log
 
-Citizen scores are added in **batches every few minutes** after a citizen finishes scrolling. Moderation outcomes are recorded **only when the moderator rules** (up to 24h after first report). One line per batch/outcome; penalties recorded separately. Examples:
+Citizen scores are added in **batches every few minutes** after a citizen finishes scrolling. Moderation outcomes are recorded **only when the moderator rules** (up to 3 h after first report since 20 Oct). One line per batch/outcome; penalties recorded separately. Examples:
 
 ```
 NPC engagement (×2 points): 8 views, 2 likes and 1 primary contribution to a change of mind towards your side

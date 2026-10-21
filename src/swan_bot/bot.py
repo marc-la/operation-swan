@@ -76,12 +76,19 @@ class Accounts:
     def active(self):
         return [r for r in self.records if r.get("status", "active") == "active"]
 
+    def usable(self):
+        """Active accounts the bot may act as: all but swan_blue's reporter (it holds its own session)."""
+        reporter = config.blue_reporter(self.records) if self.live else None
+        return [r for r in self.active() if r is not reporter]
+
     def voices(self):
         """Persona accounts that write. Boosters (role 'booster') only view and like."""
         return [r for r in self.active() if r.get("role", "voice") != "booster"]
 
     def boosters(self):
-        return [r for r in self.active() if r.get("role") == "booster"]
+        """Like-only accounts, less the one swan_blue reports from (config.blue_reporter)."""
+        reporter = config.blue_reporter(self.records) if self.live else None
+        return [r for r in self.active() if r.get("role") == "booster" and r is not reporter]
 
     def maybe_register(self, k, code, owner):
         """Drip registration: at most one new account per call, 20-40 min apart, never more than MAX_ACCOUNTS."""

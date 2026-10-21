@@ -258,6 +258,28 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <p class="sub">Read from the portal every 15 minutes{% if portal_checked %} (last check {{ portal_checked }}){% endif %}. By hand if needed: <code>ssh swan-ec2 'ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt; &lt;name&gt;'</code></p>
 </div></details>
 
+<details id="blue"{% if blue and blue.waiting %} open{% endif %}><summary><b>Blue</b><span class="sub {{ 'warn' if blue and (blue.stale or blue.waiting or blue.locked) else '' }}">
+  {% if blue %}{{ blue.mode }} · {{ blue.pending }}/{{ blue.cap }} pending ·
+    {% if blue.locked %}locked until {{ blue.locked }}{% else %}open{% endif %} ·
+    today {{ blue.today.hidden | n }} hidden, {{ blue.today.genuine | n }} genuine · {{ blue.points | n }} pts{% else %}not running{% endif %}</span></summary>
+<div>
+  {% if blue %}
+  <p>{{ blue.mode }}: {{ blue.why }}.{% if blue.locked %} Locked until {{ blue.locked }} ({{ blue.lock_why }}).{% endif %}{% if blue.next_ruling %} Next ruling about {{ blue.next_ruling }}.{% endif %}</p>
+  <p class="sub">Today: {{ blue.today.filed | n }} filed against {{ blue.today.teams | n }} teams · {{ blue.today.hidden | n }} hidden, {{ blue.today.genuine | n }} genuine, {{ blue.today.accounts | n }} account rulings.
+    {% if blue.ruled %}Overall {{ (blue.rate * 100) | round | int }}% ruled inauthentic over {{ blue.ruled }} (auto needs 70%).{% endif %}</p>
+  {% if blue.waiting %}
+  <h3>Waiting for approval · each is a team account's post with a like or reply ring</h3>
+  <code class="cmd">{{ blue.approve }}</code>
+  <table>
+    {% for w in blue.waiting %}<tr><td>#{{ w.key[1:] }}</td><td class="num">{{ w.age | n }}m</td><td>{{ w.why }}</td></tr>{% endfor %}
+  </table>
+  <p class="sub">Some only: <code>ssh swan-ec2 'ctn/scripts/blue.sh approve {{ blue.waiting[:2] | map(attribute='key') | join(',') }}'</code>. Unapproved ones are never filed.</p>
+  {% endif %}
+  {% if blue.error %}<p class="sub warn">Last error: {{ blue.error }}</p>{% endif %}
+  <p class="sub">Reports from {{ blue.reporter or '—' }}. Stop filing: <code>ssh swan-ec2 'touch ctn/BLUE_OFF'</code> (rm to resume).</p>
+  {% else %}<p class="sub">swan-blue hasn't written a status yet.</p>{% endif %}
+</div></details>
+
 <details id="facts"><summary><b>Facts</b><span class="sub {{ 'warn' if facts and facts.paused else '' }}">
   {% if facts %}{% if facts.paused %}{{ facts.paused | length }} paused · {% endif %}{{ facts.count }} to review{% else %}fact desk not set up{% endif %}</span></summary>
 <div>

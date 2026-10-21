@@ -24,7 +24,8 @@ Host swan-ec2
 | Unit | What | When |
 |---|---|---|
 | `swan-bot.service` | `deploy/run.sh`: the live bot. Restarts 60 s after a crash; gives up after 20 starts in 30 min (a crash loop) | always (enabled at boot) |
-| `swan-update.timer` | `deploy/update.sh`: if `origin/main` moved, pull, run `deploy/check.sh`, restart the bot. A failed check rolls back | every 2 min |
+| `swan-blue.service` | `python -m swan_blue --live` (from `src/`): the Blue track ([blue-reporting](../06-strategy/blue-reporting.md)). Reports competitor ring bots from one reserved booster (`config.blue_reporter`); report routes only. Writes `data/blue_state.json`, `data/blue_status.json` (dashboard), `logs/blue_reports.jsonl`, token in `secrets/blue_session.json`. Approve: `ctn/scripts/blue.sh approve all`. `touch ~/ctn/BLUE_OFF` stops filing | always (enabled by `install.sh`) |
+| `swan-update.timer` | `deploy/update.sh`: if `origin/main` moved, pull, run `deploy/check.sh`, restart the bot and swan-blue. A failed check rolls back | every 2 min |
 | `swan-health.timer` | `deploy/healthcheck.sh`: alerts if the bot is down, logs nothing for 20 min, or makes no live write for 90 min | every 10 min |
 | `swan-sync.timer` | `scripts/swan_sync_mongo.py`: copies our records to the team MongoDB | every 15 min |
 | `swan-watch.timer` | `scripts/swan_watch.py` (read-only): finds our voices' moderator-hidden posts (alert; the bot takes a voice with 1 off amplification, stops it writing at 2) and, hourly, scores our amplified posts against Trending with `ring_audit.py` (alert when we look as coordinated as the leaders). Writes `data/swan_watch.json`, `logs/swan_watch.jsonl` | every 20 min |
@@ -48,6 +49,8 @@ systemctl status swan-bot                    # up?
 sudo systemctl stop swan-bot                 # KILL SWITCH (stays stopped; deploys won't restart it)
 sudo systemctl start swan-bot                # back on
 touch ~/ctn/AMPLIFY_OFF                       # pause amplification only (likes/thread/reposts), no restart; rm to resume
+journalctl -u swan-blue -f                   # the Blue track
+touch ~/ctn/BLUE_OFF                          # stop filing reports (scan and rulings carry on); rm to resume
 cat ~/ctn/logs/deploys.jsonl | tail          # what code is live
 cd ~/ctn && git log -1 --oneline
 ```

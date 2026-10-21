@@ -10,7 +10,7 @@ flowchart LR
         LS["Legit Social<br/>feeds · posts · accounts"]
         NPC["NPC citizens<br/>(LLM agents, ~thousands)"]
         J["AI journalists<br/>Daily Kingstonia · Herald"]
-        MOD["Moderator<br/>(~25% wrong)"]
+        MOD["Moderator<br/>(~10% wrong)"]
         YES["Yes-side teams' bots"]
         NO2["Other No-side teams' bots"]
         POLL["Polls & referendum"]

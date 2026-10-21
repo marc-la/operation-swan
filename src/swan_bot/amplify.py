@@ -246,7 +246,7 @@ class Amplifier:
         return likes
 
     def plan_likes(self, post_id, author_rec, n, t):
-        pool = [r for r in self.accounts.active() if r["username"] != author_rec["username"]]
+        pool = [r for r in self.accounts.usable() if r["username"] != author_rec["username"]]
         random.shuffle(pool)
         plan = []
         for r in pool:
@@ -365,7 +365,7 @@ class Amplifier:
 
     def do_like(self, a, filler=False):
         """View then like (the view first, as a reader would). Returns True if the like went through."""
-        rec = next((r for r in self.accounts.active() if r["username"] == a["username"]), None)
+        rec = next((r for r in self.accounts.usable() if r["username"] == a["username"]), None)
         pid = a["post_id"]
         if not rec or pid in self.liked(rec["username"]):
             return False
@@ -528,6 +528,8 @@ def preview(n_boosters=34, n_voices=12, level="heavy"):
 
         def active(self):
             return self.records
+
+        usable = active
 
         def voices(self):
             return [r for r in self.records if r.get("role") != "booster"]

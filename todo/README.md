@@ -12,7 +12,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
-| [07](07-blue-reporting.md) | Blue reporting: find ring bots, report them (0 reports so far) | Blue lead | **today, 21 Oct** | — |
+| [07](07-blue-reporting.md) | Blue reporting: **built 21 Oct** (`swan-blue` on EC2, approve mode first). Left: approve the first batch, check the first rulings and locks, ask B.10/B.11 | Blue lead | **21–22 Oct** | — |
 | ~~16~~ | ✓ **Done 2026-10-21:** fact desk. Facts in `content/facts.toml`, checked against the papers hourly (contradictions pause, the rest proposed). Workflow: [system-architecture §9](../docs/06-strategy/system-architecture.md#9-fact-desk-who-reviews-when-how-2026-10-21) | Marc + Claude | done | — |
 | [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2): built 21 Oct, box setup left | Marc | 22 Oct | — |
 
@@ -29,6 +29,6 @@ Done 2026-10-20 and deleted from this folder: bot on EC2 under systemd, plus aut
 
 ## Rules for every item
 - CLAUDE.md guardrails apply. Anything that writes to Legit Social is **dry-run by default** and needs an explicit `--live`.
-- **Only one writer process for the team, ever: the EC2 `swan-bot` service.** Ship changes by merging to `main` (live in ~2 min). Never run `--live` on a laptop.
+- **Writers on EC2 only, one per budget:** `swan-bot` owns posts, replies, reposts, likes and follows; `swan-blue` owns the report routes (their own 3/min budgets) and its one reporter account (decided 2026-10-21, so the two are decoupled). Ship changes by merging to `main` (live in ~2 min). Never run `--live` on a laptop.
 - Secrets stay in `.env` / `secrets/` on the machine that runs the bot. Never in git, never in Mongo, never in the dashboard.
 - When an item is done: tick it in the table above with the date, and move anything learned into `docs/` (link, don't duplicate).

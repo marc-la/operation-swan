@@ -91,12 +91,12 @@ def test_amber_when_status_stale(tmp_path):
 
 def test_score_delta_since_day_rollover(tmp_path):
     # the day rolled over at 13:00 UTC on 21 Oct (midnight Sydney, 9pm Perth)
-    score = [{"ts": "2026-10-21T12:30:00+00:00", "score": 2500, "rank": 20, "teams": 145, "by": "marc"},
-             {"ts": iso(60), "score": 3140, "rank": 14, "teams": 145, "by": "kim"}]
+    score = [{"ts": "2026-10-21T12:30:00+00:00", "score": 6500, "rank": 20, "teams": 145, "by": "marc"},
+             {"ts": iso(60), "score": 7140, "rank": 14, "teams": 145, "by": "kim"}]
     ctx, html = page(make_root(tmp_path, [write(3)], score=score))
     assert ctx["score"]["delta"] == 640 and ctx["day_start"] == "9pm"
-    assert ctx["milestone"]["name"] == "Poll 2" and ctx["milestone"]["reached"]
-    assert "3,140" in html and "+640" in html
+    assert ctx["milestone"]["name"] == "Poll 2" and ctx["milestone"]["reached"]     # 7,000 since 20 Oct
+    assert "7,140" in html and "+640" in html
 
 
 def test_no_secret_and_no_script_reaches_the_page(tmp_path, monkeypatch):

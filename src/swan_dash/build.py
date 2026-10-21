@@ -27,8 +27,8 @@ LIVE_CAP, TOTAL_CAP = 50, 200                  # accounts alive at once / ever
 WRITES = {"post": "post", "reply": "reply", "second_voice": "2nd voice", "reply_back": "reply-back",
           "journalist": "journalist", "thread": "own thread", "thread_answer": "thread answer", "repost": "repost"}
 # poll awards and Red multiplier changes, as Sydney calendar dates (docs/01-competition/schedule.md)
-POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2", 2500),
-         (dt.date(2026, 10, 29), "Poll 3", 2500)]
+POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2", 7000),   # 7,000 since 20 Oct
+         (dt.date(2026, 10, 29), "Poll 3", 7000)]
 MULTIPLIERS = [(dt.date(2026, 10, 26), 2), (dt.date(2026, 11, 1), 4)]     # derived, not confirmed by organisers
 LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; this covers several hours
 STALE_STATUS_S = 300
@@ -368,6 +368,32 @@ def fact_desk(root):
                 reject_ideas=f"{REVIEW} --reject {','.join(map(str, rest))}" if len(rest) > 1 else None)
 
 
+# ---- Blue (todo/07, src/swan_blue): only what the team needs to decide ----
+BLUE_STALE_S = 10 * 60                         # swan-blue writes its status every minute
+BLUE_APPROVE = "ssh swan-ec2 'ctn/scripts/blue.sh approve all'"
+
+
+def blue_panel(data, now, points, day_start):
+    """The Blue section: mode, slots, lock, today's rulings, and the reports waiting for approval. None if not set up."""
+    s = read_json(data / "blue_status.json")
+    if not s:
+        return None
+    t = ts(s.get("ts"))
+    locked = ts(s.get("locked_until"))
+    nxt = ts(s.get("next_ruling"))
+    prec = s.get("precision") or {}
+    pts = sum(e["points"] for e in points if e["_t"] >= day_start and re.search(
+        r"moderat|inauthentic|suspen|report", f"{e.get('type')} {e.get('message')}", re.I))
+    return dict(
+        stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
+        mode=s.get("mode"), why=s.get("why"), pending=s.get("pending"), cap=s.get("cap"),
+        locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), next_ruling=hm(nxt) if nxt else None,
+        today=s.get("today") or {}, rate=prec.get("rate"), ruled=prec.get("n"), points=pts,
+        waiting=[dict(key=w["key"], age=w.get("age_min"), ev=w.get("ev"), why=short(w.get("why"), 200))
+                 for w in s.get("waiting") or []],
+        approve=BLUE_APPROVE, error=s.get("last_error"), reporter=s.get("reporter"))
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -402,6 +428,7 @@ def gather(root, now, service):
     per_min = status.get("per_min")
 
     facts = fact_desk(root)
+    blue = blue_panel(data, now, points, day_start)
 
     # ---- banner: the first problem wins, worst first ----
     try:                                       # deploy/healthcheck.sh's current problem, the same text it alerts with
@@ -437,6 +464,10 @@ def gather(root, now, service):
     elif facts and facts["paused"]:
         amber = (f"FACT PAUSED: {', '.join(p['fact'] for p in facts['paused'])} (the bot leaves it out). "
                  f"Review it under Facts below")
+    elif blue and blue["stale"]:
+        amber = f"BLUE: no status from swan-blue since {blue['ago'].replace(' ago', '')}. On the box: journalctl -u swan-blue -n 50"
+    elif blue and blue["waiting"]:
+        amber = f"BLUE: {len(blue['waiting'])} reports wait for your approval (Blue, below)"
     if red:
         banner = dict(level="red", text=red)
     elif amber:
@@ -542,6 +573,7 @@ def gather(root, now, service):
                  chain=states),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
         activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
+        blue=blue,
         built=perth(now).strftime("%H:%M:%S"))
 
 

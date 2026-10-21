@@ -1,0 +1,21 @@
+[Unit]
+Description=Operation Swan Blue track (src/swan_blue): reports competitor ring bots from one reserved booster
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=1800
+StartLimitBurst=20
+OnFailure=swan-alert@%n.service
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn/src
+ExecStart=/home/ec2-user/ctn/.venv/bin/python -u -m swan_blue --live
+# state is written atomically every pass, so a stop between passes loses nothing
+KillSignal=SIGINT
+TimeoutStopSec=60
+Restart=always
+RestartSec=60
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

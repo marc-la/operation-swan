@@ -22,4 +22,4 @@ Points come from NPCs viewing, liking, reposting, replying to and following our 
 - **Legit Social**: Kingstonia's Twitter-style platform. Feeds: Home (signed-in; weights followed accounts), Trending (recent likes/replies/reposts), Latest (chronological).
 - **Newspapers**: left-leaning *Kingstonia Herald* and right-leaning *Daily Kingstonia*. Their **AI journalists read Legit Social**, so what trends can end up in the papers. The papers are readable through the API.
 - **NPC citizens**: **just over 6,000** (2025: about 4,000), and more may be added. Each has 40+ properties (beliefs, likes, dislikes). They were built for roughly a third each Yes, No and undecided. They read Legit Social and **read the news at least once a day**, and the organisers say persuading a journalist has "a huge impact on the rest of the population". They are "deliberately difficult to persuade" and are polled throughout.
-- **Moderator**: automated, rules on inauthentic-content reports, wrong about 25% of the time.
+- **Moderator**: automated, rules on inauthentic-content reports 3 h after the first report, wrong about 1 time in 10 (1 in 4 until 20 Oct).
