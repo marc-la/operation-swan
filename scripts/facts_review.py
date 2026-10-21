@@ -8,10 +8,13 @@ of main: the EC2 box can't push, and the commit author is the approver (attribut
     python scripts/facts_review.py --accept 7 --text "..." --says '\blimited spread\b' --says '\blocal cases\b'
     python scripts/facts_review.py --accept 9 --key polls_latest --frames F1_blank_cheque
     python scripts/facts_review.py --reject 8          # a contradiction: re-affirms the fact (lifts its pause)
+    python scripts/facts_review.py --accept 9,12 --reject 2,4,5   # a day's decisions, one test run, one commit
     python scripts/facts_review.py --recheck no_spread # re-affirm a fact without a proposal (lifts its pause)
 
 Proposals and pauses come from the team Mongo (the desk mirrors them there); --local reads data/ instead (on the
-box, or in tests). Accepting changes content/facts.toml (facts) or docs/06-strategy/frames-and-messengers.md
+box, or in tests). The dashboard's Facts section lists the same items with the command for each. Every decision
+is also appended to content/fact_decisions.jsonl, which goes in the same commit: that is how the dashboard (and
+git history) know what was decided, and by whom. Accepting changes content/facts.toml (facts) or docs/06-strategy/frames-and-messengers.md
 (angles). Every change to a fact stamps its `checked`, which is what ends a pause once the commit is deployed. The
 tests run before anything is recorded; if they fail, every edit is undone. Then it prints the commit to run: the
 push is the approval, live on EC2 in ~2 minutes. When: daily around the 9 pm Perth rollover, and within the hour
@@ -19,6 +22,7 @@ of a pause alert.
 """
 import argparse
 import datetime as dt
+import json
 import os
 import pathlib
 import subprocess
@@ -34,6 +38,25 @@ from swan_bot import facts as fact_store  # noqa: E402
 FACTS = fact_store.FILE
 ANGLES = ROOT / "docs" / "06-strategy" / "frames-and-messengers.md"
 ANGLES_HEADING = "## Angle ideas from the fact desk"
+DECISIONS = ROOT / "content" / "fact_decisions.jsonl"
+
+
+def decided_ids():
+    """Proposal ids with a committed decision (content/fact_decisions.jsonl)."""
+    return {r.get("id") for r in _jsonl(DECISIONS)}
+
+
+def _jsonl(path):
+    out = []
+    try:
+        for line in pathlib.Path(path).read_text().splitlines():
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    except FileNotFoundError:
+        pass
+    return out
 
 
 class LocalStore:
@@ -111,7 +134,9 @@ def list_all(store):
     print(f"Paused now ({len(pauses)}), until facts.toml re-checks them:")
     for k, v in pauses.items():
         print(f"  {k}: since {v.get('since')}, {v.get('site')}/{v.get('slug')} (proposal {v.get('proposal')})")
-    opened = sorted((p for p in props.values() if p.get("status") == "open"), key=lambda p: p["id"])
+    done = decided_ids()
+    opened = sorted((p for p in props.values() if p.get("status") == "open" and p["id"] not in done),
+                    key=lambda p: p["id"])
     print(f"\nOpen proposals ({len(opened)}):")
     for p in opened:
         show(p)
@@ -171,16 +196,22 @@ def apply(store, decisions, yes=False):
             print("The tests failed, so nothing was changed or recorded:\n  " + "\n  ".join(tail))
             return False
     who, when = approver(), factdesk._iso(dt.datetime.now().timestamp())
+    records = []
     for p, accept, kw, summary in done:
-        store.decided(p["id"], "accepted" if accept else "rejected",
-                      dict(decided_by=who, decided_at=when, summary=summary,
-                           **{k: v for k, v in kw.items() if v not in (None, False)}))
+        extra = dict(decided_by=who, decided_at=when, summary=summary,
+                     **{k: v for k, v in kw.items() if v not in (None, False)})
+        status = "accepted" if accept else "rejected"
+        try:
+            store.decided(p["id"], status, extra)
+        except Exception as e:                       # noqa: BLE001 (Mongo down: the committed file still has it)
+            print(f"  (store: {type(e).__name__}; the decision is still in {DECISIONS.name})")
+        records.append(dict(id=p["id"], kind=p["kind"], status=status, **extra))
         print(f"  {summary}")
-    if changed:
-        msg = "Facts: " + "; ".join(s for *_, s in done)
-        print("\nTests pass. Commit and push (the push is the approval; EC2 is live in ~2 min):\n"
-              f"  git commit -m {msg!r} -- content/facts.toml docs/06-strategy/frames-and-messengers.md\n"
-              "  git push")
+    factdesk.append_jsonl(DECISIONS, records)
+    msg = ("Facts: " if changed else "Fact desk decisions: ") + "; ".join(s for *_, s in done)
+    print(("\nTests pass. " if changed else "\n") + "Commit and push (the push is the approval; live in ~2 min):\n"
+          f"  git commit -m {msg[:300]!r} -- content/facts.toml content/fact_decisions.jsonl "
+          "docs/06-strategy/frames-and-messengers.md\n  git push")
     return True
 
 
@@ -224,8 +255,8 @@ def interactive(store):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--accept", type=int, metavar="ID")
-    ap.add_argument("--reject", type=int, metavar="ID")
+    ap.add_argument("--accept", metavar="IDS", help="proposal ids, comma-separated")
+    ap.add_argument("--reject", metavar="IDS", help="proposal ids, comma-separated")
     ap.add_argument("--recheck", metavar="FACT", help="re-affirm a fact as it stands (lifts its pause)")
     ap.add_argument("--text")
     ap.add_argument("--note")
@@ -243,14 +274,22 @@ def main():
     if args.list:
         list_all(store)
     elif args.accept or args.reject:
-        pid = args.accept or args.reject
-        p = store.proposals().get(pid)
-        if not p or p.get("status") != "open":
-            raise SystemExit(f"no open proposal #{pid}")
+        ids = lambda s: [int(x) for x in (s or "").replace(" ", "").split(",") if x]
+        accept, reject = ids(args.accept), ids(args.reject)
         kw = dict(text=args.text, note=args.note, key=args.key, retire=args.retire, same_key=args.same_key,
                   frames=args.frames.split(",") if args.frames else None,
                   says=[x for x in args.says if x] if args.says is not None else None)
-        apply(store, [(p, bool(args.accept), {k: v for k, v in kw.items() if v not in (None, False)})], yes=args.yes)
+        kw = {k: v for k, v in kw.items() if v not in (None, False)}
+        if kw and len(accept) != 1:
+            raise SystemExit("--text, --note, --key, --frames, --says, --retire and --same-key go with one --accept")
+        props, done = store.proposals(), decided_ids()
+        todo = []
+        for pid, ok in [(i, True) for i in accept] + [(i, False) for i in reject]:
+            p = props.get(pid)
+            if not p or p.get("status") != "open" or pid in done:
+                raise SystemExit(f"no open proposal #{pid}")
+            todo.append((p, ok, kw if ok else {}))
+        apply(store, todo, yes=args.yes)
     elif args.recheck:
         if args.recheck not in fact_store.TABLE:
             raise SystemExit(f"no fact {args.recheck!r}")

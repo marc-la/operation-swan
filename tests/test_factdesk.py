@@ -330,6 +330,7 @@ def test_review_applies_tests_and_records(tmp_path, monkeypatch):
     angles.write_text("# Frames\n")
     monkeypatch.setattr(review, "FACTS", facts)
     monkeypatch.setattr(review, "ANGLES", angles)
+    monkeypatch.setattr(review, "DECISIONS", tmp_path / "fact_decisions.jsonl")
     store = review.LocalStore(tmp_path / "proposals.jsonl", tmp_path / "paused.json")
     factdesk.append_jsonl(store.proposals_file, [
         prop("contradiction", id=1, fact="polls", text="Polls: No and Yes close, within the margin; the unsure "
@@ -345,3 +346,6 @@ def test_review_applies_tests_and_records(tmp_path, monkeypatch):
     assert t["polls"]["status"] == "paused" and t[new_key]["text"].startswith("Polls: No and Yes close")
     assert review.ANGLES_HEADING in angles.read_text() and "every unsure vote" in angles.read_text()
     assert {p["status"] for p in store.proposals().values()} == {"accepted"}
+    log = [json.loads(x) for x in (tmp_path / "fact_decisions.jsonl").read_text().splitlines()]
+    assert [(d["id"], d["status"]) for d in log] == [(1, "accepted"), (2, "accepted")] and review.decided_ids() == {1, 2}
+    assert all(d["decided_by"] and d["summary"] for d in log)

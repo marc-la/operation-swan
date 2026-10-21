@@ -14,6 +14,7 @@ import os
 import pathlib
 import re
 import subprocess
+import tomllib
 from zoneinfo import ZoneInfo
 
 import jinja2
@@ -294,6 +295,79 @@ def conversations(actions):
     return rows
 
 
+# ---- the fact desk (todo/16): pauses and open proposals, with the command that settles each ----
+REVIEW = "python scripts/facts_review.py"
+KINDS = {"contradiction": "contradicts", "reword": "rewording", "new_fact": "new fact", "angle": "idea"}
+HINTS = {
+    "contradiction": "Does the paper report this as fact? Yes: accept (the new wording gets a new key; what was written "
+                     "for the old one stays out until someone rewrites it). Only the wording or timing was off: "
+                     "same key. The paper slipped: reject (the fact comes back as it is).",
+    "reword": "Still true, said better or more currently. Accept if the new wording is accurate and no weaker.",
+    "new_fact": "Accept only if it is true in the setting and useful to No, or something Yes will use that we must "
+                "not contradict. Its figures become allowed in drafts.",
+    "angle": "An argument idea for the writers; accepting files it in frames-and-messengers (no prompt changes).",
+}
+
+
+def _when(v):
+    """A TOML date / date-time or an ISO string as an aware UTC datetime (a date is its midnight), else None."""
+    if isinstance(v, str):
+        return ts(v)
+    if isinstance(v, dt.datetime):
+        return v if v.tzinfo else v.replace(tzinfo=dt.timezone.utc)
+    if isinstance(v, dt.date):
+        return dt.datetime(v.year, v.month, v.day, tzinfo=dt.timezone.utc)
+    return None
+
+
+def fact_desk(root):
+    """The Facts section: pauses that hold (facts.toml not re-checked since) and proposals without a committed
+    decision (content/fact_decisions.jsonl), urgent first, each with its review command. None without the files."""
+    try:
+        table = {k: v for k, v in tomllib.loads((root / "content" / "facts.toml").read_text()).items()
+                 if isinstance(v, dict)}
+    except (FileNotFoundError, tomllib.TOMLDecodeError):
+        return None
+    pauses = read_json(root / "data" / "facts_paused.json") or {}
+    held = {k: v for k, v in pauses.items() if isinstance(v, dict) and k in table
+            and (_when(table[k].get("checked")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))
+            < (_when(v.get("since")) or dt.datetime.max.replace(tzinfo=dt.timezone.utc))}
+    decided = {d.get("id") for d in tail_jsonl(root / "content" / "fact_decisions.jsonl")}
+    props = {}
+    for r in tail_jsonl(root / "data" / "fact_proposals.jsonl"):
+        if "kind" in r and r.get("kind") in KINDS:
+            props[r["id"]] = r
+    items = []
+    for p in props.values():
+        if p["id"] in decided:
+            continue
+        fact = p.get("fact")
+        paused = fact in held and held[fact].get("proposal") == p["id"]
+        cmd, pid = f"{REVIEW} --accept {p['id']}", p["id"]
+        if p["kind"] == "contradiction":
+            commands = ([cmd, f"{cmd} --same-key"] if p.get("text") else
+                        [f'{cmd} --text "…" --note "…"', f'{cmd} --same-key --text "…" --note "…"'])
+            commands.append(f"{REVIEW} --reject {pid}")
+        else:
+            commands = [cmd, f"{REVIEW} --reject {pid}"]
+        items.append(dict(
+            id=pid, kind=p["kind"], label=KINDS[p["kind"]], paused=paused, name=fact or p.get("key") or "",
+            now=table.get(fact, {}).get("text") if fact else None, new=p.get("text") or p.get("idea"),
+            note=p.get("note"), failed=p.get("failed_checks"), quote=short(p.get("quote"), 400),
+            paper=(p.get("site") or "").replace("-", " ").title(), opinion=p.get("opinion"),
+            url=f"https://sites.legitreal.com/{p.get('site')}/articles/{p.get('slug')}",
+            when=(ts(p.get("published_at")) or ts(p.get("ts")) or dt.datetime.now(dt.timezone.utc)).strftime("%-d %b"),
+            stated_in=p.get("stated_in") or [], numbers=p.get("new_numbers") or [], also=len(p.get("also") or []),
+            hint=HINTS[p["kind"]], commands=commands))
+    order = list(KINDS)
+    items.sort(key=lambda i: (not i["paused"], order.index(i["kind"]), -i["id"]))
+    rest = [i["id"] for i in items if i["kind"] == "angle"]
+    return dict(paused=[dict(fact=k, since=hm(ts(v.get("since"))) if ts(v.get("since")) else "?",
+                             proposal=v.get("proposal")) for k, v in held.items()],
+                proposals=items, count=len(items),
+                reject_ideas=f"{REVIEW} --reject {','.join(map(str, rest))}" if len(rest) > 1 else None)
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -327,6 +401,8 @@ def gather(root, now, service):
     banned_day = [a for a in actions if a.get("act") == "suspended" and a["_t"] >= now - dt.timedelta(hours=24)]
     per_min = status.get("per_min")
 
+    facts = fact_desk(root)
+
     # ---- banner: the first problem wins, worst first ----
     try:                                       # deploy/healthcheck.sh's current problem, the same text it alerts with
         health = (data / "health_state").read_text().strip()
@@ -358,6 +434,9 @@ def gather(root, now, service):
         amber = f"PORTAL: {portal['error']}"
     elif portal and (portal_t is None or (now - portal_t).total_seconds() > PORTAL_STALE_S):
         amber = "PORTAL: no score update for " + (ago(now - portal_t).replace(" ago", "") if portal_t else "a while")
+    elif facts and facts["paused"]:
+        amber = (f"FACT PAUSED: {', '.join(p['fact'] for p in facts['paused'])} (the bot leaves it out). "
+                 f"Review it under Facts below")
     if red:
         banner = dict(level="red", text=red)
     elif amber:
@@ -462,7 +541,8 @@ def gather(root, now, service):
                  rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked,
                  chain=states),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
-        activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, built=perth(now).strftime("%H:%M:%S"))
+        activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
+        built=perth(now).strftime("%H:%M:%S"))
 
 
 def render(ctx):

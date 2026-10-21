@@ -85,6 +85,13 @@ li.write details[open] > summary .lead { display: none; }
 .note { font-size: 13px; color: var(--muted); margin: 4px 0; }
 footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
 code { font-size: 12px; }
+.fact { border-top: 1px solid var(--line); padding: 10px 0; overflow-wrap: anywhere; }
+.fact.paused { border-left: 4px solid var(--red); padding-left: 10px; }
+.fact p { margin: 4px 0; }
+.fact .k { display: inline-block; min-width: 2.6em; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.fact .q { font-style: italic; }
+code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg); border-radius: 6px;
+  user-select: all; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -249,6 +256,29 @@ code { font-size: 12px; }
   </table>
   {% endif %}
   <p class="sub">Read from the portal every 15 minutes{% if portal_checked %} (last check {{ portal_checked }}){% endif %}. By hand if needed: <code>ssh swan-ec2 'ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt; &lt;name&gt;'</code></p>
+</div></details>
+
+<details id="facts"><summary><b>Facts</b><span class="sub {{ 'warn' if facts and facts.paused else '' }}">
+  {% if facts %}{% if facts.paused %}{{ facts.paused | length }} paused · {% endif %}{{ facts.count }} to review{% else %}fact desk not set up{% endif %}</span></summary>
+<div>
+  {% if facts %}
+  <p class="sub">The fact desk checks the papers every hour. A fact a paper contradicts is paused at once (the bot leaves it out); everything else waits for you. Decide here, then run the commands on a laptop with the repo: each prints the commit to push. Several at once: <code>{{ 'python scripts/facts_review.py --accept 9,12 --reject 2,4' }}</code>.</p>
+  {% for f in facts.proposals %}
+  <div class="fact{{ ' paused' if f.paused else '' }}">
+    <div><b>#{{ f.id }} {{ f.label }}</b> {{ f.name }}{% if f.paused %} <span class="down">· paused now</span>{% endif %}
+      <span class="sub">· {{ f.paper }}, {{ f.when }}{% if f.opinion %} (opinion column){% endif %}{% if f.also %} · and {{ f.also }} more paper{{ 's' if f.also > 1 }}{% endif %}</span></div>
+    {% if f.now %}<p><span class="k">now</span> {{ f.now }}</p>{% endif %}
+    {% if f.new %}<p><span class="k">{{ 'idea' if f.kind == 'angle' else 'new' }}</span> {{ f.new }}{% if f.note %} <span class="sub">· note: {{ f.note }}</span>{% endif %}</p>{% endif %}
+    {% if f.failed %}<p class="warn">Its suggested wording failed our checks ({{ f.failed }}): write your own with --text and --note.</p>{% endif %}
+    <p class="q">“{{ f.quote }}” <a href="{{ f.url }}" rel="noreferrer noopener" target="_blank">read the article</a></p>
+    {% if f.stated_in %}<p class="sub">Written into: {{ f.stated_in | join(', ') }}</p>{% endif %}
+    {% if f.numbers %}<p class="sub">New figures: {{ f.numbers | join(', ') }}</p>{% endif %}
+    <p class="sub">{{ f.hint }}</p>
+    {% for c in f.commands %}<code class="cmd">{{ c }}</code>{% endfor %}
+  </div>
+  {% else %}<p class="sub">Nothing to review.</p>{% endfor %}
+  {% if facts.reject_ideas %}<p class="sub">Drop every idea above at once: <code>{{ facts.reject_ideas }}</code></p>{% endif %}
+  {% endif %}
 </div></details>
 
 <details id="pulse"><summary><b>Trending pulse</b><span class="sub {{ 'warn' if pulse and pulse.stale else '' }}">

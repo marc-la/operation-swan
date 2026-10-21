@@ -226,3 +226,26 @@ def test_old_records_match_rejects_by_persona_and_time(tmp_path):
             rec(10, "reply", 40, target_post=77, target_author=9)]
     ctx, _ = page(make_root(tmp_path, acts))
     assert [r["why"] for r in ctx["activity"][0]["rejects"]] == ["dup"]
+
+
+def test_facts_section_lists_pauses_first_and_hides_decided(tmp_path):
+    root = make_root(tmp_path)
+    (root / "content").mkdir()
+    (root / "content" / "facts.toml").write_text((pathlib.Path(__file__).resolve().parents[1] / "content" /
+                                                  "facts.toml").read_text())
+    base = dict(site="daily-kingstonia", slug="s", quote="<script>alert(1)</script> The poll moved.", status="open")
+    props = [dict(base, id=1, kind="angle", idea="An idea"), dict(base, id=2, kind="angle", idea="Another"),
+             dict(base, id=3, kind="contradiction", fact="polls", text="Polls: No just ahead.", note="No ahead"),
+             dict(base, id=4, kind="new_fact", key="k", text="T", note="n", new_numbers=["36.2%"]),
+             dict(base, id=5, kind="reword", fact="nurses", text="N", note="n")]
+    (root / "data" / "fact_proposals.jsonl").write_text("".join(json.dumps(p) + "\n" for p in props))
+    (root / "data" / "facts_paused.json").write_text(json.dumps(
+        {"polls": {"since": iso(30), "proposal": 3}, "nurses": {"since": "2026-10-01T00:00:00Z", "proposal": 9}}))
+    (root / "content" / "fact_decisions.jsonl").write_text(json.dumps({"id": 5, "status": "rejected"}) + "\n")
+    ctx, html = page(root)
+    f = ctx["facts"]
+    assert [p["fact"] for p in f["paused"]] == ["polls"]                  # nurses was re-checked after its pause
+    assert [i["id"] for i in f["proposals"]] == [3, 4, 2, 1] and f["proposals"][0]["paused"]   # 5 is decided
+    assert ctx["banner"]["level"] == "amber" and "FACT PAUSED: polls" in ctx["banner"]["text"]
+    assert "python scripts/facts_review.py --accept 3 --same-key" in html and "--reject 1,2" not in html
+    assert "--reject 2,1" in html and "<script>alert(1)" not in html and "&lt;script&gt;" in html

@@ -475,6 +475,8 @@ def run(news, gen, state, now=None, since_hours=None, dry=False, log=print, aler
                         continue
                     keys.add(it["key"])
                 p = dict(id=next_id, ts=_iso(now), kind=label, status="open", backend=backend, **it)
+                if label in ("contradiction", "reword"):
+                    p["stated_in"] = content.requiring(it["fact"])      # what a decision on it would touch
                 next_id += 1
                 if label == "contradiction":
                     rec = dict(since=_iso(now), site=it["site"], slug=it["slug"], title=it["title"], quote=it["quote"],
