@@ -27,7 +27,7 @@ import capturethenarrative as ctn
 from . import batch, config, content, experiment, feeds, humanize, pulse, quality, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
-from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
+from .targeting import YES_REASON, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
 
 REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3)
 
@@ -269,11 +269,12 @@ REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "le
                "pulse", "theme", "theme_level")
 
 
-def experiment_fields(target):
-    """Run version and the target's stance class (H3), for the experiments report. Target text only: no reads."""
+def experiment_fields(target, cls=None):
+    """Run version and the target's stance class (H3), for the experiments report. Target text only: no reads.
+    cls: the class targeting read with the thread as context (todo/21), when the job carries one."""
     body = (target or {}).get("body") or ""
     return {"exp": experiment.VERSION, "git_sha": experiment.git_sha(),
-            **({"target_stance": stance(body), "target_class": target_class(body), "soft_yes": soft_yes(body),
+            **({"target_stance": stance(body), "target_class": cls or target_class(body), "soft_yes": soft_yes(body),
                 "yes_reason": bool(YES_REASON.search(body))} if target else {})}
 
 
@@ -450,9 +451,11 @@ def lose(targeter, queue, job, why):
     return "lost"
 
 
-def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted):
-    """The best waiting citizen candidate with a voice free to answer it, as a reply job, or None."""
-    cand = targeter.next_target(our_ids, set(replied_posts), contacted)
+def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted, engaged=()):
+    """The best waiting citizen candidate with a voice free to answer it, as a reply job, or None. contacted: our
+    voices per citizen this session (targeting.sessions); engaged: citizens who replied to us before. frame is None
+    when no doubt regex matched (the drafting call picks one, todo/20)."""
+    cand = targeter.next_target(our_ids, set(replied_posts), contacted, engaged)
     if not cand:
         return None
     rec = accounts.eligible(cand["frame"], prefer=messengers(cand.get("identity")))
@@ -461,6 +464,8 @@ def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted):
         return None
     return dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"], wants=cand["wants"],
                 context=cand["context"], source=cand["source"], identity=cand.get("identity"),
+                target_class=cand.get("target_class"), priority=cand.get("priority"), arm=cand.get("arm"),
+                engaged=cand.get("engaged"),
                 cand=cand)                                       # the drafting path requeues it on failure (G8)
 
 
@@ -518,7 +523,7 @@ def main():
     accounts = Accounts(social, args.live)
     state = load_json(config.STATE_FILE, {})
     targeter.load(state.pop("targeter", None))          # read position, queue and funnel survive a restart (G3)
-    for key, default in (("replied_posts", []), ("contacted", {}), ("recent_texts", []), ("second_voice", []),
+    for key, default in (("replied_posts", []), ("contacted", {}), ("engaged", {}), ("recent_texts", []), ("second_voice", []),
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
                          ("theme_log", []), ("turns", {})):
         state.setdefault(key, default)
@@ -659,7 +664,8 @@ def main():
 
             # ---- choose the job (greedy order) ----
             t = time.time()
-            contacted = {a: ts for a, ts in state["contacted"].items() if t - ts < config.CONTACT_COOLDOWN_S}
+            contacted = sessions(state["contacted"], t)        # our voices per citizen this session (todo/21)
+            engaged = set(state["engaged"])
             if queue:
                 job = queue.pop(0)
                 job["frame"] = content.PERSONA_BY_KEY[job["rec"]["persona"]]["frames"][0]
@@ -668,13 +674,14 @@ def main():
                     job = None
             # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
             job = pick_job(job, (lambda: None) if desk else
-                           (lambda: citizen_reply(targeter, accounts, our_ids, state["replied_posts"], contacted)), amp)
+                           (lambda: citizen_reply(targeter, accounts, our_ids, state["replied_posts"], contacted, engaged)), amp)
             drafted = None
             if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
                 pause(15)
                 continue
             gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
-                              or (j["mode"] == "reply" and str(j["target"]["author_id"]) in contacted))
+                              or (j["mode"] == "reply"
+                                  and len(contacted.get(str(j["target"]["author_id"]), ())) >= config.SESSION_VOICES))
             if job is None and desk and config.SECOND_VOICE:
                 drafted = desk.take("second_voice", t, gone)
             if job is None and drafted is None and config.SECOND_VOICE:
@@ -687,6 +694,8 @@ def main():
                     if not rec:
                         continue                                     # keep it until another persona is free
                     state["second_voice"].remove(sv)
+                    if len(contacted.get(str(sv["author"]), set()) | {rec["persona"]}) > config.SESSION_VOICES:
+                        continue                                     # the session cap (todo/21)
                     try:
                         target = social.get_post(sv["post_id"])
                         thread = list(social.replies(sv["post_id"], limit=20))
@@ -711,7 +720,7 @@ def main():
                     picked, authors = [], set()
                     skip = set(state["replied_posts"]) | desk.pending_targets()
                     while len(picked) < desk.size:
-                        cand = targeter.next_target(our_ids, skip, contacted)
+                        cand = targeter.next_target(our_ids, skip, contacted, engaged)
                         if not cand:
                             break
                         rec = accounts.assignable(cand["frame"], exclude=desk.busy("reply", picked),
@@ -843,15 +852,16 @@ def main():
             if target:
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
                 targeter.answered(target, mode)          # the funnel (todo/21 G12)
-            if mode in ("reply", "reply_back"):           # either way, don't approach them again for 3 days
-                state["contacted"][str(target["author_id"])] = time.time()
+            if mode in ("reply", "reply_back", "second_voice"):   # the session cap counts our voices (todo/21)
+                contact(state["contacted"], target["author_id"], persona["key"])
             if mode == "reply_back":                      # a conversation turn (todo/20: TURNS_PER_SESSION)
                 t_now, who = time.time(), str(target["author_id"])
                 state["turns"] = {k: v for k, v in state["turns"].items() if t_now - v[-1] < config.TURN_SESSION_S}
                 state["turns"][who] = state["turns"].get(who, []) + [t_now]
             if mode == "reply_back":                      # they're talking to us: no extra persona joins in
                 state["second_voice"] = [s for s in state["second_voice"] if s["author"] != target["author_id"]]
-            if mode == "reply" and config.SECOND_VOICE:
+                state["engaged"][str(target["author_id"])] = time.time()     # ENGAGED_BONUS on their next post
+            if mode == "reply" and config.SECOND_VOICE and job.get("arm") != "firm_yes":   # no pile-on on a firm Yes
                 state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_S),
                                                   post_id=target["post_id"], author=target["author_id"],
                                                   frame=second_frame(job["frame"]),
@@ -884,7 +894,8 @@ def main():
                  "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
                  **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
                                              "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
-                 **{k: meta.get(k) for k in ARMS}, **experiment_fields(target),
+                 **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
+                 **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
                  "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
                  "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
                  "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),

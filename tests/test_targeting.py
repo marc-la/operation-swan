@@ -1,4 +1,5 @@
-"""Who we reply to: skip citizens who already lean No (echo), keep the Yes-but. Texts are real citizen posts, 20 Oct."""
+"""Who we reply to (todo/21): every citizen item on the vote, the keyword read sets the priority. Texts are real
+citizen posts, 20-21 Oct."""
 import pathlib
 import sys
 
@@ -21,14 +22,16 @@ YES_BUT = [
 ]
 
 
-def test_lean_no_is_skipped():
+def test_lean_no_reads_low_but_is_not_skipped():
     for text in LEAN_NO:
-        assert targeting.classify(text) == (None, None), text
+        assert targeting.target_class(text) == "lean_no", text
+        assert targeting.hard_skip(text) is None, text
 
 
 def test_yes_but_is_kept():
     for text in YES_BUT:
         assert targeting.classify(text)[0], text
+        assert targeting.READ_PRIORITY[targeting.target_class(text)] == 3.0, text
 
 
 # Citizens who name their conditions with no hedge word (real citizen posts, 20-21 Oct): the Yes-but we want.
@@ -55,9 +58,9 @@ def test_conditions_are_kept():
         assert targeting.classify(text)[0], text
 
 
-def test_complaints_are_skipped():
+def test_complaints_read_as_lean_no():
     for text in COMPLAINTS:
-        assert targeting.classify(text) == (None, None), text
+        assert targeting.target_class(text, context="Referendum: what the vaccination question says") == "lean_no", text
 
 
 def test_is_citizen():
@@ -119,7 +122,6 @@ def test_a_fresh_post_goes_first():
     import datetime as dt
     ago = lambda m: (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=m)).isoformat()
     t = targeting.Targeter(None, log=lambda r: None)
-    t.undecided = lambda aid: True
     t.candidates = {1: dict(post=dict(post_id=1, author_id=100, created_at=ago(120)), score=6.0),
                     2: dict(post=dict(post_id=2, author_id=101, created_at=ago(3)), score=4.0)}
     assert t.next_target(set(), set(), {})["post"]["post_id"] == 2, "the author of the 3-min-old post may be online"
@@ -157,7 +159,6 @@ def test_every_citizen_item_ends_somewhere():
     """G12: seen = answered + skipped + lost + pending, per hour; skips are logged with their reason."""
     logged = []
     t = targeting.Targeter(None, log=logged.append)
-    t.undecided = lambda aid: True
     posts = [dict(post_id=1, author_id=100, created_at=NOW, body="what's for lunch"),
              dict(post_id=2, author_id=101, created_at=NOW, body="leaning yes on the referendum but only with a sunset"),
              dict(post_id=3, author_id=102, created_at=NOW, body="the referendum needs a published venue list, i'd want that"),
@@ -175,10 +176,139 @@ def test_every_citizen_item_ends_somewhere():
 
 def test_requeued_candidate_backs_off_then_comes_back():
     t = targeting.Targeter(None, log=lambda r: None)
-    t.undecided = lambda aid: True
     t._consider(dict(post_id=7, author_id=100, created_at=NOW, body="not sure on the referendum, need a sunset"), "news")
     c = t.next_target(set(), set(), {})
     t.requeue(c, "draft_failed")
     assert t.next_target(set(), set(), {}) is None and t.items[7]["why"] == "draft_failed"
     t.candidates[7]["not_before"] = 0
     assert t.next_target(set(), set(), {})["post"]["post_id"] == 7
+
+
+def ago(minutes):
+    import datetime as dt
+    return (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).isoformat()
+
+
+class _Posts:
+    """get_post from a dict; a RateLimited stand-in for ids in `limited`."""
+    def __init__(self, posts, limited=()):
+        self.posts, self.limited, self.rate_limit = posts, set(limited), None
+
+    def get_post(self, pid):
+        if pid in self.limited:
+            raise targeting.ctn.RateLimited("GET", "/posts", 429, "slow down", 5)
+        return self.posts[pid]
+
+
+def quiet(social=None):
+    return targeting.Targeter(social, log=lambda r: None)
+
+
+def test_a_post_with_no_frame_is_kept():
+    t = quiet()
+    t._consider(dict(post_id=1, author_id=100, created_at=ago(2), body="Honestly what is this referendum even for"),
+                "latest")
+    c = t.next_target(set(), set(), {})
+    assert c and c["frame"] is None and c["target_class"] == "unclear"
+
+
+def test_a_citizen_reply_from_latest_gets_its_parent_as_context():
+    parent = dict(post_id=50, author_id=9_000, created_at=ago(30), body="The vaccination certificate vote is a blank cheque")
+    t = quiet(_Posts({50: parent}))
+    t._consider(dict(post_id=51, author_id=100, created_at=ago(1), body="exactly, that's my worry too",
+                     reply_to_post_id=50, root_post_id=50), "latest")
+    c = t.candidates[51]
+    assert c["context"].startswith("The vaccination certificate") and c["parent_author"] == 9_000
+
+
+def test_a_reply_to_one_of_us_goes_to_the_reply_back_path():
+    parent = dict(post_id=50, author_id=777, created_at=ago(30), body="Vote No on the certificate")
+    t = quiet(_Posts({50: parent}))
+    t._consider(dict(post_id=51, author_id=100, created_at=ago(1), body="why though?", reply_to_post_id=50,
+                     root_post_id=50), "latest")
+    assert t.next_target({777}, set(), {}) is None and t.items[51]["why"] == "reply_back"
+    t.answered(dict(post_id=51, author_id=100), "reply_back")
+    assert t.items[51]["o"] == "answered"
+
+
+def test_deep_threads_are_skipped():
+    chain = {i: dict(post_id=i, author_id=9_000, created_at=ago(60), body="the referendum", root_post_id=1,
+                     reply_to_post_id=i - 1 if i > 1 else None) for i in range(1, 12)}
+    t = quiet(_Posts(chain))
+    t._consider(dict(post_id=20, author_id=100, created_at=ago(1), body="i'm not sure about the vote", root_post_id=1,
+                     reply_to_post_id=11), "latest")
+    assert 20 not in t.candidates and t.items[20] | {} and t.items[20]["why"] == "deep_thread"
+    t._consider(dict(post_id=21, author_id=101, created_at=ago(1), body="i'm not sure about the vote", root_post_id=1,
+                     reply_to_post_id=3), "latest")
+    assert 21 in t.candidates
+
+
+def test_an_item_the_rate_limit_stopped_is_judged_later():
+    t = quiet(_Posts({50: dict(post_id=50, author_id=9_000, created_at=ago(9), body="the referendum")}, limited={50}))
+    post = dict(post_id=51, author_id=100, created_at=ago(1), body="agree", reply_to_post_id=50, root_post_id=50)
+    t._consider(post, "latest")
+    assert 51 not in t.candidates and t.items[51]["why"] == "unjudged" and 51 in t.unjudged
+    t.social.limited.clear()
+    for post, source, context in list(t.unjudged.values()):
+        t._consider(post, source, context)
+    assert 51 in t.candidates and not t.unjudged
+
+
+def test_a_repeat_author_is_answered_on_a_new_post():
+    """No 72 h per-author cooldown: a citizen we answered days ago is answered again."""
+    t = quiet()
+    contacted = {}
+    targeting.contact(contacted, 100, "mere", t=0)                     # long ago
+    t._consider(dict(post_id=2, author_id=100, created_at=ago(1), body="still not sure about this referendum"), "latest")
+    assert t.next_target(set(), {1}, targeting.sessions(contacted))["post"]["post_id"] == 2
+
+
+def test_the_session_cap_holds():
+    t = quiet()
+    contacted = {}
+    targeting.contact(contacted, 100, "mere")
+    targeting.contact(contacted, 100, "dan")
+    t._consider(dict(post_id=3, author_id=100, created_at=ago(1), body="still not sure about this referendum"), "latest")
+    assert t.next_target(set(), set(), targeting.sessions(contacted)) is None
+    assert 3 in t.candidates and t.items[3]["why"] == "session_cap", "it waits; it isn't dropped"
+    one = {}
+    targeting.contact(one, 100, "mere")
+    assert t.next_target(set(), set(), targeting.sessions(one))["post"]["post_id"] == 3, "one voice so far: a second may"
+
+
+def test_old_contacted_format_still_reads():
+    import time
+    assert targeting.sessions({"100": time.time() - 60, "101": time.time() - 72 * 3600}) == {"100": {None}}
+
+
+def test_firm_yes_only_under_the_flag(monkeypatch):
+    body = "Voting yes on the referendum. #VoteYes"
+    monkeypatch.setattr(targeting.config, "FIRM_YES_ARM", False)
+    t = quiet()
+    t._consider(dict(post_id=4, author_id=100, created_at=ago(1), body=body), "latest")
+    assert 4 not in t.candidates and t.items[4]["why"] == "firm_yes"
+    monkeypatch.setattr(targeting.config, "FIRM_YES_ARM", True)
+    monkeypatch.setattr(targeting.config, "FIRM_YES_PER_H", 1)
+    t = quiet()
+    for pid in (4, 5):
+        t._consider(dict(post_id=pid, author_id=100 + pid, created_at=ago(1), body=body), "latest")
+    c = t.next_target(set(), set(), {})
+    assert c["arm"] == "firm_yes" and c["target_class"] == "firm_yes"
+    assert t.next_target(set(), set(), {}) is None, "one an hour"
+
+
+def test_priority_follows_the_read():
+    t = quiet()
+    t._consider(dict(post_id=6, author_id=106, created_at=ago(60), body="My No vote is settled. Referendum? No thanks."),
+                "latest")
+    t._consider(dict(post_id=7, author_id=107, created_at=ago(60),
+                     body="leaning yes on the referendum but only with a sunset clause"), "latest")
+    assert t.next_target(set(), set(), {})["post"]["post_id"] == 7
+    assert t.next_target(set(), set(), {}, engaged={"106"})["engaged"]
+
+
+def test_hostile_is_skipped():
+    t = quiet()
+    t._consider(dict(post_id=8, author_id=108, created_at=ago(1), body="KITB sheep, the referendum is for resort profits"),
+                "latest")
+    assert t.items[8]["why"] == "hostile" and 8 not in t.candidates

@@ -1,8 +1,12 @@
-"""Who we reply to: citizens (not team bots) who voice a doubt (soft Yes or unsure), found mostly in the news
-threads where citizens gather, plus journalists' referendum replies. No sentiment model: keyword rules only.
+"""Who we reply to (todo/21, 2026-10-22): every citizen (not team bots) posting or replying on the referendum, in
+Latest, the news threads and Trending threads, plus journalists' referendum posts. Citizens are scarce (~100 items an
+hour) and a missed one may not be back for days, so the keyword read (target_class) sets a candidate's priority, not
+whether we answer it. No sentiment model: keyword rules only; the drafting call reads the citizen (todo/20).
 
-Firm Yes (backfire risk), firm No (no persuasion points), loud/hostile posts and anyone we contacted recently are skipped.
-Reads used: account_posts / replies / get_account (300/min each) and 2 feed reads per refresh (feeds: 10/min).
+Hard skips only: not a citizen, a repost, a post we replied to, off the referendum (its thread included), hostile or
+shouting, a thread deeper than config.DEEP_THREAD, firm Yes with config.FIRM_YES_ARM off. A citizen already talking
+with config.SESSION_VOICES of our voices this session waits until the session is over.
+Reads used: account_posts / replies / get_post (300/min each) and the feeds (10/min between them, feeds.py).
 """
 import datetime as dt
 import re
@@ -13,7 +17,8 @@ import capturethenarrative as ctn
 from . import config, content, feeds
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
-                        r"passport|health pass|designated|national id|biometric|sunset|exemption", re.I)
+                        r"passport|health pass|designated|national id|biometric|sunset|exemption|"
+                        r"public (spaces?|places)|proof of|door checks?|papers at|venue list|\bdolphin\b", re.I)
 
 # doubt -> (frame we answer with, the words that name what they asked for). Order matters: first match wins.
 DOUBTS = [
@@ -64,6 +69,10 @@ HOSTILE = re.compile(r"resort (profits|owners|bookings)|profits|castillo|kitb|to
 ON_TOPIC = re.compile(r"referendum|h2d2|dolphin flu|vaccin|\bjabs?\b|mandate|ballot|certificate|health pass|"
                       r"\bvot(e|ing|ers?)\b", re.I)    # journalist posts: the vote itself, not a passing word
 FRAME_PRIORITY = {"F14_no_yes_but": 3.0, "F1_blank_cheque": 2.5, "F8_powers": 2.0}
+# todo/21: the read sets the priority. Highest: the people we can move toward No. Unclear: unknown, often movable.
+# Lean No: engagement and lean->firm moves, no backfire. Firm Yes: the arm (backfire risk -80), lowest and capped.
+READ_PRIORITY = {"conditions": 3.0, "yes_reason": 3.0, "unsure": 3.0, "unclear": 2.0, "lean_no": 0.0,
+                 "firm_yes": -3.0, "off_topic": 0.0}
 # who the citizen says they are -> the personas who share it (playbook §7: an in-group messenger beats a better
 # argument). First match wins; the reply still argues the frame their doubt picked.
 IDENTITIES = [
@@ -117,21 +126,27 @@ def hedged(text):
 
 
 def classify(text):
-    """(frame, wants) to answer with, or (None, None) to skip this text."""
-    if not text or FIRM_NO.search(text) or LEAN_NO.search(text) or loud(text) or HOSTILE.search(text):
-        return None, None
-    if FIRM_YES.search(text) and not hedged(text):
-        return None, None
-    for pattern, frame in DOUBTS:
-        if pattern.search(text) and content.frame_live(frame):     # a paused fact takes its frame out (todo/16)
-            if not hedged(text):
-                return None, None
-            wants = []
-            for m in WANTS.finditer(text):
-                if m.group(0).lower() not in wants:
-                    wants.append(m.group(0).lower())
-            return frame, wants[:3]
-    return None, None
+    """(frame, wants): the frame for the first doubt the text names, or None when it names none (the drafting call
+    picks one, todo/20), and up to 3 of the things they asked for, in their words. Never a skip (todo/21): the hard
+    skips are hard_skip(), the rest is priority (target_class)."""
+    text = text or ""
+    frame = next((f for pattern, f in DOUBTS if pattern.search(text) and content.frame_live(f)), None)
+    wants = []                                    # a paused fact takes its frame out (todo/16)
+    for m in WANTS.finditer(text):
+        if m.group(0).lower() not in wants:
+            wants.append(m.group(0).lower())
+    return frame, wants[:3]
+
+
+def hard_skip(text, context=None):
+    """Why we never answer this text, or None: "off_topic" (nothing on the vote, its thread included) or "hostile"
+    (abuse or shouting)."""
+    text = text or ""
+    if not REFERENDUM.search(f"{text} {context or ''}"):
+        return "off_topic"
+    if loud(text) or HOSTILE.search(text):
+        return "hostile"
+    return None
 
 
 def stance(text):
@@ -148,13 +163,21 @@ def stance(text):
     return "unsure" if SOFT.search(text) else "unclear"
 
 
-def target_class(text):
-    """The experiment's target class (H3): yes_reason (they voice the fear behind a Yes), conditions (only the
-    conditions they want), unsure / unclear, or lean_no / firm_yes / off_topic (which targeting should skip)."""
+def target_class(text, context=None):
+    """The experiment's target class (H3), and since todo/21 the candidate's priority (READ_PRIORITY): yes_reason
+    (they voice the fear behind a Yes), conditions (the conditions they want), unsure / unclear, lean_no, firm_yes,
+    off_topic. Two fixes (todo/21): a text on the vote only through its thread (context) is "unclear", not off topic;
+    a doubt named with no hedge or ask ("No sunset clause, no list, no thanks") is a No-leaning complaint."""
+    text = text or ""
     s = stance(text)
+    if s is None and REFERENDUM.search(context or ""):
+        s = "unclear"
     if s in ("no", "yes", None):
         return {"no": "lean_no", "yes": "firm_yes", None: "off_topic"}[s]
-    return "yes_reason" if YES_REASON.search(text) else ("conditions" if WANTS.search(text) else s)
+    c = "yes_reason" if YES_REASON.search(text) else ("conditions" if WANTS.search(text) else s)
+    if c in ("conditions", "unclear") and not hedged(text) and any(p.search(text) for p, _ in DOUBTS):
+        return "lean_no"
+    return c
 
 
 def soft_yes(text):
@@ -164,6 +187,32 @@ def soft_yes(text):
 def age_h(post):
     created = dt.datetime.fromisoformat(post["created_at"].replace("Z", "+00:00"))
     return (dt.datetime.now(dt.timezone.utc) - created).total_seconds() / 3600
+
+
+def sessions(contacted, t=None):
+    """{author: {persona, ...}}: our voices who wrote to each citizen in the last CONTACT_COOLDOWN_S (one session),
+    from state["contacted"] = {author: [[ts, persona], ...]} (a bare timestamp is the format before todo/21)."""
+    t = t or time.time()
+    out = {}
+    for author, entries in contacted.items():
+        voices = {e[1] for e in (entries if isinstance(entries, list) else [[entries, None]])
+                  if t - e[0] < config.CONTACT_COOLDOWN_S}
+        if voices:
+            out[author] = voices
+    return out
+
+
+def contact(contacted, author, persona, t=None):
+    """Record one of our writes to a citizen in state["contacted"]; entries older than a session are dropped."""
+    t = t or time.time()
+    for a in list(contacted):
+        entries = [e for e in (contacted[a] if isinstance(contacted[a], list) else [[contacted[a], None]])
+                   if t - e[0] < config.CONTACT_COOLDOWN_S]
+        if entries:
+            contacted[a] = entries
+        else:
+            del contacted[a]
+    contacted.setdefault(str(author), []).append([t, persona])
 
 
 def hour_of(ts=None):
@@ -182,7 +231,6 @@ class Targeter:
         self.social, self.log = social, log
         self.snapshot = snapshot     # path: write what we read for swan-blue (the live bot only), feeds.py
         self.accounts = {}           # account_id -> account dict ({} if unreadable)
-        self.stance = {}             # citizen id -> "ok" | "firm" (from their recent posts)
         self.candidates = {}         # post_id -> candidate dict
         self.journalist = {}         # post_id -> journalist post
         self.headline = None         # latest referendum headline (for timely persona posts)
@@ -197,13 +245,17 @@ class Targeter:
         self.bands = []              # [[cursor, stop_id]]: Latest stretches not read yet, newest first (G2)
         self.recent_latest = []      # Latest posts of the last feeds.SNAPSHOT_KEEP_S (the snapshot)
         self.items = {}              # post_id -> funnel record: h (hour first seen), c (created), o, why, src
+        self.unjudged = {}           # post_id -> [post, source, context]: a read hit the rate limit; next refresh
+        self.posts = {}              # post_id -> post (parents and thread depth), {} if gone
+        self.firm_yes_out = []       # when firm-Yes candidates were handed out (FIRM_YES_PER_H)
 
     # ---- saved across restarts (G3) ----------------------------------------------------------
     def dump(self):
         """What a restart needs: the read position, the queue and the funnel (bot.save_state)."""
         cut = time.time() - 48 * 3600
         return dict(latest_seen=self.latest_seen, bands=self.bands, candidates=list(self.candidates.values()),
-                    items={str(k): v for k, v in self.items.items() if v["c"] >= cut})
+                    items={str(k): v for k, v in self.items.items() if v["c"] >= cut},
+                    unjudged=list(self.unjudged.values()))
 
     def load(self, saved):
         saved = saved or {}
@@ -211,6 +263,7 @@ class Targeter:
         self.bands = [list(b) for b in saved.get("bands", [])]
         self.candidates = {c["post"]["post_id"]: c for c in saved.get("candidates", [])}
         self.items = {int(k): v for k, v in saved.get("items", {}).items()}
+        self.unjudged = {u[0]["post_id"]: list(u) for u in saved.get("unjudged", [])}
 
     # ---- who is a citizen -------------------------------------------------------------------
     def account(self, account_id):
@@ -227,22 +280,6 @@ class Targeter:
         """The id rule (config.is_citizen), no read: a get_account that hit the rate limit used to make a citizen
         look like a bot, and the item was never read again (G4)."""
         return config.is_citizen(account_id)
-
-    def undecided(self, account_id):
-        """Read the citizen's last posts once: skip anyone who has stated a firm vote (unless softened)."""
-        if account_id not in self.stance:
-            verdict = "ok"
-            try:
-                for p in self.social.account_posts(account_id, limit=15):
-                    body = p.get("body") or ""
-                    if (FIRM_NO.search(body) or LEAN_NO.search(body)
-                            or (FIRM_YES.search(body) and not hedged(body))):
-                        verdict = "firm"
-                        break
-            except ctn.APIError:
-                pass                                  # private: judge by the post alone
-            self.stance[account_id] = verdict
-        return self.stance[account_id] == "ok"
 
     # ---- the funnel (G12) -------------------------------------------------------------------
     def _item(self, post, source):
@@ -303,33 +340,76 @@ class Targeter:
         for pid, it in list(self.items.items()):
             if it["o"] == "pending" and it["c"] < cut:
                 c = self.candidates.pop(pid, None)
+                self.unjudged.pop(pid, None)
                 self.lose(c["post"] if c else dict(post_id=pid), f"expired:{it['why']}")
             elif it["c"] < time.time() - 48 * 3600:
                 del self.items[pid]
         self.candidates = {k: c for k, c in self.candidates.items() if age_h(c["post"]) <= config.TARGET_MAX_AGE_H}
 
     # ---- collection -------------------------------------------------------------------------
-    def _consider(self, post, source, context=None):
+    def post(self, post_id):
+        """A post by id (cached), {} when it's gone, None when the rate limit stopped the read (judge it later)."""
+        if post_id not in self.posts:
+            try:
+                self.posts[post_id] = self.social.get_post(post_id)
+            except ctn.RateLimited:
+                return None
+            except ctn.APIError:
+                self.posts[post_id] = {}
+            if len(self.posts) > 5000:
+                for k in list(self.posts)[:1000]:
+                    del self.posts[k]
+        return self.posts[post_id]
+
+    def depth(self, post):
+        """Replies above this one in its thread (0 for a post), read up the chain, capped at DEEP_THREAD; None when
+        the rate limit stopped a read."""
+        d, p = 0, post
+        while p.get("reply_to_post_id") and d < config.DEEP_THREAD:
+            d += 1
+            if p.get("root_post_id") == p["reply_to_post_id"]:
+                break                                 # a reply to the thread's first post: no read needed
+            p = self.post(p["reply_to_post_id"])
+            if p is None:
+                return None
+        return d
+
+    def _consider(self, post, source, context=None, parent=None):
+        """Judge a post once: not a citizen item (not counted), a hard skip (logged), or a candidate whose read sets
+        its priority. A citizen reply gets its parent post as context when the thread gave none (todo/21 item 5)."""
         pid = post["post_id"]
         if pid in self.candidates or post.get("kind") == "repost" or not self.is_citizen(post.get("author_id")):
             return                                    # team bots, ~98% of Latest: not in the funnel
         if age_h(post) > config.TARGET_MAX_AGE_H or (pid in self.items and self.items[pid]["o"] != "pending"):
             return
         it = self._item(post, source)
-        if it["why"] != "new":
+        if it["why"] not in ("new", "unjudged"):
             return                                    # judged before and waiting (handed out, routed...)
         body = post.get("body") or ""
-        if not REFERENDUM.search(body + " " + (context or "")):
-            return self.skip(post, "off_topic", source)
+        if parent and parent.get("post_id") == post.get("reply_to_post_id"):
+            self.posts[parent["post_id"]] = parent
+        elif post.get("reply_to_post_id"):
+            parent = self.post(post["reply_to_post_id"])
+        d = self.depth(post)
+        if (post.get("reply_to_post_id") and parent is None) or d is None:   # the rate limit: next refresh (G4)
+            self.unjudged[pid] = [post, source, context]
+            return self.wait(post, "unjudged", source)
+        self.unjudged.pop(pid, None)
+        if context is None and parent:
+            context = (parent.get("body") or "")[:200] or None
+        cls = target_class(body, context)
+        why = (hard_skip(body, context) or ("deep_thread" if d >= config.DEEP_THREAD else None)
+               or ("firm_yes" if cls == "firm_yes" and not config.FIRM_YES_ARM else None))
+        if why:
+            return self.skip(post, why, source)
         frame, wants = classify(body)
-        if not frame:
-            return self.skip(post, "regex_filter", source)
-        score = (FRAME_PRIORITY.get(frame, 1.5) + (2.0 if soft_yes(body) else 0.0)
-                 + (1.5 if YES_REASON.search(body) else 0.0)
+        score = (READ_PRIORITY.get(cls, 0.0) + FRAME_PRIORITY.get(frame, 1.5 if frame else 1.0)
+                 + (2.0 if soft_yes(body) else 0.0) + (1.5 if YES_REASON.search(body) else 0.0)
                  + 2.0 * max(0.0, 1 - age_h(post) / config.TARGET_MAX_AGE_H) + (1.0 if source == "news" else 0.0)
                  + (config.TRENDING_THREAD_BONUS if source == "thread" else 0.0))
         self.candidates[pid] = dict(post=post, frame=frame, wants=wants, context=context, source=source, score=score,
-                                    identity=identity(body))
+                                    identity=identity(body), target_class=cls, depth=d,
+                                    parent_author=(parent or {}).get("author_id"))
         it["why"] = "queued"
 
     def refresh(self, force=False):
@@ -357,7 +437,7 @@ class Targeter:
                 newest = newest or title              # account_posts is newest first
                 try:
                     for r in self.social.replies(art["post_id"], limit=100):
-                        self._consider(r, "news", context=title)
+                        self._consider(r, "news", context=title, parent=art)
                         if age_h(r) < 1 and self.is_citizen(r["author_id"]):
                             fresh_citizen += 1
                 except ctn.APIError:
@@ -375,6 +455,8 @@ class Targeter:
                 pass
         # 3) feeds: citizen posts in Latest/Trending, and citizen replies under top referendum posts in Trending.
         # Latest every refresh; Trending every TRENDING_EVERY-th (the 10/min feed budget, G1)
+        for post, source, context in list(self.unjudged.values()):     # a rate limit stopped them last time
+            self._consider(post, source, context)
         latest = self._latest()
         for p in latest["posts"]:
             self._consider(p, "latest")
@@ -393,7 +475,7 @@ class Targeter:
         for p in top:
             try:
                 for r in self.social.replies(p["post_id"], limit=50):
-                    self._consider(r, "thread", context=(p.get("body") or "")[:200])
+                    self._consider(r, "thread", context=(p.get("body") or "")[:200], parent=p)
             except ctn.APIError:
                 pass
         feed_posts = latest["posts"] + trending
@@ -477,22 +559,44 @@ class Targeter:
         self.candidates[cand["post"]["post_id"]] = cand
         self.wait(cand["post"], why, cand.get("source"))
 
-    def next_target(self, our_ids, replied_posts, contacted):
-        """Best candidate whose author is undecided and not contacted recently, or None. Posts under FRESH_MIN old
-        go first: their author may still be online to answer."""
-        fresh = lambda c: config.FRESH_BONUS if age_h(c["post"]) * 60 < config.FRESH_MIN else 0.0
+    def next_target(self, our_ids, replied_posts, contacted, engaged=()):
+        """The best candidate we may answer now, or None (todo/21). contacted: {author: our voices who wrote to them
+        this session} (sessions()); engaged: authors who answered us before (ENGAGED_BONUS: they answer again).
+        Posts under FRESH_MIN old go first: their author may still be online. A citizen talking with SESSION_VOICES
+        of our voices waits (queued) until the session is over; a citizen reply to one of our posts goes to the
+        reply-back path; firm Yes goes out as the arm, at most FIRM_YES_PER_H an hour. The candidate handed out
+        carries target_class, priority, arm and engaged for the job."""
         t = time.time()
-        for pid, c in sorted(self.candidates.items(), key=lambda kv: -(kv[1]["score"] + fresh(kv[1]))):
+        self.firm_yes_out = [x for x in self.firm_yes_out if t - x < 3600]
+
+        def priority(c):
+            return (c["score"] + (config.FRESH_BONUS if age_h(c["post"]) * 60 < config.FRESH_MIN else 0.0)
+                    + (config.ENGAGED_BONUS if str(c["post"]["author_id"]) in engaged else 0.0))
+
+        for pid, c in sorted(self.candidates.items(), key=lambda kv: -priority(kv[1])):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
-            post, author = c["post"], c["post"]["author_id"]
-            why = ("replied" if pid in replied_posts else "ours" if author in our_ids else
-                   "cooldown" if str(author) in contacted else "decided" if not self.undecided(author) else None)
-            self.candidates.pop(pid, None)
-            if why:
-                self.skip(post, why, c.get("source"))
+            post, author, source = c["post"], c["post"]["author_id"], c.get("source")
+            if pid in replied_posts or author in our_ids:
+                self.candidates.pop(pid)
+                self.skip(post, "replied" if pid in replied_posts else "ours", source)
                 continue
-            self.wait(post, "drafting", c.get("source"))
+            if config.REPLY_BACK and c.get("parent_author") in our_ids:
+                self.candidates.pop(pid)
+                self.wait(post, "reply_back", source)    # they answered one of us: the reply-back path has it
+                continue
+            if len(contacted.get(str(author), ())) >= config.SESSION_VOICES:
+                self.wait(post, "session_cap", source)   # stays queued: answered once their session is over
+                continue
+            if c.get("target_class") == "firm_yes":
+                if len(self.firm_yes_out) >= config.FIRM_YES_PER_H:
+                    self.wait(post, "firm_yes_cap", source)
+                    continue
+                self.firm_yes_out.append(t)
+                c["arm"] = "firm_yes"
+            c["priority"], c["engaged"] = round(priority(c), 2), str(author) in engaged
+            self.candidates.pop(pid)
+            self.wait(post, "drafting", source)
             return c
         return None
 

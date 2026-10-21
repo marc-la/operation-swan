@@ -20,7 +20,7 @@ import capturethenarrative as ctn  # noqa: E402
 from swan_bot import config, content  # noqa: E402
 from swan_bot.bot import ARMS, REJECT_ARMS, Accounts, build_prompt, draft_checked, load_json  # noqa: E402
 from swan_bot.llm import Generator  # noqa: E402
-from swan_bot.targeting import Targeter, messengers, soft_yes  # noqa: E402
+from swan_bot.targeting import Targeter, messengers, sessions, soft_yes  # noqa: E402
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("out", type=pathlib.Path, help="JSON file to write (drafts, rejects, targeting funnel)")
@@ -42,16 +42,14 @@ targeter.refresh(force=True)
 
 state = load_json(config.STATE_FILE, {})        # local state: stale (EC2 is the writer), reported but not obeyed
 replied = set(state.get("replied_posts", []))
-contacted = {a for a, ts in state.get("contacted", {}).items() if time.time() - ts < config.CONTACT_COOLDOWN_S}
+contacted = sessions(state.get("contacted", {}))
 funnel = []
 for pid, c in sorted(targeter.candidates.items(), key=lambda kv: -kv[1]["score"]):
     author = c["post"]["author_id"]
     if pid in replied:
         why = "already replied (local state)"
-    elif str(author) in contacted:
-        why = "contacted < 3 days (local state)"
-    elif not targeter.undecided(author):
-        why = "states a firm vote in recent posts"
+    elif len(contacted.get(str(author), ())) >= config.SESSION_VOICES:
+        why = "session cap (local state)"
     else:
         why = "ok"
     funnel.append(dict(pid=pid, author=author, frame=c["frame"], wants=c["wants"], identity=c.get("identity"),
@@ -99,7 +97,7 @@ def draft(job):
 
 
 # dry only: citizens we already answered are fair game for seeing reply quality; hospital/COVID fears first
-usable_t = [f for f in funnel if not f["why"].startswith("states a firm")]
+usable_t = list(funnel)
 usable_t.sort(key=lambda f: (content.rebuttal_for(f["text"]) is None, f["why"] != "ok", -f["score"]))
 ok_targets = usable_t[:n_replies]
 jobs = []

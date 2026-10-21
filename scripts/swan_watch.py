@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import capturethenarrative as ctn  # noqa: E402
 
 from ring_audit import audit_many, ring_score  # noqa: E402
-from swan_bot import config, watch  # noqa: E402
+from swan_bot import config, feeds, watch  # noqa: E402
 
 
 def jsonl(path):
@@ -75,7 +75,7 @@ def main():
         ours_ids = {r.get("account_id") for r in records}
         plans = [r["post_id"] for r in rows if r.get("act") == "amp_plan" and r.get("live") and r.get("post_id")]
         try:
-            trend = [p["post_id"] for p in social.feed_trending(limit=watch.RING_TRENDING)
+            trend = [p["post_id"] for p in feeds.read(social, "feed_trending", "swan-watch", limit=watch.RING_TRENDING)
                      if p["author_id"] not in ours_ids]
         except ctn.APIError as e:
             print("feed_trending:", e.status, e.message)

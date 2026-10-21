@@ -46,7 +46,6 @@ TARGET_MAX_AGE_H = 36               # citizens' notifications are near-empty, so
 # post), not just by the citizen. 2026-10-21: read 12 threads (was 6) and rank these targets above news replies.
 TRENDING_THREADS = 12
 TRENDING_THREAD_BONUS = 1.5
-CONTACT_COOLDOWN_S = 72 * 3600      # first contact with a given citizen at most every 3 days
 SECOND_VOICE_S = (10 * 60, 30 * 60) # a second persona follows up on the same doubt 10-30 min later
 # 2026-10-21 late (todo/19): back on. Citizen likes / replies per write, all measured writes: reply 0.17 / 0.15,
 # reply_back 0.11 / 0.07, second_voice 0.06 / 0.08, own-thread reply 0.03 / 0.03. Both beat the thread replies they
@@ -66,6 +65,17 @@ IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothi
 # refresh (6 min). Every feed read is logged to logs/feed_reads.jsonl.
 TRENDING_EVERY = 3
 LATEST_MAX_BANDS = 6                # unread Latest stretches kept for later refreshes (G2); beyond it, logged as lost
+# Per post and per session, not per author (was 72 h per author: a citizen answered on Monday who posted again on
+# Wednesday was skipped, while other teams answer every post). One thread per citizen post (replied_posts), and at most
+# SESSION_VOICES of our voices per citizen per session (~30 min: citizens are online 1-5 min every ~2 days).
+CONTACT_COOLDOWN_S = 30 * 60        # one citizen session: the window for SESSION_VOICES
+SESSION_VOICES = 2
+ENGAGED_BONUS = 3.0                 # a citizen who replied to us before goes up the queue (they answer again)
+DEEP_THREAD = 8                     # citizens rarely reply past this depth: skip deeper threads (G11)
+# The firm-Yes arm (todo/21 design): concede-first replies (todo/20 maps job["arm"] to that style) to firm Yes posts,
+# tested at x1 before the x2/x4 days. Stop rule: switch it off if "away" events per 100 writes rise over the baseline.
+FIRM_YES_ARM = True
+FIRM_YES_PER_H = 2                  # a few % of ~40-55 citizen-facing writes an hour at peak
 
 # ---- amplification (docs/06-strategy/amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
 AMP_OFF_FILE = ROOT / "AMPLIFY_OFF"
