@@ -15,6 +15,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | [07](07-blue-reporting.md) | Blue reporting: find ring bots, report them (0 reports so far) | Blue lead | **today, 21 Oct** | — |
 | [16](16-fact-desk.md) | Fact desk: facts in a data file, checked against the news hourly (contradictions pause, the rest proposed) | Marc + fresh session | 22–23 Oct | — |
 | [17](17-new-personas.md) | New personas: replace lost voices, keep reserves (voices now limit posting, not the models) | Narrative lead + fresh session | 22 Oct | — |
+| [18](18-trending-entry.md) | Getting into Trending: re-fit the hot score (cutoff ~24 → ~37), find the dose or ride No posts already there | Marc + fresh session | 22 Oct | — |
 | [09](09-dashboard-cop.md) | Dashboard (nginx + static Jinja page on EC2): built 21 Oct, box setup left | Marc | 22 Oct | — |
 
 **Critical path to catch up (2026-10-21):** Blue (07) starts today. Amplification went harder on 21 Oct: one post an hour, every one heavy, 15–20 thread replies on top of 5–6 reposts, best models and best-measured voices ([amplification](../docs/06-strategy/amplification.md)). The trending pulse (old 15, built 21 Oct: [amplification](../docs/06-strategy/amplification.md#trending-pulse-2026-10-21)) keeps that content current. Its 24 h before/after check is open there. Dropped 21 Oct: the overnight experiments (old 13; too little data), the NPC simulator (old 06), the intel collector (old 08), second voices and reply-backs.
