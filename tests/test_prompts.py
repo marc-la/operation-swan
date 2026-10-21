@@ -381,3 +381,18 @@ def test_pulse_parts():
     content.system_prompt(P["lani"], "F1_blank_cheque", meta=meta, pulse=dict(PULSE, yes_lines=[]),
                           pulse_parts=("yes_lines",))
     assert "pulse" not in meta                                           # nothing used: no id logged
+
+
+def test_build_prompt_passes_recent_openings_to_replies_and_second_voices():
+    """todo/20 via todo/22: our last openings reach the reply and second-voice prompts, so the model avoids them."""
+    import types
+    from swan_bot import bot
+    recent = ["Honestly the sunset clause is the whole problem here.", "My nan ran a bakery for forty years."]
+    tg = types.SimpleNamespace(headline=None)
+    for mode in ("reply", "second_voice"):
+        job = dict(mode=mode, rec=dict(persona=content.PERSONAS[0]["key"]), frame="F14_no_yes_but",
+                   target=dict(post_id=1, author_id=500, body="Not sure about the vaccine pass, what about exemptions?"))
+        _, _, user = bot.build_prompt(job, tg, recent_texts=recent)
+        assert "Don't open the way our latest replies did" in user, mode
+        _, _, plain = bot.build_prompt(dict(job, meta=None), tg)
+        assert "Don't open the way our latest replies did" not in plain, mode

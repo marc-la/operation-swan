@@ -300,8 +300,9 @@ def pick_theme(job, ledger, meta):
     return job["theme"]
 
 
-def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
+def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, recent_texts=()):
     """(persona, system, user). The choices made (shape, voice, tag, theme, event...) land in job["meta"].
+    recent_texts: our latest drafts, so replies and second voices don't open the way they did (todo/20).
     pulse_now (todo/15): all of it for amplified posts (and a fresh hook as their news, about half the time), the
     hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest. With a ledger, posts
     and replies may carry a theme (themes.Ledger.pick)."""
@@ -345,13 +346,14 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None):
     elif mode == "reply":
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
-                                    theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"])
+                                    theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"],
+                                    recent=recent_texts)
         if content.group_style(job):                              # todo/23's groups: one line of guidance
             user = user.replace("\n\nFirst read them", f" {content.group_style(job)}\n\nFirst read them", 1) \
                 if job["read"] else f"{user} {content.group_style(job)}"
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
-                                           persona=persona)
+                                           persona=persona, recent=recent_texts)
     elif mode == "journalist":
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
@@ -844,7 +846,8 @@ def main():
             elif drafted:
                 text, backend = drafted["text"], drafted["backend"]
             else:
-                persona, system, user = build_prompt(job, targeter, state["recent_shapes"], pulse_now)
+                persona, system, user = build_prompt(job, targeter, state["recent_shapes"], pulse_now,
+                                                     recent_texts=state["recent_texts"])
 
                 def rejected(why, raw, backend, repaired):
                     stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
