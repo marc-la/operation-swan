@@ -400,4 +400,14 @@ def test_conversion_report_on_a_tiny_log(tmp_path):
                          capture_output=True, text=True, cwd=pathlib.Path(__file__).resolve().parents[1]).stdout
     assert "Citizen-facing writes: **2**" in out and "towards **1** (primary 1)" in out
     assert "| mirror_concede | 1 | 1 | 100% [" in out and "Skipped by the read: **1** (33%" in out
-    assert "| k | 2 | 2.00 |" in out
+    assert "| k | 2 | 2.00 | 50% |" in out
+
+
+def test_first_call_rules_in_reply_prompts():
+    from swan_bot import content
+    recent = ["Sunset dates and venue lists are what you want", "Tania came off her early shift", "A blunt tool"]
+    for style in ("current", "mirror_concede"):
+        u = content.reply_prompt("only if there's an end date", "F14_no_yes_but", [], style=style, recent=recent)
+        assert content.FIRST_CALL_RULES in u and "«Sunset dates and venue lists»" in u and "«A blunt tool»" in u
+    assert "Don't open the way" not in content.reply_prompt("x", "F14_no_yes_but", [])
+    assert content.FIRST_CALL_RULES in content.second_voice_prompt("x", "F6_islands", [], recent=recent)

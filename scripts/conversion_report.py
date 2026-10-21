@@ -181,9 +181,9 @@ def gate_report(rows, since, until):
     for w in writes:                     # llm_calls since G9; before it, rejects with the write's draft_id + 1
         if w.get("llm_calls") or w.get("draft_id"):
             by_model[w.get("backend")].append(w.get("llm_calls") or rejects.get(w["draft_id"], 0) + 1)
-    out = ["## The gate", "", "| model | accepted | LLM calls per accepted |", "|---|---|---|"]
+    out = ["## The gate", "", "| model | accepted | LLM calls per accepted | passed on the first call |", "|---|---|---|---|"]
     for m, calls in sorted(by_model.items(), key=lambda kv: -len(kv[1])):
-        out.append(f"| {m} | {len(calls)} | {sum(calls) / len(calls):.2f} |")
+        out.append(f"| {m} | {len(calls)} | {sum(calls) / len(calls):.2f} | {pct(sum(c == 1 for c in calls) / len(calls))} |")
     fixes = collections.Counter(f for w in writes for f in (w.get("fixes") or []))
     lost = collections.Counter(r.get("why") for r in win if r.get("act") == "lost" and r.get("mode") in CITIZEN_WRITES)
     requeued = collections.Counter(r.get("why") for r in win if r.get("act") == "requeue")

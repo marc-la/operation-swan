@@ -843,6 +843,19 @@ CHAR_CAP = {"reply": 260, "second_voice": 240}
 # 2026-10-22 (todo/20): the note used to script a sentence ("say exemptions are covered, then name what isn't"), and
 # replies to the many citizens who mention exemptions all opened "Medical exemptions are covered, but there's no end
 # date, no review..." until the gate rejected them as near duplicates. Now it is only a fact to respect.
+# Right first time (todo/20 G9 follow-up, 2026-10-22): the gate's commonest remaining rejects after the code fixes were
+# not_specific, copied_fact and near_duplicate, so replies get them as instructions up front, with our latest openings.
+FIRST_CALL_RULES = ("Name one concrete detail from their post. Put any fact in your own words, never the wording of "
+                    "your notes.")
+
+
+def avoid_line(recent, n=3, words=5):
+    """'Don't open the way our latest replies did: «...»' for the last n texts (their first words), or ""."""
+    opens = [" ".join(t.split()[:words]) for t in list(recent or ())[-n:] if t and t.strip()]
+    return f"Don't open the way our latest replies did ({'; '.join(f'«{o}»' for o in opens)}), or reuse their phrasing. " \
+        if opens else ""
+
+
 EXEMPT_NOTE = ("They mention exemptions: medical exemptions ARE in the plan, so never say or suggest they're missing. "
                "You needn't bring exemptions up at all; answer the rest of what they said.\n")
 EXEMPT_REQUIRES = ["exemptions"]
@@ -954,14 +967,14 @@ def off_topic_prompt(target_text, context=None, persona=None):
 
 
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,
-                 style="current", read=False, hint=None):
+                 style="current", read=False, hint=None, recent=()):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A
     `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life.
     todo/20: style "mirror_concede" is the other arm (mirror_prompt). read=True asks for the light read: the reply
     comes back inside JSON with the citizen's stance, doubt and the frame the model picked (parse_read); `hint` is
     the frame a keyword match picked."""
     if style == "mirror_concede":
-        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint)
+        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent)
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
     arms = {}
     # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
@@ -996,11 +1009,11 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         f"and {hi} words, {CHAR_CAP['reply']} characters at most in all. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
         f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}{experiment.ASK_KINDS[ask_kind]} "
-        f"{_reply_voice(persona)}{REPLY_RULES}" + (read_block(hint) if read else "")
+        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
-def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None):
+def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=()):
     """todo/20 step 4, the mirror_concede arm: what citizens answered in another team's replies (research D §8):
     mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact), then state
     No plainly; 150-280 characters and no question. No lever, theme or opener: four beats only."""
@@ -1018,11 +1031,12 @@ def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=F
         f"detail they wrote, in a few of your own words (never their whole sentence). Then concede what is fair in it, "
         f"in 8 words or fewer (if they lean No, agree with their reason instead). Then one anchor that carries the "
         f"point: a detail from your own life or one of your facts; the point: {point}. Then say plainly that you're "
-        f"voting No. No question anywhere, and no closing question. {REPLY_RULES}" + (read_block(hint) if read else "")
+        f"voting No. No question anywhere, and no closing question. {FIRST_CALL_RULES} {avoid_line(recent)}"
+        f"{REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
-def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None):
+def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, recent=()):
     ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
@@ -1036,7 +1050,7 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
         f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} words ({CHAR_CAP['second_voice']} "
         f"characters at most): {FRAMES[frame_key]['gist']}. "
         f"{opener} Make it land through this: {LEVERS[lever]} Don't mention the other reply or repeat its argument. "
-        f"{_reply_voice(persona)}{REPLY_RULES}"
+        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{REPLY_RULES}"
     )
 
 
