@@ -414,7 +414,7 @@ def blue_panel(data, now, points, day_start):
         teams=len({r.get("team") for r in s.get("rings") or []}),
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
         today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
-        queued=s.get("queued") or 0, rows=[blue_row(r, teams) for r in s.get("ledger") or []],
+        queued=s.get("queued") or 0, first=s.get("first") or {}, rows=[blue_row(r, teams) for r in s.get("ledger") or []],
         rate=prec.get("rate"), ruled=prec.get("n"),
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 

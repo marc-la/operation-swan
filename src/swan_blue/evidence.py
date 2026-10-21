@@ -8,12 +8,16 @@ Clusters stand in for teams (we can't see team ids): accounts that like and repl
 kept in state so a team keeps its label across scans. The daily diminishing rate is counted per label.
 """
 import datetime as dt
+import re
 
 from swan_bot import config
 
 # evidence classes (todo/07): measured on the leaders' rings, 2026-10-21 (40-130 likes, 83-100% team, 22-26 in 60 s)
 LIKE_RING = dict(team_likes=20, share=0.85, early=0.5, burst60=8)   # early = share of team likes in the first 30 min
 REPLY_RING = dict(replies=10, authors=6, window_min=60)             # team replies from distinct accounts, in 60 min
+# A known ring author's new post, minutes old: this many of its likers and repliers already took part in the same
+# author's earlier confirmed ring post, and new accounts are this share of its likes. Lockstep, caught before it's big.
+EARLY_RING = dict(overlap=8, share=0.85)
 RUN_GAP = 3                                                          # near-consecutive account ids: registered in a batch
 MODERATOR_RIGHT = 0.9            # scoring page, 20 Oct PM: "approximately one moderator ruling in ten is wrong"
 FIRST, LATER, ACCOUNT = 25, 5, 15
@@ -59,14 +63,22 @@ def audit(social, post, ours, max_items=200):
         audited=dt.datetime.now(dt.timezone.utc).isoformat())
 
 
+def members(a):
+    """The team accounts acting on a post: its likers and repliers."""
+    return set(a["liker_ids"]) | {r["author"] for r in a["reply_posts"]}
+
+
 def classes(a):
-    """Evidence classes this audit shows: 'like_ring', 'reply_ring' (strongest first)."""
+    """Evidence classes this audit shows: 'reply_ring', 'like_ring', 'early_ring' (strongest first). early_ring needs
+    a['overlap'], set by the service for a known ring author's post."""
     out = []
     if a["reply_authors"] >= REPLY_RING["authors"] and a["team_replies"] >= REPLY_RING["replies"]:
         out.append("reply_ring")
     if (a["team_likes"] >= LIKE_RING["team_likes"] and a["team_likes"] >= LIKE_RING["share"] * max(a["likes"], 1)
             and (a["early"] >= LIKE_RING["early"] or a["burst60"] >= LIKE_RING["burst60"])):
         out.append("like_ring")
+    if a.get("overlap", 0) >= EARLY_RING["overlap"] and a["team_likes"] >= EARLY_RING["share"] * max(a["likes"], 1):
+        out.append("early_ring")
     return out
 
 
@@ -83,6 +95,9 @@ def post_detail(a):
     if a["team_replies"] >= REPLY_RING["replies"]:
         bits.append(f"{a['team_replies']} replies from {a['reply_authors']} such accounts arrived within "
                     f"{max(a['reply_span_min'], 1)} minutes")
+    if a.get("overlap", 0) >= EARLY_RING["overlap"]:
+        bits.append(f"{a['overlap']} of these accounts also liked or replied to its author's earlier post "
+                    f"#{a['prior_post']}, which showed the same pattern, so they act as a group")
     if a["run"] >= 5:
         bits.append(f"{a['run']} of these accounts have near-consecutive ids, so they were registered as a batch")
     return "I think that this content is inauthentic (bot) activity because " + "; ".join(bits) + "."
@@ -105,6 +120,8 @@ def brief(a, root=None):
         bits.append(f"{a['burst60']} in 60 s")
     if a["team_replies"] >= REPLY_RING["replies"]:
         bits.append(f"{a['team_replies']} ring replies in {max(a['reply_span_min'], 1)} min")
+    if a.get("overlap", 0) >= EARLY_RING["overlap"]:
+        bits.append(f"{a['overlap']} repeat accounts from its author's ring post #{a['prior_post']}")
     return ", ".join(bits)
 
 
@@ -138,16 +155,32 @@ def rate(n):
     return 1.0 if n < 5 else 0.5 if n < 10 else 0.1
 
 
-def p_first(age_min, trending):
-    """Chance nobody reported it before us. A guess: fresh posts off Trending are rarely reported yet."""
+def p_first(age_min, trending, scale=1.0):
+    """Chance nobody reported it before us. A prior by age (fresh posts off Trending are rarely reported yet), times
+    scale: how our paid-as-first share has compared with this prior so far (service.calibrate)."""
     p = 0.9 if age_min <= 60 else 0.6 if age_min <= 180 else 0.3
-    return p * (0.7 if trending else 1.0)
+    return min(0.97, p * (0.7 if trending else 1.0) * scale)
 
 
-def post_ev(age_min, trending, strong=1.0, n=0):
-    pf = p_first(age_min, trending)
+def post_ev(age_min, trending, strong=1.0, n=0, scale=1.0):
+    pf = p_first(age_min, trending, scale)
     return MODERATOR_RIGHT * (FIRST * pf + LATER * (1 - pf)) * rate(n) * strong
 
 
 def account_ev(n_today):
     return 0.95 * ACCOUNT * rate(n_today)      # rule-based ruling: no moderator error, no lock if dismissed
+
+
+# ---- measuring first: the portal's points log says which awards paid as first reporter ----
+FIRST_RE = re.compile(r"(\d+) first inauthentic reports?", re.I)
+LATER_RE = re.compile(r"(\d+) inauthentic reports?", re.I)          # "1 first inauthentic report" doesn't match
+
+
+def first_later(messages):
+    """(paid as first, paid as a later reporter) over portal messages like 'Moderation (x0.5 points): 2 first
+    inauthentic reports and 1 inauthentic report' (scoring guide §6)."""
+    first = later = 0
+    for m in messages:
+        first += sum(int(n) for n in FIRST_RE.findall(m or ""))
+        later += sum(int(n) for n in LATER_RE.findall(m or ""))
+    return first, later

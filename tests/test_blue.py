@@ -111,11 +111,11 @@ def test_mode_gate(tmp_path, monkeypatch):
     b = blue(tmp_path, monkeypatch)
     b.live = True
     monkeypatch.setattr(S.config, "BLUE_OFF_FILE", tmp_path / "BLUE_OFF")
-    assert b.mode()[0] == "approve"
+    assert b.mode()[0] == "auto"                                                   # auto from the start
     b.s["reports"] = {f"p{i}": dict(kind="post", status="hidden" if i < 9 else "genuine") for i in range(12)}
     assert b.mode()[0] == "auto"
     b.s["reports"] = {f"p{i}": dict(kind="post", status="hidden" if i < 6 else "genuine") for i in range(12)}
-    assert b.mode()[0] == "approve"
+    assert b.mode()[0] == "approve"                                                # under 70% over 10+: a person
     (tmp_path / "BLUE_OFF").touch()
     assert b.mode()[0] == "off"
 
@@ -150,3 +150,61 @@ def test_dashboard_reads_an_older_status_file(tmp_path):
     now = dt.datetime.now(dt.timezone.utc)
     b = build.blue_panel(tmp_path, now, [], now - dt.timedelta(hours=1))
     assert b["today"]["refused"] == 0 and b["queued"] == 0 and b["rows"] == [] and not b["stale"]
+
+
+
+def test_early_ring_needs_repeat_accounts_and_says_so():
+    a = audit(likes=14, team_likes=14, early=1.0, burst60=3, team_replies=0, reply_authors=0, run=2)
+    assert ev.classes(a) == []                                                     # too small for a like ring
+    a.update(overlap=11, prior_post=4321)
+    assert ev.classes(a) == ["early_ring"]
+    assert "11 of these accounts also liked or replied to its author's earlier post #4321" in ev.post_detail(a)
+    a.update(likes=40)                                                             # mostly other likers: not a ring
+    assert ev.classes(a) == []
+
+
+def test_known_ring_author_is_audited_early_and_compared(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.s["author_ring"]["5000"] = dict(post=900, members=list(range(6000, 6012)), t=time.time())
+    b.note(dict(post_id=950, author_id=5000, created_at=S.iso(time.time() - 5 * 60)), "author")
+    b.note(dict(post_id=951, author_id=7777, created_at=S.iso(time.time() - 5 * 60)), "latest")
+    seen = []
+
+    def fake_audit(social, post, ours):
+        seen.append(post["post_id"])
+        return audit(post_id=post["post_id"], author=post["author_id"], likes=14, team_likes=14, team_replies=0,
+                     reply_authors=0, liker_ids=list(range(6000, 6014)))
+    monkeypatch.setattr(S.ev, "audit", fake_audit)
+    b.audit_some()
+    assert seen == [950]                         # 5 min old: only the known author's post is due (4 min, not 10)
+    p = b.s["posts"]["950"]
+    assert p["audit"]["overlap"] == 12 and p["classes"] == ["early_ring"]
+
+
+def test_stale_posts_leave_the_last_slots_for_fresh_ones(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    filed = []
+    monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
+    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 6)}
+    ranked = [dict(key=f"s{i}", kind="post", age_min=120, ev=12) for i in range(4)]
+    b.fill(ranked, "auto")
+    assert filed == ["s0"]                       # 6 free: one stale fills, the last 5 wait for fresh ring posts
+
+
+def test_first_reporter_share_from_the_portal():
+    msgs = ["Moderation: 1 first inauthentic report", "NPC engagement: 30 views",
+            "Moderation (\u00d70.5 points): 2 first inauthentic reports and 1 inauthentic report"]
+    assert ev.first_later(msgs) == (3, 1)
+
+
+def test_calibration_scales_first_estimates(tmp_path, monkeypatch):
+    import json
+    b = blue(tmp_path, monkeypatch)
+    t0 = time.time() - 3600
+    b.s["reports"] = {f"p{i}": dict(kind="post", status="hidden", filed=t0, pf=0.9) for i in range(10)}
+    (tmp_path / "portal.json").write_text(json.dumps({"events": [
+        {"ts": S.iso(t0 + 600), "message": "Moderation: 5 first inauthentic reports and 5 inauthentic reports"}]}))
+    monkeypatch.setattr(S, "PORTAL_FILE", tmp_path / "portal.json")
+    b.calibrate()
+    assert b.s["first"] == dict(first=5, later=5) and b.s["pf_scale"] == round(0.5 / 0.9, 2)
+    assert round(ev.p_first(30, False, b.s["pf_scale"]), 2) == 0.5

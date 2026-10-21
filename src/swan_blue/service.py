@@ -5,11 +5,15 @@ lock after any "genuine" ruling (about 1 in 10, so a full batch of 25 almost alw
 refilling every free slot the moment we may, with the highest expected value first:
   post report    0.9 x (25 if we are first, else 5) x the team's daily rate (5 full, 5 half, then 10%)
   account report 15 x that rate, near-certain, no lock risk (the account already has a hidden post and 100+ actions)
-Being first pays 25 against 5, so ring authors' timelines are polled for fresh posts.
+Being first pays 25 against 5 (by order, not time; nobody can see others' reports), so we push the odds:
+  - ring authors' timelines are polled every 3 min, and a known ring author's new post is audited at 4, 12, 45 min;
+    an early ring (most of its likers ran that author's earlier ring) qualifies before the ring is big
+  - the last FRESH_RESERVE free slots are kept for posts under an hour old
+  - the portal log says which awards paid as first; that share against our prediction scales every estimate
 
-Modes: approve (the first rulings, or while observed precision is under BLUE_MIN_RATE) files only posts a person
-approved (scripts/blue.sh approve ...); account reports are rule-based and always go. auto files everything that
-qualifies. off: BLUE_OFF exists, or a dry run. Reads keep going in every mode.
+Modes: auto from the start; approve (files only posts a person approved, scripts/blue.sh approve ...) once 10+
+rulings show under BLUE_MIN_RATE inauthentic; account reports are rule-based and always go. off: BLUE_OFF exists,
+or a dry run. Reads keep going in every mode.
 """
 import datetime as dt
 import json
@@ -35,16 +39,21 @@ RULE_S = 3 * 3600             # base ruling time after the first report (scoring
 LOCK_S = 6 * 3600             # a "genuine" ruling locks new reports for 6 h
 RULE_GRACE_S = 15 * 60        # still visible this long after RULE_S: ruled genuine
 LOCK_PROBE_S = 30 * 60        # a refused report we can't explain: try again after this
-BLUE_AUTO_AFTER = 10          # post rulings before auto mode...
-BLUE_MIN_RATE = 0.70          # ...and the share ruled inauthentic it needs (all-bot targets: ~0.9)
+BLUE_AUTO_AFTER = 10          # auto from the start; after this many post rulings...
+BLUE_MIN_RATE = 0.70          # ...it needs this share ruled inauthentic to stay auto (all-bot targets: ~0.9)
 FORCE_MODE = None             # "approve" or "auto" to override the rule above
 MIN_EV = 2.0                  # below this a slot isn't worth it (a 10%-rate report of a stale post)
 APPROVAL_TTL_S = 6 * 3600
 MAX_POST_AGE_H = 12           # older ring posts have almost surely been reported by someone
-AUDIT_AT_S = 10 * 60          # rings land in the first minutes: audit at 10 min...
-REAUDIT_AT_S = 45 * 60        # ...and once more at 45 min if it showed nothing yet
+AUDITS_MIN = (10, 45)         # audit a post at these ages (min) until it shows ring evidence
+KNOWN_AUDITS_MIN = (4, 12, 45)  # a known ring author's post: earlier, so we report it before other teams do
+FRESH_MIN = 60                # a post report older than this is "stale" (the first-reporter odds drop)...
+FRESH_RESERVE = 5             # ...and may not take the last this-many free slots: they wait for fresh ring posts
+CALIBRATE_AFTER = 8           # paid post awards in the portal log before we trust our first-reporter share
+PORTAL_FILE = config.DATA / "portal.json"           # swan_dash/portal.py writes the points log here
 TICK_S = 60
-EVERY = dict(trending=10 * 60, latest=3 * 60, authors=5 * 60, rulings=10 * 60, harvest=30 * 60, ours=10 * 60)
+EVERY = dict(trending=10 * 60, latest=3 * 60, authors=3 * 60, rulings=10 * 60, harvest=30 * 60, ours=10 * 60,
+             calibrate=15 * 60)
 WATCH_AUTHORS = 40            # ring authors whose timelines we poll for fresh posts
 AUDITS_PER_TICK = 15
 HARVEST_CHECKS = 40           # unreported ring posts re-checked for a hide per harvest round
@@ -89,8 +98,8 @@ class Blue:
         self.reporter_name = None
         self.ours = set()
         self.s = read_json(self.state_file, {})
-        for k, v in dict(labels={}, posts={}, authors={}, reports={}, harvest={}, last={}, alerts={},
-                         lock_until=0, lock_why=None, last_error=None).items():
+        for k, v in dict(labels={}, posts={}, authors={}, author_ring={}, reports={}, harvest={}, last={}, alerts={},
+                         lock_until=0, lock_why=None, last_error=None, pf_scale=1.0, first=None).items():
             self.s.setdefault(k, v)
         self.feed_hold = 0
 
@@ -161,6 +170,7 @@ class Blue:
             return
         pid = str(post["post_id"])
         p = self.s["posts"].setdefault(pid, dict(post=post, first_seen=now(), audits=0, trending=False))
+        p["known"] = str(post["author_id"]) in self.s["author_ring"]      # its author ran a confirmed ring before
         if source == "trending":
             p["trending"] = True
 
@@ -187,16 +197,20 @@ class Blue:
         self.prune()
 
     def audit_some(self):
+        """Audit posts at their scheduled ages: known ring authors' posts first (that's where we can be first), then
+        Trending, then the newest."""
         t, done = now(), 0
-        for pid, p in sorted(self.s["posts"].items(), key=lambda kv: (not kv[1]["trending"], -int(kv[0]))):
+        order = sorted(self.s["posts"].items(), key=lambda kv: (not kv[1].get("known"), not kv[1]["trending"],
+                                                                 -int(kv[0])))
+        for pid, p in order:
             if done >= AUDITS_PER_TICK:
                 break
             age = t - ev.ts(p["post"]["created_at"])
-            if age > MAX_POST_AGE_H * 3600 or p.get("gone"):
+            sched = KNOWN_AUDITS_MIN if p.get("known") else AUDITS_MIN
+            i = p["audits"]
+            if age > MAX_POST_AGE_H * 3600 or p.get("gone") or i >= len(sched) or (i and p.get("classes")):
                 continue
-            first = p["audits"] == 0 and (age >= AUDIT_AT_S or p["trending"])
-            again = p["audits"] == 1 and not p.get("classes") and age >= REAUDIT_AT_S and age < 3 * 3600
-            if not (first or again):
+            if not (age >= sched[i] * 60 or (i == 0 and p["trending"])) or (i and age > 3 * 3600):
                 continue
             try:
                 a = ev.audit(self.social, p["post"], self.ours)
@@ -206,17 +220,23 @@ class Blue:
                 continue
             done += 1
             p["audits"] += 1
+            prior = self.s["author_ring"].get(str(a["author"]))
+            if prior and prior["post"] != int(pid):
+                a["overlap"], a["prior_post"] = len(ev.members(a) & set(prior["members"])), prior["post"]
             p["audit"], p["classes"] = a, ev.classes(a)
             if p["classes"]:
                 p["label"] = ev.label_for(a, self.s["labels"])
                 self.s["authors"][str(a["author"])] = t
                 for r in a["reply_posts"]:
                     self.s["labels"].setdefault(str(r["author"]), p["label"])
+            if {"like_ring", "reply_ring"} & set(p["classes"]):          # a confirmed ring: remember who ran it
+                self.s["author_ring"][str(a["author"])] = dict(post=int(pid), members=sorted(ev.members(a)), t=t)
 
     def prune(self):
         cut = now() - 36 * 3600
         self.s["posts"] = {k: v for k, v in self.s["posts"].items() if v["first_seen"] >= cut}
         self.s["authors"] = {k: v for k, v in self.s["authors"].items() if v >= cut}
+        self.s["author_ring"] = {k: v for k, v in self.s["author_ring"].items() if v["t"] >= cut}
 
     # ---- the ledger ----
     def pending(self):
@@ -245,11 +265,28 @@ class Blue:
         if FORCE_MODE:
             return FORCE_MODE, "set in swan_blue/service.py"
         p = self.precision()
-        if p["n"] < BLUE_AUTO_AFTER:
-            return "approve", f"needs your approval until {BLUE_AUTO_AFTER} rulings are in ({p['n']} so far)"
-        if p["rate"] < BLUE_MIN_RATE:
+        if p["n"] >= BLUE_AUTO_AFTER and p["rate"] < BLUE_MIN_RATE:
             return "approve", f"needs your approval: only {p['rate']:.0%} ruled inauthentic (auto needs {BLUE_MIN_RATE:.0%})"
+        if p["n"] < BLUE_AUTO_AFTER:
+            return "auto", (f"files on its own; it asks for approval if under {BLUE_MIN_RATE:.0%} of the first "
+                            f"{BLUE_AUTO_AFTER} rulings come back inauthentic ({p['n']} in so far)")
         return "auto", f"files on its own: {p['rate']:.0%} of {p['n']} rulings inauthentic"
+
+    def calibrate(self):
+        """Measure, then tune: the share of our paid post awards the portal paid as first reporter, against what we
+        predicted at filing. The ratio scales every first-reporter estimate (ranking and the fresh reserve)."""
+        portal = read_json(PORTAL_FILE, {})
+        start = min((r["filed"] for r in self.s["reports"].values()), default=None)
+        if start is None:
+            return
+        msgs = [e.get("message") for e in portal.get("events") or [] if e.get("ts") and ev.ts(e["ts"]) >= start]
+        first, later = ev.first_later(msgs)
+        predicted = [r["pf"] for r in self.s["reports"].values() if r["kind"] == "post" and r["status"] == "hidden"
+                     and r.get("pf") is not None]
+        self.s["first"] = dict(first=first, later=later)
+        if first + later >= CALIBRATE_AFTER and predicted:
+            share, expect = first / (first + later), sum(predicted) / len(predicted)
+            self.s["pf_scale"] = round(min(1.3, max(0.4, share / expect)), 2)
 
     # ---- candidates, ranked by expected value ----
     def candidates(self):
@@ -262,7 +299,7 @@ class Blue:
             age_min = (t - ev.ts(a["created"])) / 60
             if age_min > MAX_POST_AGE_H * 60:
                 continue
-            strong = 1.0 if len(cls) == 2 else 0.95
+            strong = 1.0 if len(cls) >= 2 else 0.95
             ring_why = ev.brief(a)
             if f"p{pid}" not in reported:
                 out.append(dict(key=f"p{pid}", kind="post", target=int(pid), author=a["author"], label=p["label"],
@@ -297,7 +334,8 @@ class Blue:
             for c in cands:
                 n = counts.get(c["label"], 0)
                 c["n_today"] = n
-                c["ev"] = round(ev.account_ev(n) if c["kind"] == "account" else ev.post_ev(*c["base"], n=n), 1)
+                c["ev"] = round(ev.account_ev(n) if c["kind"] == "account" else
+                                ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"]), 1)
             best = max(cands, key=lambda c: c["ev"])
             if best["ev"] < MIN_EV:
                 break
@@ -337,6 +375,8 @@ class Blue:
         for c in ranked:
             if free <= 0 or self.locked():
                 break
+            if c["kind"] == "post" and c.get("age_min", 0) > FRESH_MIN and free <= FRESH_RESERVE:
+                continue                      # keep the last slots for fresh ring posts, where we can be first
             if mode == "approve" and c["kind"] == "post" and c["key"] not in ok:
                 continue
             if self.file(c):
@@ -357,8 +397,9 @@ class Blue:
         except ctn.APIError as e:
             return self.refused(c, e)
         t = now()
+        pf = ev.p_first(*c["base"][:2], self.s["pf_scale"]) if c["kind"] == "post" else None
         self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"], label=c["label"],
-                                           filed=t, status="pending", ev=c["ev"], detail=c["detail"])
+                                           filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf)
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
                   "label": c["label"], "classes": c["classes"], "ev": c["ev"], "age_min": c.get("age_min"),
                   "detail": c["detail"], "reporter": self.reporter_name, "owner": config.operator(),
@@ -471,7 +512,7 @@ class Blue:
                        accounts=sum(r["status"] == "ruled" for r in ruled_today),
                        refused=sum(r["status"] == "refused" and sydney_day(r["filed"]) == today for r in reps),
                        teams=len({r["label"] for r in filed_today})),
-            precision=self.precision(), ready=len(ranked),
+            precision=self.precision(), ready=len(ranked), first=self.s["first"], pf_scale=self.s["pf_scale"],
             waiting=[c["key"] for c in waiting], rings=rings(waiting),
             queued=len([k for k in ok if k not in self.s["reports"]]),       # approved, not filed yet
             ledger=[dict(key=k, target=r["target"], kind=r["kind"], team=r["label"], status=r["status"],
@@ -487,6 +528,8 @@ class Blue:
             self.rulings()
         if self.due("harvest"):
             self.harvest()
+        if self.due("calibrate"):
+            self.calibrate()
         mode, why = self.mode()
         if mode != self.s.get("mode"):
             self.log({"act": "mode", "mode": mode, "why": why})
