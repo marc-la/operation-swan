@@ -185,3 +185,26 @@ def test_turn_cap_and_deep_threads(monkeypatch):
     jobs, acc = poll(posts, [note(11, 1), note(12, 2), note(13, 3)], monkeypatch, turns=turns)
     assert [j["target"]["post_id"] for j in jobs] == [1] and acc.resolved == [11, 12, 13]
     assert bot.turns_left({"503": [now - 3600] * 3}, 503), "an old session doesn't count"
+
+
+# ---- step 1: followup.py counted posts we only liked as ours ----
+def test_followup_our_ids_are_posts_we_wrote(tmp_path, monkeypatch):
+    from swan_bot import followup
+    rows = [dict(act="like", live=True, post_id=1, own=False), dict(act="repost", live=True, post_id=2),
+            dict(act="amp_plan", live=True, post_id=3), dict(act="reply", live=True, post_id=4),
+            dict(act="thread_answer", live=True, post_id=5), dict(act="post", live=False, post_id=6)]
+    assert followup.our_post_ids(rows) == {4, 5}
+
+    class Social:                     # a citizen replied to a post we only liked: not a reply to us
+        def account_posts(self, aid, limit):
+            return [dict(post_id=10, kind="post", created_at="2026-10-21T12:00:00+00:00", reply_to_post_id=1,
+                         body="I'm still not sure about the referendum")]
+
+        def feed_trending(self, limit):
+            return [dict(post_id=1), dict(post_id=4)]
+
+    reader = followup.Reader(Social(), max_reads=10, gap=0)
+    write = dict(post_id=4, target_author=500, ts="2026-10-21T11:00:00+00:00", act="reply", target_text="unsure")
+    rec = reader.followup(write, 0, 1_790_000_000, followup.our_post_ids(rows))
+    assert rec["replied_to_us"] is False
+    assert reader.trending(followup.our_post_ids(rows)) == {4: 2}

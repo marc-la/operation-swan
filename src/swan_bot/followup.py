@@ -22,6 +22,14 @@ from .targeting import stance
 
 WRITES = {"post", "reply", "second_voice", "journalist", "reply_back", "thread"}
 CONTACTS = {"reply", "second_voice", "reply_back"}
+OWN_POSTS = WRITES | {"thread_answer"}      # rows whose post_id is a post we wrote (not a like, repost or plan)
+
+
+def our_post_ids(rows):
+    """The ids of the posts we wrote. Like rows carry live and post_id too (the post liked, mostly another team's),
+    so counting them made replied_to_us true for replies to anyone we'd liked, and filled Trending with others'
+    posts (todo/20, fixed 2026-10-22)."""
+    return {r["post_id"] for r in rows if r.get("live") and r.get("post_id") and r.get("act") in OWN_POSTS}
 FOLLOWERS_EVERY_S = 2 * 3600
 READ_GAP_S = 0.5            # ~120 reads/min at most: the bot shares the 300/min per-endpoint budgets
 
@@ -176,7 +184,7 @@ def run(social, state, now=None, max_reads=None, dry=False, log=print):
             log(f"due {kind}#{i} {r['act']} #{r['post_id']} (late {late / 3600:.1f} h)")
         return n
     reader = Reader(social, max_reads=max_reads)
-    our_ids = {r["post_id"] for r in rows if r.get("live") and r.get("post_id")}
+    our_ids = our_post_ids(rows)
     try:
         trending = reader.trending(our_ids) if todo else {}
         if trending:
