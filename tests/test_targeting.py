@@ -312,3 +312,27 @@ def test_hostile_is_skipped():
     t._consider(dict(post_id=8, author_id=108, created_at=ago(1), body="KITB sheep, the referendum is for resort profits"),
                 "latest")
     assert t.items[8]["why"] == "hostile" and 8 not in t.candidates
+
+
+def test_extra_citizen_ranges(monkeypatch):
+    from swan_bot import config
+    assert not config.is_citizen(10_500)
+    monkeypatch.setattr(config, "EXTRA_CITIZEN_RANGES", [(10_400, 10_600)])
+    assert config.is_citizen(10_500) and not config.is_citizen(10_601) and config.is_citizen(500)
+
+
+def test_citizen_watch_flags_a_long_steady_run_and_not_bursts():
+    import datetime as dt
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+    import citizen_watch as cw
+    t0 = dt.datetime(2026, 10, 25, tzinfo=dt.timezone.utc)
+    at = lambda s: (t0 + dt.timedelta(seconds=s)).isoformat()
+    base = cw.REVIEWED_TO + 100
+    steady = [dict(account_id=base + i, created_at=at(30 * i + (i % 3) * 5)) for i in range(cw.RUN + 5)]
+    bursts = [dict(account_id=base + 1000 + i, created_at=at(5000 + (i // 10) * 600 + (i % 10) * 3))
+              for i in range(cw.RUN + 5)]
+    found = cw.suspect_runs(steady + bursts, ours=set())
+    assert [r[:2] for r in found] == [(base, base + cw.RUN + 4)]
+    assert cw.suspect_runs(steady, ours={base + 7}) == [], "one of ours inside: not a citizen run"
+    assert cw.suspect_runs([dict(a, account_id=a["account_id"] - 200) for a in steady
+                            if a["account_id"] - 200 <= cw.REVIEWED_TO], set()) == []

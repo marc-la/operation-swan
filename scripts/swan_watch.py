@@ -1,5 +1,6 @@
-"""Hidden-post watch and hourly ring self-audit, read-only (swan_bot/watch.py says what and why). swan-watch.timer
-runs it every 20 min on EC2. New hidden posts and a ring alarm go to logs/swan_watch.jsonl and the alert channel.
+"""Hidden-post watch, hourly ring self-audit and hourly new-citizen watch (scripts/citizen_watch.py), read-only
+(swan_bot/watch.py says what and why). swan-watch.timer runs it every 20 min on EC2. New hidden posts, a ring alarm
+and a possible run of new citizens go to logs/swan_watch.jsonl and the alert channel.
 
     python scripts/swan_watch.py            # what the timer runs
     python scripts/swan_watch.py --dry      # print only: no state, log or alert
@@ -17,6 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import capturethenarrative as ctn  # noqa: E402
 
+import citizen_watch  # noqa: E402
 from ring_audit import audit_many, ring_score  # noqa: E402
 from swan_bot import config, feeds, watch  # noqa: E402
 
@@ -90,6 +92,13 @@ def main():
             alert(f"ring self-audit: our amplified posts score {ours_med} (median RING), the Trending leaders "
                   f"{leaders_med}. We look as coordinated as the teams we'd report. "
                   f"Spread the likes and thread replies out (config.LIKE_DELAY / THREAD_DELAY).")
+    # ---- new citizens mid-game (todo/21 G10), hourly: alert only, a person adds the range ----
+    if now - state.get("citizens_ts", 0) >= watch.RING_EVERY_S:
+        state["citizens_ts"] = now
+        try:
+            citizen_watch.scan(social, state, {r.get("account_id") for r in records}, record, alert)
+        except ctn.APIError as e:
+            print("citizen_watch:", e.status, e.message)
     if not args.dry:
         watch.save(state)
 

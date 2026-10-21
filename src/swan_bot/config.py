@@ -20,8 +20,10 @@ JOURNALIST_IDS = (3, 4, 5, 6)       # amanda_rivera, muzhi_wong, julio_morales, 
 
 def is_citizen(account_id):
     """The one id rule for 'a citizen did this' in every metric (todo/19): seeded before launch, not an organiser
-    persona (1-11). Ids above CITIZEN_MAX_ID are team accounts, ours or another team's."""
-    return OFFICIAL_MAX_ID < (account_id or 0) <= CITIZEN_MAX_ID
+    persona (1-11), or in a range of citizens added mid-game (EXTRA_CITIZEN_RANGES). Other ids above CITIZEN_MAX_ID
+    are team accounts, ours or another team's."""
+    i = account_id or 0
+    return OFFICIAL_MAX_ID < i <= CITIZEN_MAX_ID or any(lo <= i <= hi for lo, hi in EXTRA_CITIZEN_RANGES)
 
 
 MAX_ACCOUNTS = 21                   # lifetime cap on voices: 12 used + 5 promoted 21 Oct + 4 replacements; boosters: MAX_BOOSTERS
@@ -64,6 +66,10 @@ IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothi
 # Latest. The bot is the one Latest reader (data/latest_snapshot.json for swan-blue, feeds.py), Trending every 3rd
 # refresh (6 min). Every feed read is logged to logs/feed_reads.jsonl.
 TRENDING_EVERY = 3
+# G10: citizens the organisers add mid-game, as (first_id, last_id). scripts/citizen_watch.py (hourly, in swan_watch)
+# alerts on a run of ids that looks seeded; a person confirms it (ideally against a Discord announcement) and adds it
+# here. Never automatic: a wrong range sends our replies to team bots and pollutes every metric.
+EXTRA_CITIZEN_RANGES = []
 LATEST_MAX_BANDS = 6                # unread Latest stretches kept for later refreshes (G2); beyond it, logged as lost
 # Per post and per session, not per author (was 72 h per author: a citizen answered on Monday who posted again on
 # Wednesday was skipped, while other teams answer every post). One thread per citizen post (replied_posts), and at most
