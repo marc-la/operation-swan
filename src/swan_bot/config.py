@@ -83,6 +83,47 @@ DEEP_THREAD = 8                     # citizens rarely reply past this depth: ski
 FIRM_YES_ARM = True
 FIRM_YES_PER_H = 2                  # a few % of ~40-55 citizen-facing writes an hour at peak
 
+# ---- todo/23 widen: every citizen group that can't cost us points, as capped and measured arms ----
+# 2026-10-22 (Marc: "more is better: target everyone who won't lose us points"). Each group is an arm: a flag, a cap
+# per hour (None: no cap), and a place below fresh on-topic citizens (they still get the in-session chance first:
+# targeting.next_target hands out a group candidate only when no ordinary one can go). Candidates and funnel records
+# carry the group; content.group_style(job) gives the reply its line (todo/20's hook). Kill an arm if its "away"
+# events per 100 writes pass the on-topic baseline or it causes a hidden post; raise its cap when its citizen reply
+# rate holds at or above the baseline for 24 h.
+# A, the sweep: walk every citizen (ids 12-CITIZEN_MAX_ID plus EXTRA_CITIZEN_RANGES), read their last posts and queue
+# their most recent post on the vote, any age. A reply lands in their notifications and is read at their next session.
+SWEEP_ARM = True
+SWEEP_PER_H = 20
+SWEEP_NIGHT_PER_H = 40              # Sydney night (NIGHT_HOURS): few citizens post, the write budget is idle
+NIGHT_HOURS = range(0, 7)           # Sydney hours (LOCAL_TZ)
+SWEEP_READS_PER_REFRESH = 40        # account_posts + get_post reads per refresh (every 2 min): <= 20/min, cap 30/min
+SWEEP_READS_SPARE = 100             # stop when an account_posts / get_post bucket (300/min, team-wide) is this low
+SWEEP_QUEUE = 20                    # read citizens only while fewer sweep candidates than this wait
+SWEEP_RECONTACT_S = 7 * 86400       # skip a citizen any voice wrote to in the last 7 days
+SWEEP_REVISIT_S = 24 * 3600         # a citizen with nothing to answer is read again a day later
+GROUP_QUEUE_S = 12 * 3600           # a swept (or engaged) candidate not handed out by then is lost (expired)
+# B, older posts: unanswered citizen posts 36-72 h old stay queued (were lost at TARGET_MAX_AGE_H), at low priority.
+OLDER_ARM = True
+OLDER_MAX_AGE_H = 72
+OLDER_PER_H = 10
+# C, off-topic citizen posts: a warm reply on their topic, no pivot to the vote (content.off_topic_prompt). Off until
+# bot.py copies the candidate's group into the job (todo/22's session): without it the reply prompt would pivot.
+OFF_TOPIC_ARM = False
+OFF_TOPIC_PER_H = 3
+OFF_TOPIC_RECONTACT_S = 3 * 86400
+# D, engaged quiet citizens: citizens who liked our voices' recent posts or follow a voice; we answer their most
+# recent post from the voice they engaged with (job["prefer"]). Their off-topic posts need OFF_TOPIC_ARM too.
+ENGAGED_ARM = False
+ENGAGED_PER_H = 5
+ENGAGED_RECONTACT_S = 2 * 86400
+ENGAGED_POSTS_H = 48                # our posts this recent are read for citizen likers, one voice per refresh
+# E, lean / firm No: answered as now (no cap), with the turnout line (why showing up matters; never logistics).
+TURNOUT_ARM = True
+# F, journalists: as now (JOURNALIST_GAP_S); this flag switches them off.
+JOURNALIST_ARM = True
+# Order among the groups once ordinary candidates are done (turnout is ordinary: it keeps its place)
+GROUP_ORDER = ("engaged", "older", "sweep", "off_topic")
+
 # ---- amplification (docs/06-strategy/amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
 AMP_OFF_FILE = ROOT / "AMPLIFY_OFF"
 MAX_BOOSTERS = 36                   # like-only accounts (never post, so they can't be suspended under the published rules)

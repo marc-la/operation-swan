@@ -7,10 +7,19 @@ Hard skips only: not a citizen, a repost, a post we replied to, off the referend
 shouting, a thread deeper than config.DEEP_THREAD, firm Yes with config.FIRM_YES_ARM off. A citizen already talking
 with config.SESSION_VOICES of our voices this session waits until the session is over.
 Reads used: account_posts / replies / get_post (300/min each) and the feeds (10/min between them, feeds.py).
+
+Widening the net (todo/23, 2026-10-22): citizen groups beyond the on-topic items we see live, each an arm with a
+flag, a cap per hour and a place below every ordinary candidate (config, the todo/23 block). Candidates and funnel
+records carry the group ("g"): sweep (every citizen's most recent post on the vote, any age, read by _widen),
+older (36-72 h posts still unanswered), off_topic (their topic, no pivot), engaged (citizens who like or follow our
+voices) and turnout (lean No, answered as before with the turnout line). Writes we make to a citizen are kept for
+7 days (touched) so the sweep doesn't come back to them.
 """
 import datetime as dt
+import json
 import re
 import time
+import zoneinfo
 
 import capturethenarrative as ctn
 
@@ -219,6 +228,30 @@ def hour_of(ts=None):
     return dt.datetime.fromtimestamp(ts or time.time(), dt.timezone.utc).strftime("%Y-%m-%dT%H")
 
 
+ARMS_ON = {"sweep": "SWEEP_ARM", "older": "OLDER_ARM", "off_topic": "OFF_TOPIC_ARM", "engaged": "ENGAGED_ARM",
+           "turnout": "TURNOUT_ARM"}
+
+
+def arm_on(net):
+    return bool(getattr(config, ARMS_ON[net]))
+
+
+def group_cap(net, t=None):
+    """Hand-outs an hour for a todo/23 group (None: no cap). The sweep gets more at Sydney night."""
+    if net == "sweep":
+        night = dt.datetime.fromtimestamp(t or time.time(), zoneinfo.ZoneInfo(config.LOCAL_TZ)).hour in config.NIGHT_HOURS
+        return config.SWEEP_NIGHT_PER_H if night else config.SWEEP_PER_H
+    return {"older": config.OLDER_PER_H, "off_topic": config.OFF_TOPIC_PER_H, "engaged": config.ENGAGED_PER_H}.get(net)
+
+
+def citizen_ids():
+    """Every citizen id, in order: the seeded ones, then config.EXTRA_CITIZEN_RANGES."""
+    ids = list(range(config.OFFICIAL_MAX_ID + 1, config.CITIZEN_MAX_ID + 1))
+    for lo, hi in config.EXTRA_CITIZEN_RANGES:
+        ids += [i for i in range(lo, hi + 1) if i > config.CITIZEN_MAX_ID]
+    return ids
+
+
 class Targeter:
     """Collects candidate targets every few minutes and hands out the best one.
 
@@ -248,14 +281,28 @@ class Targeter:
         self.unjudged = {}           # post_id -> [post, source, context]: a read hit the rate limit; next refresh
         self.posts = {}              # post_id -> post (parents and thread depth), {} if gone
         self.firm_yes_out = []       # when firm-Yes candidates were handed out (FIRM_YES_PER_H)
+        # todo/23
+        self.group_out = {}          # group -> when its candidates were handed out (the caps per hour)
+        self.touched = {}            # citizen id -> our last write to them (kept SWEEP_RECONTACT_S)
+        self.swept = {}              # citizen id -> when the sweep last read them (or a time ahead: private)
+        self.sweep_next = 0          # index into citizen_ids(): where the sweep carries on
+        self.engaged_pool = {}       # citizen id -> persona: liked or follows that voice, not read yet
+        self.engaged_next = 0        # which voice's likers and followers are read next
+        self.reads = 0               # account_posts / get_post / likers / followers reads made by this targeter
+        self._rl = None              # the rate limit as our last widen read saw it
+        self._ours, self._ours_mtime = [], None
 
     # ---- saved across restarts (G3) ----------------------------------------------------------
     def dump(self):
         """What a restart needs: the read position, the queue and the funnel (bot.save_state)."""
-        cut = time.time() - 48 * 3600
+        cut = time.time() - 12 * 3600
+        t = time.time()
         return dict(latest_seen=self.latest_seen, bands=self.bands, candidates=list(self.candidates.values()),
-                    items={str(k): v for k, v in self.items.items() if v["c"] >= cut},
-                    unjudged=list(self.unjudged.values()))
+                    items={str(k): v for k, v in list(self.items.items()) if self._deadline(v) >= cut},
+                    unjudged=list(self.unjudged.values()),
+                    group_out=self.group_out, sweep_next=self.sweep_next, engaged_pool=dict(self.engaged_pool),
+                    touched={a: x for a, x in list(self.touched.items()) if t - x < config.SWEEP_RECONTACT_S},
+                    swept={a: x for a, x in list(self.swept.items()) if x > t - 2 * config.SWEEP_REVISIT_S})
 
     def load(self, saved):
         saved = saved or {}
@@ -264,6 +311,35 @@ class Targeter:
         self.candidates = {c["post"]["post_id"]: c for c in saved.get("candidates", [])}
         self.items = {int(k): v for k, v in saved.get("items", {}).items()}
         self.unjudged = {u[0]["post_id"]: list(u) for u in saved.get("unjudged", [])}
+        self.group_out = saved.get("group_out", {})
+        self.sweep_next = saved.get("sweep_next", 0)
+        self.engaged_pool = saved.get("engaged_pool", {})
+        self.swept = saved.get("swept", {})
+        if "touched" in saved:
+            self.touched = saved["touched"]
+        else:                                         # first start with todo/23: who we wrote to, from the log
+            self.seed_touched()
+
+    def seed_touched(self, path=None):
+        """touched from the action log: the citizens our live replies, reply-backs and second voices went to in the
+        last SWEEP_RECONTACT_S (read once, when the state has none)."""
+        cut = time.time() - config.SWEEP_RECONTACT_S
+        try:
+            f = open(path or config.ACTIONS_LOG)
+        except OSError:
+            return
+        with f:
+            for line in f:
+                if '"target_author"' not in line or '"live": true' not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                    ts = dt.datetime.fromisoformat(rec["ts"]).timestamp()
+                except (ValueError, KeyError):
+                    continue
+                a = rec.get("target_author")
+                if rec.get("act") in ("reply", "reply_back", "second_voice") and ts >= cut and config.is_citizen(a):
+                    self.touched[str(a)] = max(ts, self.touched.get(str(a), 0))
 
     # ---- who is a citizen -------------------------------------------------------------------
     def account(self, account_id):
@@ -283,13 +359,19 @@ class Targeter:
 
     # ---- the funnel (G12) -------------------------------------------------------------------
     def _item(self, post, source):
-        """The funnel record of a citizen item, made on first sight."""
+        """The funnel record of a citizen item, made on first sight. g: its todo/23 group, once it has one; exp: a
+        deadline other than the post's age (swept items, off-topic ones)."""
         pid = post["post_id"]
         if pid not in self.items:
             created = dt.datetime.fromisoformat(post["created_at"].replace("Z", "+00:00")).timestamp()
             self.items[pid] = dict(h=hour_of(), c=created, o="pending", why="new", src=source,
                                    reply=bool(post.get("reply_to_post_id")))
         return self.items[pid]
+
+    @staticmethod
+    def _deadline(it):
+        """When a pending item is lost: its own deadline, else the post's age reaching the limit (B: 72 h)."""
+        return it.get("exp") or it["c"] + 3600 * (config.OLDER_MAX_AGE_H if config.OLDER_ARM else config.TARGET_MAX_AGE_H)
 
     def _end(self, post, outcome, why, source=None):
         it = self._item(post, source)
@@ -298,7 +380,7 @@ class Targeter:
         it["o"], it["why"] = outcome, why
         self.log({"act": {"skipped": "skip", "lost": "lost", "pending": "wait"}[outcome], "why": why,
                   "post_id": post["post_id"], "author_id": post.get("author_id"), "source": it["src"],
-                  "reply": it["reply"], "age_min": round((time.time() - it["c"]) / 60, 1)})
+                  "reply": it["reply"], "age_min": round((time.time() - it["c"]) / 60, 1), "group": it.get("g")})
 
     def skip(self, post, why, source=None):
         """We chose not to answer this citizen item (final)."""
@@ -316,15 +398,18 @@ class Targeter:
         """bot.py, after a write to a citizen's item: a reply or reply-back ends it as answered."""
         if mode in ("reply", "reply_back") and self.is_citizen(post.get("author_id")):
             it = self._item(post, "reply_back" if mode == "reply_back" else None)
-            it["o"], it["why"] = "answered", mode
+            it["o"], it["why"], it["a"] = "answered", mode, time.time()
+        if self.is_citizen(post.get("author_id")):    # the sweep leaves them alone for a week (todo/23)
+            self.touched[str(post["author_id"])] = time.time()
 
-    def funnel(self, hours=3):
+    def funnel(self, hours=3, group=False):
         """{hour: {seen, answered, skipped: {why: n}, lost: {why: n}, pending: {why: n}}} for the items first seen
-        in each of the last `hours` hours. seen = answered + skipped + lost + pending, exactly."""
+        in each of the last `hours` hours. seen = answered + skipped + lost + pending, exactly. group: only the items
+        of that todo/23 group (False: all)."""
         out = {}
         keep = {hour_of(time.time() - 3600 * i) for i in range(hours)}
-        for it in self.items.values():
-            if it["h"] not in keep:
+        for it in list(self.items.values()):
+            if it["h"] not in keep or (group is not False and it.get("g") != group):
                 continue
             f = out.setdefault(it["h"], dict(seen=0, answered=0, skipped={}, lost={}, pending={}))
             f["seen"] += 1
@@ -335,22 +420,25 @@ class Targeter:
         return dict(sorted(out.items()))
 
     def _expire(self):
-        """Items still pending past TARGET_MAX_AGE_H are lost, with what they were waiting for."""
-        cut = time.time() - config.TARGET_MAX_AGE_H * 3600
+        """Items still pending past their deadline (TARGET_MAX_AGE_H, OLDER_MAX_AGE_H with the older arm, or their
+        own) are lost, with what they were waiting for; 12 h later the record goes."""
+        t = time.time()
         for pid, it in list(self.items.items()):
-            if it["o"] == "pending" and it["c"] < cut:
+            if it["o"] == "pending" and self._deadline(it) < t:
                 c = self.candidates.pop(pid, None)
                 self.unjudged.pop(pid, None)
                 self.lose(c["post"] if c else dict(post_id=pid), f"expired:{it['why']}")
-            elif it["c"] < time.time() - 48 * 3600:
+            elif self._deadline(it) < t - 12 * 3600:
                 del self.items[pid]
-        self.candidates = {k: c for k, c in self.candidates.items() if age_h(c["post"]) <= config.TARGET_MAX_AGE_H}
+        self.candidates = {k: c for k, c in self.candidates.items()
+                           if k in self.items and self._deadline(self.items[k]) >= t}
 
     # ---- collection -------------------------------------------------------------------------
     def post(self, post_id):
         """A post by id (cached), {} when it's gone, None when the rate limit stopped the read (judge it later)."""
         if post_id not in self.posts:
             try:
+                self.reads += 1
                 self.posts[post_id] = self.social.get_post(post_id)
             except ctn.RateLimited:
                 return None
@@ -380,7 +468,8 @@ class Targeter:
         pid = post["post_id"]
         if pid in self.candidates or post.get("kind") == "repost" or not self.is_citizen(post.get("author_id")):
             return                                    # team bots, ~98% of Latest: not in the funnel
-        if age_h(post) > config.TARGET_MAX_AGE_H or (pid in self.items and self.items[pid]["o"] != "pending"):
+        max_h = config.OLDER_MAX_AGE_H if config.OLDER_ARM else config.TARGET_MAX_AGE_H     # todo/23 B
+        if age_h(post) > max_h or (pid in self.items and self.items[pid]["o"] != "pending"):
             return
         it = self._item(post, source)
         if it["why"] not in ("new", "unjudged"):
@@ -400,17 +489,41 @@ class Targeter:
         cls = target_class(body, context)
         why = (hard_skip(body, context) or ("deep_thread" if d >= config.DEEP_THREAD else None)
                or ("firm_yes" if cls == "firm_yes" and not config.FIRM_YES_ARM else None))
+        group = None
+        if why == "off_topic" and self._off_topic_ok(post, d):      # todo/23 C: their topic, no pivot
+            why, group = None, "off_topic"
+            it["exp"] = it["c"] + 3600 * config.TARGET_MAX_AGE_H
         if why:
             return self.skip(post, why, source)
+        self._queue(post, source, context, parent, d, cls, group=group)
+
+    def _off_topic_ok(self, post, d):
+        """An off-topic citizen post we may answer on its own topic (todo/23 C): the arm on, not hostile or shouting,
+        not deep, not old, and no voice of ours wrote to them in OFF_TOPIC_RECONTACT_S."""
+        body = post.get("body") or ""
+        return (config.OFF_TOPIC_ARM and not (loud(body) or HOSTILE.search(body)) and d < config.DEEP_THREAD
+                and age_h(post) <= config.TARGET_MAX_AGE_H
+                and time.time() - self.touched.get(str(post["author_id"]), 0) >= config.OFF_TOPIC_RECONTACT_S)
+
+    def _queue(self, post, source, context, parent, d, cls, group=None, net=None, prefer=None):
+        """Make a judged citizen item a candidate, its read setting the score. group: the todo/23 group the reply
+        gets (content.group_style), net: the arm it counts against (default: the group), prefer: the persona to
+        answer it from (D: the voice they engaged with)."""
+        body = post.get("body") or ""
         frame, wants = classify(body)
         score = (READ_PRIORITY.get(cls, 0.0) + FRAME_PRIORITY.get(frame, 1.5 if frame else 1.0)
                  + (2.0 if soft_yes(body) else 0.0) + (1.5 if YES_REASON.search(body) else 0.0)
                  + 2.0 * max(0.0, 1 - age_h(post) / config.TARGET_MAX_AGE_H) + (1.0 if source == "news" else 0.0)
                  + (config.TRENDING_THREAD_BONUS if source == "thread" else 0.0))
-        self.candidates[pid] = dict(post=post, frame=frame, wants=wants, context=context, source=source, score=score,
-                                    identity=identity(body), target_class=cls, depth=d,
-                                    parent_author=(parent or {}).get("author_id"))
+        self.candidates[post["post_id"]] = dict(post=post, frame=frame, wants=wants, context=context, source=source,
+                                                score=score, identity=identity(body), target_class=cls, depth=d,
+                                                parent_author=(parent or {}).get("author_id"),
+                                                **({"group": group, "net": net or group} if group else {}),
+                                                **({"prefer": prefer} if prefer else {}))
+        it = self._item(post, source)
         it["why"] = "queued"
+        if group:
+            it["g"] = net or group
 
     def refresh(self, force=False):
         """Read everything new; True when it ran (bot.py saves the state then)."""
@@ -481,6 +594,9 @@ class Targeter:
         feed_posts = latest["posts"] + trending
         self.feed_posts = feed_posts or self.feed_posts
         self._snapshot(latest["posts"])
+        reads = self.reads
+        self._widen()                                 # todo/23: the sweep and engaged quiet citizens
+        widen_reads = self.reads - reads
         self._expire()
         cit = [p for p in latest["posts"] if config.is_citizen(p["author_id"]) and p.get("kind") != "repost"]
         self.log({"act": "refresh", "candidates": len(self.candidates), "new": len(self.candidates) - before,
@@ -493,7 +609,7 @@ class Targeter:
                   "citizen_latest_posts": sum(not p.get("reply_to_post_id") for p in cit),
                   "citizen_latest_replies": sum(bool(p.get("reply_to_post_id")) for p in cit),
                   "citizen_latest_authors": len({p["author_id"] for p in cit}),
-                  "funnel": self.funnel()})
+                  "funnel": self.funnel(), "groups": self.groups(), "widen_reads": widen_reads})
         return True
 
     def _latest(self):
@@ -548,11 +664,170 @@ class Targeter:
         except OSError as e:
             self.log({"act": "snapshot_error", "error": str(e)})
 
+    # ---- todo/23: widening the net ------------------------------------------------------------
+    def ours(self):
+        """Our accounts (id, persona, role, status) from secrets/swan_accounts.json, re-read when it changes. Only
+        those fields are kept: no passwords or tokens leave the file."""
+        try:
+            mtime = config.ACCOUNTS_FILE.stat().st_mtime
+        except OSError:
+            return self._ours
+        if mtime != self._ours_mtime:
+            try:
+                recs = json.loads(config.ACCOUNTS_FILE.read_text())
+            except (OSError, ValueError):
+                return self._ours
+            self._ours = [dict(account_id=r["account_id"], persona=r.get("persona"), role=r.get("role", "voice"),
+                               status=r.get("status", "active")) for r in recs if r.get("account_id")]
+            self._ours_mtime = mtime
+        return self._ours
+
+    def _read(self, fn, *args, **kw):
+        """One widen read (account_posts, likers, followers), counted, its rate limit kept for _spare()."""
+        self.reads += 1
+        out = list(fn(*args, **kw))
+        self._rl = self.social.rate_limit
+        return out
+
+    def _spare(self, start):
+        """Room for another widen read this refresh: under SWEEP_READS_PER_REFRESH, and the bucket our last read
+        hit not down to SWEEP_READS_SPARE (other readers share it: swan-blue, followup)."""
+        rl = self._rl
+        return self.reads - start < config.SWEEP_READS_PER_REFRESH and not (rl and rl.remaining <= config.SWEEP_READS_SPARE)
+
+    def queued(self, net):
+        return sum(c.get("net") == net for c in list(self.candidates.values()))
+
+    # TODO(todo/22): _widen, _visit, _queue, queued and groups touch candidates / items: @locked once the split's
+    # decorator lands (it must be re-entrant: they call _end, funnel and post).
+    def _widen(self):
+        """todo/23's collectors, inside SWEEP_READS_PER_REFRESH reads a refresh (<= 20/min; never a feed read):
+        D first (one voice's citizen likers and followers, then those citizens), then A (the sweep, from where it
+        stopped). Each reads citizens only while its queue is short of SWEEP_QUEUE. A rate limit ends it for this
+        refresh."""
+        start, self._rl = self.reads, None
+        t = time.time()
+        try:
+            if config.ENGAGED_ARM:
+                if self.queued("engaged") < config.SWEEP_QUEUE and not self.engaged_pool:
+                    self._engaged_step()
+                for aid, persona in list(self.engaged_pool.items()):
+                    if not self._spare(start) or self.queued("engaged") >= config.SWEEP_QUEUE:
+                        break
+                    if t - self.swept.get(aid, 0) >= config.SWEEP_REVISIT_S:
+                        self._visit(int(aid), "engaged", config.ENGAGED_RECONTACT_S, prefer=persona)
+                    del self.engaged_pool[aid]
+            if config.SWEEP_ARM:
+                ids = citizen_ids()
+                for _ in range(len(ids)):
+                    if not self._spare(start) or self.queued("sweep") >= config.SWEEP_QUEUE:
+                        break
+                    aid = ids[self.sweep_next % len(ids)]
+                    if t - self.swept.get(str(aid), 0) >= config.SWEEP_REVISIT_S:
+                        self._visit(aid, "sweep", config.SWEEP_RECONTACT_S)
+                    self.sweep_next = (self.sweep_next + 1) % len(ids)
+        except ctn.RateLimited:
+            self.log({"act": "widen_rate_limited", "reads": self.reads - start})
+
+    def _engaged_step(self):
+        """D: the next voice's posts of the last ENGAGED_POSTS_H, their citizen likers, and the voice's citizen
+        followers, into engaged_pool (citizen -> that voice's persona). ~5-8 reads."""
+        voices = [r for r in self.ours() if r["role"] != "booster" and r["status"] == "active"]
+        if not voices:
+            return
+        v = voices[self.engaged_next % len(voices)]
+        self.engaged_next += 1
+        found = set()
+        try:
+            posts = [p for p in self._read(self.social.account_posts, v["account_id"], limit=20)
+                     if p.get("kind") != "repost" and age_h(p) <= config.ENGAGED_POSTS_H]
+            for p in posts[:5]:
+                found |= {x.get("account_id") for x in self._read(self.social.likers, p["post_id"], limit=50)}
+            found |= {x.get("account_id") for x in self._read(self.social.followers, v["account_id"], limit=100)}
+        except ctn.RateLimited:
+            raise
+        except ctn.APIError:
+            pass
+        for aid in found:
+            if config.is_citizen(aid):
+                self.engaged_pool.setdefault(str(aid), v["persona"])
+
+    def _visit(self, aid, net, recontact_s, prefer=None):
+        """Read one citizen's last posts and queue their most recent post on the vote, any age (A, D), or for D with
+        the off-topic arm on, their most recent post. Not read: a citizen we wrote to within recontact_s or with a
+        candidate waiting. Not queued (skipped, in the funnel): hostile or shouting, a deep thread, a reply to one of
+        us (the reply-back path's), a firm Yes (todo/21's arm has those). A private account is left for a week."""
+        t, key = time.time(), str(aid)
+        if t - self.touched.get(key, 0) < recontact_s or any(
+                c["post"].get("author_id") == aid for c in list(self.candidates.values())):
+            self.swept[key] = t
+            return
+        try:
+            posts = self._read(self.social.account_posts, aid, limit=20)
+        except ctn.RateLimited:
+            raise
+        except ctn.APIError as e:
+            self.swept[key] = t + (6 * 86400 if e.status == 403 else 0)
+            return
+        self.swept[key] = t
+        own = [p for p in posts if p.get("author_id") == aid and p.get("kind") != "repost"]
+        # on the vote: a post must say so plainly (ON_TOPIC: "watched the sunset from the porch" isn't); a reply may
+        # lean on its thread (REFERENDUM)
+        on = [p for p in own if ON_TOPIC.search(p.get("body") or "")
+              or (p.get("reply_to_post_id") and REFERENDUM.search(p.get("body") or ""))]
+        pick = on[0] if on else (own[0] if own and net == "engaged" and config.OFF_TOPIC_ARM else None)
+        if not pick or pick["post_id"] in self.items or pick["post_id"] in self.candidates:
+            return                                    # nothing to answer, or judged already (answered, skipped...)
+        body = pick.get("body") or ""
+        parent = self.post(pick["reply_to_post_id"]) if pick.get("reply_to_post_id") else None
+        d = self.depth(pick)
+        if (pick.get("reply_to_post_id") and parent is None) or d is None:
+            del self.swept[key]                       # not judged: read this citizen again next refresh
+            raise ctn.RateLimited("GET", "/posts", 429, "widen", 30)
+        context = ((parent or {}).get("body") or "")[:200] or None
+        cls = target_class(body, context)
+        it = self._item(pick, net)
+        it["g"], it["exp"] = net, t + config.GROUP_QUEUE_S
+        ours = {r["account_id"] for r in self.ours()}
+        why = ("hostile" if loud(body) or HOSTILE.search(body) else None) \
+            or ("deep_thread" if d >= config.DEEP_THREAD else None) \
+            or ("reply_to_us" if parent and parent.get("author_id") in ours else None) \
+            or ("firm_yes" if cls == "firm_yes" else None)
+        if why:
+            return self.skip(pick, why, net)
+        self._queue(pick, net, context, parent, d, cls, group=net if on else "off_topic", net=net, prefer=prefer)
+
+    def groups(self):
+        """The refresh record's line per todo/23 group: on, cap, queued, handed out and answered in the last hour,
+        and its funnel (items first seen in the last 3 h). Plus where the sweep is."""
+        t = time.time()
+        out = {}
+        for net in ARMS_ON:
+            done = [it for it in list(self.items.values()) if it.get("g") == net]
+            f = self.funnel(group=net)
+            out[net] = dict(on=arm_on(net), cap=group_cap(net, t), queued=self.queued(net),
+                            out_1h=sum(t - x < 3600 for x in self.group_out.get(net, [])),
+                            answered_1h=sum(it["o"] == "answered" and t - it.get("a", 0) < 3600 for it in done),
+                            **({"funnel": f} if f else {}))
+        out["sweep"].update(at=self.sweep_next, of=len(citizen_ids()),
+                            read_24h=sum(t - x < 86400 for x in list(self.swept.values())))
+        out["engaged"].update(pool=len(self.engaged_pool))
+        return out
+
+    def _net(self, c, t=None):
+        """The todo/23 group a candidate counts against: its own (sweep, engaged, off_topic), "older" once its post
+        is past TARGET_MAX_AGE_H, else None (an ordinary candidate)."""
+        if c.get("net"):
+            return c["net"]
+        return "older" if age_h(c["post"]) > config.TARGET_MAX_AGE_H else None
+
     # ---- hand out targets -------------------------------------------------------------------
     def requeue(self, cand, why):
         """Put a handed-out candidate back, pending for `why` (G8): "no_voice" is tried again at the next slot;
         anything else (a failed draft, no model answering) after a backoff of 2, 4, 8... up to 30 min, until it ages
-        out (then it is lost as expired:<why>)."""
+        out (then it is lost as expired:<why>). A "no_voice" hand-out doesn't count against its group's cap."""
+        if why == "no_voice" and cand.get("out_at") in self.group_out.get(cand.get("net"), []):
+            self.group_out[cand["net"]].remove(cand["out_at"])
         if why != "no_voice":
             cand["tries"] = cand.get("tries", 0) + 1
             cand["not_before"] = time.time() + min(120 * 2 ** (cand["tries"] - 1), 1800)
@@ -565,15 +840,24 @@ class Targeter:
         Posts under FRESH_MIN old go first: their author may still be online. A citizen talking with SESSION_VOICES
         of our voices waits (queued) until the session is over; a citizen reply to one of our posts goes to the
         reply-back path; firm Yes goes out as the arm, at most FIRM_YES_PER_H an hour. The candidate handed out
-        carries target_class, priority, arm and engaged for the job."""
+        carries target_class, priority, arm and engaged for the job.
+        todo/23: a candidate in a group (sweep, older, off_topic, engaged; _net) goes only when no ordinary one can,
+        in GROUP_ORDER, at most group_cap() an hour; a group switched off ends its candidates as skipped. An ordinary
+        lean-No candidate goes out as "turnout" under TURNOUT_ARM. The candidate carries group (for the reply's
+        style, content.group_style) and prefer (the persona to answer from) when it has them."""
         t = time.time()
         self.firm_yes_out = [x for x in self.firm_yes_out if t - x < 3600]
+        self.group_out = {n: [x for x in xs if t - x < 3600] for n, xs in self.group_out.items()}
 
         def priority(c):
             return (c["score"] + (config.FRESH_BONUS if age_h(c["post"]) * 60 < config.FRESH_MIN else 0.0)
                     + (config.ENGAGED_BONUS if str(c["post"]["author_id"]) in engaged else 0.0))
 
-        for pid, c in sorted(self.candidates.items(), key=lambda kv: -priority(kv[1])):
+        def tier(c):
+            net = self._net(c)
+            return config.GROUP_ORDER.index(net) + 1 if net in config.GROUP_ORDER else 0
+
+        for pid, c in sorted(self.candidates.items(), key=lambda kv: (tier(kv[1]), -priority(kv[1]))):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
             post, author, source = c["post"], c["post"]["author_id"], c.get("source")
@@ -588,12 +872,33 @@ class Targeter:
             if len(contacted.get(str(author), ())) >= config.SESSION_VOICES:
                 self.wait(post, "session_cap", source)   # stays queued: answered once their session is over
                 continue
+            net = self._net(c)
+            if net and not arm_on(net):
+                self.candidates.pop(pid)
+                self.skip(post, f"{net}_off", source)
+                continue
+            recontact = {"sweep": config.SWEEP_RECONTACT_S, "engaged": config.ENGAGED_RECONTACT_S,
+                         "off_topic": config.OFF_TOPIC_RECONTACT_S}.get(net)
+            if recontact and t - self.touched.get(str(author), 0) < recontact:
+                self.candidates.pop(pid)
+                self.skip(post, "contacted_recently", source)    # we reached them some other way meanwhile
+                continue
+            cap = group_cap(net, t) if net else None
+            if cap is not None and len(self.group_out.get(net, [])) >= cap:
+                self.wait(post, f"{net}_cap", source)
+                continue
             if c.get("target_class") == "firm_yes":
                 if len(self.firm_yes_out) >= config.FIRM_YES_PER_H:
                     self.wait(post, "firm_yes_cap", source)
                     continue
                 self.firm_yes_out.append(t)
                 c["arm"] = "firm_yes"
+            if not net and c.get("target_class") == "lean_no" and config.TURNOUT_ARM:
+                net = "turnout"
+            if net:
+                c["group"], c["net"], c["out_at"] = c.get("group") or net, net, t
+                self.group_out.setdefault(net, []).append(t)
+                self._item(post, source)["g"] = net
             c["priority"], c["engaged"] = round(priority(c), 2), str(author) in engaged
             self.candidates.pop(pid)
             self.wait(post, "drafting", source)
@@ -601,6 +906,8 @@ class Targeter:
         return None
 
     def next_journalist(self, replied_posts, journalist_last):
+        if not config.JOURNALIST_ARM:                 # todo/23 F: the switch
+            return None
         for pid, p in sorted(self.journalist.items(), key=lambda kv: age_h(kv[1])):
             aid = p["author_id"]
             if pid in replied_posts or age_h(p) > config.JOURNALIST_MAX_AGE_H:
