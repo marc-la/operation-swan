@@ -177,8 +177,9 @@ class Accounts:
         return next((r for r in self.voices() if r["persona"] == key), None)
 
 
-def reply_back_jobs(social, accounts, targeter, limit=3):
-    """Citizens who replied to our posts. Reads at most `limit` replies; only those are marked resolved."""
+def reply_back_jobs(social, accounts, targeter, limit=3, roots=None):
+    """Citizens who replied to our posts. Reads at most `limit` replies; only those are marked resolved.
+    roots: only replies under these posts of ours (our amplified posts), the rest are resolved and skipped."""
     jobs = []
     for rec in accounts.voices():
         if len(jobs) >= limit:
@@ -193,6 +194,9 @@ def reply_back_jobs(social, accounts, targeter, limit=3):
                         continue
                     theirs = social.get_post(n["post"]["post_id"])
                     if not targeter.is_citizen(theirs["author_id"]) or not theirs.get("reply_to_post_id"):
+                        continue
+                    if roots is not None and theirs["reply_to_post_id"] not in roots \
+                            and theirs.get("root_post_id") not in roots:
                         continue
                     ours = social.get_post(theirs["reply_to_post_id"])
                     jobs.append(dict(mode="reply_back", rec=rec, target=theirs, our_text=ours.get("body") or "", tries=0))
@@ -293,13 +297,19 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None):
     mode, meta = job["mode"], job.get("meta") or {}
     target_text = (job.get("target") or {}).get("body") or ""
     prompt, repair, backend = user, None, None
-    models = config.AMP_MODELS if job.get("amp") else None     # the amplified post gets the strongest models
+    if job.get("amp") or mode in config.STRONG_MODES:          # our best content and where minds change
+        models = config.AMP_MODELS
+    elif mode in config.CHEAP_MODES:                            # one-liners: free models first, paid ones as backup
+        models = [m for _, m in getattr(gen, "chain", ()) if m not in config.LLM_PRICES]
+    else:
+        models = None
     for _ in range(2):
         raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
-                                    models=models)
+                                    models=models, priority=bool(job.get("amp")))
         if raw is None and models:                             # out of quota: the usual chain
             models = None
-            raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7))
+            raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
+                                        priority=bool(job.get("amp")))
         if raw is None:
             break
         text, why = quality.check(raw, mode, recent_texts, prompt_text=user, target_text=target_text,
@@ -411,7 +421,7 @@ def main():
     queue, stats = [], {"accepted": 0, "rejected": {}, "by_mode": {}}
     by_user = {r["username"]: r for r in accounts.active()}
     for q in state.pop("queue", []):
-        if q["username"] in by_user and config.REPLY_BACK:
+        if q["username"] in by_user and (config.REPLY_BACK or config.REPLY_BACK_AMP):
             queue.append(dict(mode="reply_back", rec=by_user[q["username"]], target=q["target"],
                               our_text=q["our_text"], tries=q.get("tries", 0)))
     if queue:
@@ -462,8 +472,9 @@ def main():
             pulse_now = pulse.update(state, targeter, our_ids, gen, log)
             if amp:
                 amp.tick()
-            if args.live and config.REPLY_BACK and time.time() >= next_notif:
-                queue += reply_back_jobs(social, accounts, targeter)
+            if args.live and (config.REPLY_BACK or config.REPLY_BACK_AMP) and time.time() >= next_notif:
+                roots = None if config.REPLY_BACK else {int(k) for k in (state.get("amp_posts") or {})}
+                queue += reply_back_jobs(social, accounts, targeter, roots=roots)
                 next_notif = time.time() + 300
 
             wait = next_write - time.time()
@@ -492,6 +503,9 @@ def main():
                     job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]),
                                amp=True, level=amp.choose_level())
             drafted = None
+            if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
+                pause(15)
+                continue
             gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
                               or (j["mode"] == "reply" and str(j["target"]["author_id"]) in contacted))
             if job is None and desk and config.SECOND_VOICE:
