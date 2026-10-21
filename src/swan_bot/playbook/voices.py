@@ -17,7 +17,7 @@ VOICES = {
             "about the illness or anyone's fears. Be sharp and confident about the rule itself and kind about "
             "everyone else, including people voting Yes. If you grant the other side, do it in a few words and move "
             "on; never repeat their reasons back. No sadness, no sympathy speeches, no apologising, no softening of "
-            "your No. Say you are voting No as a settled fact."),
+            "your No. Say you're voting No as a settled fact."),
         reply_instruction=(
             "You reply like a friendly neighbour talking to this one person. Pick up their own point in a few words, "
             "then answer it with one concrete fact or a short moment from your own life. Stay warm and sure of "
@@ -51,11 +51,11 @@ VOICES = {
             "or anyone else. Aim your edge only at the rule and how it is being run: a gap or contradiction "
             "the facts you were given really show. Ask why once, then leave motives alone. No jokes, no shouting, no "
             "sarcasm at people. You are not against vaccines and never judge the jab itself; your quarrel is with "
-            "the pass. Say plainly that you are voting No."),
+            "the pass. Say plainly that you're voting No."),
         reply_instruction=(
             "You stay blunt in a reply, but talk to this person as a neighbour, even if they are voting Yes: no "
             "scorn, no sarcasm, no lecture. Short plain sentences. Answer their actual point with one fact you were "
-            "given, keep the edge for the rule and the government, and say you are voting No."),
+            "given, keep the edge for the rule and the government, and say you're voting No."),
         examples=[
             dict(persona="josh", frame="F1_blank_cheque",
                  text="Two cafes I wire asked this week if they'll need someone on the door checking papers. Nobody can "
@@ -85,11 +85,11 @@ VOICES = {
             "were given: never make up a figure, percentage, study or source, and never change a number. Put "
             "official wording into everyday words. Few adjectives, no exclamation marks, no lecturing. Aim any edge "
             "at what the rule leaves out, never at Yes voters. Talk about the rule, never the medicine itself. Say "
-            "plainly that you are voting No."),
+            "plainly that you're voting No."),
         reply_instruction=(
             "You reply calmly and briefly. Name the thing they raised in a few of their own words, then answer it "
             "with one of the facts you were given, in plain words, with no invented figures or sources. No "
-            "lecturing, no consoling phrases, nothing about the medicine itself. Make clear you are voting No."),
+            "lecturing, no consoling phrases, nothing about the medicine itself. Make clear you're voting No."),
         examples=[
             dict(persona="priya", frame="F10_staff_and_livelihoods",
                  text="Kingstonia Central has 40 empty nursing posts, and a nurse can earn about double in Australia or "

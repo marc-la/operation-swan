@@ -86,6 +86,7 @@ class Generator:
         self.no_json_mode = set()             # models that refused response_format
         self.no_schema = set()                # models that refused a JSON schema (json_object still works)
         self.no_reasoning = set()             # models that refused reasoning_effort
+        self.no_cap = set()                   # reasoning models that spend max_tokens on thinking (empty answers)
         self.calls = {}                       # model -> successful calls this run
         self._lock = threading.Lock()         # scripts may call from several threads
         self._local = threading.local()
@@ -145,8 +146,9 @@ class Generator:
             except openai.NotFoundError:
                 self.parked[model] = time.time() + 24 * 3600
                 print(f"{prov} {model}: not available, skipped")
-            except (openai.InternalServerError, openai.APITimeoutError, openai.APIConnectionError):
-                self.parked[model] = time.time() + 120
+            except (openai.InternalServerError, openai.APITimeoutError, openai.APIConnectionError) as e:
+                self.parked[model] = time.time() + 120      # printed: silent parks hid a night on the fallbacks
+                print(f"{prov} {model}: {type(e).__name__}, parked 2 min (calls this run: {self.calls.get(model, 0)})")
             except openai.APIError as e:
                 print(f"{prov} {model} error:", type(e).__name__, str(e)[:120])
                 self.parked[model] = time.time() + 300
@@ -172,7 +174,8 @@ class Generator:
     def _call(self, prov, model, system, user, json_mode, schema=None, reasoning=None, max_tokens=None,
               temperature=0.9):
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        kw = dict(model=model, max_tokens=max_tokens or (8192 if json_mode else 4096), temperature=temperature,
+        cap = max_tokens if model not in self.no_cap else None
+        kw = dict(model=model, max_tokens=cap or (8192 if json_mode else 4096), temperature=temperature,
                   messages=msgs)
         if reasoning and model not in self.no_reasoning:
             kw["reasoning_effort"] = reasoning
@@ -203,7 +206,13 @@ class Generator:
                 continue
             self._count(model)
             self._local.finish = r.choices[0].finish_reason
-            return (r.choices[0].message.content or "").strip()
+            text = (r.choices[0].message.content or "").strip()
+            if not text and cap and r.choices[0].finish_reason == "length":
+                # a reasoning model (gpt-oss-120b) thinks inside max_tokens: 96 empty drafts on 20-21 Oct at 600
+                self.no_cap.add(model)
+                print(f"{prov} {model}: empty answer at max_tokens={cap} (thinking); asking again without the cap")
+                return self._call(prov, model, system, user, json_mode, schema, reasoning, None, temperature)
+            return text
 
     @property
     def last_finish(self):

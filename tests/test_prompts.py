@@ -164,6 +164,9 @@ def test_post_meta_valid_and_in_prompt():
             assert meta["close"] is None and not meta["closing_question"] and "real question" not in u
             continue
         end = "real question" if meta["ask_kind"] == "frame" else experiment.ASK_KINDS[meta["ask_kind"]][len("End with one "):]
+        if meta["shape"] == "confession":                                # its opening carries the No
+            assert "say plainly" not in u and "voting No anyway" in u
+            continue
         if meta["close"] == "verdict_last":
             assert not meta["closing_question"] and u.index(end) < u.index("say plainly") < u.index("hashtag")
         else:

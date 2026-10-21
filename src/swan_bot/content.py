@@ -520,8 +520,10 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
     ending = ("End with one real question that readers answer from their own life, never a rhetorical one" +
               (f", along the lines of this one but in your own words: {question}" if question else ".")
               if ask_kind == "frame" else experiment.ASK_KINDS[ask_kind])
-    verdict = ["Then say plainly that you're voting No.",
-               f"Right after that, add this line word for word: {catch}" if catch else ""]
+    # the confession opening already says "voting No": a second verdict beat made drafts say it twice (21 Oct smoke)
+    verdict = ["" if key == "confession" else "Then say plainly that you're voting No.",
+               f"{'Then' if key == 'confession' else 'Right after that,'} add this line word for word: {catch}"
+               if catch else ""]
     if close == "verdict_last":                 # the question moves before the verdict; the post ends on the No
         closing = [ending.replace("End with one", "Then ask one", 1)] + verdict
     else:
