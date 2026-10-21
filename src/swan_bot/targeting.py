@@ -10,7 +10,7 @@ import time
 
 import capturethenarrative as ctn
 
-from . import config, content
+from . import config, content, feeds
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption", re.I)
@@ -166,11 +166,21 @@ def age_h(post):
     return (dt.datetime.now(dt.timezone.utc) - created).total_seconds() / 3600
 
 
-class Targeter:
-    """Collects candidate targets every few minutes and hands out the best one."""
+def hour_of(ts=None):
+    return dt.datetime.fromtimestamp(ts or time.time(), dt.timezone.utc).strftime("%Y-%m-%dT%H")
 
-    def __init__(self, social, log=print):
+
+class Targeter:
+    """Collects candidate targets every few minutes and hands out the best one.
+
+    The funnel (todo/21 G12): every citizen item we read (a citizen's post or reply, not a repost, under
+    TARGET_MAX_AGE_H old) gets one record in self.items, from first sight to an end: "answered", "skipped" (a reason
+    we chose not to answer) or "lost" (a reason we failed to). Until then it is "pending", with what it waits for.
+    Skips, waits and losses go to the action log one line each; every refresh record carries the per-hour counts."""
+
+    def __init__(self, social, log=print, snapshot=None):
         self.social, self.log = social, log
+        self.snapshot = snapshot     # path: write what we read for swan-blue (the live bot only), feeds.py
         self.accounts = {}           # account_id -> account dict ({} if unreadable)
         self.stance = {}             # citizen id -> "ok" | "firm" (from their recent posts)
         self.candidates = {}         # post_id -> candidate dict
@@ -179,9 +189,28 @@ class Targeter:
         self.feed_posts = []         # last Latest + Trending read (the amplifier's filler-like pool)
         self.trending_ids = []       # last Trending order (the amplifier records our posts' best rank)
         self.trending_posts = []     # last Trending read, with rank_position and global_hot_score (pulse.py)
+        self.trending_at = None      # ...and when it was read
         self.headlines = []          # the papers' article titles of the last 24 h, newest first (pulse.py)
         self.next_refresh = 0.0
+        self.refreshes = 0
         self.latest_seen = 0         # newest Latest post id read so far: each refresh pages back to it
+        self.bands = []              # [[cursor, stop_id]]: Latest stretches not read yet, newest first (G2)
+        self.recent_latest = []      # Latest posts of the last feeds.SNAPSHOT_KEEP_S (the snapshot)
+        self.items = {}              # post_id -> funnel record: h (hour first seen), c (created), o, why, src
+
+    # ---- saved across restarts (G3) ----------------------------------------------------------
+    def dump(self):
+        """What a restart needs: the read position, the queue and the funnel (bot.save_state)."""
+        cut = time.time() - 48 * 3600
+        return dict(latest_seen=self.latest_seen, bands=self.bands, candidates=list(self.candidates.values()),
+                    items={str(k): v for k, v in self.items.items() if v["c"] >= cut})
+
+    def load(self, saved):
+        saved = saved or {}
+        self.latest_seen = saved.get("latest_seen", 0)
+        self.bands = [list(b) for b in saved.get("bands", [])]
+        self.candidates = {c["post"]["post_id"]: c for c in saved.get("candidates", [])}
+        self.items = {int(k): v for k, v in saved.get("items", {}).items()}
 
     # ---- who is a citizen -------------------------------------------------------------------
     def account(self, account_id):
@@ -195,14 +224,9 @@ class Targeter:
         return self.accounts[account_id]
 
     def is_citizen(self, account_id):
-        """Seeded before launch and not verified. Team accounts were all created after launch."""
-        if account_id <= config.OFFICIAL_MAX_ID:
-            return False
-        a = self.account(account_id)
-        if not a or a.get("verified"):
-            return False
-        created = a.get("created_at")
-        return created < config.LAUNCH_UTC if created else account_id <= config.CITIZEN_MAX_ID
+        """The id rule (config.is_citizen), no read: a get_account that hit the rate limit used to make a citizen
+        look like a bot, and the item was never read again (G4)."""
+        return config.is_citizen(account_id)
 
     def undecided(self, account_id):
         """Read the citizen's last posts once: skip anyone who has stated a firm vote (unless softened)."""
@@ -220,30 +244,100 @@ class Targeter:
             self.stance[account_id] = verdict
         return self.stance[account_id] == "ok"
 
+    # ---- the funnel (G12) -------------------------------------------------------------------
+    def _item(self, post, source):
+        """The funnel record of a citizen item, made on first sight."""
+        pid = post["post_id"]
+        if pid not in self.items:
+            created = dt.datetime.fromisoformat(post["created_at"].replace("Z", "+00:00")).timestamp()
+            self.items[pid] = dict(h=hour_of(), c=created, o="pending", why="new", src=source,
+                                   reply=bool(post.get("reply_to_post_id")))
+        return self.items[pid]
+
+    def _end(self, post, outcome, why, source=None):
+        it = self._item(post, source)
+        if it["o"] == "answered" or (it["o"], it["why"]) == (outcome, why):
+            return
+        it["o"], it["why"] = outcome, why
+        self.log({"act": {"skipped": "skip", "lost": "lost", "pending": "wait"}[outcome], "why": why,
+                  "post_id": post["post_id"], "author_id": post.get("author_id"), "source": it["src"],
+                  "reply": it["reply"], "age_min": round((time.time() - it["c"]) / 60, 1)})
+
+    def skip(self, post, why, source=None):
+        """We chose not to answer this citizen item (final)."""
+        self._end(post, "skipped", why, source)
+
+    def lose(self, post, why, source=None):
+        """We meant to answer it and couldn't (final)."""
+        self._end(post, "lost", why, source)
+
+    def wait(self, post, why, source=None):
+        """Still pending, for this reason (logged once per reason)."""
+        self._end(post, "pending", why, source)
+
+    def answered(self, post, mode):
+        """bot.py, after a write to a citizen's item: a reply or reply-back ends it as answered."""
+        if mode in ("reply", "reply_back") and self.is_citizen(post.get("author_id")):
+            it = self._item(post, "reply_back" if mode == "reply_back" else None)
+            it["o"], it["why"] = "answered", mode
+
+    def funnel(self, hours=3):
+        """{hour: {seen, answered, skipped: {why: n}, lost: {why: n}, pending: {why: n}}} for the items first seen
+        in each of the last `hours` hours. seen = answered + skipped + lost + pending, exactly."""
+        out = {}
+        keep = {hour_of(time.time() - 3600 * i) for i in range(hours)}
+        for it in self.items.values():
+            if it["h"] not in keep:
+                continue
+            f = out.setdefault(it["h"], dict(seen=0, answered=0, skipped={}, lost={}, pending={}))
+            f["seen"] += 1
+            if it["o"] == "answered":
+                f["answered"] += 1
+            else:
+                f[it["o"]][it["why"]] = f[it["o"]].get(it["why"], 0) + 1
+        return dict(sorted(out.items()))
+
+    def _expire(self):
+        """Items still pending past TARGET_MAX_AGE_H are lost, with what they were waiting for."""
+        cut = time.time() - config.TARGET_MAX_AGE_H * 3600
+        for pid, it in list(self.items.items()):
+            if it["o"] == "pending" and it["c"] < cut:
+                c = self.candidates.pop(pid, None)
+                self.lose(c["post"] if c else dict(post_id=pid), f"expired:{it['why']}")
+            elif it["c"] < time.time() - 48 * 3600:
+                del self.items[pid]
+        self.candidates = {k: c for k, c in self.candidates.items() if age_h(c["post"]) <= config.TARGET_MAX_AGE_H}
+
     # ---- collection -------------------------------------------------------------------------
     def _consider(self, post, source, context=None):
         pid = post["post_id"]
-        if pid in self.candidates or post.get("kind") == "repost":
+        if pid in self.candidates or post.get("kind") == "repost" or not self.is_citizen(post.get("author_id")):
+            return                                    # team bots, ~98% of Latest: not in the funnel
+        if age_h(post) > config.TARGET_MAX_AGE_H or (pid in self.items and self.items[pid]["o"] != "pending"):
             return
+        it = self._item(post, source)
+        if it["why"] != "new":
+            return                                    # judged before and waiting (handed out, routed...)
         body = post.get("body") or ""
-        if age_h(post) > config.TARGET_MAX_AGE_H or not REFERENDUM.search(body + " " + (context or "")):
-            return
-        if not self.is_citizen(post["author_id"]):
-            return
+        if not REFERENDUM.search(body + " " + (context or "")):
+            return self.skip(post, "off_topic", source)
         frame, wants = classify(body)
         if not frame:
-            return
+            return self.skip(post, "regex_filter", source)
         score = (FRAME_PRIORITY.get(frame, 1.5) + (2.0 if soft_yes(body) else 0.0)
                  + (1.5 if YES_REASON.search(body) else 0.0)
                  + 2.0 * max(0.0, 1 - age_h(post) / config.TARGET_MAX_AGE_H) + (1.0 if source == "news" else 0.0)
                  + (config.TRENDING_THREAD_BONUS if source == "thread" else 0.0))
         self.candidates[pid] = dict(post=post, frame=frame, wants=wants, context=context, source=source, score=score,
                                     identity=identity(body))
+        it["why"] = "queued"
 
     def refresh(self, force=False):
+        """Read everything new; True when it ran (bot.py saves the state then)."""
         if not force and time.time() < self.next_refresh:
-            return
+            return False
         self.next_refresh = time.time() + config.REFRESH_S
+        self.refreshes += 1
         before = len(self.candidates)
         fresh_citizen, newest, heads, papers_read = 0, None, [], False
         # 1) news threads: citizens reply under the papers' article posts
@@ -279,19 +373,22 @@ class Targeter:
                         self.journalist.setdefault(p["post_id"], p)
             except ctn.APIError:
                 pass
-        # 3) feeds: citizen posts in Latest/Trending, and citizen replies under top referendum posts in Trending
+        # 3) feeds: citizen posts in Latest/Trending, and citizen replies under top referendum posts in Trending.
+        # Latest every refresh; Trending every TRENDING_EVERY-th (the 10/min feed budget, G1)
         latest = self._latest()
         for p in latest["posts"]:
             self._consider(p, "latest")
-        try:
-            trending = list(self.social.feed_trending(limit=50))
-        except ctn.APIError:
-            trending = []
+        trending = []
+        if (self.refreshes - 1) % config.TRENDING_EVERY == 0 or not self.trending_posts:
+            try:
+                trending = list(feeds.read(self.social, "feed_trending", "swan-bot", limit=50))
+            except ctn.APIError:
+                pass
         for p in trending:
             self._consider(p, "trending")
         if trending:
             self.trending_ids = [p["post_id"] for p in trending]
-            self.trending_posts = trending
+            self.trending_posts, self.trending_at = trending, feeds.now_iso()
         top = [p for p in trending if REFERENDUM.search(p.get("body") or "")][:config.TRENDING_THREADS]
         for p in top:
             try:
@@ -301,55 +398,102 @@ class Targeter:
                 pass
         feed_posts = latest["posts"] + trending
         self.feed_posts = feed_posts or self.feed_posts
-        # forget stale candidates
-        self.candidates = {k: c for k, c in self.candidates.items() if age_h(c["post"]) <= config.TARGET_MAX_AGE_H}
+        self._snapshot(latest["posts"])
+        self._expire()
         cit = [p for p in latest["posts"] if config.is_citizen(p["author_id"]) and p.get("kind") != "repost"]
         self.log({"act": "refresh", "candidates": len(self.candidates), "new": len(self.candidates) - before,
                   "journalist_posts": len(self.journalist), "citizen_news_replies_last_hour": fresh_citizen,
                   # citizen hours (todo/19): what citizens wrote in Latest since the last refresh, and whether we
-                  # read all of it (gap: the page cap or the feed budget stopped us short of the last post seen)
+                  # read all of it (gap: stretches left for the next refresh, G2)
                   "latest_read": len(latest["posts"]), "latest_pages": latest["pages"], "latest_gap": latest["gap"],
+                  "latest_bands": len(self.bands), "latest_error": latest["error"],
+                  "feed_remaining": latest["remaining"], "trending_read": bool(trending),
                   "citizen_latest_posts": sum(not p.get("reply_to_post_id") for p in cit),
                   "citizen_latest_replies": sum(bool(p.get("reply_to_post_id")) for p in cit),
-                  "citizen_latest_authors": len({p["author_id"] for p in cit})})
+                  "citizen_latest_authors": len({p["author_id"] for p in cit}),
+                  "funnel": self.funnel()})
+        return True
 
     def _latest(self):
-        """Latest back to the newest post the last refresh saw, in 100-post pages, while the feed budget lasts."""
-        posts, cursor, pages, gap = [], None, 0, False
-        while True:
-            try:
-                page = self.social.feed_latest(limit=100, cursor=cursor)
-            except ctn.APIError:
-                gap = True
-                break
-            pages += 1
-            new = [p for p in page if p["post_id"] > self.latest_seen]
-            posts += new
-            if len(new) < len(page) or not page.next_cursor or not self.latest_seen:
-                break                                 # caught up (the first refresh reads one page)
-            rl = self.social.rate_limit
-            if pages >= config.LATEST_PAGES or (rl and rl.remaining <= config.FEED_READS_SPARE):
-                gap = True
-                break
-            cursor = page.next_cursor
-        if posts:
-            self.latest_seen = max(self.latest_seen, max(p["post_id"] for p in posts))
-        return dict(posts=posts, pages=pages, gap=gap)
+        """New Latest posts down to the newest one read before, then the stretches earlier refreshes stopped short
+        of (bands, newest first), in 100-post pages while LATEST_PAGES and the feed budget last. A stretch we stop
+        in is kept as [cursor, stop id] for the next refresh (G2) and saved with the state (G3), so no page is
+        skipped. New posts go first: their authors may still be online. A band that reaches posts older than
+        TARGET_MAX_AGE_H is done (nothing in it could be answered)."""
+        posts, pages, error, left, top = [], 0, None, [], None
+        for cursor, stop in [[None, self.latest_seen]] + self.bands:
+            while True:
+                rl = self.social.rate_limit
+                if pages and (pages >= config.LATEST_PAGES or (rl and rl.remaining <= config.FEED_READS_SPARE)):
+                    if cursor is not None:            # an unread top needs no band: the next refresh starts there
+                        left.append([cursor, stop])
+                    break
+                try:
+                    page = feeds.read(self.social, "feed_latest", "swan-bot", limit=100, cursor=cursor)
+                except ctn.APIError as e:
+                    error = e.status
+                    if cursor is not None:
+                        left.append([cursor, stop])
+                    break
+                pages += 1
+                if cursor is None and page:
+                    top = max(p["post_id"] for p in page)
+                new = [p for p in page if p["post_id"] > stop]
+                posts += new
+                if (len(new) < len(page) or not page.next_cursor or not stop or not new or new[-1]["post_id"] <= stop + 1
+                        or age_h(new[-1]) > config.TARGET_MAX_AGE_H):
+                    break                             # reached the stop (the very first refresh reads one page)
+                cursor = page.next_cursor
+        if top:
+            self.latest_seen = max(self.latest_seen, top)
+        if len(left) > config.LATEST_MAX_BANDS:       # never expected with one reader; logged, not silent
+            for cursor, stop in left[config.LATEST_MAX_BANDS:]:
+                self.log({"act": "lost", "why": "latest_band_dropped", "stop_id": stop})
+            left = left[:config.LATEST_MAX_BANDS]
+        self.bands = left
+        rl = self.social.rate_limit
+        return dict(posts=posts, pages=pages, gap=bool(left), error=error, remaining=rl.remaining if rl else None)
+
+    def _snapshot(self, new_posts):
+        """The Latest posts of the last few minutes and the last Trending read, for swan-blue (feeds.py)."""
+        if not self.snapshot:
+            return
+        cut = time.time() - feeds.SNAPSHOT_KEEP_S
+        merged = {p["post_id"]: p for p in self.recent_latest + new_posts if feeds.created_ts(p) >= cut}
+        self.recent_latest = sorted(merged.values(), key=lambda p: -p["post_id"])
+        try:
+            feeds.write_snapshot(self.recent_latest, self.trending_posts, self.trending_at, path=self.snapshot)
+        except OSError as e:
+            self.log({"act": "snapshot_error", "error": str(e)})
 
     # ---- hand out targets -------------------------------------------------------------------
+    def requeue(self, cand, why):
+        """Put a handed-out candidate back, pending for `why` (G8): "no_voice" is tried again at the next slot;
+        anything else (a failed draft, no model answering) after a backoff of 2, 4, 8... up to 30 min, until it ages
+        out (then it is lost as expired:<why>)."""
+        if why != "no_voice":
+            cand["tries"] = cand.get("tries", 0) + 1
+            cand["not_before"] = time.time() + min(120 * 2 ** (cand["tries"] - 1), 1800)
+        self.candidates[cand["post"]["post_id"]] = cand
+        self.wait(cand["post"], why, cand.get("source"))
+
     def next_target(self, our_ids, replied_posts, contacted):
         """Best candidate whose author is undecided and not contacted recently, or None. Posts under FRESH_MIN old
         go first: their author may still be online to answer."""
         fresh = lambda c: config.FRESH_BONUS if age_h(c["post"]) * 60 < config.FRESH_MIN else 0.0
+        t = time.time()
         for pid, c in sorted(self.candidates.items(), key=lambda kv: -(kv[1]["score"] + fresh(kv[1]))):
-            author = c["post"]["author_id"]
-            if pid in replied_posts or author in our_ids or str(author) in contacted:
-                self.candidates.pop(pid, None)
+            if c.get("not_before", 0) > t:
+                continue                              # requeued: backing off
+            post, author = c["post"], c["post"]["author_id"]
+            why = ("replied" if pid in replied_posts else "ours" if author in our_ids else
+                   "cooldown" if str(author) in contacted else "decided" if not self.undecided(author) else None)
+            self.candidates.pop(pid, None)
+            if why:
+                self.skip(post, why, c.get("source"))
                 continue
-            if not self.undecided(author):
-                self.candidates.pop(pid, None)
-                continue
-            return self.candidates.pop(pid)
+            self.wait(post, "drafting", c.get("source"))
+            return c
         return None
 
     def next_journalist(self, replied_posts, journalist_last):

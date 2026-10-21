@@ -24,8 +24,11 @@ class Targeter:
     def __init__(self, *cands):
         self.candidates = {c["post"]["post_id"]: c for c in cands}
 
-    def next_target(self, our_ids, replied, contacted):
+    def next_target(self, our_ids, replied, contacted, engaged=()):
         return self.candidates.pop(next(iter(self.candidates))) if self.candidates else None
+
+    def requeue(self, cand, why):
+        self.candidates[cand["post"]["post_id"]] = cand
 
 
 def test_citizen_candidate_beats_a_due_thread_job():

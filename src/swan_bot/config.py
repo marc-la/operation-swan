@@ -60,6 +60,13 @@ JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
 POST_EVERY_N = 4                    # persona posts: at most 1 in every 4 writes (replies come first)
 IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothing better to write
 
+# ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
+# G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
+# Latest. The bot is the one Latest reader (data/latest_snapshot.json for swan-blue, feeds.py), Trending every 3rd
+# refresh (6 min). Every feed read is logged to logs/feed_reads.jsonl.
+TRENDING_EVERY = 3
+LATEST_MAX_BANDS = 6                # unread Latest stretches kept for later refreshes (G2); beyond it, logged as lost
+
 # ---- amplification (docs/06-strategy/amplification.md). On only with --amplify; touch AMPLIFY_OFF to pause it live ----
 AMP_OFF_FILE = ROOT / "AMPLIFY_OFF"
 MAX_BOOSTERS = 36                   # like-only accounts (never post, so they can't be suspended under the published rules)

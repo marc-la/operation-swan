@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import pathlib
 import random
 import secrets
 import time
@@ -23,7 +24,7 @@ import time
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, experiment, humanize, pulse, quality, themes, watch
+from . import batch, config, content, experiment, feeds, humanize, pulse, quality, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, messengers, soft_yes, stance, target_class
@@ -456,10 +457,11 @@ def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted):
         return None
     rec = accounts.eligible(cand["frame"], prefer=messengers(cand.get("identity")))
     if not rec:
-        targeter.candidates[cand["post"]["post_id"]] = cand      # keep it for the next slot
+        targeter.requeue(cand, "no_voice")                       # keep it for the next slot
         return None
     return dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"], wants=cand["wants"],
-                context=cand["context"], source=cand["source"], identity=cand.get("identity"))
+                context=cand["context"], source=cand["source"], identity=cand.get("identity"),
+                cand=cand)                                       # the drafting path requeues it on failure (G8)
 
 
 def pick_job(job, citizen, amp):
@@ -493,6 +495,9 @@ def main():
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --live")
     ap.add_argument("--batch", type=int, default=0, help=f"draft up to N replies / second voices / persona posts per LLM "
                     f"call (2-{batch.MAX_SIZE}; 0 = one per call). docs/04-technical/llm-batching.md")
+    ap.add_argument("--fixture", type=pathlib.Path, help="dry run: read Latest and Trending from this snapshot "
+                    "(e.g. a copy of the box's data/latest_snapshot.json). Default data/feed_fixture.json, made once "
+                    "from one live read. Dry runs never page the live feeds (todo/21 G1)")
     ap.add_argument("--no-humanize", action="store_true", help="send drafts exactly as the gate passed them, without "
                     "the personas' typing habits (humanize.py)")
     args = ap.parse_args()
@@ -507,9 +512,12 @@ def main():
     gen = Generator(code, allow_qwen=args.allow_qwen)
     gen.on_park = lambda model, until, why: log({"act": "llm_park", "model": model, "why": why,
                                                  "until": dt.datetime.fromtimestamp(until, dt.timezone.utc).isoformat()})
-    targeter = Targeter(social, log=log)
+    # the live bot is the one Latest reader and shares what it read (feeds.py); a dry run reads a saved fixture
+    targeter = (Targeter(social, log=log, snapshot=feeds.SNAPSHOT_FILE) if args.live else
+                Targeter(feeds.FixtureFeeds(social, feeds.fixture(social, args.fixture)), log=log))
     accounts = Accounts(social, args.live)
     state = load_json(config.STATE_FILE, {})
+    targeter.load(state.pop("targeter", None))          # read position, queue and funnel survive a restart (G3)
     for key, default in (("replied_posts", []), ("contacted", {}), ("recent_texts", []), ("second_voice", []),
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
                          ("theme_log", []), ("turns", {})):
@@ -571,7 +579,7 @@ def main():
             # pending reply-backs survive a restart (their notifications are already marked resolved)
             state["queue"] = [dict(username=j["rec"]["username"], target=j["target"], our_text=j["our_text"],
                                    tries=j.get("tries", 0)) for j in queue if j["mode"] == "reply_back"]
-            save_json(config.STATE_FILE, state)
+            save_json(config.STATE_FILE, {**state, "targeter": targeter.dump()})
 
     end = time.time() + args.hours * 3600
     next_write = next_notif = 0.0
@@ -598,9 +606,8 @@ def main():
         for r in rejected:
             stats["rejected"][r["why"]] = stats["rejected"].get(r["why"], 0) + 1
             cand = r["job"].get("cand")
-            if cand and not cand.get("tries"):                # a rejected reply target gets one more go later
-                cand["tries"] = 1
-                targeter.candidates[cand["post"]["post_id"]] = cand
+            if cand:                                          # a rejected reply target goes back, with a backoff
+                targeter.requeue(cand, f"rejected:{r['why']}")
 
     while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
         job = None
@@ -628,7 +635,8 @@ def main():
             # No retirement by action count: accounts are lost through moderator-hidden posts, not actions
             # (scoring guide s3). Parking by hidden-post count is a TODO (TODO.md, "Hidden-post watch").
             our_ids = {r.get("account_id") for r in accounts.records if r.get("account_id")}
-            targeter.refresh()
+            if targeter.refresh():
+                save_state()
             pulse_now = pulse.update(state, targeter, our_ids, gen, log)
             if amp:
                 amp.tick()
@@ -709,7 +717,7 @@ def main():
                         rec = accounts.assignable(cand["frame"], exclude=desk.busy("reply", picked),
                                                   prefer=messengers(cand.get("identity")))
                         if not rec or cand["post"]["author_id"] in authors:
-                            targeter.candidates[cand["post"]["post_id"]] = cand      # keep it for the next slot
+                            targeter.requeue(cand, "no_voice")                       # keep it for the next slot
                             break
                         authors.add(cand["post"]["author_id"])
                         picked.append(dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"],
@@ -834,6 +842,7 @@ def main():
 
             if target:
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
+                targeter.answered(target, mode)          # the funnel (todo/21 G12)
             if mode in ("reply", "reply_back"):           # either way, don't approach them again for 3 days
                 state["contacted"][str(target["author_id"])] = time.time()
             if mode == "reply_back":                      # a conversation turn (todo/20: TURNS_PER_SESSION)
