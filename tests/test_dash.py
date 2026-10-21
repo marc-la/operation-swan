@@ -162,6 +162,6 @@ def test_back_to_back_parks_and_deploys_are_bundled(tmp_path):
     ctx, html = page(root)
     kinds = [(r["kind"], r["what"]) for r in ctx["activity"]]
     assert kinds == [("bad", "post hidden"), ("group", "ops ×5"), ("write", "reply"), ("group", "LLM parked ×2")]
-    assert ctx["activity"][1]["text"] == ("2 deploys (latest def5678 Marc: two) · "
+    assert ctx["activity"][1]["text"] == ("2 deploys (latest def5678 two) · "
                                           "gemini-c, gemini-b, gemini-a: daily quota until 17:00")
     assert html.count("<details class=\"x\"") == 2

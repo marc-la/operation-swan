@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import subprocess
 from zoneinfo import ZoneInfo
 
@@ -293,7 +294,8 @@ def gather(root, now, service):
         if ts(t):
             msg = msg.removeprefix("[swan-ec2] ")
             if msg.startswith("deployed"):
-                rows.append(dict(t=ts(t), who="", what="deploy", text=short(msg.removeprefix("deployed ")),
+                subject = re.sub(r"^(\w{7}) [^:]{1,60}: ", r"\1 ", msg.removeprefix("deployed "))   # drop the author
+                rows.append(dict(t=ts(t), who="", what="deploy", text=short(subject),
                                  kind="event", family="ops"))
             elif "hidden by the moderator" in msg:          # deploy/healthcheck + swan-watch: a voice lost a post
                 rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="bad"))
