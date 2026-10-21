@@ -6,7 +6,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from swan_bot import content  # noqa: E402
+from swan_bot import content, quality  # noqa: E402
 from swan_bot.playbook import characters  # noqa: E402
 from swan_bot.playbook.characters import CANDIDATES, CHARACTERS  # noqa: E402
 
@@ -14,8 +14,9 @@ PERSONA_KEYS = {p["key"] for p in content.PERSONAS}
 PROFILE = dict(age=int, people=list, problem=str, covid=str, lines=list, now=list)
 COUNTS = dict(people=(3, 5), lines=(3, 5), now=(5, 8))
 REGISTERS = {"warm", "fed_up", "plain"}
-# digits allowed in profile text: true in-game numbers only (setting.md); everything else is written in words
-ALLOWED_NUMBERS = {"12", "14", "40", "30", "150", "1,000", "120,000", "5.50", "35.2", "75,000", "68,000"}
+# digits allowed in profile text: true in-game numbers only (the gate's own list, which includes every active fact's
+# figures); everything else is written in words
+ALLOWED_NUMBERS = quality.ALLOWED_NUMBERS | quality.ALLOWED_PERCENTS
 BANNED = re.compile(r"side.?effect|safety|unsafe|injur|adverse|untested|experimental|too new|trial|"
                     r"tyrann|sheep|wake up|sinister|early voting|polling|ballot box|on the 2nd|2 Nov|"
                     r"Hawthorne|Castillo|Singh|Whitlock|Reyes-Hale|Brotherston|Abernathy", re.I)
@@ -74,7 +75,7 @@ def test_content_rules():
 
 
 def test_lines_not_copied_from_facts_or_angles():
-    source = " ".join(list(content.FACTS.values()) + [f["angle"] for f in content.FRAMES.values()])
+    source = " ".join([f["text"] for f in content.fact_store.TABLE.values()] + [f["angle"] for f in content.FRAMES.values()])
     try:
         from swan_bot.playbook import craft
         source += " " + " ".join(c for pl in craft.PILLARS.values() for c in pl["catchphrases"])

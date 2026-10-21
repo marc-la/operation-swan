@@ -304,7 +304,7 @@ def test_journalist_storylines_rotate():
         assert "Muzhi" in j and "quote" in j and "12 words or fewer" in j
         keys.append(meta["storyline"])
     assert all(a != b for a, b in zip(keys, keys[1:]))
-    assert set(keys) == {k for k, _ in content.STORYLINES}
+    assert set(keys) == {k for k, *_ in content.STORYLINES}
 
 
 def test_catchphrase_in():

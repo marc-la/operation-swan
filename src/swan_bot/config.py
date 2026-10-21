@@ -109,6 +109,11 @@ PULSE_MAX_CHARS = 600               # all its notes together
 PULSE_HOOK_FRESH_S = 6 * 3600       # a hook from a headline this new may open an amplified post (the news shape)...
 PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
 
+# ---- fact desk (todo/16, swan_bot/factdesk.py): new articles checked against content/facts.toml, hourly ----
+# A few calls a day (one per batch of new articles), so the strongest models go first; the rest of the chain after.
+# 3.8 and 3.6 Flash are 20 a day each on the bot's free key and shared with the amplified posts (AMP_MODELS).
+FACTDESK_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "openai/gpt-oss-120b", "gemini-3.5-flash-lite")
+
 # ---- experiment arms (swan_bot/experiment.py). The overnight experiments stopped 2026-10-21 (too little data) ----
 PIN = {"reply_mode": "reason_first"}   # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
 # One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).

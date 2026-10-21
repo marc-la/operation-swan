@@ -144,3 +144,24 @@ The "fitness landscape" idea, made concrete. Full reinforcement learning is over
 - **From ~22 Oct: a small cloud VM** (any cheap VPS or cloud free tier, or a uni server) running the single writer + collector 24/7 under `systemd` or `tmux`. Rules §5.1 allow cloud services for running our tools. Put `.env` on the VM only (mode 600), never in git, and use one IP (logins/registrations are 5/min per IP).
 - **Teammates don't SSH in to post.** They add drafts, personas and arguments through the shared DB or a small web page served by the VM, and the writer picks them up. The kill switch is a flag in the DB.
 - **Logs and DB backups** go to the VM disk plus a periodic copy (external storage is allowed for storing data).
+
+## 9. Fact desk: who reviews, when, how (2026-10-21)
+
+**Why.** The news moves daily, and our prompts state facts (on 21 Oct "no community spread" was one paper away from false). Not every edit is made by a strong model or a teammate who knows the setting. So the facts live in one validated file, and the papers are checked every hour.
+
+**Two feeds, two jobs.** Trending ([pulse](amplification.md#trending-pulse-2026-10-21)) decides *how we say it*. Only the organisers' papers (`sites.legitreal.com`) decide *what's true*: a Legit Social post never becomes a fact. **Principles stay, implications move:** the frames (the arguments, in `src/swan_bot/content.py`) change rarely and only by hand; the facts they lean on (`content/facts.toml`) follow the news.
+
+**The pieces.**
+- `content/facts.toml`: every fact the prompts may state (text, terse note, status, source, `checked`, extra numbers, `says` wording, optional frames). `tests/test_facts.py` validates every edit and `deploy/check.sh` runs it before a deploy, so a broken edit never goes live. `false_claims` there are rejected everywhere, drafts included (first entry: "no cases").
+- Each frame, rebuttal, storyline, lever and `WORLD` sentence names the facts its wording states (`requires`). While one is paused it is not used; character, persona and catchphrase lines matching a paused fact's `says` are left out, and the quality gate rejects drafts using that wording. A test checks `requires` and `says` agree, so a new claim can't slip into a frame unlinked.
+- `scripts/swan_factdesk.py` (EC2, hourly, read-only): new articles, one LLM call per batch, every item tied to a sentence quoted word for word from the article (an unverifiable quote is dropped). **Only removal is automatic:** a contradicted fact is paused in `data/facts_paused.json` (the bot picks it up on its next draft) and alerted ("fact `x` paused … Review: python scripts/facts_review.py"). Rewordings, new facts and argument ideas are proposals only. Opinion columns give ideas only.
+- `scripts/facts_review.py` (a laptop with a checkout of `main`): reads proposals and pauses from Mongo, applies a decision to `facts.toml` (or an angle idea to [frames-and-messengers](frames-and-messengers.md)), runs the tests, records the decision, and prints the commit. **A pause ends only with a commit:** it holds while the fact's `checked` is older than the pause, and every decision stamps `checked`. (The EC2 box can't push, so nobody edits the pause file to lift one.)
+
+**Who and when.**
+- **Within the hour of a pause alert** (on the dashboard; `logs/alerts.log`): whoever is on shift (narrative lead first, else Marc). Read the quote; then either accept the rewording (`--accept ID`, with `--text/--note` to fix it, `--says` if its meaning changed), retire the fact (`--accept ID --retire`), or reject the pause if the paper didn't really contradict it (`--reject ID`: the fact is re-affirmed as it is).
+- **Daily around the 9 pm Perth rollover:** the narrative lead runs `python scripts/facts_review.py` and goes through the open proposals. New facts need a human check against [setting](../01-competition/setting.md) and the article; a new figure becomes allowed in drafts once its fact is accepted. Angle ideas land in [frames-and-messengers](frames-and-messengers.md#angle-ideas-from-the-fact-desk); turning one into a frame is a code change.
+- Then `git commit -m "Facts: ..." -- content/facts.toml docs/06-strategy/frames-and-messengers.md` and `git push`. The approver is the commit author (attribution for the code handover); the bot is live with it in ~2 minutes.
+- A Claude session can do the same: "run `python scripts/facts_review.py --list`, then apply proposals 3 and 5".
+
+**Limits.** With no `ALERT_WEBHOOK_URL`, a pause alert only shows on the dashboard: someone has to look. If several pauses leave fewer than 4 frames live, the alert says LOW; with none live the bot drafts nothing (it retries every 5 min) until a review. The desk uses the bot's LLM chain (`config.FACTDESK_MODELS` first); with every model out of quota the articles wait for the next hour.
+

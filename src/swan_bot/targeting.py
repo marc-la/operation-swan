@@ -10,7 +10,7 @@ import time
 
 import capturethenarrative as ctn
 
-from . import config
+from . import config, content
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption", re.I)
@@ -103,7 +103,7 @@ def classify(text):
     if FIRM_YES.search(text) and not SOFT.search(text):
         return None, None
     for pattern, frame in DOUBTS:
-        if pattern.search(text):
+        if pattern.search(text) and content.frame_live(frame):     # a paused fact takes its frame out (todo/16)
             if not SOFT.search(text):
                 return None, None
             wants = []

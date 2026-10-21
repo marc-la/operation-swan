@@ -1,0 +1,9 @@
+[Unit]
+Description=Fact desk (scripts/swan_factdesk.py): new articles checked against content/facts.toml; read-only
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/home/ec2-user/ctn/.venv/bin/python scripts/swan_factdesk.py
+TimeoutStartSec=20min
