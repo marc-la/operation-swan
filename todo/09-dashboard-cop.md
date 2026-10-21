@@ -59,6 +59,14 @@ If the bot can't know a number yet (e.g. whether an account was suspended), **le
 ### 4. Activity log
 Newest first, last 30: time (Perth), persona, action, the first ~60 characters, a link to the post on Legit Social. LLM parks, deploys and alerts are interleaved as grey rows so cause and effect sit together. Rejected drafts and dry-run rows are not shown (they're counted in vitals).
 
+*Updated 2026-10-21:* our writes are shown as **conversations**, most recently active first. A closed row is one line: time of the latest activity, persona, the first ~110 characters, and for an amplified post `level · likes♥ replies↩ reposts⟲ · latest result`. Opening it shows the context in layers, each a further dropdown so the face value stays short:
+- what we answered (someone else's post or ours, how they lean, the feed it came from or the news story it sat under), then our full text;
+- **why**: the logged decisions in words (frame, lever, shape, opener, length, close, model), the persona's "today" line, deliberate typos with the clean draft, and the drafts rejected first with the reason. To change one, the knob lives in `src/swan_bot/`: frames `content.FRAMES`, levers `content.LEVERS`, shapes/hooks `content.HOOKS`, thread styles `content.THREAD_STYLES`, openers `content.OPENERS`, voices `playbook/voices.py`, length/close/ask `experiment.py`, typos `humanize.HANDS`, rejects `quality.py`, amplification `config.AMP_LEVELS`;
+- an amplified post's thread (first 3 replies, then "… N more"; answers sit under the pushback they answer), and **amplification**: planned vs done, who reposted, and the +1 h / +6 h results;
+- a reply's second voice and any reply-back under it, so "they answered" bumps the conversation back to the top.
+
+Rejected drafts attach by `draft_id` (logged since 2026-10-21); older records attach to the next write by the same persona and mode within 15 min. Reply-backs nest by `parent_post` (also new), otherwise they show as their own row with our message as context.
+
 ### Labels
 Times are always Perth (AWST) and say so once in the header. "Today" always means "since 9pm Perth" (when the competition day rolls over). Numbers are shown against their limit (`142 / 180`, not `142`).
 
@@ -81,7 +89,7 @@ The box holds the team code, every bot password and the only live writer, so thi
 | Someone reads the page | HTTPS + nginx basic auth. One long random password (≥20 chars) shared in the team password manager or a DM, never in git or Discord channels. `limit_req` on the location to slow guessing |
 | No domain for a certificate | Use `13-210-120-238.sslip.io` (resolves to our Elastic IP) with certbot/Let's Encrypt |
 | Secrets end up on the page | The builder never opens `.env` or `secrets/`; it renders an explicit list of fields, not whole records. `swan-dash.service` makes `.env`, `secrets/` and `~/.ssh` inaccessible to it and gives it no network. `tests/test_dash.py` puts a fake team code in `.env`, `secrets/` and the environment and fails if it appears on the page |
-| Untrusted text (rivals' and citizens' posts in `target_text`, LLM output) carries script | Jinja autoescape on; we don't render `target_text` at all; header `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self'` so no script can run even if escaping fails |
+| Untrusted text (rivals' and citizens' posts in `target_text`, LLM output) carries script | Jinja autoescape on; `target_text` is shown (since 2026-10-21, for reply context) as escaped text with links replaced by `[link]`; header `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self'` so no script can run even if escaping fails |
 | nginx itself has a bug | Security group opens only 80 (redirect + certificate renewal) and 443. nginx runs as its own user and can read only `/var/www/swan`. `dnf-automatic` applies security updates. `server_tokens off`, `autoindex off`, no proxy or CGI blocks |
 | A form or button later becomes a write path | v1 has none. Score entry is over SSH. A pause button would be a new design and needs its own review |
 | SSH is the real door | Unchanged: keys only, no passwords. The AWS item "SSH from team IPs only" in [todo/README](README.md#ops-leftovers-small-marc) is still worth doing even though the page doesn't need it |

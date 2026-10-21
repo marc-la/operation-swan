@@ -18,6 +18,7 @@ def iso(minutes_ago):
 
 
 def make_root(tmp_path, actions=(), status=None, score=None, health=""):
+    tmp_path.mkdir(exist_ok=True)
     (tmp_path / "logs").mkdir()
     (tmp_path / "data").mkdir()
     (tmp_path / "secrets").mkdir()
@@ -105,7 +106,10 @@ def test_no_secret_and_no_script_reaches_the_page(tmp_path, monkeypatch):
     assert CANARY not in html
     assert html.count("<script") == 1 and '<script src="app.js" defer></script>' in html    # no inline script
     assert "<img" not in html and "&lt;script&gt;" in html
-    assert "alert('target')" not in html                 # other people's text is never rendered
+    evil = dict(write(3), target_post=99, target_text="<script>alert('t')</script> see https://evil.example/x")
+    _, html = page(make_root(tmp_path / "b", [evil]))
+    assert "&lt;script&gt;alert(&#39;t&#39;)" in html          # other people's text: escaped, links not clickable
+    assert "evil.example" not in html and "[link]" in html and html.count("<script") == 1
 
 
 def test_long_parks_only_in_activity(tmp_path):
@@ -164,4 +168,61 @@ def test_back_to_back_parks_and_deploys_are_bundled(tmp_path):
     assert kinds == [("bad", "post hidden"), ("group", "ops ×5"), ("write", "reply"), ("group", "LLM parked ×2")]
     assert ctx["activity"][1]["text"] == ("2 deploys (latest def5678 two) · "
                                           "gemini-c, gemini-b, gemini-a: daily quota until 17:00")
-    assert html.count("<details class=\"x\"") == 2
+    assert html.count("<details class=\"x\" id=\"g-") == 2
+
+
+def rec(minutes_ago, act, post_id, persona="dan", **kw):
+    return {"ts": iso(minutes_ago), "act": act, "live": True, "persona": persona, "username": f"{persona}_1",
+            "account_id": 500 + len(persona), "post_id": post_id, "text": f"{act} by {persona}", **kw}
+
+
+def test_amplified_post_is_one_conversation(tmp_path):
+    acts = [rec(300, "post", 1, frame="F1_blank_cheque", lever="loss", amp_level="heavy"),
+            {"ts": iso(300), "act": "amp_plan", "live": True, "post_id": 1, "level": "heavy", "likes": 3,
+             "replies": ["one_liner"] * 5, "reposts": 1}]
+    acts += [rec(298 - i, "thread", 10 + i, persona=p, amp_post=1, target_post=1, target_author=503, style="one_liner")
+             for i, p in enumerate(["ana", "isla", "sione", "mere", "ruth"])]
+    acts += [rec(290, "thread_answer", 20, amp_post=1, target_post=12, target_author=505),
+             rec(289, "repost", 21, persona="ana", amp_post=1, target_post=1, text=""),
+             {"ts": iso(288), "act": "like", "live": True, "post_id": 1, "username": "x", "role": "booster"},
+             {"ts": iso(240), "act": "amp_measure", "post_id": 1, "level": "heavy", "at_h": 1.0, "views": 9,
+              "own_views": 4, "citizen_likes": 2, "citizen_replies": 1, "best_rank": 30},
+             rec(10, "reply", 30, persona="ben", target_post=77, target_author=9, target_text="who checks?")]
+    ctx, html = page(make_root(tmp_path, acts))
+    rows = [r for r in ctx["activity"] if r["kind"] == "write"]
+    assert [r["act"] for r in rows] == ["reply", "post"]          # the reply is newer than anything in the thread
+    post = rows[1]
+    assert len(post["children"]) == 5 and len(post["shown"]) == build.THREAD_SHOWN and len(post["more"]) == 2
+    assert post["children"][2]["answers"][0]["act"] == "thread_answer"       # under the reply it answers (#12)
+    assert post["reposts"] == ["ana"] and post["likes"] == 1 and post["plan"]["replies"] == 5
+    assert post["measures"][0]["views"] == 5 and "2 citizen ♥" in post["summary"]
+    assert post["latest"] == build.hm(NOW - dt.timedelta(minutes=240)) and "posted" in html
+    assert ("frame", "blank cheque (F1)") in post["why"] and 'id="w1-more"' in html
+    assert rows[0]["target"]["text"] == "who checks?" and not rows[0]["target"]["ours"]
+
+
+def test_second_voice_reply_back_and_rejects_attach(tmp_path):
+    acts = [{"ts": iso(62), "act": "reject", "why": "unapproved_number_79,", "mode": "reply", "persona": "dan",
+             "raw": "first try"},
+            {"ts": iso(61), "act": "reject", "why": "too_long", "mode": "reply", "persona": "dan", "raw": "x",
+             "draft_id": "d1"},
+            rec(60, "reply", 40, target_post=77, target_author=9, target_text="yes because", draft_id="d1"),
+            rec(50, "second_voice", 41, persona="mere", target_post=77, target_author=9),
+            rec(5, "reply_back", 42, target_post=43, target_author=9, target_text="but hospitals?",
+                parent_post=40, parent_text="reply by dan"),
+            rec(4, "reply", 44, persona="isla", target_post=78, target_author=8)]
+    ctx, _ = page(make_root(tmp_path, acts))
+    rows = [r for r in ctx["activity"] if r["kind"] == "write"]
+    assert [r["post"] for r in rows] == [44, 40]                  # the reply-back bumped its conversation
+    convo = rows[1]
+    assert [r["why"] for r in convo["rejects"]] == ["too long"]   # by draft_id, not the older guess
+    assert convo["children"][0]["act"] == "second_voice" and convo["answers"][0]["act"] == "reply_back"
+    assert "they answered" in convo["summary"]
+
+
+def test_old_records_match_rejects_by_persona_and_time(tmp_path):
+    acts = [{"ts": iso(90), "act": "reject", "why": "stale", "mode": "reply", "persona": "dan", "raw": "old"},
+            {"ts": iso(12), "act": "reject", "why": "dup", "mode": "reply", "persona": "dan", "raw": "new"},
+            rec(10, "reply", 40, target_post=77, target_author=9)]
+    ctx, _ = page(make_root(tmp_path, acts))
+    assert [r["why"] for r in ctx["activity"][0]["rejects"]] == ["dup"]

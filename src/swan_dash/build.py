@@ -36,6 +36,21 @@ PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
 ACTIVITY_TOP, ACTIVITY_ALL = 12, 60          # rows always shown / rows behind "Older activity"
 LONG_PARK_S = 600                              # per-minute parks are noise; longer ones go in the activity log
+THREAD_SHOWN = 3                               # replies in a thread shown before "… N more"
+REJECT_WINDOW_S = 15 * 60                      # old records (no draft_id): rejects this soon before a write are its own
+CHILDREN = {"thread", "thread_answer", "repost"}            # writes that belong to an amplified post (amp_post)
+SOURCES = {"latest": "Latest", "trending": "Trending", "thread": "a thread", "news": "a news story"}
+# the decisions logged on each write, in plain words, and where to change them (src/swan_bot/)
+KNOBS = [("frame", "frame", "content.FRAMES"), ("lever", "lever", "content.LEVERS"),
+         ("shape", "shape", "content.HOOKS"), ("hook", "hook", "content.HOOKS"),
+         ("style", "thread style", "content.THREAD_STYLES"), ("opener", "opener", "content.OPENERS"),
+         ("storyline", "storyline", "content.STORYLINES"), ("voice", "voice", "playbook/voices.py"),
+         ("reply_mode", "reply mode", "experiment.REPLY_MODES"), ("ask_kind", "ask", "experiment.ASK_KINDS"),
+         ("length_band", "length", "experiment.LENGTH_BANDS"), ("close", "close", "experiment.CLOSES"),
+         ("backend", "model", "llm.py")]
+FLAGS = [("concede", "concedes first"), ("rebuttal", "answers a Yes reason"), ("pulse_news", "pulse news hook")]
+HOMES = [("persona, persona today", "content.PERSONAS"), ("typos (hand)", "humanize.HANDS"),
+         ("rejects", "quality.py"), ("amplification levels", "config.AMP_LEVELS")]
 
 
 def read_json(path, default=None):
@@ -160,6 +175,125 @@ def bundle(rows):
     return items
 
 
+def plain(v):
+    """A logged key in words: 'F10_staff_and_livelihoods' -> 'staff and livelihoods (F10)', 'reason_first' -> ..."""
+    m = re.match(r"F(\d+)_(.+)", str(v))
+    return f"{m[2].replace('_', ' ')} ({'F' + m[1]})" if m else str(v).replace("_", " ")
+
+
+def theirs(text):
+    """Someone else's post as plain text: escaped by Jinja, and links shown as [link], never clickable."""
+    return re.sub(r"https?://\S+", "[link]", " ".join((text or "").split()))
+
+
+def write_item(a):
+    """One write, field by field: the text, why it was written that way, what it answered."""
+    full = " ".join((a.get("text") or "").split())
+    w = dict(t=a["_t"], time=hm(a["_t"]), who=a.get("persona") or a.get("username"), what=WRITES[a["act"]],
+             act=a["act"], post=a.get("post_id"), text=short(full), full=full, owner=a.get("owner"),
+             why=[(label, plain(a[k])) for k, label, _ in KNOBS if a.get(k) not in (None, "", "none")]
+             + [(label, "yes") for k, label in FLAGS if a.get(k) is True],
+             now=a.get("now"), hand=", ".join(a.get("hand") or []), clean=a.get("clean"),
+             rejects=[], answers=[], children=[], last=a["_t"], target=None, parent=None,
+             reposts=[], likes=None, plan=None, measures=[], summary="", latest=None, shown=[], more=[])
+    if a.get("target_post") and a["act"] != "repost":
+        lean = " · ".join(plain(x) for x in (a.get("target_stance"), a.get("target_class")) if x)
+        w["target"] = dict(post=a["target_post"], author=a.get("target_author"), text=theirs(a.get("target_text")),
+                           lean=lean, source=SOURCES.get(a.get("source"), a.get("source")),
+                           context=theirs(a.get("context")) or None)
+    if a.get("parent_text"):                    # a reply-back: our message they answered
+        w["parent"] = dict(post=a.get("parent_post"), text=" ".join(a["parent_text"].split()))
+    return w
+
+
+def conversations(actions):
+    """Our live writes as conversations, rows newest activity first. An amplified post carries its thread, reposts,
+    likes, plan and measurements; a reply carries its second voice; a reply-back sits under the message of ours it
+    answers when that is in the log. Rejected drafts sit under the write they preceded."""
+    ours = {a["account_id"] for a in actions if a.get("account_id") and a.get("act") in (*WRITES, "register")}
+    writes, tops, rows = {}, {}, []           # post id -> its write / the row it is shown in
+    pending = {}                                # (persona, mode) -> rejects since that voice's last write in that mode
+    by_draft = {}
+    for a in actions:
+        act = a.get("act")
+        if act == "reject":
+            r = dict(t=a["_t"], why=plain(a.get("why") or "?").strip(" ,"), raw=short(a.get("raw"), 200))
+            if a.get("draft_id"):
+                by_draft.setdefault(a["draft_id"], []).append(r)
+            else:
+                pending.setdefault((a.get("persona"), a.get("mode")), []).append(r)
+            continue
+        if act not in WRITES or a.get("live") is not True:
+            continue
+        w = write_item(a)
+        if a.get("draft_id"):
+            w["rejects"] = by_draft.pop(a["draft_id"], [])
+        else:
+            w["rejects"] = [r for r in pending.pop((a.get("persona"), act), [])
+                            if (a["_t"] - r["t"]).total_seconds() <= REJECT_WINDOW_S]
+        if w.get("target"):
+            w["target"]["ours"] = w["target"]["author"] in ours
+        parent = None
+        if act in CHILDREN and a.get("amp_post") in writes:
+            parent = writes[a["amp_post"]]
+        elif act == "second_voice":
+            parent = next((r for r in reversed(rows) if r["act"] == "reply" and r.get("target")
+                           and r["target"]["post"] == a.get("target_post")), None)
+        elif act == "reply_back" and a.get("parent_post") in writes:
+            parent = writes[a["parent_post"]]
+        if parent is None:
+            rows.append(w)
+        elif act == "repost":
+            parent["reposts"].append(w["who"])
+        elif act == "thread_answer":               # under the reply it answers, else at the end of the thread
+            q = next((c for c in parent["children"] if c["post"] == a.get("target_post")), None)
+            (q["answers"] if q else parent["children"]).append(w)
+        elif act == "reply_back" and parent["act"] != "post":
+            parent["answers"].append(w)
+        else:
+            parent["children"].append(w)
+        top = w if parent is None else tops.get(parent["post"], parent)
+        top["last"] = a["_t"]
+        if w["post"]:
+            writes[w["post"]], tops[w["post"]] = w, top
+    amp = {r["post"]: r for r in rows if r["act"] == "post" and r["post"]}
+    likes = {}
+    for a in actions:
+        pid = a.get("post_id")
+        if a.get("act") == "like" and a.get("live") and pid in amp:
+            likes[pid] = likes.get(pid, 0) + 1
+        elif a.get("act") == "amp_plan" and pid in amp:
+            amp[pid]["plan"] = dict(level=a.get("level"), likes=a.get("likes"), replies=len(a.get("replies") or []),
+                                    reposts=a.get("reposts"))
+        elif a.get("act") == "amp_measure" and pid in amp:
+            m = dict(at=f"+{a.get('at_h', 0):g} h", gone=a.get("hidden_or_gone"),
+                     citizen_likes=a.get("citizen_likes"), citizen_replies=a.get("citizen_replies"),
+                     views=None if a.get("views") is None else a["views"] - (a.get("own_views") or 0),
+                     rank=a.get("best_rank"))
+            amp[pid]["measures"].append(m)
+            amp[pid]["last"] = max(amp[pid]["last"], a["_t"])
+    for r in rows:
+        if r["post"] in likes:
+            r["likes"] = likes[r["post"]]
+        n = len(r["children"])
+        r["shown"], r["more"] = r["children"][:THREAD_SHOWN], r["children"][THREAD_SHOWN:]
+        r["kind"] = "write"
+        r["id"] = f"w{r['post'] or int(r['t'].timestamp())}"
+        r["latest"] = hm(r["last"]) if r["last"] > r["t"] else None
+        bits = [r["plan"]["level"]] if r["plan"] else []
+        if r["act"] == "post" and (n or r["likes"] or r["reposts"]):
+            bits.append(f"{r['likes'] or 0}♥ {n}↩ {len(r['reposts'])}⟲")
+        if r["measures"]:
+            m = r["measures"][-1]
+            bits.append(f"{m['at']}: hidden or gone" if m["gone"] else
+                        f"{m['at']}: {m['citizen_likes'] or 0} citizen ♥, {m['citizen_replies'] or 0} ↩")
+        answered = [x for x in r["answers"] + r["children"] if x["act"] == "reply_back"]
+        if r["act"] != "post" and answered:
+            bits.append("they answered")
+        r["summary"] = " · ".join(bits)
+    return rows
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -269,13 +403,10 @@ def gather(root, now, service):
                       left=nxt and until(sydney_midnight(nxt[0]) - now))
 
     # ---- activity: our writes, account events, long LLM parks, deploys and alerts ----
-    rows = []
+    rows = conversations(actions)
     for a in actions:
         act = a.get("act")
-        if act in WRITES and a.get("live") is True:
-            rows.append(dict(t=a["_t"], who=a.get("persona") or a.get("username"), what=WRITES[act],
-                             text=short(a.get("text")), post=a.get("post_id"), kind="write"))
-        elif act == "register":
+        if act == "register":
             rows.append(dict(t=a["_t"], who=a.get("persona") or a.get("role") or "", what="new account",
                              text=a.get("username"), kind="event"))
         elif act == "suspended":
@@ -301,9 +432,9 @@ def gather(root, now, service):
                 rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="bad"))
             else:
                 rows.append(dict(t=ts(t), who="", what="alert", text=short(msg), kind="event"))
-    rows.sort(key=lambda r: r["t"], reverse=True)
+    rows.sort(key=lambda r: r.get("last") or r["t"], reverse=True)   # a conversation moves up when it gets more
     for r in rows:
-        r["time"] = hm(r["t"])
+        r.setdefault("time", hm(r["t"]))
         r.setdefault("post", None)
     items = bundle(rows)
 
@@ -338,6 +469,7 @@ def render(ctx):
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent / "templates"),
                              autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
+    env.filters["short"], env.filters["hm"] = short, hm
     return env.get_template("index.html.j2").render(**ctx)
 
 

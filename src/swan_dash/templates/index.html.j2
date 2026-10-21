@@ -67,6 +67,22 @@ td.num, th.num { text-align: right; }
 p { margin: 8px 0; }
 h3 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 400; margin: 14px 0 4px; }
 .activity { margin-top: 0; }
+li.write summary { list-style-position: outside; margin-left: 1em; }
+li.write details[open] > summary .lead { display: none; }
+.conv { padding: 2px 0 2px; font-size: 14px; }
+.conv .full { margin: 4px 0; }
+.ctx { border-left: 3px solid var(--line); padding: 1px 0 1px 8px; margin: 4px 0 6px; color: var(--muted); font-size: 13px; }
+.ctx .q { color: var(--ink); font-size: 14px; font-style: italic; }
+.msg { border-left: 2px solid var(--line); padding: 2px 0 2px 10px; margin: 8px 0 4px; }
+.msg .meta { color: var(--muted); font-size: 12px; }
+.msg .meta b { color: var(--ink); font-weight: 600; }
+.conv details summary { color: var(--muted); font-size: 13px; }
+.conv details.clip summary { color: inherit; font-size: inherit; }
+.conv details.clip[open] > summary { display: none; }
+.conv details.why { margin: 4px 0; }
+.conv details.why table { font-size: 13px; margin: 4px 0; }
+.conv td.k, .conv th:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+.note { font-size: 13px; color: var(--muted); margin: 4px 0; }
 footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
 code { font-size: 12px; }
 </style>
@@ -74,7 +90,65 @@ code { font-size: 12px; }
 <body>
 <main>
 
+{% macro clip(s, n=180) %}{% if s | length > n %}<details class="clip"><summary>{{ s | short(n) }}</summary>{{ s }}</details>{% else %}{{ s }}{% endif %}{% endmacro %}
+
+{% macro target(w) %}{% if w.target %}
+<div class="ctx">{% if w.target.ours %}our post #{{ w.target.post }}{% else %}someone else{% if w.target.lean %} · leans {{ w.target.lean }}{% endif %}{% endif %}{% if w.target.source %} · from {{ w.target.source }}{% endif %}{% if w.target.context %} · under “{{ w.target.context | short(90) }}”{% endif %}
+  <div class="q">{{ clip(w.target.text) }}</div></div>
+{% endif %}{% endmacro %}
+
+{% macro why(w, id) %}{% if w.why or w.rejects or w.hand or w.now %}
+<details class="why" id="{{ id }}"><summary>why{% if w.why %}: {{ (w.why[:3] | map('last') | join(' · ')) }}{% endif %}{% if w.rejects %} · <span class="warn">{{ w.rejects | length }} rejected first</span>{% endif %}</summary>
+  {% if w.why %}<table>{% for label, v in w.why %}<tr><td class="k">{{ label }}</td><td>{{ v }}</td></tr>{% endfor %}</table>{% endif %}
+  {% if w.now %}<p class="note">Persona today: {{ w.now }}</p>{% endif %}
+  {% if w.hand %}<p class="note">Typos added on purpose ({{ w.hand }}){% if w.clean %}. Clean draft: {{ w.clean }}{% endif %}</p>{% endif %}
+  {% for x in w.rejects %}<p class="note warn">rejected {{ x.t | hm }}: {{ x.why }} · “{{ x.raw }}”</p>{% endfor %}
+  {% if w.owner %}<p class="note">Owner: {{ w.owner }}{% if w.post %} · #{{ w.post }}{% endif %}</p>{% endif %}
+</details>
+{% endif %}{% endmacro %}
+
+{% macro msg(c) %}
+<div class="msg"><div class="meta">{{ c.time }} · <b>{{ c.who }}</b> {{ c.what }}</div>
+  {% if c.act == 'reply_back' %}{{ target(c) }}{% endif %}
+  <div>{{ clip(c.full) }}</div>
+  {{ why(c, 'w' ~ c.post ~ '-why') }}
+  {% for x in c.answers %}{{ msg(x) }}{% endfor %}
+</div>
+{% endmacro %}
+
+{% macro convo(r) %}
+<li class="write"><span class="t">{{ r.latest or r.time }}</span>
+  <span class="w">{{ r.what }}<span>{{ r.who }}</span></span>
+  <details class="x" id="{{ r.id }}"><summary><span class="lead">{{ r.text }} </span><span class="id">{{ r.summary }}{% if r.latest %}{{ ' · ' if r.summary }}posted {{ r.time }}{% endif %}</span></summary>
+  <div class="conv">
+    {% if r.parent %}<div class="ctx">our message{% if r.parent.post %} #{{ r.parent.post }}{% endif %}<div class="q">{{ clip(r.parent.text) }}</div></div>{% endif %}
+    {{ target(r) }}
+    <div class="full">{{ r.full }}</div>
+    {{ why(r, r.id ~ '-why') }}
+    {% for c in r.shown %}{{ msg(c) }}{% endfor %}
+    {% if r.more %}<details class="more" id="{{ r.id }}-more"><summary>… {{ r.more | length }} more</summary>
+      {% for c in r.more %}{{ msg(c) }}{% endfor %}</details>{% endif %}
+    {% for x in r.answers %}{{ msg(x) }}{% endfor %}
+    {% if r.reposts or r.likes or r.plan or r.measures %}
+    <details class="why" id="{{ r.id }}-amp"><summary>amplification{% if r.plan %}: {{ r.plan.level }}{% endif %}</summary>
+      <table>
+        <tr><th></th><th class="num">likes</th><th class="num">replies</th><th class="num">reposts</th></tr>
+        {% if r.plan %}<tr><td class="k">planned</td><td class="num">{{ r.plan.likes | n }}</td><td class="num">{{ r.plan.replies | n }}</td><td class="num">{{ r.plan.reposts | n }}</td></tr>{% endif %}
+        <tr><td class="k">ours so far</td><td class="num">{{ (r.likes or 0) | n }}</td><td class="num">{{ r.children | length }}</td><td class="num">{{ (r.reposts or []) | length }}</td></tr>
+      </table>
+      {% if r.reposts %}<p class="note">Reposted by {{ r.reposts | join(', ') }}</p>{% endif %}
+      {% if r.measures %}<table>
+        <tr><th>result</th><th class="num">citizen likes</th><th class="num">citizen replies</th><th class="num">views not ours</th><th class="num">best rank</th></tr>
+        {% for m in r.measures %}{% if m.gone %}<tr><td class="k">{{ m.at }}</td><td colspan="4" class="down">hidden or gone ({{ m.gone }})</td></tr>
+        {% else %}<tr><td class="k">{{ m.at }}</td><td class="num">{{ m.citizen_likes | n }}</td><td class="num">{{ m.citizen_replies | n }}</td><td class="num">{{ m.views | n }}</td><td class="num">{{ ('#' ~ m.rank) if m.rank else '—' }}</td></tr>{% endif %}{% endfor %}
+      </table>{% else %}<p class="note">Measured at +1 h and +6 h.</p>{% endif %}
+    </details>
+    {% endif %}
+  </div></details></li>
+{% endmacro %}
+
 {% macro item(r) %}
+{% if r.kind == 'write' %}{{ convo(r) }}{% else %}
 <li class="{{ r.kind }}"><span class="t">{{ r.time }}</span>
   <span class="w">{{ r.what }}{% if r.who %}<span>{{ r.who }}</span>{% endif %}</span>
   {% if r.kind == 'group' %}
@@ -83,6 +157,7 @@ code { font-size: 12px; }
   {% else %}
   <span class="x">{{ r.text }}{% if r.post %} <span class="id">#{{ r.post }}</span>{% endif %}</span>
   {% endif %}</li>
+{% endif %}
 {% endmacro %}
 
 <header><b>SWAN</b><span>as of {{ now }} Perth</span></header>
@@ -106,7 +181,7 @@ code { font-size: 12px; }
     <div class="sub">{% if writes.planned %}pace {{ writes.planned }} · {% endif %}cap {{ writes.cap }}</div></div>
 </div>
 
-<div class="label">Activity · newest first</div>
+<div class="label">Activity · most recently active first · open a row for its context</div>
 <ol class="activity">
 {% for r in activity %}
   {{ item(r) }}

@@ -353,6 +353,7 @@ class Desk:
         rejected = []
         for r in results:
             j = r["job"]
+            j.setdefault("draft_id", f"{random.getrandbits(32):08x}")   # the write logs it too (bot.py)
             fields = {k: r[k] for k in ("batch_id", "batch_pos", "batch_size", "backend")}
             if r["text"]:
                 self.pool.append(dict(job=j, text=r["text"], drafted_at=time.time(), **fields))
@@ -361,6 +362,7 @@ class Desk:
             self.rejected[r["why"]] = self.rejected.get(r["why"], 0) + 1
             self.log({"act": "reject", "why": r["why"], "mode": j["mode"], "persona": j["rec"]["persona"],
                       "frame": j["frame"], "raw": r["raw"], "their_point": r["their_point"], "finish": r["finish"],
+                      "draft_id": j["draft_id"], "target_post": (j.get("target") or {}).get("post_id"),
                       **fields})
             print(f"  rejected [{j['mode']}] ({r['why']}): {(r['raw'] or '')[:160]!r}")
         return rejected

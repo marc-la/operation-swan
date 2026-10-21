@@ -605,6 +605,7 @@ def main():
 
             # ---- draft and check (batched drafts were checked when drafted) ----
             rec, mode, target = job["rec"], job["mode"], job.get("target")
+            job.setdefault("draft_id", secrets.token_hex(4))     # ties this job's rejected drafts to its write
             persona = content.PERSONA_BY_KEY[rec["persona"]]
             text = backend = user = repair = None
             if mode == "repost":
@@ -617,7 +618,8 @@ def main():
                 def rejected(why, raw, backend, repaired):
                     stats["rejected"][why] = stats["rejected"].get(why, 0) + 1
                     log({"act": "reject", "why": why, "mode": mode, "persona": persona["key"], "frame": job["frame"],
-                         "backend": backend, "raw": raw, "repair": repaired,
+                         "backend": backend, "raw": raw, "repair": repaired, "draft_id": job["draft_id"],
+                         "target_post": target and target["post_id"],
                          **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
                     print(f"  rejected [{mode}] ({why}{', after repair' if repaired else ''}): {raw[:160]!r}")
 
@@ -701,6 +703,8 @@ def main():
                  "frame": job["frame"], "backend": backend, "source": job.get("source"),
                  "target_post": target and target["post_id"], "target_author": target and target["author_id"],
                  "target_text": target and (target.get("body") or "")[:300], "context": job.get("context"),
+                 "parent_post": target and target.get("reply_to_post_id"),       # what the target was answering
+                 "parent_text": (job.get("our_text") or "")[:300] or None, "draft_id": job["draft_id"],
                  "text": text, "clean": clean if hand else None, "hand": hand or None, "amp_level": job.get("level"),
                  "amp_post": job.get("amp_post"), "style": job.get("style"), "repair": repair,
                  **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
