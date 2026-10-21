@@ -106,10 +106,11 @@ GROUP_QUEUE_S = 12 * 3600           # a swept (or engaged) candidate not handed 
 OLDER_ARM = True
 OLDER_MAX_AGE_H = 72
 OLDER_PER_H = 10
-# C, off-topic citizen posts: a warm reply on their topic, no pivot to the vote (content.off_topic_prompt). Off:
-# 2026-10-22 dry run, 1 of 4 Kimi drafts still turned to the vote ("it's the pass I can't stand... Voting No") and the
-# gate doesn't catch it. On once the gate rejects a referendum turn in an off_topic reply (todo/20's quality.py).
-OFF_TOPIC_ARM = False
+# C, off-topic citizen posts: a warm reply on their topic, no pivot to the vote (content.off_topic_prompt). 2026-10-22:
+# 1 of 4 dry-run drafts turned to the vote ("it's the pass I can't stand... Voting No"); now the off-topic system
+# prompt leaves the referendum out and the gate rejects a turn to it (quality: off_topic_vote, 60-220 characters):
+# 6 of 6 dry-run drafts on their topic, first call. On.
+OFF_TOPIC_ARM = True
 OFF_TOPIC_PER_H = 3
 OFF_TOPIC_RECONTACT_S = 3 * 86400
 # D, engaged quiet citizens: citizens who liked our voices' recent posts or follow a voice; we answer their most

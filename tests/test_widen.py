@@ -219,3 +219,45 @@ def test_the_refresh_record_has_a_line_per_group(only):
     g = t.groups()
     assert set(g) == {"sweep", "older", "off_topic", "engaged", "turnout"}
     assert g["sweep"]["queued"] == 1 and g["sweep"]["funnel"] and g["sweep"]["of"] == 1
+
+
+# ---- C's gate: their topic only (2026-10-22 dry run) ----
+HARBOUR = ("Harbour Lights was on last night. I like how it keeps the family moments front and centre, even when "
+           "harbour drama spills over.")
+PIVOT = ("Good show that. Faisal's still got the dairy open late, tea at midnight after a blown sign callout - small "
+         "things keep you going. I don't mind the jab, it's the pass I can't stand. No end date on it, they just want "
+         "it open-ended. Voting No.")
+
+
+def test_an_off_topic_reply_may_not_turn_to_the_vote():
+    from swan_bot import quality
+    assert quality.check(PIVOT, "reply", target_text=HARBOUR, specific=False)[1] == "off_topic_vote"
+    fixed = quality.fix(PIVOT, "off_topic_vote", "reply")
+    assert fixed.startswith("Good show that.") and "jab" not in fixed and "No" not in fixed.split()
+    assert quality.check(fixed, "reply", target_text=HARBOUR, specific=False) == (fixed, None)
+    assert quality.repair_note("off_topic_vote", PIVOT, "reply").startswith("Stay on their topic")
+    on = "the vaccination vote has me thinking about this show"           # their post is on the vote: a nod may stay
+    assert quality.check("Ha, same here, the vote is all anyone at the dairy talks about now.", "reply", target_text=on,
+                         specific=False)[1] is None
+
+
+def test_an_off_topic_reply_is_cut_to_220_characters():
+    from swan_bot import quality
+    long = ("Good show that, the wedding scene had my nan in tears. Faisal's still got the dairy open late for the "
+            "shift crowd, which saves me most nights. Tea at midnight after a blown sign callout on the wharf road. "
+            "Small things keep you going.")
+    assert len(long) > 220
+    why = quality.check(long, "reply", target_text=HARBOUR, specific=False)[1]
+    assert why == f"off_topic_length_{len(long)}"
+    cut = quality.fix(long, why, "reply")
+    assert cut and len(cut) <= 220 and cut.startswith("Good show that")
+    assert quality.check("Ha, good one.", "reply", target_text=HARBOUR, specific=False)[1].startswith("off_topic_length")
+
+
+def test_the_off_topic_system_prompt_leaves_the_referendum_out():
+    from swan_bot import content
+    persona = content.PERSONAS[0]
+    frame = persona["frames"][0]
+    off = content.system_prompt(persona, frame, meta={"style": "off_topic"})
+    assert content.STANCE_RULE not in off and "What a Yes would cost you" not in off and content.OFF_TOPIC_RULE in off
+    assert content.STANCE_RULE in content.system_prompt(persona, frame, meta={})

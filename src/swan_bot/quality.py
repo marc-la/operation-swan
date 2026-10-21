@@ -214,6 +214,12 @@ LOCAL_NAME = re.compile(r"\b(" + "|".join(sorted(map(re.escape, LOCAL_NAMES), ke
 LENGTHS = {"post": (200, 495), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
            "journalist": (90, 290), "thread": (18, 250), "thread_answer": (50, 250)}
 SHORT_OK = 60               # a reply under its kind's floor still passes from here when it states our No (todo/20 G9)
+# todo/23's off-topic replies (check(specific=False)): 60-220 characters, and no turn to the vote when the citizen's
+# post has none (2026-10-22 dry run: "...it's the pass I can't stand. No end date on it... Voting No.")
+OFF_TOPIC_LEN = (60, 220)
+VOTE_TALK = re.compile(r"referendum|h2d2|dolphin flu|vaccin|\bjabs?\b|mandate|\bvot(e|es|ed|ing|ers?)\b|ballot|"
+                       r"certificate|health pass|\bthe pass\b|\bpasses\b|door checks?|sunset (clause|date)|end date|"
+                       r"exemptions?|\bkitb\b|castillo|(yes|no) campaign", re.I)
 
 
 def _shingles(text, n=5):
@@ -310,7 +316,8 @@ def strip_tag(t):
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
     closing_question=False lets a post end on its verdict instead (a draft told to end without a question).
-    specific=False: a reply needn't name an in-world fact (todo/23's off-topic replies)."""
+    specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
+    of the vote (VOTE_TALK) unless the citizen's own post has some."""
     t = normalise(text)
     if kind != "post":
         t = TRAILING_TAGS.sub("", t).strip()
@@ -336,9 +343,13 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, why
     if any(ord(ch) > 0x2600 for ch in t):        # emoji and other symbols
         return None, "emoji"
+    if not specific and VOTE_TALK.search(t) and not VOTE_TALK.search(target_text or ""):
+        return None, "off_topic_vote"
+    if not specific and not OFF_TOPIC_LEN[0] <= len(t) <= OFF_TOPIC_LEN[1]:
+        return None, f"off_topic_length_{len(t)}"
     lo, hi = LENGTHS[kind]
     short_ok = kind != "post" and len(t) >= SHORT_OK and VOTES_NO.search(t)     # todo/20 G9: short but says No
-    if len(t) > hi or (len(t) < lo and not short_ok):
+    if specific and (len(t) > hi or (len(t) < lo and not short_ok)):     # off-topic: OFF_TOPIC_LEN, above
         return None, f"length_{len(t)}"
     if ENDORSES_YES.search(t):
         return None, "endorses_yes"
@@ -395,13 +406,14 @@ def sentences(text):
     return [s for s in _SENTENCE_END.split(normalise(text)) if s]
 
 
-def trim(text, kind):
-    """text cut at sentence boundaries to fit the kind's cap, or None: the last sentences go first, but never the
-    opening one or one that says we're voting No; what's left must be over the floor and, if the draft said No,
-    still say it."""
-    lo, hi = LENGTHS[kind]
+def trim(text, kind, hi=None, keep_no=True):
+    """text cut at sentence boundaries to fit the kind's cap (or hi), or None: the last sentences go first, but never
+    the opening one or (keep_no) one that says we're voting No; what's left must be over the floor and, if the draft
+    said No, still say it."""
+    lo, cap = LENGTHS[kind]
+    hi = hi or cap
     parts = sentences(TRAILING_TAGS.sub("", normalise(text)) if kind != "post" else text)
-    keep = [i == 0 or bool(VOTES_NO.search(s)) for i, s in enumerate(parts)]
+    keep = [i == 0 or (keep_no and bool(VOTES_NO.search(s))) for i, s in enumerate(parts)]
     while len(" ".join(parts)) > hi:
         drop = next((i for i in range(len(parts) - 1, -1, -1) if not keep[i]), None)
         if drop is None:
@@ -438,6 +450,12 @@ def fix(text, why, kind):
     why = why or ""
     if why.startswith("length_") and int(why.split("_")[1]) > LENGTHS[kind][1]:
         return trim(text, kind)
+    if why == "off_topic_vote":                    # todo/23: their topic only; the sentences about the vote go
+        parts = [s for s in sentences(text) if not VOTE_TALK.search(s)]
+        out = " ".join(parts)
+        return out if parts and len(out) >= OFF_TOPIC_LEN[0] else None
+    if why.startswith("off_topic_length_") and int(why.rsplit("_", 1)[1]) > OFF_TOPIC_LEN[1]:
+        return trim(text, kind, hi=OFF_TOPIC_LEN[1], keep_no=False)
     if why == "same_opening":
         return drop_first_clause(text)
     if why.startswith("unapproved_number_"):
@@ -494,6 +512,12 @@ def repair_note(why, raw, kind, tag=None, recent=()):
                 f"is only about the pass. Keep the rest.")
     if why == "emoji":
         return "Remove the emoji and symbols."
+    if why == "off_topic_vote":
+        return "Stay on their topic: don't mention the vote, the referendum, the jab or the pass at all. Keep the rest."
+    if why.startswith("off_topic_length_"):
+        n = int(why.rsplit("_", 1)[1])
+        return (f"Too long ({n} characters): 1 or 2 short sentences, under 35 words." if n > OFF_TOPIC_LEN[1] else
+                None)
     if why == "llm_artefact":
         return "Output only the reply itself: no label, no preface, no notes."
     if why.startswith("length_") and kind in REPAIR_LENGTH:

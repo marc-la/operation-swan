@@ -469,6 +469,11 @@ JAB_WAIT = "Don't bring up your own jab unless the post is about it or they aske
 # todo/20 (2026-10-22), while config.NO_VACCINE_ADVOCACY: a move towards vaccines may score against us (organiser Q3)
 NO_ADVOCACY_RULE = "Never urge anyone to get vaccinated or praise the vaccine: this vote is about the pass."
 LOGISTICS_RULE = "Never name a day or date for the vote or say how or where to vote."
+# todo/23's off-topic replies (meta["style"] == "off_topic"): the system prompt keeps who the persona is and the style
+# rules, without the referendum, the stance, the facts or the voice lines about the rule (they pulled 1 draft in 4 to the
+# vote in the 2026-10-22 dry run). quality.check rejects a turn to the vote anyway (off_topic_vote).
+OFF_TOPIC_RULE = ("This reply is about their topic only: don't mention the referendum, the vote, the vaccine, the jab, "
+                  "the pass or the government, not even in passing. Never insult anyone; no conspiracy talk.")
 TAG_RULE = "No hashtags, except the one tag a new post is given, at the very end."
 STYLE_RULES = (
     "First person, everyday words, British spelling, contractions. No emojis, links, @mentions, quotation marks, "
@@ -580,6 +585,7 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
     """Who is speaking (character + voice), the facts they may use, and the rules. With a pulse, the pulse_block
     of `pulse_parts` goes right after WORLD."""
     f, register = FRAMES[frame_key], register_of(persona)
+    off = (meta or {}).get("style") == "off_topic"
     facts = "; ".join(FACT_NOTES[k] for k in fact_store.active(f["facts"])[:3])
     age = f", {persona['age']}" if persona.get("age") else ""
     people = random.sample(usable(persona.get("people")), k=min(2, len(usable(persona.get("people")))))
@@ -587,9 +593,9 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
     details = [d for d in persona["details"] if not fact_store.paused_in(d)]
     details = details if not now else random.sample(details, k=min(1, len(details)))
     covid = persona.get("covid") if "covid_business" in f["facts"] or random.random() < 0.3 else None
-    covid = covid if usable([covid]) else None
-    problem = persona.get("problem") if usable([persona.get("problem")]) else None
-    heat = f.get("heat") if register == "fed_up" and not fact_store.paused_in(f.get("heat")) else None
+    covid = covid if usable([covid]) and not off else None
+    problem = persona.get("problem") if usable([persona.get("problem")]) and not off else None
+    heat = f.get("heat") if register == "fed_up" and not fact_store.paused_in(f.get("heat")) and not off else None
     voice = VOICES[register]["instruction"] + (f" Your sharpest take on today's point, in your own words: {heat}"
                                                if heat else "")
     doses = fact_store.ok(["first_doses"])
@@ -601,6 +607,8 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
             f"{NO_ADVOCACY_RULE + ' ' if config.NO_VACCINE_ADVOCACY else ''}"
             f"{TAG_RULE} {STYLE_RULES} "
             f"Output only the text you would post.")
+    if off:
+        rest = f"Rules: money is K$. {OFF_TOPIC_RULE} No hashtags. {STYLE_RULES} Output only the text you would post."
 
     def profile():
         out = [f"You are {persona['name']}{age} ({persona['role']}, {persona['place']}), in Kingstonia, a small "
@@ -955,15 +963,14 @@ def group_style(job):
 
 
 def off_topic_prompt(target_text, context=None, persona=None):
-    """todo/23's off_topic group: a warm reply on THEIR topic, light humour allowed, no pivot to the referendum. A
-    natural nod to it only when their topic genuinely connects."""
+    """todo/23's off_topic group: a warm reply on THEIR topic, light humour allowed, no mention of the referendum
+    (2026-10-22: a nod "when it truly connects" became a pivot; quality.check rejects one now)."""
     ctx = f"It was posted under this: <<<{context[:200]}>>>\n" if context else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\nReply to them about what they actually wrote, as "
         f"yourself, in 1 or 2 short sentences, 60 to 220 characters: warm, specific to one detail they mention, light "
-        f"humour is fine. Don't steer it to the referendum; mention the vote only if their topic truly connects to "
-        f"it, and then in a few words. No hashtags, no question unless it's a real one about their topic. "
-        f"{_reply_voice(persona)}")
+        f"humour is fine. Don't mention the referendum or the vote at all. No hashtags, no question unless it's a "
+        f"real one about their topic.")
 
 
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,

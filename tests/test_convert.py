@@ -367,7 +367,7 @@ def test_group_style_hook():
     job = dict(job_for(), group="off_topic",
                target=dict(post_id=6, author_id=500, body="Reef restoration day at the lagoon was brilliant"))
     _, _, user = bot.build_prompt(job, targeter)
-    assert job["style"] == "off_topic" and not job["read"] and "Don't steer it to the referendum" in user
+    assert job["style"] == "off_topic" and not job["read"] and "Don't mention the referendum or the vote at all" in user
     gen = Gen(["Brilliant to hear the lagoon got a hand, my nephew still talks about the coral nursery."])
     text, _, _ = bot.draft_checked(gen, dict(job, meta={}), "sys", user, [])
     assert text, "no fact anchor needed off topic"

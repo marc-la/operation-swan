@@ -155,8 +155,9 @@ def test_read_position_queue_and_funnel_survive_a_restart():
     assert u.items[5]["o"] == "pending"
 
 
-def test_every_citizen_item_ends_somewhere():
+def test_every_citizen_item_ends_somewhere(monkeypatch):
     """G12: seen = answered + skipped + lost + pending, per hour; skips are logged with their reason."""
+    monkeypatch.setattr(targeting.config, "OFF_TOPIC_ARM", False)     # todo/23 C would queue the lunch post
     logged = []
     t = targeting.Targeter(None, log=logged.append)
     posts = [dict(post_id=1, author_id=100, created_at=NOW, body="what's for lunch"),
