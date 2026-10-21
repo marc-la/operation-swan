@@ -516,6 +516,28 @@ def own_likes(state, accounts, live, now=None):
         log(entry)
 
 
+CAND_INTERNAL = ("post", "score", "tries", "not_before")   # the targeter's own bookkeeping, not copied to the job
+
+
+def reply_job(cand, rec):
+    """A reply job from a targeter candidate. Every field the candidate carries reaches the job (frame, wants, context,
+    source, identity, target_class, priority, arm, engaged, and todo/23's group and prefer), so a new field needs no
+    change here. cand rides along: the drafting path requeues it on failure (G8)."""
+    return dict({k: v for k, v in cand.items() if k not in CAND_INTERNAL}, mode="reply", rec=rec, target=cand["post"],
+                cand=cand)
+
+
+def candidate_voice(pick, cand, **kw):
+    """The voice for a candidate: the one the citizen engaged with (cand["prefer"], todo/23) when it is free, else a
+    shared-identity messenger, else one whose home frames fit. pick: accounts.eligible or accounts.assignable."""
+    want = cand.get("prefer")
+    if want:
+        rec = pick(cand["frame"], prefer=(want,), **kw)
+        if rec and rec["persona"] == want:
+            return rec
+    return pick(cand["frame"], prefer=messengers(cand.get("identity")), **kw)
+
+
 def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted, engaged=()):
     """The best waiting citizen candidate with a voice free to answer it, as a reply job, or None. contacted: our
     voices per citizen this session (targeting.sessions); engaged: citizens who replied to us before. frame is None
@@ -523,15 +545,11 @@ def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted, engaged
     cand = targeter.next_target(our_ids, set(replied_posts), contacted, engaged)
     if not cand:
         return None
-    rec = accounts.eligible(cand["frame"], prefer=messengers(cand.get("identity")))
+    rec = candidate_voice(accounts.eligible, cand)
     if not rec:
         targeter.requeue(cand, "no_voice")                       # keep it for the next slot
         return None
-    return dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"], wants=cand["wants"],
-                context=cand["context"], source=cand["source"], identity=cand.get("identity"),
-                target_class=cand.get("target_class"), priority=cand.get("priority"), arm=cand.get("arm"),
-                engaged=cand.get("engaged"),
-                cand=cand)                                       # the drafting path requeues it on failure (G8)
+    return reply_job(cand, rec)
 
 
 def pick_job(job, citizen, amp):
@@ -791,15 +809,12 @@ def main():
                         cand = targeter.next_target(our_ids, skip, contacted, engaged)
                         if not cand:
                             break
-                        rec = accounts.assignable(cand["frame"], exclude=desk.busy("reply", picked),
-                                                  prefer=messengers(cand.get("identity")))
+                        rec = candidate_voice(accounts.assignable, cand, exclude=desk.busy("reply", picked))
                         if not rec or cand["post"]["author_id"] in authors:
                             targeter.requeue(cand, "no_voice")                       # keep it for the next slot
                             break
                         authors.add(cand["post"]["author_id"])
-                        picked.append(dict(mode="reply", rec=rec, target=cand["post"], frame=cand["frame"],
-                                           wants=cand["wants"], context=cand["context"], source=cand["source"],
-                                           identity=cand.get("identity"), cand=cand))
+                        picked.append(reply_job(cand, rec))
                     if picked:
                         desk_fill(picked)
                         drafted = desk.take("reply", t, gone)

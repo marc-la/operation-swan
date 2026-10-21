@@ -53,3 +53,29 @@ def test_candidate_kept_when_no_voice_is_free():
 def test_queued_reply_back_goes_first():
     queued = dict(mode="reply_back", rec=dict(username="v3"))
     assert bot.pick_job(queued, lambda: 1 / 0, amp()) is queued
+
+
+def test_every_candidate_field_reaches_the_job():
+    """todo/23: group (and any later candidate field) is copied to the reply job; the targeter's bookkeeping isn't."""
+    cand = dict(candidate(), group="sweep", target_class="unsure", priority=4.2, arm=None, tries=2, not_before=9.0)
+    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(): dict(username="v2", persona="mere"))
+    job = bot.citizen_reply(Targeter(cand), accounts, set(), [], {})
+    assert job["group"] == "sweep" and job["target_class"] == "unsure" and job["priority"] == 4.2
+    assert job["target"]["post_id"] == 7 and job["cand"] is cand and job["mode"] == "reply"
+    assert not {"post", "score", "tries", "not_before"} & set(job)
+
+
+def voices(*free):
+    """accounts.eligible over these free personas, preferring as Accounts.eligible does (any of prefer, else first)."""
+    def eligible(frame, prefer=()):
+        mine = [p for p in free if p in prefer]
+        return dict(username=(mine or list(free))[0], persona=(mine or list(free))[0]) if free else None
+    return types.SimpleNamespace(eligible=eligible)
+
+
+def test_prefer_gets_the_voice_the_citizen_engaged_with():
+    cand = dict(candidate(), prefer="ruth")
+    assert bot.citizen_reply(Targeter(cand), voices("mere", "ruth"), set(), [], {})["rec"]["persona"] == "ruth"
+    cand = dict(candidate(), prefer="ruth")
+    assert bot.citizen_reply(Targeter(cand), voices("mere", "dan"), set(), [], {})["rec"]["persona"] == "mere", \
+        "soft: someone else when ruth isn't free"
