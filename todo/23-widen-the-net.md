@@ -42,3 +42,9 @@ Every group is an **arm**: a flag, a cap per hour, a priority **below** fresh on
 
 ## Done when
 Groups A–F are behind flags with caps and the `group` field. The first 24 h per-group numbers are written into [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md) with the date. Caps have been raised or cut by the kill and raise rules.
+
+## Status (2026-10-22, ctn-ee)
+- **Shipped:** b42deba (A sweep, B older, E turnout, F journalist switch; C and D built behind flags), 8caa0b9 (D on). Code: `targeting.py` (`_widen`, `_visit`, `_engaged_step`, the tiers and caps in `next_target`, `groups()`), `config.py` (the todo/23 block), `tests/test_widen.py`.
+- **On the box:** every refresh record has `groups` (per group: queued, out_1h, answered_1h, its funnel) and `widen_reads`; funnel lines and writes carry `group`. Writes from the sweep and from D also carry `source` "sweep" / "engaged".
+- **C (off_topic) is off:** in the dry run 1 of 4 drafts still turned to the vote. It waits for a gate check from todo/20 (asked via ctn-2a), then a re-run of the dry run.
+- **Left:** the first 24 h per-group numbers into direction-2026-10-21, then apply the kill and raise rules.
