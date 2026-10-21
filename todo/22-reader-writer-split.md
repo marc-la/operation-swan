@@ -1,6 +1,6 @@
 # 22: Reader/writer split: the same bot, without the waiting (a behaviour-preserving refactor)
 
-**Owner:** Marc + a fresh Claude session · **Depends on:** [todo/20](20-replies-that-convert.md) and [todo/21](21-reach-every-citizen.md) finished · **When:** right after them
+**Owner:** Marc + a fresh Claude session · **Depends on:** [todo/20](20-replies-that-convert.md) and todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c) finished · **When:** right after them
 
 ## Read first
 `CLAUDE.md`, [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md), [research E: throughput](../docs/06-strategy/research-2026-10-21/E-throughput.md) §a.3, `src/swan_bot/bot.py` (`main()` is one ~430-line loop with closures: `write_status`, `pause`, `save_state`, `desk_fill`), `targeting.py` (`Targeter.refresh`), `amplify.py` (`tick`), `llm.py`.

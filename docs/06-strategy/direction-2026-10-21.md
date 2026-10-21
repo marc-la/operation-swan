@@ -32,7 +32,7 @@ The leaders' points are changes of mind at volume. That needs three things, in t
 
 | Layer | Where | What | Target |
 |---|---|---|---|
-| Volume | [todo/19](../../todo/README.md) (shipped), [todo/21](../../todo/21-reach-every-citizen.md) | Read Latest every 2 min; fresh posts first; hard-skip only non-citizens, off-topic, hostile and replied posts; the stance sets priority; per-post and per-session limits, not 72 h per author; citizen replies count as targets too | ≥ 80% of citizen items answered; 40–55 citizen-facing writes/h at peak |
+| Volume | [todo/19](../../todo/README.md) (shipped), todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c) | Read Latest every 2 min; fresh posts first; hard-skip only non-citizens, off-topic, hostile and replied posts; the stance sets priority; per-post and per-session limits, not 72 h per author; citizen replies count as targets too | ≥ 80% of citizen items answered; 40–55 citizen-facing writes/h at peak |
 | The light read | [todo/20](../../todo/20-replies-that-convert.md) step 2 | One drafting call returns stance, doubt, frame and reply (or skip); the stance picks the approach; logged | Calibrated against the regex class in a day |
 | Conversion | todo/20 steps 3–8 | Concede-and-anchor style A/B; weak frames out; no vaccine advocacy; reply-backs within minutes, up to 3 turns; a second voice inside the session; one own like A/B | "Towards your side" per 100 citizen-facing writes > "away" + "neither" |
 | Feedback | todo/20 step 1 | Portal hourly events joined to writes; per-class and per-arm reply rates; skip reasons; followup re-reads | A daily read-out, then winners become defaults |
@@ -67,7 +67,7 @@ Drafts are in [A (Q2–Q5)](research-2026-10-21/A-rules.md#c-top-7) and [B](rese
 1. ~~Push todo/19~~ **done** (d99bd34).
 2. **Marc:** pause amplification (`AMPLIFY_OFF`, above).
 3. Questions: **not posted for now** (Marc, 2026-10-22), so mentions, the alliance and "other view" posting stay off, and todo/20 takes the safe path on vaccine talk.
-4. **Start [todo/20](../../todo/20-replies-that-convert.md) and [todo/21](../../todo/21-reach-every-citizen.md)** in fresh sessions. They touch the same files: small commits, `git diff` first.
+4. **Start [todo/20](../../todo/20-replies-that-convert.md) and todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c)** in fresh sessions. They touch the same files: small commits, `git diff` first.
 5. ~~Gemini billing~~: not needed now (row 5).
 6. **Morning check (~07:00 Perth):**
    - `data/portal.json` events: ≥150 points/h and ≥5 citizen replies/h;
