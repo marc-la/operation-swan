@@ -91,6 +91,6 @@ Drafts are in [A (Q2–Q5)](research-2026-10-21/A-rules.md#c-top-7) and [B](rese
 | Blue | 52 filed, 44 hidden, 2 genuine (96%). Stopped by a genuine ruling's 6 h lock until 02:01 UTC, not by a cap |
 
 **Next:**
-- [todo/24](../../todo/24-throughput-to-three.md): ~2.9 writes/min, GLM out, no wasted drafts.
+- todo/24: ~2.9 writes/min, GLM out, no wasted drafts.
 - [todo/25](../../todo/25-conversion-what-moves-them.md): conversion, top priority.
-- [todo/26](../../todo/26-blue-widen.md): fewer locked hours, more teams at full rate.
+- todo/26: fewer locked hours, more teams at full rate.

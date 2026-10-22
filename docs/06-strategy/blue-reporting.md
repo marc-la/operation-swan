@@ -1,6 +1,6 @@
 # Blue reporting: the greedy mechanism (2026-10-21)
 
-How we turn the Blue rules into points, and why the code (`src/swan_blue`, `swan-blue.service`) works the way it does. Rules: [scoring §3](../03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts). Work item and status: [todo/07](../../todo/07-blue-reporting.md).
+How we turn the Blue rules into points, and why the code (`src/swan_blue`, `swan-blue.service`) works the way it does. Rules: [scoring §3](../03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts). Work item and status: todo/07.
 
 ## 1. The limits, as they stand on 21 Oct
 
@@ -74,7 +74,7 @@ harvest every 30 min: leads (and ring posts someone else got hidden) with ≥ 10
 
 ## 7. Fewer locked hours, more teams at full rate (todo/26, 2026-10-22)
 
-[todo/26](../../todo/26-blue-widen.md). The first full day showed the cycle model of §2 was right about locks: Blue stopped on a lock, not a cap, with 43 targets ready.
+todo/26. The first full day showed the cycle model of §2 was right about locks: Blue stopped on a lock, not a cap, with 43 targets ready.
 
 ### Before: Sydney day 22 Oct up to 00:15 UTC (8:15am Perth)
 
