@@ -31,3 +31,8 @@ openrouter:nvidia/nemotron-3-ultra-550b-a55b:free
 # per call, but it drops items at 4 per call. Last here so it mostly serves the amplified post (config.AMP_MODELS).
 # Needs ALIBABA_API_KEY in .env (skipped without it). Other Alibaba models 403 until pay-as-you-go is set up.
 alibaba:qwen-plus-character
+# 2026-10-22: Bedrock models served only via the Converse API use the bedrock-converse provider (same BEDROCK_API_KEY;
+# ids need the inference-profile prefix). Not in the chain yet: add a price to config.LLM_PRICES first so its spend
+# counts against the budget. Claude needs AWS to lift our daily token limit first.
+# bedrock-converse:global.moonshotai.kimi-k3
+# bedrock-converse:global.anthropic.claude-sonnet-4-6

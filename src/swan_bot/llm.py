@@ -1,4 +1,5 @@
-"""Text generation through a chain of external models, tried in order (all OpenAI-compatible endpoints).
+"""Text generation through a chain of external models, tried in order (OpenAI-compatible endpoints, plus Bedrock's
+Converse API for the models Bedrock serves only there).
 
 The chain (best first) comes from LLM_CHAIN in .env if set, else deploy/llm_chain.txt (committed: edit and push to
 re-rank), else Gemini, Groq, OpenRouter defaults. Lines whose provider has no key in .env are skipped.
@@ -17,8 +18,11 @@ import os
 import re
 import threading
 import time
+import types
+import urllib.parse
 from zoneinfo import ZoneInfo
 
+import httpx2 as httpx           # openai's own HTTP library (the box has no plain httpx or requests)
 import openai
 import capturethenarrative as ctn
 
@@ -49,7 +53,13 @@ PROVIDERS = {
     # /chat/completions, so it isn't reachable here (2026-10-21)
     "bedrock": dict(key="BEDROCK_API_KEY", url="https://bedrock-mantle.ap-southeast-2.api.aws/v1",
                     models="BEDROCK_MODEL", default=""),
+    # Bedrock's own Converse API (same key, Bearer auth) for the models bedrock-mantle doesn't serve: Kimi K3, and
+    # Claude once AWS lifts our daily token limit (2026-10-22). Model ids take the inference-profile prefix
+    # (global. / au.), e.g. bedrock-converse:global.moonshotai.kimi-k3 in deploy/llm_chain.txt
+    "bedrock-converse": dict(key="BEDROCK_API_KEY", url="https://bedrock-runtime.ap-southeast-2.amazonaws.com",
+                             models="BEDROCK_CONVERSE_MODEL", default="", converse=True),
 }
+CONVERSE_MIN_TOKENS = 16     # Kimi K3 refuses a smaller maxTokens
 CHAIN_FILE = config.ROOT / "deploy" / "llm_chain.txt"
 USAGE_FILE = config.DATA / "llm_usage.json"
 QUOTA_DAY = ZoneInfo("America/Los_Angeles")      # Gemini and Groq daily quotas reset at midnight Pacific
@@ -104,6 +114,35 @@ def _is_daily(err, wait):
     return wait > 600 or any(k in s for k in ("per_day", "per day", "perday", "free_tier_requests", "(rpd)", "(tpd)"))
 
 
+class Unavailable(Exception):
+    """A model that can't answer now (Converse errors, which aren't openai exceptions): park it `seconds`."""
+
+    def __init__(self, why, seconds, detail=""):
+        super().__init__(f"{why}: {detail}" if detail else why)
+        self.why, self.seconds, self.detail = why, seconds, detail
+
+
+def _to_utc_midnight():
+    now = dt.datetime.now(dt.timezone.utc)
+    return ((now + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0) - now).total_seconds()
+
+
+def _converse_error(status, message):
+    """Unavailable for a Converse error ({"message": ...}). Bedrock's daily token quota resets at 00:00 UTC."""
+    s = message.lower()
+    if "per day" in s:                                  # "Too many tokens per day, please wait before trying again."
+        return Unavailable("daily quota", _to_utc_midnight(), message)
+    if "not available" in s or status == 404:           # "... is not available for this account": try again tomorrow
+        return Unavailable("not available", _to_utc_midnight(), message)
+    if status == 429 or "too many" in s:
+        return Unavailable("per-minute limit", 60, message)
+    if status in (401, 403):
+        return Unavailable("key not valid", 3600, message)
+    if status >= 500:
+        return Unavailable("InternalServerError", 120, message)
+    return Unavailable("bad request", 300, message)
+
+
 def chain_from_env():
     """[(provider, model)] in the order to try them. Providers without a key are skipped."""
     spec = os.environ.get("LLM_CHAIN", "").strip()
@@ -125,7 +164,8 @@ class Generator:
         self.chain = chain_from_env()
         self.clients = {prov: openai.OpenAI(api_key=os.environ[PROVIDERS[prov]["key"]], base_url=PROVIDERS[prov]["url"],
                                             max_retries=0, timeout=90)
-                        for prov in {p for p, _ in self.chain}}
+                        for prov in {p for p, _ in self.chain} if not PROVIDERS[prov].get("converse")}
+        self.http = None                      # httpx client for the Converse providers, made on first use
         self.parked = {}                      # model -> time it may be tried again
         self.park_why = {}                    # model -> why it is parked (shown on the dashboard)
         self.on_park = None                   # callback(model, until, why): the bot logs parks
@@ -190,6 +230,9 @@ class Generator:
             try:
                 return self._call(prov, model, system, user, json_mode, schema, reasoning, max_tokens,
                                   temperature), model
+            except Unavailable as e:
+                self._park(model, e.seconds, e.why)
+                print(f"{prov} {model}: {e.why}, parked {e.seconds / 60:.0f} min:", e.detail[:160])
             except openai.RateLimitError as e:
                 wait = _retry_seconds(e)
                 daily = _is_daily(e, wait)
@@ -272,6 +315,8 @@ class Generator:
 
     def _call(self, prov, model, system, user, json_mode, schema=None, reasoning=None, max_tokens=None,
               temperature=0.9):
+        if PROVIDERS[prov].get("converse"):
+            return self._converse(prov, model, system, user, json_mode, max_tokens, temperature)
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         cap = max_tokens if model not in self.no_cap else None
         kw = dict(model=model, max_tokens=cap or (8192 if json_mode else 4096), temperature=temperature,
@@ -314,6 +359,51 @@ class Generator:
                 print(f"{prov} {model}: cut off at max_tokens={cap} (thinking); asking again without the cap")
                 return self._call(prov, model, system, user, json_mode, schema, reasoning, None, temperature)
             return text
+
+    def _converse(self, prov, model, system, user, json_mode, max_tokens=None, temperature=0.9):
+        """One Bedrock Converse call (no JSON mode or schema there: the prompts spell out the JSON and it's parsed
+        as plain text, as for no_json_mode models). Errors raise Unavailable; the key never goes into a message."""
+        key = os.environ[PROVIDERS[prov]["key"]]
+        cap = max_tokens if model not in self.no_cap else None
+        body = {"system": [{"text": system}], "messages": [{"role": "user", "content": [{"text": user}]}],
+                "inferenceConfig": {"maxTokens": max(CONVERSE_MIN_TOKENS, cap or (8192 if json_mode else 4096)),
+                                    "temperature": temperature}}
+        url = f"{PROVIDERS[prov]['url']}/model/{urllib.parse.quote(model, safe='')}/converse"
+        if getattr(self, "http", None) is None:
+            self.http = httpx.Client(timeout=90)
+        self._pace(model)
+        try:
+            r = self.http.post(url, json=body, headers={"Authorization": f"Bearer {key}"})
+        except httpx.TimeoutException:
+            raise Unavailable("APITimeoutError", 120) from None
+        except httpx.HTTPError as e:
+            raise Unavailable("APIConnectionError", 120, type(e).__name__) from None
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        if r.status_code != 200:
+            msg = str(data.get("message") or data.get("Message") or f"HTTP {r.status_code}").replace(key, "***")
+            raise _converse_error(r.status_code, msg)
+        try:
+            content = data["output"]["message"]["content"]
+        except (KeyError, TypeError):
+            raise Unavailable("bad response", 300, str(list(data))[:120]) from None
+        # a reasoning model (Kimi K3) may put reasoningContent blocks before the answer: keep only the text blocks
+        text = "".join(b["text"] for b in content if isinstance(b, dict) and isinstance(b.get("text"), str)).strip()
+        self._count(model)
+        stop = data.get("stopReason")
+        self._local.finish = "length" if stop == "max_tokens" else "stop" if stop in ("end_turn", "stop_sequence") else stop
+        u = data.get("usage") or {}
+        self._charge(model, types.SimpleNamespace(prompt_tokens=u.get("inputTokens"),
+                                                  completion_tokens=u.get("outputTokens")), system, user, text)
+        if cap and stop == "max_tokens":
+            self.no_cap.add(model)             # spent the cap thinking, as with the OpenAI-compatible models
+            print(f"{prov} {model}: cut off at max_tokens={cap} (thinking); asking again without the cap")
+            return self._converse(prov, model, system, user, json_mode, None, temperature)
+        return text
 
     @property
     def last_finish(self):
