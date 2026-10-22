@@ -181,15 +181,14 @@ def post_ev(age_min, trending, strong=1.0, n=0, scale=1.0, pg=None):
 
 
 # ---- lock economics (todo/26, recalibrated todo/28): P(genuine) by evidence class ----
-# Every genuine ruling locks ALL our reporting for 6 h. Measured over every ruling to 22 Oct 05:00 UTC (50 post
-# rulings, blue-reporting §8): like ring alone 2 genuine of 19 (11%, the scoring page's "1 in 10"); reply rings 0 of
-# 28 (Jeffreys estimate 1.7%, 95% upper bound 11%); like ring + early ring 0 of 3. An id run of 10+ didn't help (2 of
-# 27 with one, 0 of 23 without), so it no longer counts. author_hidden is unmeasured (1 report) and can't take a like
-# ring under the bar on its own.
-PG_BASE = 0.10                    # a like ring alone: 2 of 19
-PG_FACTORS = dict(reply_ring=0.2,     # replies in lockstep: 0 of 28, so about 2%
-                  second_class=0.7,   # like ring plus early ring (repeat accounts): 0 of 3, so unproven
-                  author_hidden=0.6,  # the moderator already hid a post by this author (1 report so far)
+# Every genuine ruling locks ALL our reporting for 6 h. Measured over every ruling to 22 Oct 10:00 UTC (86 post
+# rulings, blue-reporting §8): like ring alone 2 genuine of 20 (10%, the scoring page's "1 in 10"); reply rings 2 of
+# 56 (3.6%; it was 0 of 28 at 05:00, which looked like 2%); like ring + early ring 0 of 10. Neither an id run of 10+
+# (3 of 38 with one, 1 of 48 without) nor an author already hidden (1 of 8) makes a report safer, so they don't count.
+PG_BASE = 0.10                    # a like ring alone: 2 of 20
+PG_FACTORS = dict(reply_ring=0.4,     # replies in lockstep: 2 of 56, so about 4%
+                  second_class=0.7,   # like ring plus early ring (repeat accounts): 0 of 10, so unproven
+                  author_hidden=1.0,  # the moderator already hid a post by this author: 1 of 8, no safer
                   weak=1.4)           # a small, slow like ring (< 30 likes, no 60-s burst of 8): #155963, genuine
 PG_RANGE = (0.005, 0.3)
 

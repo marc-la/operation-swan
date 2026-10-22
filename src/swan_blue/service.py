@@ -5,8 +5,8 @@ lock after any "genuine" ruling (about 1 in 10 for a like ring alone). Points co
 the moment we may, with the highest expected value first:
   post report    (1 - P(genuine)) x (25 if we are first, else 5) x the team's daily rate (5 full, 5 half, then 10%)
   account report 15 x that rate, near-certain, no lock risk (the account already has a hidden post and 100+ actions)
-The no-lock mode (todo/28, the default): account reports always first; post reports only at P(genuine) <= 2% (reply
-rings), worth the lock they risk, and within a daily risk budget (policy(), settable in .env on the box).
+The no-lock mode (todo/28, the default): account reports always first; post reports only at P(genuine) <= 4% (reply
+rings, the safest class measured), worth the lock they risk, and within a daily risk budget (policy(), .env).
 Being first pays 25 against 5 (by order, not time; nobody can see others' reports), so we push the odds:
   - ring authors' timelines are polled every 3 min, and a known ring author's new post is audited at 4, 12, 45 min;
     an early ring (most of its likers ran that author's earlier ring) qualifies before the ring is big
@@ -76,13 +76,13 @@ FEED_RESERVE = 4              # leave the bot this many feed calls of the team's
 # todo/28, the no-lock mode (the default): a genuine ruling locks ALL our reporting for 6 h, and the moderator's error,
 # not our evidence, sets the floor. Account reports always go first (a dismissed one can't lock us). A post report
 # files only when
-#  - its P(genuine) (evidence.p_genuine) is at most BLUE_POST_PG_MAX: 2% lets reply rings through (0 genuine of 28
-#    to 22 Oct) and keeps every like ring out (2 of 19);
+#  - its P(genuine) (evidence.p_genuine) is at most BLUE_POST_PG_MAX: 4% lets reply rings through (2 genuine of 56
+#    to 22 Oct 10:00 UTC; no class reaches 1-2%) and keeps every like ring out (2 of 20);
 #  - its expected value pays for the lock it risks: ev >= pg x LOCK_COST (a 10%-rate report never does); and
 #  - the risk bucket holds its P(genuine): it refills BLUE_PG_PER_DAY a day (expected genuine rulings a day; 0.4 is
 #    about 3 a week, todo/28's bar) and holds a quarter of that, so post reports spread over the day.
 # BLUE_POST_PG_MAX and BLUE_PG_PER_DAY can be set in .env on the box (blue-reporting §8 has what each costs).
-PG_MAX = 0.02
+PG_MAX = 0.04
 PG_PER_DAY = 0.4
 PG_BURST_DAYS = 0.25          # the bucket holds this many days of PG_PER_DAY
 LOCK_COST = 300               # points a 6 h lock costs: a quarter of a ~1,200-point Blue day (§2)

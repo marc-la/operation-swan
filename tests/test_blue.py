@@ -271,7 +271,7 @@ def test_p_genuine_by_evidence_class():
     assert ev.p_genuine(like, ["like_ring"]) == ev.PG_BASE
     assert ev.p_genuine(audit(), ["reply_ring", "like_ring"]) < ev.p_genuine(like, ["like_ring", "early_ring"]) \
         < ev.p_genuine(like, ["like_ring"])
-    assert ev.p_genuine(like, ["like_ring"], author_hidden=True) < ev.PG_BASE
+    assert ev.p_genuine(like, ["like_ring"], author_hidden=True) == ev.PG_BASE     # 1 of 8: no safer (22 Oct)
     weak = audit(team_likes=22, likes=22, burst60=3, team_replies=0, reply_authors=0, run=3)   # #155963, 21 Oct
     assert ev.p_genuine(weak, ["like_ring"]) > ev.PG_BASE
     assert ev.post_ev(10, False, pg=0.04) > ev.post_ev(10, False, pg=0.14)
