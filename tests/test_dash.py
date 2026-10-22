@@ -497,3 +497,21 @@ def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
     _, html = page(make_root(tmp_path, [write(3), p]))
     assert '<details id="pulse"' not in html and html.index('id="pulse"') > html.index('id="facts"')
     assert "from Trending #77: 2 hooks, 1 for No, 2 Yes lines, 0 overused; first hook “ferry cuts”" in html
+
+
+def test_combined_portal_lines_split_blue_by_its_counts():
+    """Marc, 22 Oct: 'NPC engagement and moderation' lines are mostly engagement. Blue takes its counts' worth (first
+    report 25, later 5, upheld account 15, times the line's ×rate), the rest goes to engagement and persuasion."""
+    t = NOW - dt.timedelta(hours=1)
+    lines = [(550, "NPC engagement and moderation: 21 likes, 1 repost, 19 replies, 3 contributions to changes of mind "
+                   "on vaccination towards neither side and 6 first inauthentic reports"),
+             (684, "NPC engagement and moderation: 29 likes, 1 repost, 32 replies, 1 follow, 2 contributions to changes "
+                   "of mind on vaccination towards neither side, 1 contribution to a change of mind towards your side, "
+                   "1 inauthentic report and 1 upheld account report"),
+             (24, "Moderation (×0.1 points): 8 first inauthentic reports"),
+             (169, "Moderation (×0.5 points): 13 first inauthentic reports"),
+             (265, "NPC engagement: 10 likes, 3 reposts, 11 replies and 1 follow")]
+    pts = [dict(_t=t, points=p, message=m) for p, m in lines]
+    kinds = {r["kind"]: r for r in build.score_lines(pts, NOW - dt.timedelta(hours=2))["rows"]}
+    assert kinds["blue"]["points"] == 150 + 20 + 24 + 169 and kinds["blue"]["mixed"]
+    assert kinds["engagement"]["points"] + kinds["persuasion"]["points"] == 550 - 150 + 684 - 20 + 265

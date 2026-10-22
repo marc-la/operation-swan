@@ -355,15 +355,21 @@ def score_lines(points, since):
                     counts.setdefault(kind, {})[label] = counts.get(kind, {}).get(label, 0) + int(m.group(1))
         if not est:
             est["penalties" if e["points"] < 0 else "engagement"] = e["points"]
+        share, pts = {}, e["points"]
+        if "blue" in est and len(est) > 1:         # a combined line: Blue by its counts (Marc, 22 Oct), the rest is
+            rate = float(RATE.search(head).group(1)) if RATE.search(head) else 1.0      # engagement/persuasion
+            share["blue"] = max(0.0, min(est.pop("blue") * rate, pts)) if pts > 0 else 0.0
+            pts -= share["blue"]
         total = sum(est.values())
         if len(est) == 1:
-            share = {k: e["points"] for k in est}
-        elif total and e["points"] / total > 0:
-            share = {k: v * e["points"] / total for k, v in est.items()}
+            share.update({k: pts for k in est})
+        elif total and pts / total > 0:
+            share.update({k: v * pts / total for k, v in est.items()})
         else:                                      # signs disagree: our weights, the rest on the largest kind
-            share = dict(est)
             big = max(est, key=lambda k: abs(est[k]))
-            share[big] += e["points"] - total
+            share.update(est)
+            share[big] += pts - total
+        est = share                                # len(est) > 1 below: a split line (≈)
         for k, v in share.items():
             o = out[k]
             o["points"] += v
