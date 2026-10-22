@@ -317,8 +317,10 @@ def strip_tag(t):
 # texts). A draft to one citizen is compared strictly (NEAR_DUP_SAME) to what we sent to that citizen or thread
 # (`same`), and loosely (NEAR_DUP_OTHER) to what we sent to everyone else: repeating ourselves across citizens is a bot
 # tell for Blue reporters, so it isn't dropped. Posts, threads and journalist replies stay strict against everything.
+# todo/27 (22 Oct): 0.4 -> 0.3 across citizens. At 0.4 one reply skeleton went out from many voices and the moderator
+# hid it on other teams' Blue reports; the same-citizen check is unchanged.
 NEAR_DUP_SAME = 0.25
-NEAR_DUP_OTHER = 0.4
+NEAR_DUP_OTHER = 0.3
 PERSONAL_KINDS = ("reply", "reply_back", "second_voice")
 
 

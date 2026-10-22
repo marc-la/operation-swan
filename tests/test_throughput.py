@@ -103,8 +103,11 @@ def test_steady_state_rate_with_the_swarm():
 # ---- 3. near-duplicates: strict to the same citizen or thread, looser across citizens --------------------------------
 OURS = ("The question has no end date and no review built in, so whatever list they write after the vote stays. "
         "I'm voting No.")
-CLOSE = ("The question has no end date and no review, so the list they write after the ballot is there for good. "
+CLOSE = ("The question has no end date and no review, so the list they draw up after the ballot is there for good. "
          "I'm voting No on it.")
+# todo/27: 0.32 to OURS, under todo/24's 0.4 across citizens, now caught at 0.3
+OLD_BAND = ("The question has no end date and no review, so the list they write after the ballot is there for good. "
+            "I'm voting No on it.")
 
 
 def test_near_duplicate_thresholds():
@@ -115,6 +118,8 @@ def test_near_duplicate_thresholds():
     assert quality.near_duplicate(CLOSE, "reply", recent_texts=[OURS], same=[OURS]), "same citizen or thread: strict"
     assert quality.near_duplicate(CLOSE, "post", recent_texts=[OURS]), "posts stay strict against everything"
     assert quality.near_duplicate(OURS, "reply", recent_texts=[OURS]), "a copy is caught everywhere"
+    assert 0.3 < quality.similar(OLD_BAND, OURS) <= 0.4
+    assert quality.near_duplicate(OLD_BAND, "reply", recent_texts=[OURS]), "todo/27: 0.3 across citizens"
 
 
 def test_same_target_texts():
