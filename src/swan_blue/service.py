@@ -168,7 +168,8 @@ class Blue:
     def load_ours(self):
         records = read_json(config.ACCOUNTS_FILE, [])
         swarm = read_json(config.SWARM_ACCOUNTS_FILE, [])           # the swarm's likers are ours too (ids only)
-        self.ours = {r["account_id"] for r in records + swarm if r.get("account_id")}
+        # never shrinks: a file caught mid-write (or a deleted account) must not turn one of ours into a target
+        self.ours = {r["account_id"] for r in records + swarm if r.get("account_id")} | self.ours
         rec = config.blue_reporter(records)
         self.reporter_name = rec and rec["username"]
         return rec
@@ -398,8 +399,8 @@ class Blue:
         reported = set(self.s["reports"])
         for pid, p in self.s["posts"].items():
             a, cls = p.get("audit"), p.get("classes")
-            if not cls or p.get("gone") or a["author"] in self.ours:
-                continue
+            if not cls or p.get("gone") or a["author"] in self.ours or a.get("ours", 0) > ev.OURS_MAX:
+                continue                      # ours, or our boosters act on it: never a post report
             age_min = (t - ev.ts(a["created"])) / 60
             if age_min > MAX_POST_AGE_H * 60:
                 continue
@@ -553,9 +554,40 @@ class Blue:
         self.s.update(lock_until=until, lock_src="server", lock_confirm=False, server_lock=dict(at=t, until=until),
                       lock_why=named or "a report ruled genuine (the platform's lock)")
 
+    def own_target(self, c):
+        """The last line (Marc, 22 Oct): is this report aimed at one of our accounts or at a post one of them wrote?
+        Our ids are loaded fresh, and a post's author is read from the platform, not from our candidate data. None
+        when it's safe to file; otherwise why not (a read error also stops this report)."""
+        self.load_ours()
+        if not self.ours:
+            return "our account list is empty or unreadable"
+        if c["kind"] == "account":
+            return "own account" if int(c["target"]) in self.ours else None
+        try:
+            author = self.social.get_post(int(c["target"]))["author_id"]
+        except ctn.APIError as e:
+            return f"post read failed: {e.status}"
+        return "own account" if author in self.ours or c.get("author") in self.ours else None
+
     def file(self, c):
         acc = self.session()
         if acc is None:
+            return False
+        why = self.own_target(c)
+        if why == "post read failed: 404":           # gone (hidden or deleted): drop it, as a refused report would
+            self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c.get("author"),
+                                               label=c.get("label"), filed=now(), status="refused", detail=c["detail"])
+            return False
+        if why == "own account":
+            self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c.get("author"),
+                                               label=c.get("label"), filed=now(), status="refused", detail=c["detail"])
+            self.log({"act": "refused", "key": c["key"], "refused": "own account", "target": c["target"],
+                      "author": c.get("author")})
+            self.alert(f"own:{c['key']}", f"refused to report {c['key']}: it targets one of our own accounts. "
+                       "A candidate filter let it through; look at swan_blue.", gap_s=0)
+            return False
+        if why:
+            self.error(f"not filed {c['key']}: {why}")
             return False
         try:
             if c["kind"] == "post":

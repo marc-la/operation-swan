@@ -21,6 +21,8 @@ EARLY_RING = dict(overlap=8, share=0.85)
 RUN_GAP = 3                                                          # near-consecutive account ids: registered in a batch
 MODERATOR_RIGHT = 0.9            # scoring page, 20 Oct PM: "approximately one moderator ruling in ten is wrong"
 FIRST, LATER, ACCOUNT = 25, 5, 15
+OURS_MAX = 2                     # a post with more of our accounts acting on it than this is never reported (Marc,
+                                 # 22 Oct): the report would point the moderator at our own boosters
 
 
 def ts(s):
@@ -49,6 +51,8 @@ def audit(social, post, ours, max_items=200):
     delays = sorted(ts(x["liked_at"]) - t0 for x in team_likes if x.get("liked_at"))
     burst = max((sum(1 for d in delays if a <= d < a + 60) for a in delays), default=0)
     team_replies = [r for r in replies if is_team(r["author_id"], ours)]
+    own = {x["account_id"] for x in likers if x["account_id"] in ours} | \
+        {r["author_id"] for r in replies if r["author_id"] in ours}
     rdelays = [ts(r["created_at"]) - t0 for r in team_replies]
     in_window = [r for r, d in zip(team_replies, rdelays) if d <= REPLY_RING["window_min"] * 60]
     return dict(
@@ -61,6 +65,7 @@ def audit(social, post, ours, max_items=200):
         run=longest_run([x["account_id"] for x in team_likes] + [r["author_id"] for r in team_replies]),
         liker_ids=sorted(x["account_id"] for x in team_likes),
         reply_posts=[dict(post_id=r["post_id"], author=r["author_id"], created=r["created_at"]) for r in in_window],
+        ours=len(own),                # our accounts among its likers and repliers (never counted above)
         audited=dt.datetime.now(dt.timezone.utc).isoformat())
 
 

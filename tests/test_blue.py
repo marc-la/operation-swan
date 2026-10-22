@@ -457,3 +457,57 @@ def test_cap_30_leaves_the_last_slot_to_an_account_report(tmp_path, monkeypatch)
     assert filed == ["s0"]                       # 28 posts pending: one more post, the 30th slot waits
     b.fill(ranked[1:] + [dict(key="a1", kind="account", ev=14, pg=0.0)], "auto")
     assert filed == ["s0", "a1"]                 # ...for an account report
+
+
+class Reporter:
+    rate_limit = None
+
+    def __init__(self):
+        self.filed = []
+
+    def report_post(self, pid, reason, detail):
+        self.filed.append(("post", pid))
+        return {}
+
+    def report_account(self, aid, reason, detail):
+        self.filed.append(("account", aid))
+        return {}
+
+
+def test_never_files_against_our_own_accounts(tmp_path, monkeypatch):
+    import json
+    b = blue(tmp_path, monkeypatch)
+    (tmp_path / "acc.json").write_text(json.dumps([dict(account_id=3000, username="v", role="voice")]))
+    (tmp_path / "swarm.json").write_text(json.dumps([dict(account_id=9100, username="s")]))
+    monkeypatch.setattr(S.config, "ACCOUNTS_FILE", tmp_path / "acc.json")
+    monkeypatch.setattr(S.config, "SWARM_ACCOUNTS_FILE", tmp_path / "swarm.json")
+    alerts = []
+    monkeypatch.setattr(b, "alert", lambda kind, msg, gap_s=0: alerts.append(kind))
+    b.reporter = Reporter()
+
+    class Social(FakeSocial):
+        def get_post(self, pid):
+            return {"post_id": pid, "author_id": {1: 9100, 2: 7000}[pid]}
+    b.social = Social()
+
+    def c(key, kind, target, author):
+        return dict(key=key, kind=kind, target=target, author=author, label="cA", detail="x", classes=["reply_ring"],
+                    ev=20, pg=0.02, base=(10, False, 1))
+    assert not b.file(c("a3000", "account", 3000, 3000))                    # one of our voices
+    assert not b.file(c("p1", "post", 1, 7000))       # the candidate says 7000; the platform says our swarm wrote it
+    (tmp_path / "acc.json").write_text(json.dumps([dict(account_id=3000), dict(account_id=3001)]))
+    assert not b.file(c("a3001", "account", 3001, 3001))                    # a voice added since: read fresh
+    assert b.reporter.filed == [] and alerts == ["own:a3000", "own:p1", "own:a3001"]
+    assert b.s["reports"]["p1"]["status"] == "refused"
+    log = [json.loads(x) for x in (tmp_path / "reports.jsonl").read_text().splitlines()]
+    assert [x["key"] for x in log if x.get("refused") == "own account"] == ["a3000", "p1", "a3001"]
+    assert b.file(c("p2", "post", 2, 7000)) and b.reporter.filed == [("post", 2)]   # another team's: files
+
+
+def test_no_post_report_where_our_boosters_acted(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.s["posts"]["100"] = post(100, "cA", 5000)
+    b.s["posts"]["100"]["audit"]["ours"] = 3                                # 3 of ours liked another team's post
+    b.s["posts"]["200"] = post(200, "cB", 7000)
+    b.s["posts"]["200"]["audit"]["ours"] = 2
+    assert {c["target"] for c in b.candidates()} == {200}
