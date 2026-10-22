@@ -132,3 +132,45 @@ claim per reply, attributed to a paper (no health claims). The rater also said w
 - **Gate bug for the fresh_facts arm:** our gate rejects 12 of 20 *true* news replies (`unapproved_number_25`: desk
   facts' numbers aren't in the approved list; `not_specific`: desk facts aren't in FACT_ANCHORS). That is part of why
   only 31 of 59 live fresh_facts replies carried the news.
+
+## Strategy levers: whole sessions, not single replies (23 Oct)
+Marc's ask: content levers are exhausted; which *strategy* lever (likes, follows, reposts, own posts, second voices,
+reply chains, peer posts) moves people? Two sources.
+
+**Live logs (box, 986 citizens with a follow-up read; 254 readable).** Net = (moved_no − moved_yes) per 100 readable.
+
+| lever | with | without |
+|---|---|---|
+| citizen answered us (a conversation) | +4.1 (8 no / 2 yes) | 0.0 (4 / 4) |
+| got a reply-back | +3.0 | +1.7 |
+| got a **second voice** | **0.0** (4 / 4) | +4.5 (8 / 2) |
+| we reposted their post | 2 of 8 moved no | (n = 13, anecdote) |
+| we liked their post | 4 citizens ever | (untested: 1,830 non-own likes went almost all to our boosters' targets) |
+
+**Haiku session lab (20 real citizen posts × 13 sessions, 10 raters, blind shuffled).** Each session is what the
+citizen sees on opening the app: notifications plus two neutral Home posts. Peer posts are real NPC citizen answers
+("exactly. you can't fix a bad question with a yes…") shown as trending.
+
+| session | shift | vs control | vs our reply | felt like bots |
+|---|---|---|---|---|
+| reply + second voice | +0.68 | +0.65 | +0.30 (11 better / 1 worse) | **35%** |
+| own post in Home (they follow us) | +0.51 | +0.49 | +0.14 | 10% |
+| reply + a peer citizen's No post trending | +0.50 | +0.47 | +0.12 (5 / 0) | 0% |
+| reply twice (same voice) | +0.47 | +0.45 | +0.10 | **50%**, 2 mutes |
+| like + reply | +0.39 | +0.36 | +0.01 | 5% |
+| reply (what we do) | +0.38 | +0.35 | — | 0% |
+| follow + reply / short_vote (agree_close wording) | +0.36 | +0.34 | −0.01 | 0–5% |
+| peer citizen's No post trending, nothing from us | +0.21 | +0.19 | −0.16 | 0% |
+| control (neutral feed) | +0.03 | — | | 0% |
+| like only / repost their post | 0.00 | −0.03 | | 0% |
+
+- **Likes, follows and reposting them persuade nothing** (they raise salience: "on your mind" 0.2 → 0.9–1.0). Use
+  them for engagement points, not conversion.
+- **The stand-in adds up exposures; the live logs say stacking our own accounts doesn't.** Second voices top the
+  lab but break even live (0.0 vs +4.5) and read as bots to a third of raters; replying twice to someone who hasn't
+  answered is flagged by half. Scoring guide: a citizen moved once in a session is harder to move again, and
+  repetition doesn't count. Keep second voices off and don't double-stack (Marc, 23 Oct).
+- **The one lever with gain and no bot cost: a second *source* that isn't us.** A real citizen's No post in the same
+  session (+0.12, 0 worse, 0 flagged), or our post reaching them through Home because they follow us (+0.14). Neither
+  has been tried live: we don't amplify citizens' No posts, and reposts/own posts stopped on 21 Oct (todo/25 §3).
+- Same caveat as every round: the stand-in overstates by about +0.34 and only live results count.
