@@ -418,6 +418,10 @@ LAB_REMOTE_MODEL = "qwen2.5-3b-instruct"
 LAB_CONCURRENCY = {"remote": 16, "local": 1, "competitor": 1}   # trials at once, by stand-in kind (Modal: 32 max)
 LAB_LLM_PER_MIN = 3                 # CompetitorLLM's team limit: 3/min, 1 at a time (the headers can only lower it)
 LAB_READS_PER_MIN = 30              # the persona builder's read pace (per-endpoint budgets, never the feed budget)
+# The lab drafts on the bot's paid models (Kimi) and the same daily budget (llm.py). On 22 Oct 12-13 UTC its round 1
+# spent the day's share and the bot's replies fell to qwen-plus-character. It now drafts only while more than this
+# share of the day's budget is left; the bot keeps the rest (it loses Kimi at LLM_AMP_RESERVE_SHARE).
+LAB_BUDGET_FLOOR = 0.6
 LAB_SEEDS = 6                       # trials per persona x strategy (6 since remote: the 0.7-temperature noise needs pairs)
 # Drafting models a strategy file may name (drafter = "..."), added to the lab's chain on Bedrock's OpenAI-compatible
 # endpoint: the drafting-model factor of round 2. Kimi K3 isn't served there (404, 2026-10-22).

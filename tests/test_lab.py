@@ -257,3 +257,18 @@ def test_stealth_scores_resemblance_to_the_hidden_posts():
     sim, worn, vote = report.stealth(rows, hidden)
     assert 0.4 < sim < 0.6 and worn == 0.5 and vote == 0.5
     assert report.stealth([], hidden) is None
+
+
+def test_the_lab_stops_drafting_at_the_budget_floor(monkeypatch):
+    from swan_bot import llm
+    monkeypatch.setattr(llm, "day_share", lambda day: 10.0)
+
+    class Gen:
+        left = 7.0
+
+        def budget_left(self):
+            return self.left
+    g = Gen()
+    assert trials.budget_ok(g)
+    g.left = 5.0                                       # under 60% of the day's share: the bot keeps it
+    assert not trials.budget_ok(g)

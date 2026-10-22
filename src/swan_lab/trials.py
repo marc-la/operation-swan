@@ -17,6 +17,7 @@ import types
 import capturethenarrative as ctn
 
 from swan_bot import bot, config, content, quality
+from swan_bot import llm
 from swan_bot.llm import Generator
 from swan_bot.targeting import REFERENDUM
 from . import library, npc
@@ -202,6 +203,13 @@ def baseline_for(stand_in, card, seed):
         return b
 
 
+def budget_ok(gen):
+    """True while more than config.LAB_BUDGET_FLOOR of today's LLM budget share is left: the lab never takes the
+    bot's Kimi (22 Oct 12-13 UTC it did, and the bot's replies fell to a weaker model)."""
+    today = dt.datetime.now(llm.BUDGET_DAY).date().isoformat()
+    return gen.budget_left() > config.LAB_BUDGET_FLOOR * llm.day_share(today)
+
+
 def write_status(name="status.json", **kw):
     config.LAB_DIR.mkdir(parents=True, exist_ok=True)
     (config.LAB_DIR / name).write_text(json.dumps(dict(ts=dt.datetime.now(dt.timezone.utc).isoformat(), **kw)))
@@ -254,6 +262,10 @@ def loop(once=False, limit=None, model=None, local_model=None, fallback=True):
                 if once or (limit and ran >= limit):
                     return ran
                 time.sleep(300)
+                continue
+            if not budget_ok(gen):                      # the bot's drafting budget comes first
+                status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model, down="LLM budget floor")
+                time.sleep(600)
                 continue
             stand_in.restore()
             if down and not stand_in.up():              # still down: no reply drafted for nothing
