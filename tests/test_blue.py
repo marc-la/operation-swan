@@ -64,6 +64,8 @@ def blue(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "REPORTS_LOG", tmp_path / "reports.jsonl")
     monkeypatch.setattr(S, "APPROVALS", tmp_path / "approved.jsonl")
     monkeypatch.setattr(S, "DETECT_FILE", tmp_path / "detect.json")
+    monkeypatch.setattr(S.config, "ACCOUNTS_FILE", tmp_path / "no_accounts.json")      # the box has real ones
+    monkeypatch.setattr(S.config, "SWARM_ACCOUNTS_FILE", tmp_path / "no_swarm.json")
     b = S.Blue(live=False)
     monkeypatch.setattr(b, "alert", lambda *a, **k: None)    # tests that set live=True must never page anyone
     return b
