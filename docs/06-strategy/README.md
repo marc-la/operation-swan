@@ -15,6 +15,7 @@
 | [blue-reporting.md](blue-reporting.md) | **Blue track (2026-10-21):** why locks, not targets, set the pace; the greedy fill by expected value; account-report harvest; Red cost; how to run it |
 | [npc-lab.md](npc-lab.md) | **NPC lab (2026-10-22, todo/25):** a stand-in citizen on CompetitorLLM ranks reply strategies and segments; how to add a strategy (one file), read the results, the rules it keeps |
 | [stealth.md](stealth.md) | **Stealth (2026-10-22, todo/27 + todo/31):** why our voices get hidden (the audit), what is live, the behaviour switches (off by team decision) and how to bring them back |
+| [hidden-post-audit-2026-10-23.md](hidden-post-audit-2026-10-23.md) | **Hidden-post audit (2026-10-23):** the 14 suspensions (7 at 3+ hides, 7 via account reports), the 46 hidden posts' common tells, why stopping at 2 hides could not work, what is and is not in our control |
 | [direction-2026-10-21.md](direction-2026-10-21.md) | **Current direction (2026-10-21 night):** no loophole, the leaders win on changes of mind; ranked plan by points/h; what to stop; grey items and `#questions` drafts; overnight checklist. Raw research: [research-2026-10-21/](research-2026-10-21/) |
 | [diagnosis-2026-10-20.md](diagnosis-2026-10-20.md) | **Why we're 25th after Day 1** (1.3 views per write; leaders amplify into Trending) and the work items in [`todo/`](../../todo/README.md) |
 | [model-test-2026-10-19.md](model-test-2026-10-19.md) | Blind test of Haiku vs Sonnet on real citizen doubts: scores, best drafts, prompt fix |

@@ -21,8 +21,8 @@ def test_draw_is_spread_and_respects_weights(monkeypatch):
     monkeypatch.setattr(config, "SWITCHBACK", [])
     rng = random.Random(1)
     got = collections.Counter(experiment.draw("ask_kind", experiment.ASK_WEIGHTS, rng=rng) for _ in range(5000))
-    assert set(got) == set(experiment.ASK_WEIGHTS)
-    assert 0.07 < got["none"] / 5000 < 0.13 and 0.15 < got["loss"] / 5000 < 0.21
+    assert set(got) == {k for k, w in experiment.ASK_WEIGHTS.items() if w > 0}, "switching is at 0 (23 Oct audit)"
+    assert 0.07 < got["none"] / 5000 < 0.13 and 0.21 < got["loss"] / 5000 < 0.27
 
 
 def test_pin_wins_over_switchback(monkeypatch):

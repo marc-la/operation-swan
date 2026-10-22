@@ -27,7 +27,8 @@ ASK_KINDS = {
     "none": "End on a plain statement of your No, with no question at all (this replaces any instruction above "
             "to finish on a question).",
 }
-ASK_WEIGHTS = {"frame": 0.18, "people": 0.18, "loss": 0.18, "switching": 0.18, "status_quo": 0.18, "none": 0.10}
+# 2026-10-23: switching 0 (its closer was in 28% of the hidden posts, 9% of the rest); its weight to the three other questions
+ASK_WEIGHTS = {"frame": 0.18, "people": 0.24, "loss": 0.24, "switching": 0.0, "status_quo": 0.24, "none": 0.10}
 
 # Target length per mode: (sentences, lo, hi) in WORDS (todo/14: flash-lite ignores character counts, so posts ran
 # 554-657 characters against the 495 cap; it keeps to sentences and words). At WORDS_TO_CHARS (about 5.4 characters a

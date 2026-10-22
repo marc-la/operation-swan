@@ -68,8 +68,9 @@ def main():
                 "off amplified posts and threads" if n >= config.HIDDEN_OFF_AMP else "no change")
         record({"act": "hidden_post", "username": username, "post_id": pid, "hidden": n, "actions": actions,
                 "bot": step})
-        alert(f"@{username}: post #{pid} hidden by the moderator ({n} hidden, {actions} actions; 3 = suspended). "
-              f"Bot: {step}. Decide whether this voice keeps writing.")
+        alert(f"@{username}: post #{pid} hidden by the moderator ({n} hidden, {actions} actions; 3 hidden suspend it, "
+              f"and with 1+ hidden and 100+ actions one upheld account report does; posts of the last ~3 h are "
+              f"still awaiting rulings, so more may follow). Bot: {step}. Decide whether this voice keeps writing.")
     state["checked"] = now
 
     # ---- ring self-audit, hourly ----

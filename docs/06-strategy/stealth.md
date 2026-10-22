@@ -7,6 +7,8 @@ What came out of todo/27 and todo/31 (both done and removed). Code: `src/swan_bo
 - **Text:** "I'm voting No" was in 57% of 1,886 writes in 24 h. 17 of 31 hidden posts used one skeleton (`F14_no_yes_but`): echo their "but" → "no end date / review / venue list until after" → "a Yes binds us" → the vote, or "Do you know anyone who's moved from Yes to No?".
 - **Behaviour:** each voice wrote 100–200 times a day and was active 18–24 of 24 hours. 294 of 730 citizens got two of our voices within 60 min (second voices), the pattern our own Blue reports as a reply ring.
 
+Follow-up audit of the suspensions on 22 Oct (46 hidden posts, 14 suspended voices): [hidden-post-audit-2026-10-23.md](hidden-post-audit-2026-10-23.md).
+
 ## What is live
 | Change | Commit | Effect |
 |---|---|---|

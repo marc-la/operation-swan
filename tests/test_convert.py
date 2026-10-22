@@ -158,7 +158,8 @@ def poll(posts, notes, monkeypatch, **kw):
             raise p
         return p
 
-    accounts = types.SimpleNamespace(voices=lambda: [dict(username="v0")], session=lambda rec: acc)
+    accounts = types.SimpleNamespace(voices=lambda: [dict(username="v0")], parked=lambda rec: False,
+                                     session=lambda rec: acc)
     return bot.reply_back_jobs(types.SimpleNamespace(get_post=get_post), accounts, None, **kw), acc
 
 

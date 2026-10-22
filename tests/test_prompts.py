@@ -275,7 +275,7 @@ def test_clip():
 
 def test_replies_new_shape():
     assert not any("same thing" in o for o in content.OPENERS)
-    assert len(content.OPENERS) == 5
+    assert len(content.OPENERS) == 4, "the concession opener went on 23 Oct (hidden 3.9% vs 1.4%)"
     assert "8 words or fewer" in content.REPLY_RULES and "rhetorical" in content.REPLY_RULES
     for i in range(30):
         meta = {}

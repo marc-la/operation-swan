@@ -859,7 +859,6 @@ def rebuttal_for(text):
 # Openings, picked at random so replies across accounts don't share one template (playbook §7 reply shape).
 OPENERS = [
     "Open with their own words for what they raised, 6 words or fewer.",
-    "Open with a short, honest concession, 8 words or fewer, then turn.",
     "Open by naming the exact thing they asked for, in a few words.",
     "Open with the fact itself, plainly.",
     "Open with a short line from your own experience that connects directly to their point.",
@@ -870,7 +869,9 @@ REPLY_RULES = (
     "or fewer and never repeats their reasons. Avoid stock phrases such as 'as written', 'as it stands', 'the "
     "trouble is', 'locks it in', 'I get wanting', 'makes sense', 'I hear you', 'fair point'. Mention your own life "
     "only if it connects directly to their point; no small talk. No rhetorical questions: any question is one they "
-    "can answer from their own life. Do not repeat their sentences back to them and don't lecture. No hashtags."
+    "can answer from their own life. Do not repeat their sentences back to them and don't lecture. Never open by "
+    "granting their point ('that would help', 'fair ask', 'sounds sensible'), never ask whether they know anyone "
+    "who moved from Yes to No, and never tell of someone who was Yes and switched. No hashtags."
 )
 
 

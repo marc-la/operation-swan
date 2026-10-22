@@ -7,7 +7,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 import capturethenarrative as ctn  # noqa: E402
 
-from swan_bot import amplify, config, watch  # noqa: E402
+from swan_bot import amplify, bot, config, watch  # noqa: E402
 from test_amplify import make_accounts  # noqa: E402
 
 OLD = "2026-10-20T10:00:00+00:00"
@@ -92,3 +92,21 @@ def test_one_hidden_post_keeps_a_voice_off_amplification(tmp_path, monkeypatch):
     while (job := amp.next_write_job()):
         assert job["rec"]["username"] != "v1"
         job["rec"]["last_write"] = 0
+
+
+def test_a_parked_voice_answers_nobody(tmp_path, monkeypatch):
+    """23 Oct audit: 6 of 7 voices kept writing (reply-backs, pooled drafts) after reaching the limit."""
+    acc = make_accounts(n_voices=2, n_boosters=0)
+    write_hidden(tmp_path, monkeypatch, {"v0": [1, 2]})
+    asked = []
+
+    class NoNotes:
+        def notifications(self, **kw):
+            return []
+
+    def session(rec):
+        asked.append(rec["username"])
+        return NoNotes()
+
+    bot.reply_back_jobs(None, acc, None, session=session)
+    assert asked == ["v1"], "the parked voice's notifications are never read"

@@ -136,7 +136,8 @@ def test_reply_backs_only_in_amplified_threads():
         def resolve_notification(self, nid):
             resolved.append(nid)
 
-    accounts = types.SimpleNamespace(voices=lambda: [dict(username="v0")], session=lambda rec: Acc())
+    accounts = types.SimpleNamespace(voices=lambda: [dict(username="v0")], parked=lambda rec: False,
+                                     session=lambda rec: Acc())
     social = types.SimpleNamespace(get_post=lambda pid: posts[pid])
     targeter = types.SimpleNamespace(is_citizen=lambda aid: True)
     jobs = bot.reply_back_jobs(social, accounts, targeter, roots={900})

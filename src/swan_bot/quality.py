@@ -354,7 +354,21 @@ PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
     "venue_list": (re.compile(r"\bvenue lists?\b", re.I), 0.10),
     "sunset": (re.compile(r"\bsunset\b", re.I), 0.10),
     "after_the_vote": (re.compile(r"\bafter the vote\b", re.I), 0.10),
+    # 23 Oct hidden-post audit (docs/06-strategy/hidden-post-audit-2026-10-23.md): posts with one of these were hidden
+    # 3-5x as often as the rest (since 21 Oct 12:00 UTC: closing "know anyone who moved from Yes" 7 of 131, a story of
+    # someone who was Yes and is now No 9 of 264, a conceding opener 11 of 280; the other 2,116 writes 25). No share.
+    "switch_close": (re.compile(r"(?:know|knows) (?:anyone|someone)[^?]*(?:yes|unsure|switch|moved|shift)"
+                                r"|anyone[^?]{0,40}(?:moved|shifted|switched)"
+                                r"|(?:moved|shifted|switched)[^?]{0,25}(?:yes|unsure)[^?]{0,20}\?", re.I), 0.0),
+    "switch_story": (re.compile(r"(?:was|were|used to be|started)[^.?!]{0,30}(?:yes|unsure|undecided|leaning)"
+                                r"[^.?!]{0,60}(?:now|then|until|till|switched|changed|came round)"
+                                r"|(?:switched|moved|shifted|changed (?:her|his|their) mind)[^.?!]{0,30}(?:to|from)"
+                                r"[^.?!]{0,20}\b(?:no|yes)\b|\bfrom (?:yes|unsure)[^.?!]{0,15}to no\b", re.I), 0.0),
+    "concede_open": (re.compile(r"^[^.!?]{0,80}(?:would help|sounds (?:fair|sensible|good|reasonable)|fair "
+                                r"(?:ask|enough|worry|point|question)|reasonable ask|makes sense|is fair|comfort"
+                                r"|fair to want|good to want)", re.I), 0.0),
 }
+TELL_KEYS = ("switch_close", "switch_story", "concede_open")      # share 0: never, whatever the window holds
 PHRASE_PREFIX = "phrase_"
 
 
@@ -370,13 +384,15 @@ def phrase_shares(texts):
             for k, (rx, _) in PHRASE_BUDGETS.items()}
 
 
-def over_budget(text, window):
+def over_budget(text, window, exempt=()):
     """The PHRASE_BUDGETS keys text would push over budget, given window (our latest citizen-facing texts, oldest
     first): with the draft as the newest of PHRASE_WINDOW texts, more than share * PHRASE_WINDOW would say it. A short
-    window counts as full, so a fresh start isn't stricter than the budget."""
+    window counts as full, so a fresh start isn't stricter than the budget. exempt: keys this draft may say anyway."""
     last = list(window)[-(PHRASE_WINDOW - 1):]
     out = []
     for k in phrases_in(text):
+        if k in exempt:
+            continue
         rx, share = PHRASE_BUDGETS[k]
         if sum(bool(rx.search(t or "")) for t in last) + 1 > share * PHRASE_WINDOW:
             out.append(k)
@@ -429,7 +445,7 @@ def drop_vote(text, kind):
 
 
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
-          same=(), phrase_texts=None):
+          same=(), phrase_texts=None, phrase_exempt=()):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
     same: our texts to this citizen or in this thread (todo/24), held to the strict near-duplicate threshold.
     phrase_texts: our latest citizen-facing texts (todo/27): a citizen-facing draft is held to PHRASE_BUDGETS over
@@ -512,7 +528,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     if near_duplicate(body, kind, recent_texts, same):
         return None, "near_duplicate"
-    over = over_budget(t, phrase_texts) if phrase_texts is not None and kind in PERSONAL_KINDS else []
+    over = over_budget(t, phrase_texts, phrase_exempt) if phrase_texts is not None and kind in PERSONAL_KINDS else []
     if over:
         return None, PHRASE_PREFIX + "+".join(over)
     return t, None
@@ -673,6 +689,10 @@ def repair_note(why, raw, kind, tag=None, recent=()):
         said = [m.group(0) for k in keys if k in PHRASE_BUDGETS
                 for m in [PHRASE_BUDGETS[k][0].search(normalise(raw))] if m]
         quoted = " or ".join(f"«{p}»" for p in said) or "our usual phrases"
+        if all(k in TELL_KEYS for k in keys):
+            return (f"Cut {quoted}. Don't open by granting their point, don't ask whether they know anyone who has "
+                    f"moved from Yes to No, and don't tell of anyone who was Yes and switched. Start from your own "
+                    f"point and end on your reason. Change nothing else.")
         return (f"We've said {quoted} too often lately: make the point without {"them" if len(said) > 1 else "it"}, in words of your own. Don't state "
                 f"your vote at the end: end on your reason. Change nothing else.")
     if why == "spelled_number":

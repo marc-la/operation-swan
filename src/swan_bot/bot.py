@@ -417,6 +417,8 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
     for rec in accounts.voices():
         if len(jobs) >= limit:
             break
+        if accounts.parked(rec):                  # a parked voice answers nobody (its notifications stay unresolved)
+            continue
         try:
             acc = (session or accounts.session)(rec)
             notes = acc.notifications(unresolved=True, limit=10)
@@ -628,7 +630,8 @@ def gate(raw, job, user, recent_texts, ledger=None):
     kw = dict(prompt_text=user, target_text=(job.get("target") or {}).get("body") or "",
               wants=job.get("wants") or (), closing_question=meta.get("closing_question", True),
               specific=job.get("group") != "off_topic", same=job.get("same_texts") or (),
-              phrase_texts=job.get("phrase_texts"))
+              phrase_texts=job.get("phrase_texts"),
+              phrase_exempt=("concede_open",) if job.get("style") == "mirror_concede" else ())   # firm_yes concedes
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
@@ -1073,7 +1076,7 @@ def main():
     end = time.time() + args.hours * 3600
     next_write = next_notif = 0.0
     queue, stats = [], {"accepted": 0, "rejected": {}, "by_mode": {}}
-    by_user = {r["username"]: r for r in accounts.active()}
+    by_user = {r["username"]: r for r in accounts.active() if not accounts.parked(r)}
     for q in state.pop("queue", []):
         if q["username"] in by_user and (config.REPLY_BACK or config.REPLY_BACK_AMP):
             queue.append(dict(mode="reply_back", rec=by_user[q["username"]], target=q["target"],
@@ -1199,6 +1202,8 @@ def main():
                     continue
                 if len(thread) > 8 or any(r["author_id"] == target["author_id"] for r in thread):
                     continue                                     # busy thread, or they already answered us
+                if target_class(target.get("body") or "") == "off_topic":
+                    continue                                     # no vote pitch into a thread about something else
                 job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
                            wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"))
                 if not desk:
@@ -1330,6 +1335,12 @@ def main():
                                                                        "persona"))
         rec, mode, target = job["rec"], job["mode"], job.get("target")
         with mu:
+            if accounts.parked(rec):                  # hit the hidden-post limit while the draft waited (23 Oct audit:
+                log({"act": "skip", "why": "parked_at_send", "mode": mode, "persona": persona["key"],     # 6 of 7 voices
+                     "target_post": target and target["post_id"], "draft_id": job["draft_id"]})            # kept writing)
+                if job.get("cand"):
+                    targeter.requeue(job["cand"], "held")         # another voice may take the citizen
+                return
             if split:                                 # what changed while the draft waited (todo/22)
                 gone = gone_at_send(job, state)
                 if gone:

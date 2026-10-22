@@ -118,7 +118,9 @@ OLDER_PER_H = 10
 # 1 of 4 dry-run drafts turned to the vote ("it's the pass I can't stand... Voting No"); now the off-topic system
 # prompt leaves the referendum out and the gate rejects a turn to it (quality: off_topic_vote, 60-220 characters):
 # 6 of 6 dry-run drafts on their topic, first call. On.
-OFF_TOPIC_ARM = True
+# 2026-10-23: OFF (Marc): enough primary citizens in the queue. Its own replies were not what got hidden (0 of 22);
+# the 3 hides in off-topic threads were vote pitches in reply-backs and second voices. Set True to bring it back.
+OFF_TOPIC_ARM = False
 OFF_TOPIC_PER_H = 6                 # 2026-10-22 read-out: raised from 3 (20% citizen replies vs 10% baseline, 20 writes)
 OFF_TOPIC_RECONTACT_S = 3 * 86400
 # D, engaged quiet citizens: citizens who liked our voices' recent posts or follow a voice; we answer their most
@@ -269,7 +271,8 @@ TURNS_PER_SESSION = 3
 TURN_SESSION_S = 30 * 60
 THREAD_MAX_DEPTH = 8
 # Levers, 2026-10-22: fear_answer cut (0 citizen replies in 21 writes); in_group (18%) and permanence (16%) up. Others 1.
-LEVER_WEIGHTS = {"fear_answer": 0.0, "in_group": 2.0, "permanence": 2.0}
+# 2026-10-23: switching 0 (the "was Yes, now No" story: hidden 3.4% of the time against 1.4% for the rest).
+LEVER_WEIGHTS = {"fear_answer": 0.0, "switching": 0.0, "in_group": 2.0, "permanence": 2.0}
 # Frames, 2026-10-22: F2 (2.5% citizen reply rate, n=40) and F3 (5.5%, n=73) stay available at this share of their
 # usual odds (persona posts, second voices, and the light read's frame list).
 FRAME_SCALE = {"F2_no_end": 0.25, "F3_provax_antipass": 0.25}
