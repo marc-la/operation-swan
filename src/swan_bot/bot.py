@@ -289,6 +289,20 @@ def gone_at_send(job, state, t=None):
     return None
 
 
+SESSION_MODES = ("reply", "reply_back", "second_voice")     # the writes send() counts in state["contacted"]
+
+
+def contacted_now(contacted, pending=(), t=None):
+    """Our voices per citizen this session (targeting.sessions), counting the drafts chosen and not sent yet as sent
+    (todo/24): the drafter then never drafts for a citizen those drafts will bring to SESSION_VOICES, a draft that
+    gone_at_send would throw away (98 a night before). pending: held() jobs."""
+    out = sessions(contacted, t)
+    for j in pending:
+        if j["mode"] in SESSION_MODES and j.get("target"):
+            out.setdefault(str(j["target"]["author_id"]), set()).add(j["rec"]["persona"])
+    return out
+
+
 def thread_depth(social, post, cap):
     """How many posts sit above `post` in its thread, counted up to `cap` (one read per level, stopping there)."""
     depth, parent = 0, post.get("reply_to_post_id")
@@ -897,7 +911,7 @@ def main():
     def choose(t, ids):
         """The next job in the greedy order, and its pooled draft when --batch made one: (job, drafted, None), or
         (None, None, seconds to wait) when nothing is worth writing. The caller holds mu."""
-        contacted = sessions(state["contacted"], t)        # our voices per citizen this session (todo/21)
+        contacted = contacted_now(state["contacted"], held(), t)   # our voices per citizen this session (todo/21, /24)
         engaged = set(state["engaged"])
         pending = [j["mode"] for j in held()]               # chosen but not sent yet: counted as written (todo/22)
         job = None
