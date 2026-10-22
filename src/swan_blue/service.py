@@ -43,7 +43,12 @@ DETECT_FILE = config.DATA / "blue_detect.json"        # todo/28 step 5: the acco
 # Refused with a 4xx naming the cap: they do. The answer is kept here and never asked again.
 CAP_PROBE_FILE = config.DATA / "blue_cap_probe.json"
 CAP_PROBE_TRIES = 3           # refusals that don't name the cap (a gone account, say) before we give up asking
-CAP_WORDS = re.compile(r"pending|cap\b|limit|too many|maximum", re.I)
+CAP_WORDS = re.compile(r"pending|awaiting|cap\b|limit|too many|maximum", re.I)
+# the platform's answer when full: "your team already has 30 reports awaiting a moderator's ruling; more can be filed
+# once some are ruled on" (403, 22 Oct 14:26 UTC). Not a lock: we wait CAP_HOLD_S and try one report again. Our
+# ledger can't see account reports ruled early, so it overcounts what's pending; this is how we find a free slot.
+CAP_FULL_RE = re.compile(r"(\d+) reports? awaiting", re.I)
+CAP_HOLD_S = 10 * 60
 # todo/28, prefer Yes-side targets (Marc, 22 Oct): ranking only, never eligibility and never the detail text
 BLUE_SIDE_BIAS = {"yes": 1.3, "unclear": 1.0, "no": 0.7}
 FEED_LOG = config.LOGS / "feed_reads.jsonl"            # every feed call from this box, any process (todo/21 audit)
@@ -552,6 +557,11 @@ class Blue:
         if free <= 0 and accounts and not confirm and self.probe_due():
             self.cap_probe(accounts[0])
             return
+        if now() < self.s.get("cap_hold", 0) and not confirm:
+            return                            # the platform said it's full: wait for a ruling
+        if free <= 0 and not confirm:         # full by our ledger, which can't see account rulings: one try a hold
+            self.s["cap_hold"] = now() + CAP_HOLD_S
+            free = 1
         ranked = accounts if len(accounts) >= free else accounts + posts   # enough account leads: no lock risk
         for c in ranked:
             if self.locked() and not confirm:
@@ -581,6 +591,22 @@ class Blue:
                 self.spent(c)
                 post_room -= c["kind"] == "post"
 
+    def cap_full(self, n):
+        """The platform says n reports await a ruling: hold CAP_HOLD_S, then one report tries again. If the probe had
+        concluded account reports don't count but we hold fewer than n post reports, it was wrong: correct it."""
+        self.s["cap_hold"] = now() + CAP_HOLD_S
+        posts = sum(r["kind"] == "post" for r in self.pending().values())
+        d = read_json(self.probe_file, None) or {}
+        if d.get("result") == "accounts_dont_count" and posts < n:
+            d.update(result="accounts_count", corrected=iso(),
+                     why=f"the platform refused with {n} awaiting while we had {posts} post reports pending, so "
+                         f"account reports count; the first probe ({d.get('why')}) was taken because account "
+                         f"reports we still counted as pending had already been ruled")
+            write_json(self.probe_file, d)
+            self.log({"act": "cap_probe", **d})
+            self.alert("cap_probe", f"cap probe CORRECTED (observed, not confirmed by organisers): account reports DO "
+                       f"count toward the 30 pending. {d['why']}", gap_s=0)
+
     # ---- the cap probe (todo/28): do account reports count toward the pending cap? ----
     def accounts_count(self):
         return (read_json(self.probe_file, None) or {}).get("result") != "accounts_dont_count"
@@ -602,6 +628,7 @@ class Blue:
         if taken:
             d.update(result="accounts_dont_count", why=f"{c['key']} taken with {d['pending']} pending")
         elif self.probe_refusal:
+            self.s["cap_hold"] = now() + CAP_HOLD_S   # full: wait for a ruling
             status, msg = self.probe_refusal
             d.update(result="accounts_count", why=f"{c['key']} refused: {status} {msg[:200]}")
         elif self.s["reports"].get(c["key"], {}).get("status") != "refused":
@@ -702,6 +729,10 @@ class Blue:
         low = msg.lower()
         if self.probing and 400 <= e.status < 500 and CAP_WORDS.search(msg) and "suspended" not in low:
             self.probe_refusal = (e.status, msg)      # the cap probe's answer: no lock, no 30-min wait
+            return False
+        full = CAP_FULL_RE.search(msg)
+        if full and 400 <= e.status < 500:
+            self.cap_full(int(full.group(1)))
             return False
         if e.status in (400, 404, 409):              # bad detail, gone, already reported: drop this one only
             self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"],
