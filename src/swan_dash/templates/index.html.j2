@@ -6,7 +6,7 @@
 <noscript><meta http-equiv="refresh" content="60"></noscript>
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<title>Swan · {{ banner.level | upper }}</title>
+<title>Swan · {{ worst | upper }}</title>
 <script src="app.js" defer></script>
 <style>
 :root {
@@ -29,24 +29,35 @@ header { display: flex; justify-content: space-between; align-items: baseline; c
 header b { color: var(--ink); letter-spacing: .08em; }
 .banner { margin: 10px 0 16px; padding: 14px 16px; border-radius: 10px; font-weight: 600; font-size: 17px; }
 .banner::before { content: "●  "; }
+.pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 8px; }
+.pills .banner { margin: 0; padding: 10px 12px; font-size: 14px; }
+@media (max-width: 640px) { .pills { grid-template-columns: 1fr; } }
+.ver { margin: 0 0 14px; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
+td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .green { background: var(--green-bg); color: var(--green); }
 .amber { background: var(--amber-bg); color: var(--amber); }
 .red { background: var(--red-bg); color: var(--red); }
 .label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .sub { color: var(--muted); font-size: 13px; }
 .up { color: var(--green); } .down { color: var(--red); } .warn { color: var(--amber); }
-.reach { margin: -10px 0 22px; }
+.reach { margin: 0 0 22px; }
 .reach > summary { padding: 10px 12px; cursor: pointer; }
 .reach .pill { display: inline-block; padding: 2px 10px; border-radius: 8px; font-weight: 600; }
 .reach table { width: 100%; border-collapse: collapse; margin: 0 12px 6px; width: calc(100% - 24px); }
 .reach td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
 .reach .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
-.reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); }
+.reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); } .reach .dot.grey { background: var(--line); }
 .reach p { margin: 4px 12px; } .reach .fix { color: var(--amber); font-size: 13px; }
 .reach .note { display: block; color: var(--ink); }
 @media (max-width: 640px) { .reach td:last-child { display: none; } }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
-@media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+@media (max-width: 640px) { .kpi .val { font-size: 22px; } }
+.lights { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+.light { border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.light .label { color: inherit; opacity: .85; }
+.light .val { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.light.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+@media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } .light .val { font-size: 18px; } .light .sub { font-size: 12px; } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
 .kpi .val { font-size: 28px; font-weight: 700; line-height: 1.15; margin: 2px 0; }
@@ -215,7 +226,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 
 <header><b>SWAN</b><span><a href="lab.html">NPC lab</a> · as of {{ now }} Perth</span></header>
 
-<div class="banner {{ banner.level }}">{{ banner.text }}</div>
+<div class="pills">
+  <div class="banner {{ banner.level }}"><b>Red</b> · {{ banner.text }}</div>
+  <div class="banner {{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</div>
+</div>
+{% if running %}<div class="ver {{ running.light }}">v <b>{{ running.sha }}</b> · deployed {{ running.when }}{% if running.failed %} · <b>deploy failed {{ running.failed }}</b>, still on this version{% endif %}</div>{% endif %}
+{% if rollback %}<div class="ver red">Roll back to the last stable version (pauses auto-deploy; restart it with <code>sudo systemctl start swan-update.timer</code> after pushing a fix):<code class="cmd">{{ rollback }}</code></div>{% endif %}
 
 <div class="kpis">
   <div class="kpi"><div class="label">Score</div>
@@ -229,18 +245,21 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     <div class="val {{ 'up' if score.delta >= 0 else 'down' }}">{{ '+' if score.delta >= 0 else '' }}{{ score.delta | n }}</div>
     <div class="sub">{% if score.last_hour is not none %}{{ '%+d' % score.last_hour }} at {{ score.last_hour_at }}{% elif score.per_hour is not none %}≈ {{ score.per_hour | n }} pts/hour{% endif %} · since {{ day_start }}</div>
     {% else %}<div class="val">—</div><div class="sub">since {{ day_start }}</div>{% endif %}</div>
-  <div class="kpi"><div class="label">Citizens answered</div>
-    {% if reach.tile %}
-    <div class="val {{ 'down' if reach.tile.light == 'red' else ('warn' if reach.tile.light == 'amber' else 'up') }}">{{ reach.tile.answered }} / {{ reach.tile.answerable }}</div>
-    <div class="sub">{{ (reach.tile.share * 100) | round | int }}% · {{ reach.tile.lost }} lost{% if reach.tile.speed is defined and reach.tile.speed is not none %} · reply in {{ '%.1f' % reach.tile.speed }} min{% endif %} · last full hour</div>
-    {% else %}<div class="val">—</div><div class="sub">{{ writes.hour }} posts last hour</div>{% endif %}</div>
 </div>
 
+<div class="lights">
+{% for i in reach.lights %}
+  <div class="light {{ i.light }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div></div>
+{% endfor %}
+</div>
 <details class="reach" id="reach">
-  <summary><span class="pill {{ reach.light }}">Reach: {{ reach.verdict }}</span> <span class="sub">{{ reach.summary }}</span></summary>
+  <summary><span class="sub">Speed · Volume · Conversion · Stealth: what each light is made of</span></summary>
   <table>
-  {% for r in reach.rows %}
+  {% for i in reach.lights %}
+    <tr><td colspan="4"><b>{{ i.name }}</b></td></tr>
+    {% for r in i.rows %}
     <tr><td><span class="dot {{ r.light }}"></span></td><td>{{ r.name }}</td><td><b>{{ r.now }}</b></td><td class="sub">{{ r.target }}</td></tr>
+    {% endfor %}
   {% endfor %}
   </table>
   {% for r in reach.fixes %}<p class="fix">→ {{ r.name }}: {{ r.fix }}{% if r.note %} <span class="note">In hand: {{ r.note }}</span>{% endif %}</p>{% endfor %}
@@ -264,10 +283,10 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 </ol></details>
 {% endif %}
 
-{% set bot_warn = llm.rank != '1st' or accounts.suspended or errors.rate_limited %}
+{% set bot_warn = llm.degraded or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
   {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
-  {% if portal_accounts %}{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% if accounts.suspended %} · {{ accounts.suspended }} suspended{% endif %}{% endif %}
+  {% if portal_accounts %}{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} (<span class="down">+{{ acct_days[0].new }} today</span>){% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} voices
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>
@@ -277,14 +296,18 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<tr><td class="sub">No status from the bot yet.</td></tr>{% endfor %}
   </table>
   <h3>Accounts</h3>
-  {% if portal_accounts %}<p><b>{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max</b> <span class="sub">(the portal; {{ portal_accounts.max_total }} ever)</span></p>{% endif %}
-  <details class="pts" id="bot-own-accounts"{% if not portal_accounts %} open{% endif %}><summary>Our own count{% if portal_accounts %} (behind the portal){% endif %}</summary><div>
-  <p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} writers, {{ accounts.boosters | n }} likers) ·
-    {{ accounts.suspended | n }} suspended · {{ accounts.used | n }} of {{ accounts.total_cap }} ever used</p></div></details>
+  {% if portal_accounts %}<p><b>{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} voices · {{ accounts.boosters | n }} boosters</p>
+  {% else %}<p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} voices, {{ accounts.boosters | n }} boosters) · {{ accounts.suspended | n }} suspended</p>{% endif %}
+  <h3>Accounts by day</h3>
+  {% if acct_days %}<table>
+    <tr><th>Day (9pm–9pm Perth)</th><th class="num">Registered</th><th class="num">Banned</th><th class="num">New bans</th><th>Why</th></tr>
+    {% for d in acct_days %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num">{{ d.registered }} <span class="sub">{{ '+' if d.new_reg > 0 }}{{ d.new_reg }}</span></td><td class="num">{{ d.banned }}</td><td class="num {{ 'down' if d.new > 0 else '' }}">{{ '+' if d.new > 0 }}{{ d.new }}</td><td class="sub">{{ d.why }}</td></tr>{% endfor %}
+  </table>
+  {% for x in banned_list %}<p class="pl"><span class="sub">{{ x.time }}</span> @{{ x.username }} <span class="sub">#{{ x.id }} · {{ x.why }}</span></p>{% endfor %}
+  {% else %}<p class="sub">No history yet: it fills at the next portal read (every 15 min).</p>{% endif %}
   <h3>Last hour</h3>
   <p>{{ writes.hour }} posts{% if writes.planned %} (bot's pace {{ writes.planned }}, team cap {{ writes.cap }}){% endif %} ·
     {{ errors.rate_limited | n }} rate-limited · {{ errors.rejects }} drafts rejected by our quality check</p>
-  {% if running %}<p class="sub">Running {{ running.sha }}, deployed {{ running.when }}.</p>{% endif %}
 </div></details>
 
 <details id="score"><summary><b>Score &amp; targets</b><span class="sub">
@@ -303,7 +326,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <table>
     {% for r in [board.leader, board.above, {'rank': board.rank, 'team': 'Operation Swan (us)', 'score': board.score}, board.below] if r %}
     {% if loop.index0 == 0 or r.rank != board.leader.rank %}
-    <tr{% if r.rank == board.rank %} class="up"{% endif %}><td>#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
+    <tr{% if r.rank == board.rank %} class="up"{% endif %}><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endif %}
     {% endfor %}
   </table>
@@ -313,9 +336,9 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <table>
     <tr><th>When (Perth)</th><th class="num">Score</th><th class="num">Change</th><th class="num">Rank</th></tr>
     {% for h in history %}
-    <tr><td>{{ h.time }}</td><td class="num">{{ h.score | n }}</td>
+    <tr><td>{{ h.time }}{% if h.notes %}<details class="note" id="score-{{ h.time | replace(' ', '-') | replace(':', '') }}"><summary></summary></details>{% endif %}</td><td class="num">{{ h.score | n }}</td>
       <td class="num {{ 'up' if h.change and h.change > 0 else ('down' if h.change and h.change < 0 else '') }}">{% if h.change is not none %}{{ '+' if h.change >= 0 else '' }}{{ h.change | n }}{% endif %}</td>
-      <td class="num">{{ h.rank | n }}{% if h.notes %}<details class="note" id="score-{{ h.time | replace(' ', '-') | replace(':', '') }}"><summary></summary></details>{% endif %}</td></tr>
+      <td class="num">{{ h.rank | n }}</td></tr>
     {% if h.notes %}<tr class="notes"><td colspan="4">{% for x in h.notes %}<p class="pl"><span class="sub">{{ x.time }}</span> <b>{{ '+' if x.points >= 0 }}{{ x.points | n }}</b> {{ x.text }}</p>{% endfor %}</td></tr>{% endif %}
     {% endfor %}
   </table>
@@ -338,10 +361,10 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if blue.own %}<p class="{{ 'down' if blue.own.hits else 'sub' }}">Own accounts reported: <b>{{ blue.own.hits }}</b></p>
   {% else %}<p class="sub warn">Own accounts reported: not checked yet</p>{% endif %}
   {% if blue.history %}<details id="blue-days"><summary>By competition day (each runs 9pm–9pm Perth)</summary>
-  <table class="days"><tr><th>Day</th><th class="num">Points</th><th class="num">Target</th><th class="num">Filed</th><th class="num">Hidden</th><th class="num">Genuine</th><th class="num">First</th><th class="num">Full rate</th><th class="num">Locked</th></tr>
-  {% for d in blue.history %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num" data-l="points">{{ d.points | n }}</td><td class="num {{ '' if d.today else d.level }}" data-l="of target">{{ d.pct }}%</td><td class="num" data-l="filed">{{ d.filed }}</td><td class="num" data-l="hidden">{{ d.hidden }}</td><td class="num" data-l="genuine">{{ d.genuine }}</td><td class="num" data-l="first">{{ d.first }}/{{ d.paid }}</td><td class="num" data-l="full rate">{{ d.full }}/{{ d.awards }}</td><td class="num" data-l="locked">{{ d.locked_h }} h</td></tr>{% endfor %}
+  <table class="days"><tr><th>Day</th><th class="num">Points</th><th class="num">Target</th><th class="num">Sent</th><th class="num">Success</th><th class="num">Failed</th><th class="num">1st reporter</th><th class="num">Full pay</th><th class="num">Locked</th></tr>
+  {% for d in blue.history %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num" data-l="points">{{ d.points | n }}</td><td class="num {{ '' if d.today else d.level }}" data-l="of target">{{ d.pct }}%</td><td class="num" data-l="sent">{{ d.filed }}</td><td class="num" data-l="success">{{ d.hidden }}</td><td class="num" data-l="failed">{{ d.genuine }}</td><td class="num" data-l="1st reporter">{{ d.first }}/{{ d.paid }}</td><td class="num" data-l="full pay">{{ d.full }}/{{ d.awards }}</td><td class="num" data-l="locked">{{ d.locked_h }} h</td></tr>{% endfor %}
   </table></details>{% endif %}
-  {% if blue.timeline %}<details id="blue-ledger"><summary>Reports since {{ day_start }}, and any still pending ({{ blue.rows | length }}, times Perth)</summary>
+  {% if blue.timeline %}<details id="blue-ledger"><summary>Reports since {{ day_start }} and any pending ({{ blue.rows | length }}, times Perth)</summary>
   <table class="ledger">{% for it in blue.timeline %}{% if it.kind == 'run' %}<tr><td colspan="2"><details class="run" id="{{ it.id }}"><summary><span class="out {{ it.css }}">▸ {{ it.out }}</span><span class="det">{{ it.detail }}</span></summary>
     <table class="ledger">{% for r in it.rows %}<tr><td class="out {{ r.css }}">{{ r.out }}</td><td class="det">{{ r.detail }}</td></tr>{% endfor %}</table></details></td></tr>
   {% else %}<tr><td class="out {{ it.css }}">{{ it.out }}</td><td class="det">{{ it.detail }}</td></tr>{% endif %}{% endfor %}</table>
@@ -357,13 +380,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if facts %}
   {% for p in facts.paused %}<p class="down"><b>Paused: {{ p.fact }}</b> since {{ p.since }}{% if p.paper %} ({{ p.paper }}){% endif %}. {{ p.text }}</p>{% endfor %}
   {% for x in facts.auto.problems %}<p class="down"><b>{{ x | capitalize }}</b></p>{% endfor %}
-  <details class="pts" id="facts-recent"><summary>Recently added facts ({{ facts.auto.log | rejectattr('reverted') | list | length }})</summary><div>
+  <h3>Recently added ({{ facts.auto.log | rejectattr('reverted') | list | length }})</h3>
   {% for d in facts.auto.log %}
   <div class="fact"><p><span class="sub">{{ d.date }}</span> {% if d.reverted %}<s>{{ d.text }}</s> <span class="sub">(reverted)</span>{% else %}{{ d.text }}{% endif %}
     <span class="sub">· {% if d.url %}<a href="{{ d.url }}" rel="noreferrer noopener" target="_blank">{{ d.paper }}</a>{% else %}{{ d.paper }}{% endif %}</span></p>
     {% if not d.reverted %}<code class="cmd">{{ d.undo }}</code>{% endif %}</div>
   {% else %}<p class="sub">None yet: the desk checks the papers every hour and adds what they report.</p>{% endfor %}
-  <p class="sub">Revert one: run its command.</p></div></details>
   {% endif %}
 </div></details>
 

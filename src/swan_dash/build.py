@@ -37,6 +37,7 @@ POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2",
 MULTIPLIERS = [(dt.date(2026, 10, 26), 2), (dt.date(2026, 11, 1), 4)]     # derived, not confirmed by organisers
 LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; this covers several hours
 STALE_STATUS_S = 300
+DEGRADED_FROM = 5                              # index in the LLM chain: the 6th model or lower is degraded (Marc, 22 Oct)
 STALL_S = 5 * 60                               # every LLM parked this long or longer: red
 PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15 min
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
@@ -410,7 +411,7 @@ def score_lines(points, since):
 
 # the activity log's alert kinds, each its own colour (Marc, 22 Oct): message prefix -> (label, css class on the row)
 ALERT_KINDS = [(r"DEPLOY FAILED", "deploy failed", "deployfail"), (r"BLUE", "Blue", "blue"),
-               (r"BOT (CRASHED|DOWN|OFFLINE)", "bot down", "bad"), (r".*suspend", "suspended", "susp")]
+               (r"(BOT|SERVICE) (CRASHED|DOWN|OFFLINE)", "service down", "bad"), (r".*suspend", "suspended", "susp")]
 
 
 # ---- the fact desk (todo/16): pauses and open proposals, with the command that settles each ----
@@ -542,6 +543,10 @@ def fact_desk(root, now=None):
 
 # ---- Blue (todo/07, src/swan_blue): only what the team needs to decide ----
 BLUE_STALE_S = 10 * 60                         # swan-blue writes its status every minute
+# Red is down: back to the commit before the running one. swan-update.timer would pull origin/main again within 2 min,
+# so it is paused first; start it again once a fix is pushed.
+ROLLBACK = ("ssh swan-ec2 'cd ctn && sudo systemctl stop swan-update.timer && git reset --hard {prev} && "
+            "sudo systemctl restart swan-bot swan-blue swan-lab'")
 BLUE_APPROVE = "ssh swan-ec2 'ctn/scripts/blue.sh approve all'"
 BLUE_ERROR_S = 2 * 3600                        # an older error has been dealt with or retried: not shown
 # Is Blue going well? A day's Blue points against the modelled ceiling (docs/06-strategy/blue-reporting.md §2:
@@ -608,6 +613,8 @@ def blue_timeline(ledger, points):
     for r in ledger:
         t = ts(r.get("at"))
         status = r.get("status")
+        if status == "refused":
+            continue                           # a platform refusal is plumbing, not a result (Marc, 22 Oct)
         what = f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}"
         out, note, css = str(status), "", BLUE_CSS.get(status, "")
         if r.get("kind") != "post" and status == "ruled":
@@ -664,17 +671,16 @@ def perth_span(day):
 def blue_days(days, points, now):
     """By Sydney day, newest first: Blue points and first/later awards from the portal log (the ground truth),
     joined with swan-blue's own counts; for each finished day, its share of target and its weakest lever."""
-    portal = {}
+    portal, by_day = {}, {}
     for e in points:
-        msg = e.get("message") or ""
-        if not BLUE_MSG.search(f"{e.get('type')} {msg}"):
-            continue
-        p = portal.setdefault(e["_t"].astimezone(SYDNEY).date().isoformat(),
-                              dict(points=0, first=0, later=0, full=0, reduced=0))
-        f, later = first_later([msg])
-        full, reduced = awards_by_rate([msg])
-        p["points"], p["first"], p["later"] = p["points"] + e["points"], p["first"] + f, p["later"] + later
-        p["full"], p["reduced"] = p["full"] + full, p["reduced"] + reduced
+        by_day.setdefault(e["_t"].astimezone(SYDNEY).date().isoformat(), []).append(e)
+    for d, es in by_day.items():
+        blue = next((r["points"] for r in score_lines(es, min(e["_t"] for e in es))["rows"] if r["kind"] == "blue"), 0)
+        msgs = [e.get("message") or "" for e in es if re.search(r"report", e.get("message") or "", re.I)]
+        f, later = first_later(msgs)
+        full, reduced = awards_by_rate(msgs)
+        if blue or f or later:
+            portal[d] = dict(points=blue, first=f, later=later, full=full, reduced=reduced)
     today, rows = now.astimezone(SYDNEY).date().isoformat(), []
     for d in sorted(set(days) | set(portal), reverse=True):
         a, p = days.get(d, {}), portal.get(d, {})
@@ -707,8 +713,7 @@ def blue_panel(data, now, points, day_start, logs=None):
     t = ts(s.get("ts"))
     locked, nxt, err_t = ts(s.get("locked_until")), ts(s.get("next_ruling")), ts(s.get("last_error_ts"))
     today, prec = s.get("today") or {}, s.get("precision") or {}
-    pts = sum(e["points"] for e in points if e["_t"] >= day_start and re.search(
-        r"moderat|inauthentic|suspen|report", f"{e.get('type')} {e.get('message')}", re.I))
+    pts = next((r["points"] for r in score_lines(points, day_start)["rows"] if r["kind"] == "blue"), 0)
     rings = [dict(post=r.get("post"), why=short(r.get("why"), 160), reports=r.get("reports"))
              for r in s.get("rings") or []]
     waiting = len(s.get("waiting") or [])
@@ -728,7 +733,7 @@ def blue_panel(data, now, points, day_start, logs=None):
     return dict(
         stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
         summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
-        locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), pending=s.get("pending"),
+        locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), pending=s.get("pending"), cap=s.get("cap"),
         lock_estimate=s.get("lock_src") == "estimate", ready=ready, ready_accounts=s.get("ready_accounts") or 0,
         pg_max=s.get("pg_max"), pg_check={"n": 0, **(s.get("pg_check") or {})},
         clusters={"today": 0, "full": 0, **(s.get("clusters") or {})},
@@ -746,8 +751,11 @@ def blue_panel(data, now, points, day_start, logs=None):
 CITIZEN_WRITES = {"reply", "reply_back", "second_voice", "journalist"}
 REACH_SPEED_MIN = 3            # a new citizen post answered within this (median)
 REACH_BACK_MIN = 1             # a citizen answering us gets our reply within this (median)
-REACH_PACE_SHARE = 0.9         # writes a minute under this share of the bot's pace, citizens waiting: amber
+VOLUME_WINDOW_MIN = 30         # posting rate is measured over this long, so a stall or a recovery shows within minutes
+VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minute: green at or above, red below AMBER
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
+STEALTH_BANS_AMBER, STEALTH_BANS_RED = 3, 8   # new bans since 9pm Perth: a guess (12 on the worst day so far)
+VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 REACH_CONVERT_AFTER = 100      # citizen-facing writes today before "no change toward No" counts as a problem
 MIND = re.compile(r"(\d+) (.*)")
 
@@ -764,14 +772,17 @@ def _id_clock(actions):
     return sorted(pts)
 
 
-def _written_at(pid, clock):
-    """When post `pid` was written, interpolated between our own posts; None outside what we can date."""
+def _written_at(pid, clock, max_gap=1800):
+    """When post `pid` was written, interpolated between our own posts; None outside what we can date, or when our
+    nearest posts are more than max_gap seconds apart (the guess would be hours out: "125 min" replies, 23 Oct)."""
     try:
         pid = int(pid)
     except (TypeError, ValueError):
         return None
     for (i0, t0), (i1, t1) in zip(clock, clock[1:]):
         if i0 <= pid <= i1 and i1 > i0:
+            if t1 - t0 > max_gap:
+                return None
             return t0 + (t1 - t0) * (pid - i0) / (i1 - i0)
     return None
 
@@ -803,38 +814,21 @@ def _minds(points, since):
 
 
 def reach(actions, status, points, now, day_start, notes=None):
-    """The Reach block: one summary line, then one short row per check (light, now, target) and a fix only for rows
-    that aren't green. Collapsed while everything is green (Marc, 2026-10-22: scannable, not sentences)."""
-    hour_ago = now - dt.timedelta(hours=1)
+    """Three lights, each green/amber/red against its own bar (Marc, 23 Oct: the old "answered of answerable" is true
+    by construction and stayed green while nothing was posting): SPEED (how fast citizens get an answer), VOLUME (are we
+    posting at the team budget, with enough voices, losing no one) and CONVERSION (do replies move people toward No).
+    Each light is its worst row; rows with no figure yet are grey and never turn a light green."""
+    hour_ago, recent = now - dt.timedelta(hours=1), now - dt.timedelta(minutes=VOLUME_WINDOW_MIN)
     refreshes = [a for a in actions if a.get("act") == "refresh"]
     funnel = (refreshes[-1].get("funnel") if refreshes else None) or {}
     keys = sorted(funnel)
     f = funnel[keys[-2]] if len(keys) >= 2 else (funnel[keys[-1]] if keys else None)    # the last full hour
     rows = []
 
-    def row(name, light, now_, target, fix=""):
-        rows.append(dict(name=name, light=light, now=now_, target=target, fix=fix))
+    def row(group, name, light, now_, target="", fix=""):
+        rows.append(dict(group=group, name=name, light=light, now=now_, target=target, fix=fix))
 
-    # answered (last full hour)
-    tile = None
-    if f:
-        skipped, lost, pending = (f.get(k) or {} for k in ("skipped", "lost", "pending"))
-        n_lost, n_wait = sum(lost.values()), sum(pending.values())
-        answerable = max(f.get("seen", 0) - sum(skipped.values()), 0)
-        light = "red" if n_lost else ("amber" if answerable and f.get("answered", 0) / answerable < REACH_SHARE
-                                      and not n_wait else "green")
-        share = f.get("answered", 0) / answerable if answerable else 1.0
-        row("Citizens answered (last full hour)", light,
-            f"{f.get('answered', 0)} of {answerable} ({share:.0%})" + (f" · {n_wait} waiting" if n_wait else "")
-            + (f" · {n_lost} lost" if n_lost else " · 0 lost"), "all · 0 lost",
-            "Citizens lost: " + ", ".join(f"{v} {k}" for k, v in lost.items()) + ". Tell targeting / drafting." if n_lost
-            else "Some answerable citizens weren't answered: check Activity.")
-        tile = dict(answered=f.get("answered", 0), answerable=answerable, share=share, lost=n_lost, light=light)
-    else:
-        skipped = {}
-        row("Citizens answered", "amber", "no figures yet", "all · 0 lost", "The bot isn't refreshing: check Bot.")
-
-    # reply times
+    # ---- speed ----
     clock = _id_clock(actions)
     fresh, back = [], []
     for a in actions:
@@ -849,96 +843,107 @@ def reach(actions, status, points, now, day_start, notes=None):
         elif a.get("act") == "reply_back":
             back.append(lag)
     mf, mb = _median(fresh), _median(back)
-    row("Reply time, new citizen posts", "amber" if mf and mf > REACH_SPEED_MIN else "green",
+    graded = lambda v, bar: "grey" if v is None else "green" if v <= bar else "amber" if v <= 3 * bar else "red"
+    row("speed", "Reply time, new citizen posts", graded(mf, REACH_SPEED_MIN),
         f"{mf:.1f} min" if mf is not None else "none this hour", f"≤ {REACH_SPEED_MIN} min",
         "Behind the citizen's session: check the LLM line under Bot.")
-    row("Reply time, citizens answering us", "amber" if mb and mb > REACH_BACK_MIN else "green",
+    row("speed", "Reply time, citizens answering us", graded(mb, REACH_BACK_MIN),
         f"{mb:.1f} min" if mb is not None else "none this hour", f"≤ {REACH_BACK_MIN} min",
         "Reply-backs are slow: check Bot.")
-    if tile:
-        tile["speed"] = mf
-
-    # throughput: writes a minute in the last full hour against the team budget and the bot's pace (Marc, 22 Oct:
-    # "longest wait" swung with the time of day and said little). Amber only when the budget idled while citizens waited.
-    hour_end = now.replace(minute=0, second=0, microsecond=0)
-    full_hour = [a for a in actions if a.get("live") is True and a.get("act") in WRITES
-                 and hour_end - dt.timedelta(hours=1) <= a["_t"] < hour_end]
-    budget = (status.get("write_budget") or {}).get("limit") or TEAM_CAP_PER_MIN
-    pace = status.get("per_min")
-    rate = len(full_hour) / 60
     q = status.get("queue") or {}
     waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
     groups_q = sum((g or {}).get("queued") or 0 for g in ((refreshes[-1].get("groups") if refreshes else None) or {}).values())
-    # citizens left waiting in that same hour (the funnel); without one, the queue now
-    waited = sum((f.get("pending") or {}).values()) if f else (waiting or 0)
-    behind = pace is not None and rate < pace * REACH_PACE_SHARE and waited > 0
-    row("Throughput (last full hour)", "amber" if behind else "green",
-        f"{rate:.1f}/min of {budget:.1f} ({rate / budget:.0%})" + (f" · pace {pace:g}" if pace is not None else ""),
-        f"≥ pace{f' {pace:g}' if pace is not None else ''}/min",
-        "The budget idled while citizens waited: the drafter is slower than the writer. Check the LLM line under Bot.")
+    if waiting is not None:
+        row("speed", "Citizens waiting now", "grey", f"{max(waiting - groups_q, 0)}")
 
-    # writes (budget)
-    hour_writes = [a for a in actions if a.get("live") is True and a.get("act") in WRITES and a["_t"] >= hour_ago]
-    grp = [a for a in hour_writes if a.get("group") not in (None, "None")]
-    cit = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("group") in (None, "None")]
-    cap = TEAM_CAP_PER_MIN * 60
-    spare = max(cap - len(hour_writes), 0)
-    by_group = {}
-    for a in grp:
-        by_group[a["group"]] = by_group.get(a["group"], 0) + 1
-    row("Writes, last hour", "green",
-        f"{len(cit)} citizens · {len(grp)} groups · {len(hour_writes) - len(cit) - len(grp)} other · {spare} spare",
-        f"of {cap}", "")
-
-    # rejections
-    acc = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("llm_calls") not in (None, "None")]
-    first = sum(str(a.get("llm_calls")) == "1" for a in acc)
+    # ---- volume ----
+    live = [a for a in actions if a.get("live") is True and a.get("act") in WRITES]
+    budget = (status.get("write_budget") or {}).get("limit") or TEAM_CAP_PER_MIN
+    rate = sum(a["_t"] >= recent for a in live) / VOLUME_WINDOW_MIN
+    share = rate / budget
+    last_w = max((a["_t"] for a in live), default=None)
+    row("volume", f"Posting, last {VOLUME_WINDOW_MIN} min",
+        "green" if share >= VOLUME_GREEN else "amber" if share >= VOLUME_AMBER else "red",
+        f"{rate:.1f}/min of {budget:g} ({share:.0%})" + ("" if rate else f" · last post {ago(now - last_w)}" if last_w else " · no posts"),
+        f"≥ {VOLUME_GREEN:.0%} of budget",
+        "Below the team budget: is the bot up and are the LLMs answering? Check Bot.")
+    voices = (status.get("accounts") or {}).get("voices")
+    if voices is not None:
+        row("volume", "Voices in rotation", "amber" if voices < VOICES_MIN else "green", f"{voices}",
+            f"≥ {VOICES_MIN} (our guess)", "Few voices: each posts more often and the rate drops. Add accounts.")
+    n_lost = sum((f or {}).get("lost", {}).values()) if f else 0
     gate_lost = sum(1 for a in actions if a.get("act") == "lost" and str(a.get("why", "")).startswith("gate:")
                     and a.get("mode") in CITIZEN_WRITES and a["_t"] >= hour_ago)
+    lost = (f or {}).get("lost") or {}
+    row("volume", "Citizens lost, last full hour", "red" if n_lost or gate_lost else "green" if f else "grey",
+        f"{n_lost}" if f else "no figures yet", "0",
+        ("Lost: " + ", ".join(f"{v} {k}" for k, v in lost.items()) + ". Tell targeting / drafting.") if n_lost
+        else "Citizens lost to rejections: tell the content session.")
+    hour_writes = [a for a in live if a["_t"] >= hour_ago]
+    acc = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("llm_calls") not in (None, "None")]
+    first = sum(str(a.get("llm_calls")) == "1" for a in acc)
     share1 = first / len(acc) if acc else None
-    row("Drafts passing first time", "red" if gate_lost else ("amber" if share1 is not None and share1 < REACH_SHARE
-                                                               else "green"),
-        (f"{share1:.0%}" if share1 is not None else "—") + f" · {gate_lost} lost", f"≥ {REACH_SHARE:.0%} · 0 lost",
-        "Citizens lost to rejections: tell the content session." if gate_lost
-        else "No one lost; each rejection costs a repair. The content session tunes the prompts.")
+    row("volume", "Drafts passing first time", "grey" if share1 is None else "amber" if share1 < REACH_SHARE else "green",
+        f"{share1:.0%}" if share1 is not None else "—", f"≥ {REACH_SHARE:.0%}",
+        "Each rejection costs a repair call. The content session tunes the prompts.")
+    cit = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("group") in (None, "None")]
+    grp = [a for a in hour_writes if a.get("group") not in (None, "None")]
+    row("volume", "Writes, last hour", "grey",
+        f"{len(cit)} citizens · {len(grp)} groups · {len(hour_writes) - len(cit) - len(grp)} other · "
+        f"{max(TEAM_CAP_PER_MIN * 60 - len(hour_writes), 0)} spare", f"of {TEAM_CAP_PER_MIN * 60}")
 
-    # outcome
+    # ---- conversion ----
     minds = _minds(points, day_start)
-    cit_today = sum(1 for a in actions if a.get("live") is True and a.get("act") in CITIZEN_WRITES and a["_t"] >= day_start)
+    cit_today = sum(1 for a in live if a.get("act") in CITIZEN_WRITES and a["_t"] >= day_start)
     worse, stuck = minds["toward"] < minds["away"], cit_today >= REACH_CONVERT_AFTER and minds["toward"] == 0
-    row("Changes of mind today", "red" if worse else ("amber" if stuck else "green"),
+    row("conversion", "Changes of mind today", "red" if worse else "amber" if stuck else "green",
         f"{minds['toward']} toward No · {minds['away']} away · {minds['neither']} neither ({cit_today} replies)",
         "toward > away", "Replies aren't moving people toward No: see the todo/20 read-out.")
 
-    rows.insert(0, rows.pop())                    # changes of mind: the row that is about points, first
-    bad = lambda names, levels=("red", "amber"): any(r["name"].startswith(names) and r["light"] in levels for r in rows)
-    if bad(("Citizens answered", "Drafts passing"), ("red",)):
-        verdict = "losing citizens"
-    elif bad(("Citizens answered", "Reply time", "Throughput")):
-        verdict = "falling behind"
-    elif bad(("Changes of mind",)):
-        verdict = "not converting yet"
-    else:
-        verdict = "keeping up"
-    light = "red" if any(r["light"] == "red" for r in rows) else ("amber" if verdict != "keeping up" else "green")
-    summary = " · ".join(x for x in (
-        f"today {minds['toward']} toward No / {minds['away']} away / {minds['neither']} neither",
-        tile and f"{tile['answered']}/{tile['answerable']} answered ({tile['share']:.0%})",
-        tile and f"{tile['lost']} lost", mf is not None and f"reply {mf:.1f} min",
-        f"{rate:.1f}/min of {budget:g}") if x)
+    for r in rows:
+        r["note"] = next((v for k, v in (notes or {}).items() if r["name"].startswith(k)), "")
+    order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
+    def worst(group):
+        lights = [r["light"] for r in rows if r["group"] == group]
+        return max(lights, key=order.get, default="grey")
+    heads = dict(speed=f"{mf:.1f} min" if mf is not None else "—",
+                 volume=f"{rate:.1f}/min", conversion=f"+{minds['toward']} / −{minds['away']}")
+    subs = dict(speed="to reply" if mf is not None else "no replies timed",
+                volume=f"of {budget:g} · {voices if voices is not None else '?'} voices",
+                conversion="toward / away today")
+    items = [dict(key=k, name=k.capitalize(), light=worst(k), head=heads[k], sub=subs[k],
+                  rows=[r for r in rows if r["group"] == k]) for k in ("speed", "volume", "conversion")]
     extra = []
+    skipped = (f or {}).get("skipped") or {}
     if skipped:
         extra.append("Skipped on purpose (last full hour): "
                      + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(skipped.items(), key=lambda kv: -kv[1])))
-    if waiting is not None:
-        extra.append(f"Queue now: {max(waiting - groups_q, 0)} citizens waiting"
-                     + (f" · {groups_q} extra-group posts" if groups_q else ""))
-    if by_group:
-        extra.append("Extra groups (last hour): " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(by_group.items())))
-    for r in rows:
-        r["note"] = next((v for k, v in (notes or {}).items() if r["name"].startswith(k)), "")
-    return dict(verdict=verdict, light=light, summary=summary, rows=rows, tile=tile, extra=extra,
-                open=light == "red", fixes=[r for r in rows if r["light"] != "green"])
+    if groups_q:
+        extra.append(f"{groups_q} extra-group posts queued")
+    return dict(lights=items, rows=rows, extra=extra, fixes=[r for r in rows if r["light"] in ("amber", "red")],
+                light=max((i["light"] for i in items), key=order.get))
+
+
+def account_days(log, now):
+    """Accounts by competition (Sydney) day, newest first, and the suspended accounts newest first, from the portal's
+    account_log (activity.csv: the team's registered/banned counts and the moderator's suspension messages)."""
+    counts = [dict(c, _t=ts(c["ts"])) for c in (log or {}).get("counts") or [] if ts(c.get("ts"))]
+    sus = [dict(x, _t=ts(x["ts"])) for x in (log or {}).get("suspended") or [] if ts(x.get("ts"))]
+    if not counts:
+        return [], []
+    day = lambda t: t.astimezone(SYDNEY).date()
+    today, d, prev, rows = day(now), day(counts[0]["_t"]), dict(registered=0, banned=0), []
+    while d <= today:
+        upto = [c for c in counts if day(c["_t"]) <= d]
+        end = upto[-1] if upto else prev
+        why = [x["why"] for x in sus if day(x["_t"]) == d]
+        rows.append(dict(day=perth_span(d), today=d == today, registered=end["registered"], banned=end["banned"],
+                         new_reg=end["registered"] - prev["registered"], new=end["banned"] - prev["banned"],
+                         why=" · ".join(f"{w} ×{why.count(w)}" for w in dict.fromkeys(why))))
+        prev, d = end, d + dt.timedelta(days=1)
+    listed = [dict(time=perth(x["_t"]).strftime("%a %H:%M"), username=x["username"], id=x["id"], why=x["why"])
+              for x in sorted(sus, key=lambda x: x["_t"], reverse=True)]
+    return rows[::-1], listed
 
 
 def gather(root, now, service):
@@ -977,6 +982,8 @@ def gather(root, now, service):
     acc = status.get("accounts") or {}
     per_min = status.get("per_min")
 
+    acct_days, banned_list = account_days(portal.get("account_log"), now)
+
     facts = fact_desk(root, now)
     blue = blue_panel(data, now, points, day_start, logs)
 
@@ -1000,7 +1007,7 @@ def gather(root, now, service):
     elif stale:
         amber = ("NO STATUS: the bot hasn't reported for "
                  + (ago(now - status_t).replace(" ago", "") if status_t else "a while (or isn't live)"))
-    elif current:
+    elif current is not None and current >= DEGRADED_FROM:
         top = chain[0]
         amber = f"DEGRADED: on fallback LLM {chain[current]['model']} ({top['model']}: {top.get('why') or 'parked'})"
     elif status.get("rate_limited_last_hour"):
@@ -1015,19 +1022,24 @@ def gather(root, now, service):
                     else "Review it under Facts below"))
     elif facts and facts["auto"]["problems"]:
         amber = f"FACTS: {facts['auto']['problems'][0]}"
-    elif blue and blue["own"] and blue["own"]["hits"]:
-        amber = (f"BLUE: {blue['own']['hits']} report(s) in logs/blue_reports.jsonl against our own accounts. "
-                 f"Stop filing: ssh swan-ec2 'touch ctn/BLUE_OFF'")
-    elif blue and blue["stale"]:
-        amber = f"BLUE: no status from swan-blue since {blue['ago'].replace(' ago', '')}. On the box: journalctl -u swan-blue -n 50"
-    elif blue and blue["waiting"]:
-        amber = f"BLUE: {blue['waiting']} reports wait for your approval (Blue, below)"
     if red:
         banner = dict(level="red", text=red)
     elif amber:
         banner = dict(level="amber", text=amber)
     else:
-        banner = dict(level="green", text="RUNNING · last post " + (ago(now - last_write) if last_write else "—"))
+        banner = dict(level="green", text="running · last post " + (ago(now - last_write) if last_write else "—"))
+    if not blue:
+        blue_banner = dict(level="amber", text="not running")
+    elif blue["own"] and blue["own"]["hits"]:
+        blue_banner = dict(level="red", text=f"{blue['own']['hits']} report(s) against our own accounts. Stop: ssh swan-ec2 'touch ctn/BLUE_OFF'")
+    elif blue["stale"]:
+        blue_banner = dict(level="amber", text=f"no status for {blue['ago'].replace(' ago', '')}. On the box: journalctl -u swan-blue -n 50")
+    elif blue["waiting"]:
+        blue_banner = dict(level="amber", text=f"{blue['waiting']} reports wait for your approval")
+    elif blue["locked"]:
+        blue_banner = dict(level="amber", text=f"locked until {blue['locked']}" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))
+    else:
+        blue_banner = dict(level="green", text="running" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))
 
     # ---- score (typed in by hand: scripts/score.sh) ----
     entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts"))]
@@ -1113,23 +1125,46 @@ def gather(root, now, service):
                        yes_lines=[short(x) for x in p.get("yes_lines") or []],
                        avoid=[short(x) for x in p.get("avoid") or []])
 
-    deploys = [d for d in tail_jsonl(logs / "deploys.jsonl", 200_000) if d.get("result") == "ok"]
-    running = dict(sha=deploys[-1]["new"][:7], when=hm(ts(deploys[-1]["ts"]))) if deploys else None
+    every = tail_jsonl(logs / "deploys.jsonl", 200_000)
+    deploys = [d for d in every if d.get("result") == "ok"]
+    running = dict(sha=deploys[-1]["new"][:7], prev=deploys[-1]["old"][:7], when=hm(ts(deploys[-1]["ts"])),
+                   light="green" if every[-1] is deploys[-1] else "red",
+                   failed=hm(ts(every[-1]["ts"])) if every[-1] is not deploys[-1] else None) if deploys else None
 
+    rc = reach(actions, status, points, now, day_start, read_json(data / "reach_notes.json") or {})
+    today_acct = next((d for d in acct_days if d["today"]), None)
+    bans = today_acct["new"] if today_acct else 0
+    hidden_today = sum(1 for r in rows if r.get("kind") == "hidden" and r["t"] >= day_start)
+    srows = [dict(group="stealth", name="New bans today", light="red" if bans >= STEALTH_BANS_RED else "amber" if bans >= STEALTH_BANS_AMBER else "green",
+                  now=f"{bans}" + (f" · {today_acct['why']}" if today_acct and today_acct["why"] else ""),
+                  target=f"< {STEALTH_BANS_AMBER} (our guess)", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
+             dict(group="stealth", name="Posts hidden today", light="amber" if hidden_today else "green", now=f"{hidden_today}",
+                  target="0", fix="3 hidden posts suspend an account. See Activity.", note=""),
+             dict(group="stealth", name="Banned in total", light="grey",
+                  now=f"{acct_days[0]['banned']} of {acct_days[0]['registered']} registered" if acct_days else "—", target="", fix="", note="")]
+    rc["rows"] += srows
+    rc["fixes"] += [r for r in srows if r["light"] in ("amber", "red")]
+    order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
+    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts",
+                             light=max((r["light"] for r in srows), key=order.get)))
+    rc["light"] = max((i["light"] for i in rc["lights"]), key=order.get)
+    levels = (banner["level"], blue_banner["level"], rc["light"])
     return dict(
-        now=hm(now), banner=banner, score=score, history=history, board=board, milestone=milestone,
+        now=hm(now), banner=banner, blue_banner=blue_banner, acct_days=acct_days, banned_list=banned_list,
+        worst="red" if "red" in levels else "amber" if "amber" in levels else "green", score=score, history=history, board=board, milestone=milestone,
         multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),
         portal_checked=ago(now - portal_t) if portal_t else None,
         day_start=perth(day_start).strftime("%-I%p").lower(),
         writes=dict(hour=writes_hour, planned=round(per_min * 60) if per_min else None, cap=TEAM_CAP_PER_MIN * 60),
         accounts=dict(live=acc.get("live"), live_cap=LIVE_CAP, used=acc.get("used"), total_cap=TOTAL_CAP,
                       suspended=acc.get("suspended"), voices=acc.get("voices"), boosters=acc.get("boosters")),
-        llm=dict(model=chain[current]["model"] if current is not None else None,
+        llm=dict(degraded=current is not None and current >= DEGRADED_FROM, model=chain[current]["model"] if current is not None else None,
                  rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked,
                  chain=states, busiest=busiest if busiest and busiest["calls"] else None),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
         activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
-        blue=blue, reach=reach(actions, status, points, now, day_start, read_json(data / "reach_notes.json") or {}),
+        blue=blue, reach=rc,
+        rollback=ROLLBACK.format(prev=running["prev"]) if running and banner["level"] == "red" else None,
         built=perth(now).strftime("%H:%M:%S"))
 
 

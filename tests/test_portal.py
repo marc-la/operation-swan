@@ -97,3 +97,21 @@ def test_dashboard_shows_points_rows_and_portal_numbers(tmp_path):
     assert ctx["score_lines"]["total"] == 218 and sum(r["points"] for r in ctx["score_lines"]["rows"]) == 218
     assert ctx["score"]["delta"] == 218 and ctx["score"]["last_hour"] == 218  # the +100 was before today's 9pm
     assert "7,712 behind #2" in html and "+218 since 9pm" in html and CODE not in html
+
+
+def test_account_log_counts_and_suspensions_by_competition_day():
+    body = """When (UTC),Type,Message
+2026-10-22 12:51:10,MESSAGE_NARRATIVE,Moderation: your account @ana_fifita_rn27 (id 4603) has been suspended after 3 of its posts were hidden as inauthentic. It can no longer log in or post.
+2026-10-22 07:45:10,MESSAGE_NARRATIVE,"Moderation: your account @josh_k_sparky36 (id 4567) has been suspended. It was reported for inauthentic (bot) activity, it already had a post hidden by the moderator, and it had taken at least 100 actions. It can no longer log in or post."
+2026-10-22 07:45:13,PLATFORM_ACCOUNTS,Platform total accounts: 58 registered; 12 banned.
+2026-10-21 23:57:42,PLATFORM_ACCOUNTS,Platform total accounts: 53 registered; 3 banned.
+2026-10-21 13:49:52,PLATFORM_ACCOUNTS,Platform total accounts: 52 registered; 2 banned.
+2026-10-19 17:52:10,PLATFORM_ACCOUNTS,Platform total accounts: 1 registered; 0 banned.
+"""
+    log = portal.account_log(portal.parse_activity(body))
+    assert [c["banned"] for c in log["counts"]] == [0, 2, 3, 12]
+    assert [(x["username"], x["id"], x["why"]) for x in log["suspended"]] == [
+        ("josh_k_sparky36", 4567, "reported as a bot"), ("ana_fifita_rn27", 4603, "3 posts hidden")]
+    days, listed = build.account_days(log, dt.datetime(2026, 10, 22, 15, tzinfo=dt.timezone.utc))
+    assert [(d["banned"], d["new"]) for d in days] == [(12, 0), (12, 12), (0, 0), (0, 0)]   # Oct 23 (so far) back to 20
+    assert days[1]["why"] == "reported as a bot ×1 · 3 posts hidden ×1" and listed[0]["username"] == "ana_fifita_rn27"

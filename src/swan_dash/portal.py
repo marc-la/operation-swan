@@ -101,6 +101,25 @@ def parse_activity(body):
     return sorted(out, key=lambda e: e["ts"], reverse=True)
 
 
+ACCOUNT_COUNTS = re.compile(r"(\d+) registered; (\d+) banned")
+SUSPENDED = re.compile(r"your account @(\w+) \(id (\d+)\) has been suspended(.*)")
+
+
+def account_log(events):
+    """{counts: [{ts, registered, banned}], suspended: [{ts, username, id, why}]}, oldest first, from every row of
+    activity.csv: PLATFORM_ACCOUNTS (the team's counts at each change) and the moderator's suspension messages."""
+    counts, suspended = [], []
+    for e in sorted(events, key=lambda e: e["ts"]):
+        m = ACCOUNT_COUNTS.search(e["message"]) if e["type"] == "PLATFORM_ACCOUNTS" else None
+        if m:
+            counts.append(dict(ts=e["ts"], registered=int(m.group(1)), banned=int(m.group(2))))
+        m = SUSPENDED.search(e["message"]) if e["type"] == "MESSAGE_NARRATIVE" else None
+        if m:
+            suspended.append(dict(ts=e["ts"], username=m.group(1), id=int(m.group(2)),
+                                  why="3 posts hidden" if "3 of its posts were hidden" in m.group(3) else "reported as a bot"))
+    return dict(counts=counts, suspended=suspended)
+
+
 def standing(board):
     """Our rank, score and neighbours, the leader, and the team count."""
     us = next((r for r in board if r["team"] == TEAM_NAME), None)
@@ -148,7 +167,8 @@ def run(root, now, get=fetch, pause=2):
         raise RuntimeError("leaderboard table not found (page layout changed?)")
     keep_from = (now - dt.timedelta(hours=KEEP_EVENTS_H)).isoformat()
     result = dict(ts=now.isoformat(), error=None, **standing(board), accounts=accounts,
-                  events=[e for e in events if e["ts"] >= keep_from and e["type"].startswith("SCORE")])
+                  events=[e for e in events if e["ts"] >= keep_from and e["type"].startswith("SCORE")],
+                  account_log=account_log(events))
     write_atomic(out_path, checked(result, banned))
 
     if result["score"] is not None:                      # the dashboard's score history (scripts/score.sh too)

@@ -725,7 +725,6 @@ class Blue:
     def refused(self, c, e):
         msg = (e.message or "")[:300]
         self.log({"act": "refused", "key": c["key"], "status": e.status, "message": msg})
-        self.error(f"report refused: {e.status} {msg[:120]}")
         low = msg.lower()
         if self.probing and 400 <= e.status < 500 and CAP_WORDS.search(msg) and "suspended" not in low:
             self.probe_refusal = (e.status, msg)      # the cap probe's answer: no lock, no 30-min wait
@@ -734,6 +733,7 @@ class Blue:
         if full and 400 <= e.status < 500:
             self.cap_full(int(full.group(1)))
             return False
+        self.error(f"report refused: {e.status} {msg[:120]}")      # a full cap is routine (cap_full): not an error
         if e.status in (400, 404, 409):              # bad detail, gone, already reported: drop this one only
             self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"],
                                                label=c["label"], filed=now(), status="refused", detail=c["detail"])

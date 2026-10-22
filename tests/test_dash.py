@@ -76,12 +76,14 @@ def test_amber_when_every_llm_parked_briefly(tmp_path):
     assert ctx["banner"]["level"] == "amber" and ctx["banner"]["text"].startswith("LLMS BUSY")
 
 
-def test_amber_on_fallback_llm(tmp_path):
-    fallback = {"llm": [{"model": "flash-lite", "parked_until": 3600, "why": "daily quota"},
-                        {"model": "gpt-oss", "parked_until": None, "why": None}]}
-    ctx, _ = page(make_root(tmp_path, [write(3)], fallback))
-    assert ctx["banner"]["level"] == "amber" and "gpt-oss" in ctx["banner"]["text"]
-    assert ctx["llm"]["rank"] == "2nd"
+def test_second_llm_is_not_degraded_but_the_sixth_is(tmp_path):
+    def chain(n):          # the first n-1 models parked, the nth ready
+        return {"llm": [{"model": f"m{i}", "parked_until": 3600, "why": "daily quota"} for i in range(n - 1)]
+                + [{"model": f"m{n}", "parked_until": None, "why": None}]}
+    ctx, _ = page(make_root(tmp_path / "a", [write(3)], chain(2)))
+    assert ctx["banner"]["level"] == "green" and ctx["llm"]["rank"] == "2nd" and not ctx["llm"]["degraded"]
+    ctx, _ = page(make_root(tmp_path / "b", [write(3)], chain(6)))
+    assert ctx["banner"]["level"] == "amber" and "m6" in ctx["banner"]["text"] and ctx["llm"]["degraded"]
 
 
 def test_amber_when_status_stale(tmp_path):
@@ -254,10 +256,10 @@ def test_facts_section_lists_pauses_first_and_hides_decided(tmp_path):
     assert ctx["banner"]["level"] == "amber" and "FACT PAUSED: polls" in ctx["banner"]["text"]
     assert 'class="down"><b>Paused: polls</b>' in html                   # red, at the top of Facts (Marc, 22 Oct)
     assert "--accept" not in html and "<script>alert(1)" not in html      # no review queue on the page any more
-    assert "Recently added facts (0)" in html
+    assert "Recently added (0)" in html and 'id="facts-recent"' not in html
 
 
-# ---- Reach (2026-10-22): did we answer every citizen we could, fast, and did it convert? ----
+# ---- Reach (2026-10-23): three lights, speed / volume / conversion, each against its own bar ----
 def refresh(minutes_ago, funnel, candidates=3):
     return {"ts": iso(minutes_ago), "act": "refresh", "candidates": candidates, "funnel": funnel}
 
@@ -266,56 +268,54 @@ def rowof(ctx, start):
     return next(r for r in ctx["reach"]["rows"] if r["name"].startswith(start))
 
 
-def test_reach_green_when_every_citizen_answered_and_collapsed(tmp_path):
-    f = {"2026-10-22T04": {"seen": 10, "answered": 8, "skipped": {"off_topic": 2}, "lost": {}, "pending": {}},
-         "2026-10-22T05": {"seen": 2, "answered": 1, "skipped": {}, "lost": {}, "pending": {"queued": 1}}}
-    ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
-    r = ctx["reach"]
-    assert r["verdict"] == "keeping up" and not r["open"] and not r["fixes"]
-    assert r["tile"]["answered"] == 8 and r["tile"]["answerable"] == 8 and "8/8 answered" in r["summary"]
-    assert "Citizens answered" in html and "Reach: keeping up" in html and "2 off topic" in r["extra"][0]
+def light(ctx, key):
+    return next(i for i in ctx["reach"]["lights"] if i["key"] == key)["light"]
 
 
-def test_reach_losing_citizens_is_red_open_with_the_reason(tmp_path):
+def test_reach_is_three_lights_and_zero_posting_is_red_not_green(tmp_path):
+    f = {"2026-10-22T05": {"seen": 3, "answered": 3, "skipped": {}, "lost": {}, "pending": {}}}
+    ctx, html = page(make_root(tmp_path, [refresh(1, f), write(90)]))       # everything we saw was answered, then silence
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "stealth"]
+    assert light(ctx, "volume") == "red" and "last post 1 h" in rowof(ctx, "Posting")["now"]
+    assert ctx["worst"] == "red" and html.count('class="light ') == 4 and "Citizens answered" not in html
+    assert light(ctx, "speed") == "grey"                                     # nothing timed: never green by default
+
+
+def test_reach_volume_green_at_budget_and_amber_between(tmp_path):
+    full = [write(0.3 * i + 0.1) for i in range(100)]                       # 100 writes in 30 min = 3.3/min
+    ctx, _ = page(make_root(tmp_path, full))
+    assert light(ctx, "volume") == "green" and rowof(ctx, "Posting")["now"].startswith("3.3/min of 3")
+    ctx, _ = page(make_root(tmp_path / "b", [write(0.5 * i + 0.1) for i in range(40)]))   # 1.3/min = 44%
+    assert light(ctx, "volume") == "amber"
+
+
+def test_reach_few_voices_and_lost_citizens_turn_volume_down(tmp_path):
+    busy = [write(0.3 * i + 0.1) for i in range(100)]
+    ctx, _ = page(make_root(tmp_path, busy, status={"accounts": {"voices": 4}}))
+    assert rowof(ctx, "Voices")["light"] == "amber" and light(ctx, "volume") == "amber"
     f = {"2026-10-22T04": {"seen": 5, "answered": 3, "skipped": {}, "lost": {"gate:near_duplicate": 2}, "pending": {}},
          "2026-10-22T05": {"seen": 0, "answered": 0, "skipped": {}, "lost": {}, "pending": {}}}
-    ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
-    row = rowof(ctx, "Citizens answered")
-    assert ctx["reach"]["verdict"] == "losing citizens" and ctx["reach"]["open"] and row["light"] == "red"
-    assert "2 lost" in row["now"] and "2 gate:near_duplicate" in row["fix"] and "→ Citizens answered" in html
+    ctx, html = page(make_root(tmp_path / "b", [refresh(1, f)] + busy))
+    row = rowof(ctx, "Citizens lost")
+    assert row["light"] == "red" and light(ctx, "volume") == "red" and "2 gate:near_duplicate" in row["fix"]
+    assert "→ Citizens lost" in html
 
 
-def test_reach_no_funnel_yet_is_amber_and_page_renders(tmp_path):
-    ctx, html = page(make_root(tmp_path, [write(5)]))
-    assert ctx["reach"]["tile"] is None and rowof(ctx, "Citizens answered")["light"] == "amber"
-    assert "posts last hour" in html
+def test_reach_speed_from_reply_times(tmp_path):
+    # our posts 100 and 200 were written 30 and 20 min ago (ids rise with time), so citizen post 150 dates to 25 min ago
+    acts = [dict(write(30), post_id=100), dict(write(20), post_id=200),
+            dict(write(1), act="reply", source="latest", target_post=150, post_id=300)]
+    ctx, _ = page(make_root(tmp_path, acts))
+    r = rowof(ctx, "Reply time, new")
+    assert r["now"] == "24.0 min" and r["light"] == "red" and light(ctx, "speed") == "red"
+    acts[2] = dict(acts[2], ts=iso(18), target_post=190)                   # post 190 dates to 21 min ago: answered in 3
+    ctx, _ = page(make_root(tmp_path / "b", acts))
+    assert rowof(ctx, "Reply time, new")["now"] == "3.0 min" and light(ctx, "speed") == "green"
 
 
-def test_reach_throughput_last_full_hour_against_budget_and_pace(tmp_path):
-    f = {"2026-10-22T05": {"seen": 9, "answered": 1, "skipped": {}, "lost": {}, "pending": {"queued": 8}}}
-    calm = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
-    # NOW is 06:00 UTC: the last full hour is 05:00-06:00; 96 writes there = 1.6/min, one more at 06:00 is not in it
-    acts = [dict(write(1 + i * 0.6), post_id=1000 + i) for i in range(96)] + [dict(write(0), post_id=9)]
-    ctx, html = page(make_root(tmp_path, [refresh(1, f, candidates=40)] + acts,
-                               status={"write_budget": {"limit": 3, "remaining": 2}, "queue": {"candidates": 40}}))
-    t = rowof(ctx, "Throughput")
-    assert t["now"] == "1.6/min of 3.0 (53%) · pace 2.5" and t["light"] == "amber"          # under 0.9 × 2.5, 40 waiting
-    assert ctx["reach"]["verdict"] == "falling behind" and "1.6/min of 3" in ctx["reach"]["summary"]
-    assert not any(r["name"].startswith("Longest wait") for r in ctx["reach"]["rows"])
-    ctx, _ = page(make_root(tmp_path / "b", [refresh(1, calm)] + acts, status={"queue": {"candidates": 40}}))
-    assert rowof(ctx, "Throughput")["light"] == "green"         # every citizen of that hour answered: a quiet hour
-    acts = [dict(write(1 + i * 0.4), post_id=1000 + i) for i in range(150)]
-    ctx, _ = page(make_root(tmp_path / "c", [refresh(1, f)] + acts))      # at pace, citizens waiting: green
-    assert rowof(ctx, "Throughput")["light"] == "green" and rowof(ctx, "Throughput")["now"].startswith("2.5/min")
-
-
-def test_reach_answered_is_a_share_too(tmp_path):
-    f = {"2026-10-22T04": {"seen": 220, "answered": 125, "skipped": {"off_topic": 12}, "lost": {},
-                           "pending": {"queued": 83}},
-         "2026-10-22T05": {"seen": 2, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
-    ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
-    assert rowof(ctx, "Citizens answered")["now"] == "125 of 208 (60%) · 83 waiting · 0 lost"
-    assert "125/208 answered (60%)" in ctx["reach"]["summary"] and "60% · 0 lost" in html
+def test_reach_does_not_date_a_post_across_a_long_gap():
+    clock = [(100, 1000.0), (200, 1000.0 + 3 * 3600)]                      # no post of ours for 3 h: the guess is useless
+    assert build._written_at(150, clock) is None
 
 
 def test_reach_dates_citizen_posts_from_our_post_ids():
@@ -335,17 +335,17 @@ def test_reach_counts_changes_of_mind_from_portal_messages():
     assert m == {"toward": 3, "away": 1, "neither": 4, "primary_toward": 1}
 
 
-def test_reach_outcome_first_queue_split_and_notes(tmp_path):
-    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
+def test_reach_conversion_queue_and_notes(tmp_path):
+    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {"off_topic": 2}, "lost": {}, "pending": {}}}
     rf = dict(refresh(1, f, candidates=30), groups={"sweep": {"queued": 20}, "older": {"queued": 0}})
     acc = [dict(write(5), llm_calls=2), dict(write(6), llm_calls=1)]
     root = make_root(tmp_path, [rf] + acc)
     (root / "data" / "reach_notes.json").write_text(json.dumps({"Drafts passing": "prompt fix live 15:20, recheck 16:30"}))
     ctx, html = page(root)
     r = ctx["reach"]
-    assert r["rows"][0]["name"].startswith("Changes of mind") and r["summary"].startswith("today 0 toward No")
-    assert "Queue now: 10 citizens waiting · 20 extra-group posts" in r["extra"]
-    assert "In hand: prompt fix live 15:20, recheck 16:30" in html
+    assert rowof(ctx, "Changes of mind")["now"].startswith("0 toward No") and light(ctx, "conversion") == "green"
+    assert rowof(ctx, "Citizens waiting")["now"] == "10" and "20 extra-group posts queued" in r["extra"]
+    assert "2 off topic" in r["extra"][0] and "In hand: prompt fix live 15:20, recheck 16:30" in html
 
 
 def test_reach_other_view_change_is_not_counted_as_neither():
@@ -448,7 +448,7 @@ def test_blue_own_account_check(tmp_path):
     assert ctx["blue"]["own"] == {"lines": 2, "hits": 0, "accounts": 3} and "Own accounts reported: <b>0</b>" in html
     ctx, html = page(blue_root(tmp_path / "b", own_ids=[41, 42], reports=reps))
     assert ctx["blue"]["own"]["hits"] == 2 and '<p class="down">Own accounts reported' in html
-    assert ctx["banner"]["level"] == "amber" and "against our own accounts" in ctx["banner"]["text"]
+    assert ctx["blue_banner"]["level"] == "red" and "against our own accounts" in ctx["blue_banner"]["text"]
     assert "OUR OWN ACCOUNTS REPORTED: 2" in ctx["blue"]["summary"]
 
 
@@ -532,7 +532,7 @@ def test_activity_alert_colours_repost_text_and_portal_accounts(tmp_path):
     texts = [r["text"] for r in ctx["activity"] if r.get("act") == "repost"]
     assert texts == ["reposted #61 by account 8 (text not in our logs)",
                      "reposted #60 by account 9: “Keep the ferries running, all of them, please.”"]
-    assert "61 registered · 13 banned · 50 active max" in html and 'id="bot-own-accounts"' in html
+    assert "61 registered · 13 banned · 50 active max" in html and 'id="bot-own-accounts"' not in html
 
 
 def test_combined_portal_lines_split_blue_by_its_counts():
@@ -551,3 +551,14 @@ def test_combined_portal_lines_split_blue_by_its_counts():
     kinds = {r["kind"]: r for r in build.score_lines(pts, NOW - dt.timedelta(hours=2))["rows"]}
     assert kinds["blue"]["points"] == 150 + 20 + 24 + 169 and kinds["blue"]["mixed"]
     assert kinds["engagement"]["points"] + kinds["persuasion"]["points"] == 550 - 150 + 684 - 20 + 265
+
+
+def test_stealth_light_counts_new_bans_today(tmp_path):
+    root = make_root(tmp_path, [write(3)])
+    log = {"counts": [{"ts": iso(1500), "registered": 50, "banned": 2}, {"ts": iso(30), "registered": 52, "banned": 5}],
+           "suspended": [{"ts": iso(30), "username": "a_b", "id": 7, "why": "3 posts hidden"}]}
+    (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
+    ctx, html = page(root)
+    st = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
+    assert st["head"] == "3 bans" and st["light"] == "amber" and "3 posts hidden ×1" in rowof(ctx, "New bans")["now"]
+    assert "@a_b" in html
