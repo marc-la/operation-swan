@@ -509,7 +509,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     pulse_now (todo/15): all of it for amplified posts (and a fresh hook as their news, about half the time), the
     hooks for thread replies, the Yes lines for replies to a Yes-leaner; nothing for the rest. With a ledger, posts
     and replies may carry a theme (themes.Ledger.pick)."""
-    persona = content.PERSONA_BY_KEY[job["rec"]["persona"]]
+    persona = persona_of(job["rec"])
     job.setdefault("frame_in", job.get("frame"))                 # the keyword match's frame, or None (todo/21)
     job["frame"] = content.live_frame(job["frame"], persona)      # a fact paused since the job was queued
     target = job.get("target") or {}
@@ -783,6 +783,15 @@ def log_rest(why, **fields):
         return
     log({"act": "skip", "why": why, "n": last[1], **fields})
     last[:] = [t, 0]
+
+
+def persona_of(rec):
+    """The persona card a voice drafts as. A booster turned voice (scripts/convert_boosters.py) keeps its own display
+    name, so the card's name gives way to it; role, place, frames and style stay the card's."""
+    card = content.PERSONA_BY_KEY[rec["persona"]]
+    if rec.get("converted") and rec.get("display_name"):
+        return dict(card, name=rec["display_name"])
+    return card
 
 
 def candidate_voice(pick, cand, **kw):
@@ -1201,7 +1210,7 @@ def main():
         when the light read skipped the target or every draft failed (then it is requeued or logged lost, G8)."""
         rec, mode, target = job["rec"], job["mode"], job.get("target")
         job.setdefault("draft_id", secrets.token_hex(4))     # ties this job's rejected drafts to its write
-        persona = content.PERSONA_BY_KEY[rec["persona"]]
+        persona = persona_of(rec)
         text = backend = user = repair = None
         if mode == "repost":
             text, backend = "", "none"
