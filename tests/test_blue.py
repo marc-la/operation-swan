@@ -64,7 +64,9 @@ def blue(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "REPORTS_LOG", tmp_path / "reports.jsonl")
     monkeypatch.setattr(S, "APPROVALS", tmp_path / "approved.jsonl")
     monkeypatch.setattr(S, "DETECT_FILE", tmp_path / "detect.json")
-    return S.Blue(live=False)
+    b = S.Blue(live=False)
+    monkeypatch.setattr(b, "alert", lambda *a, **k: None)    # tests that set live=True must never page anyone
+    return b
 
 
 def post(pid, label, author):
