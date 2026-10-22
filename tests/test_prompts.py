@@ -281,7 +281,8 @@ def test_replies_new_shape():
         meta = {}
         r = content.reply_prompt("only if they publish the list", "F14_no_yes_but", ["list"], meta=meta,
                                  persona=content.PERSONAS[i % 12])
-        assert "want the same thing" not in r and experiment.ASK_KINDS[meta["ask_kind"]] in r
+        ask = content.REPLY_ASK_NONE if meta["ask_kind"] == "none" else experiment.ASK_KINDS[meta["ask_kind"]]
+        assert "want the same thing" not in r and ask in r
         assert meta["reply_mode"] in experiment.REPLY_MODES and meta["length_band"] in ("short", "medium", "long")
         assert content.VOICES[content.PERSONAS[i % 12]["register"]]["reply_instruction"] in r
         assert meta["opener"] in content.OPENERS and meta["pillar"] == "A"

@@ -55,7 +55,7 @@ VOICES = {
         reply_instruction=(
             "You stay blunt in a reply, but talk to this person as a neighbour, even if they are voting Yes: no "
             "scorn, no sarcasm, no lecture. Short plain sentences. Answer their actual point with one fact you were "
-            "given, keep the edge for the rule and the government, and say you're voting No."),
+            "given, and keep the edge for the rule and the government."),
         examples=[
             dict(persona="josh", frame="F1_blank_cheque",
                  text="Two cafes I wire asked this week if they'll need someone on the door checking papers. Nobody can "
@@ -89,7 +89,7 @@ VOICES = {
         reply_instruction=(
             "You reply calmly and briefly. Name the thing they raised in a few of their own words, then answer it "
             "with one of the facts you were given, in plain words, with no invented figures or sources. No "
-            "lecturing, no consoling phrases, nothing about the medicine itself. Make clear you're voting No."),
+            "lecturing, no consoling phrases, nothing about the medicine itself."),
         examples=[
             dict(persona="priya", frame="F10_staff_and_livelihoods",
                  text="Kingstonia Central has 40 empty nursing posts, and a nurse can earn about double in Australia or "

@@ -853,6 +853,29 @@ CHAR_CAP = {"reply": 260, "second_voice": 240}
 # date, no review..." until the gate rejected them as near duplicates. Now it is only a fact to respect.
 # Right first time (todo/20 G9 follow-up, 2026-10-22): the gate's commonest remaining rejects after the code fixes were
 # not_specific, copied_fact and near_duplicate, so replies get them as instructions up front, with our latest openings.
+# 2026-10-22 ~02:30 UTC (urgent, todo/25): moderators hid replies sharing one template ("...a Yes binds us... no end
+# date or review written in... I'm voting No."): 6 hides an hour, 5 voices suspended, and "voting no" was in 64% of
+# replies since 00:00 UTC. Replies to citizens no longer state our vote, and keep off our worn phrases unless the
+# citizen used them first. Posts still state it (quality's no_vote_statement).
+NO_VERDICT_RULE = ("Don't state your own vote anywhere: no 'I'm voting No', 'I'm a No', 'so I'm voting No' or the "
+                   "like. End on their point or on your reason; the reason already shows where you stand.")
+WORN_PHRASES = ("binds us", "no review", "end date", "venue list", "list of places", "sunset", "after the vote",
+                "blank cheque", "nothing in the question", "written in", "locks in")
+
+
+# a reply's ask_kind "none" ends on the reason, not on experiment.ASK_KINDS' "plain statement of your No" (posts keep it)
+REPLY_ASK_NONE = "End on your reason, said plainly, with no question at all (this replaces any instruction above to " \
+                 "finish on a question)."
+
+
+def worn_line(target_text):
+    """Keep off our worn phrases, except those the citizen used first (then they're their words, not our template)."""
+    theirs = (target_text or "").lower()
+    worn = [p for p in WORN_PHRASES if p not in theirs]
+    return (f"Build your sentences your own way, and keep off these worn phrases: "
+            f"{', '.join(repr(p) for p in worn)}. " if worn else "")
+
+
 FIRST_CALL_RULES = ("Name one concrete detail from their post. Put any fact in your own words, never the wording of "
                     "your notes.")
 
@@ -1016,15 +1039,18 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         f"{undecided}{why}Reply in {sentences} short sentences, between {lo} "
         f"and {hi} words, {CHAR_CAP['reply']} characters at most in all. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
-        f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}{experiment.ASK_KINDS[ask_kind]} "
-        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{REPLY_RULES}" + (read_block(hint) if read else "")
+        f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}"
+        f"{REPLY_ASK_NONE if ask_kind == 'none' else experiment.ASK_KINDS[ask_kind]} "
+        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text)}"
+        f"{REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
 def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=()):
     """todo/20 step 4, the mirror_concede arm: what citizens answered in another team's replies (research D §8):
-    mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact), then state
-    No plainly; 150-280 characters and no question. No lever, theme or opener: four beats only."""
+    mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact) to end on
+    (since 2026-10-22 no closing "I'm voting No": NO_VERDICT_RULE); 150-280 characters and no question. No lever, theme
+    or opener: three beats only."""
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they raised: {', '.join(wants)}.\n" if wants else ""
     reb = rebuttal_for(target_text)
@@ -1038,9 +1064,9 @@ def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=F
         f"Reply in 2 or 3 short sentences, {lo} to {hi} characters in all, in this order. First, mirror one concrete "
         f"detail they wrote, in a few of your own words (never their whole sentence). Then concede what is fair in it, "
         f"in 8 words or fewer (if they lean No, agree with their reason instead). Then one anchor that carries the "
-        f"point: a detail from your own life or one of your facts; the point: {point}. Then say plainly that you're "
-        f"voting No. No question anywhere, and no closing question. {FIRST_CALL_RULES} {avoid_line(recent)}"
-        f"{REPLY_RULES}" + (read_block(hint) if read else "")
+        f"point: a detail from your own life or one of your facts; the point: {point}. End on that anchor. No question "
+        f"anywhere, and no closing question. {FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} "
+        f"{worn_line(target_text)}{REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
@@ -1058,7 +1084,8 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
         f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} words ({CHAR_CAP['second_voice']} "
         f"characters at most): {FRAMES[frame_key]['gist']}. "
         f"{opener} Make it land through this: {LEVERS[lever]} Don't mention the other reply or repeat its argument. "
-        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{REPLY_RULES}"
+        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text)}"
+        f"{REPLY_RULES}"
     )
 
 
@@ -1072,13 +1099,13 @@ def reply_back_prompt(our_text, their_text, style=None):
             f"{said}Reply to them in 1 or 2 sentences, between 60 and 220 characters: pick up one thing they actually "
             f"said, grant what is fair in it in a few words, then stay with your No with one detail from your own life "
             f"or one fact. If they asked a question, answer it with one fact; otherwise no question. Never start with "
-            f"Spot on, Exactly or Too right. No hashtags.")
+            f"Spot on, Exactly or Too right. {NO_VERDICT_RULE} {worn_line(their_text)}No hashtags.")
     return (
         f"{said}"
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "
         f"and specifically, and stay with your view. If they agreed, start with a short thanks (Cheers, Thanks, "
         f"Ta) or go straight to one small new thing; never start with Spot on, Exactly or Too right. "
-        f"If they asked a question, answer it with one fact. No hashtags."
+        f"If they asked a question, answer it with one fact. {NO_VERDICT_RULE} {worn_line(their_text)}No hashtags."
     )
 
 
