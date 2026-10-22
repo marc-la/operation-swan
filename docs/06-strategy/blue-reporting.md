@@ -93,7 +93,7 @@ todo/26. The first full day showed the cycle model of §2 was right about locks:
 ### What changed
 
 - **P(genuine) per post report** (`evidence.p_genuine`): 10% for a like ring alone (the scoring page's error rate), ×0.4 with a reply ring, ×0.7 with a second class, ×0.6 if the moderator already hid a post by the author, ×0.85 with an id run of 10+, ×1.4 for a small, slow like ring (< 30 likes, no 60-s burst of 8, like `#155963`). Expected value counts it: `(1 − P(genuine)) × (25 or 5) × rate`. It's logged on each report (`pg`) and the dashboard shows "genuine against expected" over the rulings.
-- **A bar when plenty is ready:** with 10+ targets ready, a post report must be under **6%** P(genuine) to file. In practice reply rings, and like rings with a second class plus an id run or an author already hidden; a like ring alone by an author with nothing hidden yet waits. On 22 Oct's ready list that keeps 26 of 40. With 25 pending, the chance a batch ends with no genuine ruling goes from about 0.9²⁵ ≈ 7% to about 30% (that list's first 25), if the factors hold.
+- **A bar when plenty is ready** (superseded 22 Oct by the no-lock mode, §8): with 10+ targets ready, a post report must be under **6%** P(genuine) to file. In practice reply rings, and like rings with a second class plus an id run or an author already hidden; a like ring alone by an author with nothing hidden yet waits. On 22 Oct's ready list that keeps 26 of 40. With 25 pending, the chance a batch ends with no genuine ruling goes from about 0.9²⁵ ≈ 7% to about 30% (that list's first 25), if the factors hold.
 - **The lock's exact end:** the platform's 403 says "reporting is suspended for your team until …". We now take that time as the lock (no more 30-min retries) and cut the recorded locked hours to it. When we detect a genuine ruling ourselves, our lock is an upper bound (ruling ≤ 3 h after the first report), so one report goes out at once: the answer gives the exact end, often earlier than our estimate. Cost: one refused request per genuine ruling.
 - **More teams at full rate:** account leads file first (no lock risk). In the ranking, each award already counted against a cluster today lowers its next report by 4% while it's still at full rate, so new clusters go first. On 22 Oct's list: the 3 new clusters (c6628, c2576, c8601) come before c6831's 5th report.
 - **Wider discovery, with no extra feed read:** Latest as the bot already read it (`data/latest_snapshot.json`, replies and reposts included). A post that collects 4+ team replies or reposts in that window is a ring forming: a known post whose audits found nothing gets one more audit; an unknown one (older than the snapshot) is looked up with `get_post` (8 per pass at most, its own 300/min route) and noted if a team wrote it. Citizens' posts are skipped: on 22 Oct their replies came from many teams, 1–3 each, which is no ring. The targeter's own thread reads aren't saved anywhere swan-blue can read; using them would need a `swan_bot` change.
@@ -111,3 +111,59 @@ todo/26. The first full day showed the cycle model of §2 was right about locks:
 | Awards at full rate | 42 / 49 (86%) | |
 | Clusters paid | 7 | |
 | Rings found by widening (`"act": "widen"`) and leads from others' hides (`"act": "lead"`) | n/a | |
+
+## 8. Blue without locks (todo/28, 2026-10-22)
+
+Marc's bar: Blue runs unattended and earns as few "genuine" rulings as the rules allow (each locks **all** our reporting for 6 h). The floor is the moderator, not our evidence: it is wrong about 1 in 10 either way (scoring page, 20 Oct). Only two routes go under that: account reports (a dismissed one can't lock us) and the evidence classes the rulings show are safer.
+
+### The genuine risk per evidence class (measured 2026-10-22 05:20 UTC)
+
+Every post ruling so far: 59 (21 Oct 13:46 → 22 Oct 05:20 UTC), 57 hidden, 2 genuine. Source: `logs/blue_reports.jsonl` and `data/blue_state.json` on the box, read offline from copies (the running tally per class is `pg_by_class` in `blue_status.json`). "Estimate" is the Jeffreys mean, (genuine + ½) / (n + 1); "95% upper" is the rule of three (3/n) when none was genuine.
+
+| Class | Genuine / rulings | Estimate | 95% upper bound |
+|---|---|---|---|
+| **Reply ring** (the root, or one of its ring replies) | **0 / 34** (31 of them replies) | **1.4%** | 9% |
+| Like ring alone | **2 / 19** | 12.5% | (observed 11%) |
+| Like ring + early ring | 0 / 6 | 7% | 50% |
+| Account reports | 5 of 6 ruled were upheld (portal); a dismissed one costs nothing | none can lock | |
+
+The same 59 by other cuts (none of them separates risk the way the class does):
+
+| Cut | Genuine / rulings |
+|---|---|
+| Post age at filing ≤ 30 min / 31–60 / 61–180 / > 180 | 1/16 · 0/31 · 1/10 · 0/2 (the 0/31 is mostly reply-ring replies) |
+| Trending root / Latest or author root / ring reply | 1/13 · 1/15 · 0/31 |
+| Ruled in < 2 h (2+ teams reported it) / at ~3 h (us alone) | 1/10 (#155963, ruled at 1.5 h by the platform's lock time) · 1/49 |
+| Id run of 10+ among its accounts / none | 2/30 · 0/29 (no support, so the factor is gone) |
+| Author already had a post hidden | 0/2 (too few to say) |
+| `pg` at filing, recomputed with the old (todo/26) model: ≤ 4% / 6–10% / > 10% | 0/34 · 1/18 · 1/6 |
+
+**Calibration.** The todo/26 model predicted 3.2 genuine over these 59 and 2 came; the 13 reports that logged `pg` at filing (22 Oct) predicted 0.55 and got 0. Too few rulings to say more than "not badly off". The new factors (`evidence.PG_FACTORS`): like ring 10%, like ring + a second class 7%, reply ring **2%** (was 4%), author hidden ×0.6 (unmeasured), small slow like ring ×1.4; the id-run factor is dropped. The dashboard gets `pg_by_class` (rulings, genuine, expected per class) in `blue_status.json` to keep checking.
+
+**1% is not demonstrable for post reports.** The safest class has 0 genuine in 34; that is consistent with 1–2% but also with up to 9%. Showing 1% would take about 300 clean rulings of one class. And the todo's target doesn't add up: 70 post reports a day at 1–2% is 5–10 genuine a week, not 2–3; 2–3 a week at 70 a day needs 0.5% a report, which no class can show. So the volume of post reports has to be capped as well as their class.
+
+### The no-lock mode (the default since 22 Oct 05:17 UTC)
+
+- **Account reports always first.** They can't lock us. 55 account leads were ready on 22 Oct; most wait behind the per-team daily rate (11+ awards a team pay 10%) and file at full rate after the Sydney midnight.
+- **Post reports only at P(genuine) ≤ `BLUE_POST_PG_MAX`** (default **2%**): reply rings and their ring replies. No like ring files as a post report, whatever its size.
+- **Only when worth the lock they risk:** expected points ≥ P(genuine) × 300 (a 6 h lock is about a quarter of a ~1,200-point Blue day). A 2% report must be worth 6+, so reports at the 10% daily rate (2.3) never go.
+- **A risk bucket:** post reports may take on `BLUE_PG_PER_DAY` expected genuine rulings a day (default **0.4**, about 3 a week, the todo's bar). It refills continuously and holds a quarter of a day's worth (0.1, five 2% reports), so post reports spread over the day instead of going in one burst.
+- **The last pending slot** of the 30 is an account report's.
+- **Never our own content** (Marc, 22 Oct): `file()` re-reads our ids (voices, boosters, swarm) and asks the platform who wrote the post; one of ours is refused, logged `"refused": "own account"` and alerted. A post with 3+ of our accounts among its likers or repliers is never post-reported (the report would point the moderator at our boosters). The 22 Oct audit: 0 of 199 report-log lines touched our 54 accounts; our boosters had liked #141107, a ring post we then reported correctly.
+- Settings: `BLUE_POST_PG_MAX=0.02` and `BLUE_PG_PER_DAY=0.4` in `.env` on the box (loaded when swan-blue starts: set them, then restart it). `BLUE_PG_PER_DAY=1.0` roughly restores the todo/26 volume of reply-ring reports.
+
+### What it costs (estimates; the first 24 h will measure it)
+
+| Policy | Post reports a day | Genuine a day (expected) | Locked h a day | Blue points a day |
+|---|---|---|---|---|
+| todo/26 (6% bar when 10+ ready), measured 21 Oct 13:46 → 22 Oct 05:20 UTC | ~70 | 2 in the first 15 h | 7.5 h in the first 15 h | ~1,120 in 15.5 h (44 first, 3 later, 5 upheld account awards) |
+| **No-lock, `BLUE_PG_PER_DAY=0.4` (default)** | ~20 (reply rings) | 0.4 (≈ 3 a week) | ~2.4 | ~750: posts ~350, accounts ~470, less the locked time |
+| No-lock, `BLUE_PG_PER_DAY=1.0` | ~50 (reply rings worth ≥ 6) | 1 | ~6 | ~930 |
+
+Assumptions: ~50 account leads a day (55 found in the first ~16 h), 5 of 6 upheld, 15 each; post reports paid first 94% of the time (44 of 47 so far); most awards at full or half rate (accounts take a team's first awards, so posts mostly land at half rate). The default trades roughly a third of Blue's points for about a fifth of the locked hours, which is what "as close to zero genuine rulings as the rules allow" asks. If points matter more than locks, `BLUE_PG_PER_DAY=1.0` is the lever.
+
+### Co-reporting and new account leads
+
+- **Time to ruling** is logged per post ruling (`hours`, and `co: true` under 2 h). The timer halves per extra team, so under 2 h means 2+ teams reported it. Its author becomes an account lead at once (flagged `co`), its ring's other posts are checked for hides first, and the harvest runs at the next tick. A genuine ruling takes its time from the platform's lock (`until − 6 h`), so co-reported genuine rulings show too. `blue_status.json` → `co: {fast, of}`.
+- **Others' hides → account reports** (the multi-team boost): leads found from posts other teams got hidden (`"act": "lead"`, `by: "other"`) are authors at least one other team reported, so our account report on them is a second report.
+- **Alert on every genuine ruling** with its evidence class, P(genuine) at filing, age and cluster, so the next one teaches us something.
