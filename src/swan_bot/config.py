@@ -52,7 +52,9 @@ SECOND_VOICE_S = (10 * 60, 30 * 60) # a second persona follows up on the same do
 # 2026-10-21 late (todo/19): back on. Citizen likes / replies per write, all measured writes: reply 0.17 / 0.15,
 # reply_back 0.11 / 0.07, second_voice 0.06 / 0.08, own-thread reply 0.03 / 0.03. Both beat the thread replies they
 # had given their slots to, and citizen replies on the portal fell from 4-12/h to 1-4/h while they were off.
-SECOND_VOICE = True
+# 2026-10-22 (Marc, stealth): off. 294 of 730 citizens got two of our voices within 60 min, which reads as a reply
+# ring to other teams' Blue reporters; 33 posts hidden, 16 voices hit. Its writes go to first replies (0.17 vs 0.06).
+SECOND_VOICE = False
 REPLY_BACK = True
 REPLY_BACK_AMP = True               # with REPLY_BACK off: still answer citizens replying in our amplified threads
 JOURNALIST_MAX_AGE_H = 12

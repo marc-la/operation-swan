@@ -262,6 +262,7 @@ def setup_world(mp, tmp, split, amp_off=False):
         (tmp / "AMPLIFY_OFF").touch()
     for attr, val in (("SPLIT_LOOP", split), ("ACCOUNT_MIN_GAP_S", VOICE_GAP), ("REPOST_MIN_GAP_S", REPOST_GAP),
                       ("NOTIF_EVERY_S", 0.3), ("REFRESH_S", 0.5), ("REGISTER_GAP_S", (3600, 3600)),
+                      ("SECOND_VOICE", True),     # off live since 22 Oct (stealth); the checklist still exercises it
                       ("SECOND_VOICE_ARMS", {"fast": (0, 0.05), "slow": (0, 0.05)}), ("OWN_LIKE_DELAY_S", (0, 0.05)),
                       ("AMP_PRIORITY_S", 0), ("READER_SILENT_S", 30), ("DRAFTER_SILENT_S", 30)):
         mp.setattr(config, attr, val)
