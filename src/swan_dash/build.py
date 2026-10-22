@@ -212,7 +212,22 @@ def write_item(a):
     return w
 
 
-def conversations(actions):
+def post_texts(actions, data):
+    """{post id: (author, text)} for posts we can name without a read: our own writes, what our replies answered,
+    and the bot's latest feed snapshot (data/latest_snapshot.json)."""
+    out = {}
+    for p in (read_json(data / "latest_snapshot.json") or {}).get("posts") or []:
+        if isinstance(p, dict) and p.get("post_id") and p.get("body"):
+            out[str(p["post_id"])] = (f"account {p.get('author_id')}", p["body"])
+    for a in actions:
+        if a.get("target_post") and a.get("target_text"):
+            out[str(a["target_post"])] = (f"account {a.get('target_author')}", a["target_text"])
+        if a.get("post_id") and a.get("text") and a.get("act") in WRITES:
+            out[str(a["post_id"])] = (f"@{a.get('username')}", a["text"])
+    return out
+
+
+def conversations(actions, texts=None):
     """Our live writes as conversations, rows newest activity first. An amplified post carries its thread, reposts,
     likes, plan and measurements; a reply carries its second voice; a reply-back sits under the message of ours it
     answers when that is in the log. Rejected drafts sit under the write they preceded."""
@@ -232,6 +247,10 @@ def conversations(actions):
         if act not in WRITES or a.get("live") is not True:
             continue
         w = write_item(a)
+        if act == "repost" and not w["full"]:          # a bare repost row said nothing (Marc): what was reposted
+            who, body = (texts or {}).get(str(a.get("target_post")), (f"account {a.get('target_author')}", ""))
+            w["full"] = w["text"] = (f"reposted #{a.get('target_post')} by {who}: “{short(theirs(body), 80)}”"
+                                     if body else f"reposted #{a.get('target_post')} by {who} (text not in our logs)")
         if a.get("draft_id"):
             w["rejects"] = by_draft.pop(a["draft_id"], [])
         else:
@@ -387,6 +406,11 @@ def score_lines(points, since):
     tiles = [have.get(k) or dict(kind=k, name=name, points=0, mixed=False) for k, name in POINT_KINDS
              if k != "polls" or k in have]
     return dict(rows=rows, tiles=tiles, total=sum(e["points"] for e in points if e["_t"] >= since))
+
+
+# the activity log's alert kinds, each its own colour (Marc, 22 Oct): message prefix -> (label, css class on the row)
+ALERT_KINDS = [(r"DEPLOY FAILED", "deploy failed", "deployfail"), (r"BLUE", "Blue", "blue"),
+               (r"BOT (CRASHED|DOWN|OFFLINE)", "bot down", "bad"), (r".*suspend", "suspended", "susp")]
 
 
 # ---- the fact desk (todo/16): pauses and open proposals, with the command that settles each ----
@@ -1047,14 +1071,14 @@ def gather(root, now, service):
                       left=nxt and until(sydney_midnight(nxt[0]) - now))
 
     # ---- activity: our writes, account events, long LLM parks, deploys and alerts (points: under Score) ----
-    rows = conversations(actions)
+    rows = conversations(actions, post_texts(actions, data))
     for a in actions:
         act = a.get("act")
         if act == "register":
             rows.append(dict(t=a["_t"], who=a.get("persona") or a.get("role") or "", what="new account",
                              text=a.get("username"), kind="event"))
         elif act == "suspended":
-            rows.append(dict(t=a["_t"], who="", what="SUSPENDED", text=a.get("username"), kind="bad"))
+            rows.append(dict(t=a["_t"], who="", what="SUSPENDED", text=a.get("username"), kind="susp"))
         elif act == "llm_park":
             u = ts(a.get("until"))
             if u and (u - a["_t"]).total_seconds() >= LONG_PARK_S:
@@ -1070,9 +1094,10 @@ def gather(root, now, service):
                 rows.append(dict(t=ts(t), who="", what="deploy", text=short(subject),
                                  kind="event", family="ops"))
             elif "hidden by the moderator" in msg:          # deploy/healthcheck + swan-watch: a voice lost a post
-                rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="bad"))
-            else:
-                rows.append(dict(t=ts(t), who="", what="alert", text=short(msg), kind="event"))
+                rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="hidden"))
+            else:                                           # each alert kind its own colour (Marc, 22 Oct)
+                what, kind = next(((w, k) for rx, w, k in ALERT_KINDS if re.match(rx, msg)), ("alert", "event"))
+                rows.append(dict(t=ts(t), who="", what=what, text=short(msg, 200), kind=kind))
     rows.sort(key=lambda r: r.get("last") or r["t"], reverse=True)   # a conversation moves up when it gets more
     for r in rows:
         r.setdefault("time", hm(r["t"]))

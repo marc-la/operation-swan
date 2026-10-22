@@ -170,7 +170,7 @@ def test_back_to_back_parks_and_deploys_are_bundled(tmp_path):
         f"{iso(3)[:19]}Z [swan-ec2] @lani: post #9 hidden by the moderator (1 hidden)\n")
     ctx, html = page(root)
     kinds = [(r["kind"], r["what"]) for r in ctx["activity"]]
-    assert kinds == [("bad", "post hidden"), ("group", "ops ×5"), ("write", "reply"), ("group", "LLM parked ×2")]
+    assert kinds == [("hidden", "post hidden"), ("group", "ops ×5"), ("write", "reply"), ("group", "LLM parked ×2")]
     assert ctx["activity"][1]["text"] == ("2 deploys (latest def5678 two) · "
                                           "gemini-c, gemini-b, gemini-a: daily quota until 17:00")
     assert html.count("<details class=\"x\" id=\"g-") == 2
@@ -508,6 +508,31 @@ def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
     _, html = page(make_root(tmp_path, [write(3), p]))
     assert '<details id="pulse"' not in html and html.index('id="pulse"') > html.index('id="facts"')
     assert "from Trending #77: 2 hooks, 1 for No, 2 Yes lines, 0 overused; first hook “ferry cuts”" in html
+
+
+def test_activity_alert_colours_repost_text_and_portal_accounts(tmp_path):
+    acts = [{"ts": iso(9), "act": "reply", "live": True, "post_id": 70, "username": "dan_1", "text": "x",
+             "target_post": 60, "target_author": 9, "target_text": "Keep the ferries running, all of them, please."},
+            {"ts": iso(8), "act": "repost", "live": True, "post_id": 71, "target_post": 60, "target_author": 9,
+             "username": "alim10", "role": "swarm"},
+            {"ts": iso(7), "act": "repost", "live": True, "post_id": 72, "target_post": 61, "target_author": 8,
+             "username": "alim10", "role": "swarm"},
+            {"ts": iso(6), "act": "suspended", "username": "lani_42"}]
+    root = make_root(tmp_path, acts)
+    (root / "logs" / "alerts.log").write_text(
+        f"{iso(5)[:19]}Z [swan-ec2] DEPLOY FAILED, rolled back to abc1234. Bad commit: x\n"
+        f"{iso(4)[:19]}Z [swan-ec2] BLUE: #2 ruled genuine (reply ring)\n"
+        f"{iso(3)[:19]}Z [swan-ec2] @lani: post #9 hidden by the moderator (1 hidden)\n")
+    (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "accounts": {
+        "registered": 61, "banned": 13, "max_total": 200, "max_active": 50}}))
+    ctx, html = page(root)
+    kinds = {r["what"]: r["kind"] for r in ctx["activity"] + ctx["older"]}
+    assert kinds["deploy failed"] == "deployfail" and kinds["Blue"] == "blue" and kinds["post hidden"] == "hidden"
+    assert kinds["SUSPENDED"] == "susp"
+    texts = [r["text"] for r in ctx["activity"] if r.get("act") == "repost"]
+    assert texts == ["reposted #61 by account 8 (text not in our logs)",
+                     "reposted #60 by account 9: “Keep the ferries running, all of them, please.”"]
+    assert "61 registered · 13 banned · 50 active max" in html and 'id="bot-own-accounts"' in html
 
 
 def test_combined_portal_lines_split_blue_by_its_counts():

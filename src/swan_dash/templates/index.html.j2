@@ -12,11 +12,13 @@
 :root {
   --bg: #f6f6f4; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
   --green: #1f7a4d; --green-bg: #e3f3ea; --amber: #8a5a00; --amber-bg: #fdf0d5; --red: #a12622; --red-bg: #fbe2e0;
+  --orange: #8f3f00; --orange-bg: #ffe2c6; --blue: #0b4f8a; --blue-bg: #e1eefb; --ored: #b03a12; --ored-bg: #fdebe3;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #161615; --card: #1f1f1d; --ink: #ecece8; --muted: #9a9a93; --line: #33332f;
     --green: #6fd29d; --green-bg: #173326; --amber: #f2c063; --amber-bg: #3a2c10; --red: #ff8a83; --red-bg: #41191a;
+    --orange: #ffb070; --orange-bg: #3d2410; --blue: #8cc4ff; --blue-bg: #132a40; --ored: #ff9b73; --ored-bg: #3b1d12;
   }
 }
 * { box-sizing: border-box; }
@@ -56,6 +58,15 @@ li .w { font-weight: 600; overflow-wrap: anywhere; }
 li .w span { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
 li.event, li.event .w { color: var(--muted); font-weight: 400; }
 li.bad .w, li.bad .x { color: var(--red); }
+li.susp { border-left: 4px solid var(--red); background: var(--red-bg); }
+li.susp .w, li.susp .x { color: var(--red); font-weight: 700; }
+li.hidden { border-left: 4px solid var(--ored); background: var(--ored-bg); }
+li.hidden .w, li.hidden .x { color: var(--ored); }
+li.deployfail { border-left: 4px solid var(--orange); background: var(--orange-bg); }
+li.deployfail .w, li.deployfail .x { color: var(--orange); font-weight: 600; }
+li.blue { border-left: 4px solid var(--blue); background: var(--blue-bg); }
+li.blue .w, li.blue .x { color: var(--blue); }
+li.susp .t, li.hidden .t, li.deployfail .t, li.blue .t { color: var(--ink); }
 li.group, li.group .w { color: var(--muted); font-weight: 400; }
 li details { background: none; border: 0; border-radius: 0; margin: 0; }
 li summary { padding: 0; }
@@ -256,7 +267,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% set bot_warn = llm.rank != '1st' or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
   {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
-  {{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% if accounts.suspended %} · {{ accounts.suspended }} suspended{% endif %}
+  {% if portal_accounts %}{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% if accounts.suspended %} · {{ accounts.suspended }} suspended{% endif %}{% endif %}
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>
@@ -266,9 +277,10 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<tr><td class="sub">No status from the bot yet.</td></tr>{% endfor %}
   </table>
   <h3>Accounts</h3>
+  {% if portal_accounts %}<p><b>{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max</b> <span class="sub">(the portal; {{ portal_accounts.max_total }} ever)</span></p>{% endif %}
+  <details class="pts" id="bot-own-accounts"{% if not portal_accounts %} open{% endif %}><summary>Our own count{% if portal_accounts %} (behind the portal){% endif %}</summary><div>
   <p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} writers, {{ accounts.boosters | n }} likers) ·
-    <span class="{{ 'warn' if accounts.suspended else '' }}">{{ accounts.suspended | n }} suspended</span> · {{ accounts.used | n }} of {{ accounts.total_cap }} ever used</p>
-  {% if portal_accounts %}<p class="sub">Portal: {{ portal_accounts.registered }} registered, {{ portal_accounts.banned }} banned (caps {{ portal_accounts.max_total }} total, {{ portal_accounts.max_active }} at once).</p>{% endif %}
+    {{ accounts.suspended | n }} suspended · {{ accounts.used | n }} of {{ accounts.total_cap }} ever used</p></div></details>
   <h3>Last hour</h3>
   <p>{{ writes.hour }} posts{% if writes.planned %} (bot's pace {{ writes.planned }}, team cap {{ writes.cap }}){% endif %} ·
     {{ errors.rate_limited | n }} rate-limited · {{ errors.rejects }} drafts rejected by our quality check</p>
