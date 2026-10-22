@@ -154,7 +154,7 @@ def test_main_writes_page_robots_and_script(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["build", "--root", str(root), "--out", str(out)])
     monkeypatch.setattr(build, "service_state", lambda: "active")
     build.main()
-    assert {p.name for p in out.iterdir()} == {"index.html", "robots.txt", "app.js"}
+    assert {p.name for p in out.iterdir()} == {"index.html", "lab.html", "robots.txt", "app.js"}
     assert "location.reload" in (out / "app.js").read_text()
 
 

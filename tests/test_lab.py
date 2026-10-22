@@ -139,3 +139,26 @@ def test_trials_on_another_model_are_not_done_and_not_pooled():
     md = report.markdown(rows + [dict(rows[0], lab_model="local", verdict="toward_no")],
                          [dict(name="base", version="v")])
     assert md.count("# NPC lab results") == 2
+
+
+def test_the_lab_page_renders_per_model_with_examples(tmp_path):
+    import json
+    from swan_dash import build
+    from swan_dash.lab import gather_lab
+    (tmp_path / "content" / "lab" / "strategies").mkdir(parents=True)
+    (tmp_path / "content" / "lab" / "strategies" / "base.toml").write_text('name = "base"\ninstruction = ""\n')
+    (tmp_path / "content" / "lab" / "strategies" / "control.toml").write_text('name = "control"\nnpc_reads = "control"\n')
+    library.save_persona(dict(id="c1", author_id=1, stance_class="yes_but", target_text="Only with a sunset <b>."),
+                         tmp_path / "content" / "lab" / "personas")
+    strats = {s["name"]: s for s in library.strategies(tmp_path / "content" / "lab" / "strategies")}
+    rows = [dict(strategy=n, version=strats[n]["version"], persona="c1", stance_class="yes_but", seed=0,
+                 lab_model="competitor", verdict=v, reply="No end date. I'm voting No.", after="Still Yes", voice="lani")
+            for n, v in (("base", "toward_no"), ("control", "same"))]
+    (tmp_path / "data" / "lab").mkdir(parents=True)
+    (tmp_path / "data" / "lab" / "trials.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    ctx = gather_lab(tmp_path)
+    assert [m["model"] for m in ctx["models"]] == ["competitor"]
+    base = next(t for t in ctx["models"][0]["table"] if t["name"] == "base")
+    assert base["net"] == 100 and base["vs"] == 100 and base["by_class"]["yes_but"] == 100
+    html = build.render(dict(ctx, built="09:00"), "lab.html.j2")
+    assert "Only with a sunset &lt;b&gt;." in html and "toward_no" in html     # their words, escaped

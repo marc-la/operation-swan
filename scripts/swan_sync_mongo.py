@@ -13,6 +13,8 @@ Collections:
   followups      a citizen's posts and stance label 2 h / 12 h after we replied (scripts/swan_followup.py)
   post_outcomes  per post at +1 h / +6 h: views, likes, replies, citizen likes and replies, Trending rank, hidden;
                  plus the amplifier's amp_measure records, trending snapshots and voices' follower counts
+  lab_trials     the NPC lab's trials (todo/25, data/lab/trials.jsonl): strategy, persona, reply, stand-in verdict
+  lab_personas   the lab's persona cards (content/lab/personas): citizens' own words, stance class, segment
   (portal_activity is filled by scripts/import_activity.py)
 Password = CTN_TEAM_CODE from .env (never printed).
 """
@@ -28,6 +30,7 @@ import urllib.parse
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from swan_bot import config  # noqa: E402
 from swan_bot.bot import ARMS  # noqa: E402
+from swan_lab import library as lab_library  # noqa: E402
 import pymongo  # noqa: E402
 from pymongo import ReplaceOne, UpdateOne  # noqa: E402
 
@@ -103,6 +106,11 @@ def main():
         ops["followups"].append(ReplaceOne({"post_id": r["post_id"], "check": r["check"]}, r, upsert=True))
     for r in jsonl(config.LOGS / "blue_reports.jsonl"):       # swan_blue: reports, rulings, locks, mode changes
         ops["blue"].append(ReplaceOne({"ts": r["ts"], "act": r["act"], "key": r.get("key")}, r, upsert=True))
+    for r in jsonl(config.LAB_DIR / "trials.jsonl"):           # the NPC lab (todo/25)
+        ops["lab_trials"].append(ReplaceOne({"ts": r["ts"], "strategy": r["strategy"], "persona": r["persona"],
+                                             "seed": r["seed"]}, r, upsert=True))
+    for card in lab_library.personas():
+        ops["lab_personas"].append(ReplaceOne({"id": card["id"]}, card, upsert=True))
     n = {}
     for name, batch in ops.items():
         db[name].bulk_write(batch, ordered=False)

@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 import jinja2
 
 from swan_blue.evidence import awards_by_rate, first_later
+from swan_dash.lab import gather_lab
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
@@ -856,12 +857,12 @@ def gather(root, now, service):
         built=perth(now).strftime("%H:%M:%S"))
 
 
-def render(ctx):
+def render(ctx, template="index.html.j2"):
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent / "templates"),
                              autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
     env.filters["short"], env.filters["hm"] = short, hm
-    return env.get_template("index.html.j2").render(ctx)
+    return env.get_template(template).render(ctx)
 
 
 def write_atomic(path, text):
@@ -880,6 +881,11 @@ def main():
     html = render(gather(args.root, now, service_state()))
     args.out.mkdir(parents=True, exist_ok=True)
     write_atomic(args.out / "index.html", html)
+    try:                                       # the NPC lab's page (todo/25): its failure never stops the main page
+        lab = dict(gather_lab(args.root), built=perth(now).strftime("%H:%M:%S"))
+        write_atomic(args.out / "lab.html", render(lab, "lab.html.j2"))
+    except Exception as e:                     # noqa: BLE001
+        print(f"lab page: {type(e).__name__}: {e}")
     write_atomic(args.out / "robots.txt", "User-agent: *\nDisallow: /\n")
     write_atomic(args.out / "app.js", (pathlib.Path(__file__).parent / "templates" / "app.js").read_text())
 
