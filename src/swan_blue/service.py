@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 import capturethenarrative as ctn
 
 from swan_bot import config
+from . import detect
 from . import evidence as ev
 
 STATE_FILE = config.DATA / "blue_state.json"
@@ -35,6 +36,7 @@ STATUS_FILE = config.DATA / "blue_status.json"        # the dashboard reads this
 APPROVALS = config.DATA / "blue_approved.jsonl"        # scripts/blue.sh appends here
 SESSION_FILE = config.SECRETS / "blue_session.json"   # the reporter's token (never logged)
 REPORTS_LOG = config.LOGS / "blue_reports.jsonl"
+DETECT_FILE = config.DATA / "blue_detect.json"        # todo/28 step 5: the account-lead detectors' memory
 FEED_LOG = config.LOGS / "feed_reads.jsonl"            # every feed call from this box, any process (todo/21 audit)
 SYDNEY = ZoneInfo("Australia/Sydney")
 
@@ -63,7 +65,9 @@ SNAPSHOT_MAX_AGE_S = 10 * 60
 PLAIN_KEEP_S = 3 * 3600       # a post with no ring evidence is dropped this long after posting (its audits are done)
 TICK_S = 60
 EVERY = dict(trending=10 * 60, latest=3 * 60, authors=3 * 60, rulings=10 * 60, harvest=30 * 60, ours=10 * 60,
-             calibrate=15 * 60)
+             calibrate=15 * 60, detect=15 * 60)
+WATCH_CHECKS = 30             # todo/28: watched accounts' recent posts checked for a hide per harvest round
+PROFILE_READS = 10            # get_account reads per detect round (username, created_at; its own 300/min route)
 WATCH_AUTHORS = 40            # ring authors whose timelines we poll for fresh posts
 AUDITS_PER_TICK = 15
 HARVEST_CHECKS = 80           # ring posts and ring replies checked for someone else's hide per harvest round
@@ -142,6 +146,8 @@ class Blue:
                          widen=dict(lookups=0, noted=0, reaudits=0, rings=0)).items():
             self.s.setdefault(k, v)
         self.feed_hold = 0
+        self.detect_file = DETECT_FILE if live else DETECT_FILE.with_suffix(".dry.json")
+        self.det = read_json(self.detect_file, None) or detect.empty()
 
     # ---- plumbing ----
     def log(self, rec):
@@ -244,6 +250,7 @@ class Blue:
                 if not post.get("reply_to_post_id"):
                     self.note(post, "latest")
             self.widen(posts)
+            detect.observe(self.det, posts, lambda a: ev.is_team(a, self.ours), now())
         if self.due("authors"):
             ring = sorted(self.s["authors"].items(), key=lambda kv: -kv[1])[:WATCH_AUTHORS]
             for author, _ in ring:
@@ -433,9 +440,15 @@ class Blue:
             if h.get("ready") and f"a{aid}" not in reported:
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), classes=["hidden_post"],
-                                detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"]),
+                                detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"],
+                                                         self.watch_evidence(aid, h)),
                                 pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
         return out
+
+    def watch_evidence(self, aid, h):
+        """The detectors' measured numbers for an account lead (todo/28), or None for a ring-only lead."""
+        w = self.det["watch"].get(aid)
+        return detect.evidence_text(w["kinds"]) if w else None
 
     def ranked(self):
         """Greedy order: the best expected value first, the team's count updated after every pick. Expected value
@@ -755,6 +768,59 @@ class Blue:
             h["ring_posts"] = [int(k) for k, v in self.s["posts"].items() if v.get("classes") and int(aid) in ev.members(
                 v["audit"]) | {v["audit"]["author"]}][:3]
             h["ready"] = n >= 100
+        self.harvest_watched()
+
+    # ---- todo/28 step 5: account leads from the detectors (accounts only, never a post report) ----
+    def run_detectors(self):
+        for a in detect.need_profiles(self.det, PROFILE_READS):
+            try:
+                prof = self.social.get_account(int(a))
+            except ctn.APIError:
+                continue
+            self.det["profiles"][a] = dict(u=prof.get("username"), c=prof.get("created_at"))
+        new = detect.find(self.det, now(), self.ours)
+        if new:
+            kinds = {}
+            for a in new:
+                for k in self.det["watch"][a]["kinds"]:
+                    kinds[k] = kinds.get(k, 0) + 1
+            self.log({"act": "watch", "new": len(new), "kinds": kinds})
+        write_json(self.detect_file, self.det)
+
+    def watch_targets(self):
+        """Recent posts of watched accounts that aren't leads yet, not checked in the last HIDE_RECHECK_S."""
+        t, out = now(), []
+        for a, w in self.det["watch"].items():
+            if a in self.s["harvest"] or int(a) in self.ours:
+                continue
+            for pid, seen in self.det["posts"].get(a, []):
+                if t - seen >= 1800 and t - self.s["hide_checks"].get(str(pid), 0) >= HIDE_RECHECK_S:
+                    out.append((self.s["hide_checks"].get(str(pid), 0), seen, pid, a))
+        return [x[2:] for x in sorted(out)][:WATCH_CHECKS]
+
+    def harvest_watched(self):
+        t = now()
+        for pid, a in self.watch_targets():
+            if a in self.s["harvest"]:
+                continue
+            self.s["hide_checks"][str(pid)] = t
+            try:
+                self.social.get_post(pid)
+            except ctn.APIError as e:
+                if e.status == 404:
+                    kinds = sorted(self.det["watch"][a]["kinds"])
+                    self.s["harvest"][a] = dict(hidden_post=pid, checked=0, by="watch", kinds=kinds)
+                    self.log({"act": "lead", "account": int(a), "hidden_post": pid, "by": "watch", "kinds": kinds})
+
+    def detect_status(self):
+        d, by = self.det, {}
+        for a, w in d["watch"].items():
+            for k in w["kinds"]:
+                row = by.setdefault(k, dict(watched=0, hidden=0, reported=0))
+                row["watched"] += 1
+                row["hidden"] += a in self.s["harvest"]
+                row["reported"] += f"a{a}" in self.s["reports"]
+        return dict(posts_seen=d["seen"], sequences=len(d["grams"]), groups=len(detect.fingerprints(d)), by=by)
 
     # ---- status for the dashboard: only what a decision needs ----
     def status(self, mode, why, ranked):
@@ -786,6 +852,8 @@ class Blue:
                           ready=len({c["label"] for c in ranked}),
                           new=len({c["label"] for c in ranked if counts.get(c["label"], 0) == 0})),
             widen=self.s["widen"],
+            # todo/28 step 5: the account-lead detectors: per kind, accounts watched, with a hidden post, reported
+            detect=self.detect_status(),
             next_ruling=iso(pend[0]["filed"] + RULE_S) if pend else None,
             # todo/28: post rulings today that came under 2 h (2+ teams reported them), of all post rulings today
             co=dict(fast=sum(bool(r.get("co")) for r in ruled_today if r["kind"] == "post"),
@@ -871,6 +939,8 @@ class Blue:
             self.rulings()
         if self.due("harvest"):
             self.harvest()
+        if self.due("detect"):
+            self.run_detectors()
         if self.due("calibrate"):
             self.calibrate()
         mode, why = self.mode()

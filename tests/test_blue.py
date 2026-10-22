@@ -63,6 +63,7 @@ def blue(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "STATUS_FILE", tmp_path / "status.json")
     monkeypatch.setattr(S, "REPORTS_LOG", tmp_path / "reports.jsonl")
     monkeypatch.setattr(S, "APPROVALS", tmp_path / "approved.jsonl")
+    monkeypatch.setattr(S, "DETECT_FILE", tmp_path / "detect.json")
     return S.Blue(live=False)
 
 

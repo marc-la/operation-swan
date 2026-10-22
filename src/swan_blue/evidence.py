@@ -131,12 +131,18 @@ def brief(a, root=None):
     return ", ".join(bits)
 
 
-def account_detail(account_id, hidden_post, actions, ring_posts):
+def account_detail(account_id, hidden_post, actions, ring_posts, detected=None):
+    """detected: the detectors' clauses (detect.evidence_text) for a lead they found; then the lockstep clause is
+    only stated when we measured it on a ring post."""
     shown = ", ".join(f"#{p}" for p in ring_posts[:3])
-    return (f"I think that this account is conducting inauthentic (bot) activity because the moderator has already "
-            f"hidden its post #{hidden_post} as inauthentic, it has taken {actions}+ actions, and it acts in lockstep "
-            f"with a group of accounts registered after the campaign launch that like and reply to the same posts "
-            f"within minutes of each other" + (f" (e.g. {shown})." if shown else "."))
+    bits = [f"the moderator has already hidden its post #{hidden_post} as inauthentic",
+            f"it has taken {actions}+ actions"]
+    if ring_posts or not detected:
+        bits.append("it acts in lockstep with a group of accounts registered after the campaign launch that like and "
+                    "reply to the same posts within minutes of each other" + (f" (e.g. {shown})" if shown else ""))
+    bits += detected or []
+    return ("I think that this account is conducting inauthentic (bot) activity because " + ", ".join(bits[:-1])
+            + ", and " + bits[-1] + ".")
 
 
 # ---- clusters: one label per (presumed) team ----
