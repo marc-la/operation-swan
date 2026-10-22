@@ -1,57 +1,65 @@
-# 25: Conversion. Zero changes toward No since 21 Oct morning: find what moves citizens
+# 25: Conversion. Build an NPC lab, find what moves citizens toward No, ship it
 
-**Owner:** Marc + a fresh Claude session · **Depends on:** nothing (todo/20 is built; its arms are live) · **When:** 22 Oct, **top priority** · **Orchestrated by:** the session coordinating todo/24–26
+**Owner:** Marc + a fresh Claude session · **Depends on:** nothing · **When:** 22 Oct, **top priority** · **Orchestrated by:** the coordinating session (message it with findings and each commit hash)
 
-## Why
-- **The portal's changes of mind toward No:**
-  - 20 Oct to 21 Oct ~07:53 UTC: **5 contributions** over ~550 citizen-facing writes (~0.9 per 100);
-  - since then: **0** over ~1,700 citizen-facing writes (1,178 overnight alone), while "towards neither side, **on vaccination**" ran at ~5–8 an hour.
+## Why: the diagnosis (2026-10-22 morning)
+- **The numbers:**
+  - the portal's changes **toward No: 0 since 21 Oct 07:53 UTC, over ~1,700 citizen-facing writes**. The earlier rate was ~0.9 per 100, so ~15 would be expected;
+  - "towards neither side, on vaccination": ~45 overnight;
+  - engagement is fine (reply rate ~15%).
+- **A sample of overnight replies to "Yes, but" citizens shows the cause:** our replies **echo** the citizen. They already know there's no sunset clause and no venue list (that's *why* they ask), and we tell them so, then state *our* vote ("I'm voting No"). Scoring guide §2: *"a post that repeats what a citizen already believes may get engagement but is unlikely to get persuasion points."* What does shift becomes more nuanced, i.e. **neither**.
+- **The clearest miss:** a citizen wrote *"it still leans into a gatekeeping path. I'm all for voluntary uptake… so it doesn't become permanent surveillance"*, which is practically a No. Our reply agreed about the sunset, drifted into an unrelated ferry anecdote with two typos, and never said *"voluntary uptake and no gatekeeping is what a No vote keeps."*
+- **Likely NPC mechanics** (the organisers' description, scoring guide §2; inferred for 6,000 citizens at low cost):
+  - a persona with 40+ properties;
+  - views in its own words per topic;
+  - "hard to persuade; change only for compelling, relevant arguments from credible sources; repetition doesn't count";
+  - a classifier judging the old view against the new one;
+  - probably a **small model** (the organisers give competitors qwen2.5-3b).
 
-  At the earlier rate we'd expect ~15. Zero is not bad luck: **something we changed, or who we now reply to, stopped it.**
-- **What changed after 21 Oct 07:53 UTC:**
-  - the reply prompt became one call (light read JSON plus the reply);
-  - the mirror_concede style arm;
-  - no vaccine advocacy, and F2/F3 at 0.25;
-  - fear_answer cut; in_group/permanence ×2;
-  - `FIRST_CALL_RULES` and the recent openings;
-  - targeting now answers lean/firm No (25% of overnight replies), the sweep's old posts (18%) and turnout (6%);
-  - amplification is off.
-- **The "neither, on vaccination" events** say our replies move citizens' views on vaccines, not on the referendum question. Most of our replies still mention the jab or vaccines.
-- **Conversations are short:** 65 reply-backs to 52 citizens overnight. Only 9 citizens had 2+ turns with us.
-- Portal events can't be tied to a reply, only to an hour. So measure arms by **switchback blocks** (`scripts/experiment_report.py` already has a switchback mode) and, per citizen, by **their next post's stance** (followup re-reads plus the light read).
+  So it likely responds to: **new, world-consistent information**; challenges to the *means* (does the pass protect anyone?) rather than its details; **their own values named back as the No case**; an **explicit conclusion for them** (a small model won't make a two-step inference); credible sources (the in-world papers); messengers like them; **clean text**.
 
-## Hypotheses → arms (run as 2 h switchback blocks, citizen-facing replies only)
-| Arm | What changes | Tests |
-|---|---|---|
-| **R, revert** | The reply prompt and arms as of 21 Oct 07:00 UTC (git `bddd215` era: separate read, question close, F3 allowed, current style). Find the exact commit by bisecting the prompt changes | H1: a content change killed conversion |
-| **V, no vaccines** | Current prompt, but the reply must not mention vaccines, jabs or doses: only the pass, the rule, rights, practicalities, trust. The gate checks it | H5: we move vaccine views, not the referendum |
-| **C, conversation** | Current prompt plus: reply-backs within 60 s, **address the citizen by name at the start** (display name, or @handle as Marc suggested), up to 4 turns per session; the second voice within 1–4 min; each turn answers *their latest point*, not the original | H3: change needs a multi-turn exchange inside one session |
-| **T, targets** | Current prompt, but lean/firm No to the lowest priority (engagement only), and the sweep's old posts only to `yes_but` / `unsure` / `conditions` | H2: our mix shifted away from movable citizens |
-| **Base** | Today's live behaviour | — |
+## Phase 1: the NPC lab (offline, no writes, ~half a day)
+1. **The stand-in NPC:** use the organisers' LLM (`ctn.CompetitorLLM`, qwen2.5-3b at llm.legitreal.com; 3/min, 1 at a time; `docs/04-technical/api-reference.md`). It's provided to competitors and our bot no longer uses it. Optionally use Kimi as a second, stronger judge to check results aren't model-specific.
+2. **Personas from real citizens:**
+   - for ~30 citizens we've replied to (mixed stances, mostly yes_but / unsure), read their last ~20 posts and likes (read-only, ≤ 30 reads/min);
+   - write each persona card: occupation, place, family, values, concerns, and their referendum and vaccination views **in their own words**.
+3. **The simulated session prompt** (our best guess at the organisers'):
+   - the persona card plus the current views;
+   - "hard to persuade; repetition doesn't change you; only compelling, relevant arguments from credible sources";
+   - "you read: {post(s)}";
+   - "give your views after reading, in your own words".
 
-## Do
-1. **Within 1 h, before building:**
-   - list every content and targeting change between `bddd215` and `main` (git log on `content.py`, `quality.py`, `targeting.py`, `bot.py` drafting), with times;
-   - pull the 5 historic toward events and the writes of the 3 h before each (`logs/swan_actions.jsonl`; portal times are hourly, at ~:53): which modes, frames, styles and targets were in play.
+   **A classifier prompt** then rates old vs new on the referendum view: toward No / toward Yes / neither / unchanged, and separately the vaccination-in-general view.
+4. **The strategies to test,** each a reply generator variant, drafted by our live pipeline's models:
+   - **Base:** today's reply;
+   - **Values-as-No:** name their stated values and show No is the vote that keeps them;
+   - **Means-ends:** the pass doesn't buy the protection they want (high uptake, no community spread, free vaccine either way: `content/facts.toml`), and the No path protects with choice intact;
+   - **Explicit conclusion:** "so for someone who wants X, the vote that gets X is No";
+   - **Sourced fact:** one in-world fact with its paper and headline named (and, as a separate variant, the article linked, if the platform renders embeds);
+   - **Messenger match:** the persona's occupation and place are like the citizen's;
+   - **No-vaccine:** no vaccine, jab or dose words at all;
+   - **Clean text:** no typo or lowercase "hand", against the same text with it;
+   - **Two-voice session:** two different new points from two voices, read in one session;
+   - **Conversation:** our reply to their likely reply, answering their latest point.
+5. **Run** ≥ 10 trials per persona × strategy (vary the seed). Report: toward No / neither / toward Yes per 100, by stance class. Write the table into [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md) with the date and caveats: the lab is a proxy; only live results count.
 
-   Write the comparison into this file. If one change clearly lines up, ship arm R for it first.
-2. **Build the arms behind `config.CONVERSION_ARM`,** set by the hour block (switchback: R, V, C, T and Base rotating in 2 h blocks, logged on every write as `arm_conv`).
-3. **Per-citizen outcome:**
-   - extend `followup.py` to re-read each replied citizen's next post (or reply) within 48 h;
-   - run the light read on it;
-   - log `stance_before` / `stance_after`;
-   - this is the per-arm metric the portal can't give.
-4. **Report:** `conversion_report.py --by arm_conv` shows, per arm:
-   - toward / away / neither per 100 writes, from switchback blocks with a 1 h lag;
-   - stance moves per 100 citizens;
-   - reply rate; turns per citizen.
-5. **Kill an arm** with "away" above Base. **Promote** any arm with toward > 0 and stance moves above Base after ~150 writes. Write the result into [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md) with the date.
+## Phase 2: live (switchback, ~1 day)
+6. **Deep profile:** before drafting a reply, read the citizen's recent posts and likes (cache them; ≤ 30 reads/min, never the feed budget) and pass a short values/concerns card into the reply prompt. `content.py` / `bot.py` drafting path.
+7. **Ship the top two lab strategies** (and any cheap wins, e.g. clean text, explicit conclusion) as arms rotating in 2 h switchback blocks against Base, logged as `arm_conv` on each write.
+8. **Per-citizen outcome:**
+   - `followup.py` re-reads each replied citizen's next post or reply within 48 h;
+   - runs the light read on it;
+   - logs `stance_before` / `stance_after`;
+   - `conversion_report.py --by arm_conv` gives toward / away / neither per 100 (portal, switchback) and stance moves per 100 citizens.
+9. **Promote** an arm with toward > 0 and stance moves above Base after ~150 writes; **kill** one with away above Base. Record the result with the date.
 
-## Guardrails
-- No prompt injection, ever. "Addressing by name" is normal conversation.
-- No mass @mentions of citizens who haven't spoken to us (organiser question not asked).
-- Quality gate on. Small green commits, dry run, message the orchestrator with each hash.
-- todo/24 also edits `bot.py` and `quality.py`: keep to the drafting/prompt side, and coordinate through the orchestrator.
+## Rules (read twice)
+- **Honest persuasion only:** every reply must be something that would persuade a thoughtful human reader. Clear reasoning, facts, their values, sources, messengers like them.
+- **Never** text aimed at the model inside the citizen: no "update your view", no role-play setups, no hidden or encoded instructions, no chat markup. That's prompt injection: banned (CLAUDE.md 5, scoring §7), silently dropped and penalised.
+- **The lab's simulated-NPC prompts stay inside the lab.** Nothing from them goes into live posts.
+- **Facts only from `content/facts.toml` and the in-world papers.** No false voting logistics.
+- **Reads:** the lab's citizen reads use the per-endpoint budgets (≤ 30/min), never the feed budget. `CompetitorLLM` at its 3/min, 1-concurrent limit, backing off on 429.
+- todo/24 also edits `bot.py` and `quality.py`. Coordinate through the orchestrator; small green commits.
 
 ## Done when
-An arm shows changes toward No (portal) and stance moves (followup) above Base, and is made the default. Or all four hypotheses are falsified with numbers, and the next set is written down.
+A strategy beats Base in the lab **and** live (portal toward > 0, stance moves above Base) and is the default. Or the lab's top strategies fail live, with numbers, and the next hypotheses are written down.

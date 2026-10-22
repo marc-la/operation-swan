@@ -13,7 +13,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
 | ~~19~~ | ✓ **Shipped 2026-10-21 (d99bd34):** citizen writes first; Latest every 2 min, paged; "Yes, with conditions" kept; reply-backs and second voices on | Marc + Claude | done | — |
-| [25](25-conversion-what-moves-them.md) | **Conversion (top priority):** 0 toward No since 21 Oct 07:53 UTC. Find what changed; switchback arms (revert, no-vaccines, conversation, targets); per-citizen stance follow-up | Marc + Claude | **22 Oct** | — |
+| [25](25-conversion-what-moves-them.md) | **Conversion (top priority):** 0 toward No since 21 Oct 07:53 UTC; our replies echo the citizen. NPC lab on the organisers' LLM (personas from real citizens) to find what moves them, then the top strategies live as switchback arms with a deep profile per target | Marc + Claude | **22 Oct** | — |
 | [24](24-throughput-to-three.md) | Throughput to ~2.9/min from the headers; GLM-5 out of replies (0% first-call); no drafts for capped citizens; near-duplicate fix; lighter refresh; test isolation; split runbook (then delete 22) | Marc + Claude | **22 Oct, before Sydney's afternoon** | 22 (live) |
 | [26](26-blue-widen.md) | Blue: fewer locked hours (P(genuine) threshold), more teams at full rate, lock shown on the dashboard | Marc + Claude | 22 Oct | — |
 | [23](23-widen-the-net.md) | Widen the net: uncontacted-citizen sweep, older posts, off-topic (no forced pivot), engaged quiet citizens, turnout for No, journalists. Each a capped, measured arm | Marc + Claude | **22 Oct** | 21 (shipped), 20 (style hook) |
