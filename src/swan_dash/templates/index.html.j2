@@ -362,17 +362,9 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% endif %}
 </div></details>
 
-<details id="pulse"><summary><b>Trending pulse</b><span class="sub {{ 'warn' if pulse and pulse.stale else '' }}">
-  {% if pulse %}updated {{ pulse.ago }}{% if pulse.stale %} (too old: not used){% endif %}{% else %}none logged yet{% endif %}</span></summary>
-<div>
-  {% if pulse %}
-  <p class="sub">From Trending #{{ pulse.id }}</p>
-  {% if pulse.hooks %}<h3>Hooks</h3><p>{{ pulse.hooks | join(' · ') }}</p>{% endif %}
-  {% if pulse.no_shapes %}<h3>For No, what lands</h3><p>{{ pulse.no_shapes | join(' · ') }}</p>{% endif %}
-  {% if pulse.yes_lines %}<h3>Yes is pushing</h3><p>{{ pulse.yes_lines | join(' · ') }}</p>{% endif %}
-  {% if pulse.avoid %}<h3>Overused</h3><p>{{ pulse.avoid | join(' · ') }}</p>{% endif %}
-  {% else %}<p class="sub">The bot hasn't logged a pulse yet.</p>{% endif %}
-</div></details>
+<p class="sub" id="pulse">Trending pulse (what the bot's amplified posts lean on):
+  {% if pulse %}<span class="{{ 'warn' if pulse.stale else '' }}">updated {{ pulse.ago }}{% if pulse.stale %} (too old: not used){% endif %}</span>, from Trending #{{ pulse.id }}: {{ pulse.hooks | length }} hook{{ 's' if pulse.hooks | length != 1 }}, {{ pulse.no_shapes | length }} for No, {{ pulse.yes_lines | length }} Yes line{{ 's' if pulse.yes_lines | length != 1 }}, {{ pulse.avoid | length }} overused{% if pulse.hooks %}; first hook “{{ pulse.hooks[0] | short(80) }}”{% endif %}.
+  {% else %}none logged yet.{% endif %}</p>
 
 <footer>Times are Perth (AWST). The competition day rolls over at {{ day_start }} Perth. Page built {{ built }}, refreshes every minute.</footer>
 

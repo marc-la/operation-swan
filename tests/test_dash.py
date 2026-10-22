@@ -434,3 +434,11 @@ def test_blue_own_account_check(tmp_path):
     assert ctx["blue"]["own"]["hits"] == 2 and 'class="sub down">Own accounts reported' in html
     assert ctx["banner"]["level"] == "amber" and "against our own accounts" in ctx["banner"]["text"]
     assert "OUR OWN ACCOUNTS REPORTED: 2" in ctx["blue"]["summary"]
+
+
+def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
+    p = {"ts": iso(20), "act": "pulse", "id": 77, "hooks": [{"text": "ferry cuts"}, {"text": "nurses"}],
+         "no_shapes": ["a"], "yes_lines": ["b", "c"], "avoid": []}
+    _, html = page(make_root(tmp_path, [write(3), p]))
+    assert '<details id="pulse"' not in html and html.index('id="pulse"') > html.index('id="facts"')
+    assert "from Trending #77: 2 hooks, 1 for No, 2 Yes lines, 0 overused; first hook “ferry cuts”" in html
