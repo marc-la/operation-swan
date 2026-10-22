@@ -47,6 +47,12 @@ def post(pid, author, body, minutes=60, **kw):
     return dict(post_id=pid, author_id=author, created_at=ago(minutes), body=body, **kw)
 
 
+@pytest.fixture(autouse=True)
+def no_real_accounts(monkeypatch, tmp_path):
+    """None of our real voices (secrets/swan_accounts.json exists on the box): the engaged arm would read them."""
+    monkeypatch.setattr(config, "ACCOUNTS_FILE", tmp_path / "no_accounts.json")
+
+
 @pytest.fixture
 def only(monkeypatch):
     """Sweep from a short list of citizen ids, every arm on, no caps unless a test sets one."""
