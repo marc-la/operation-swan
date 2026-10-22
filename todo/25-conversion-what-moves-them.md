@@ -18,6 +18,36 @@
 
   So it likely responds to: **new, world-consistent information**; challenges to the *means* (does the pass protect anyone?) rather than its details; **their own values named back as the No case**; an **explicit conclusion for them** (a small model won't make a two-step inference); credible sources (the in-world papers); messengers like them; **clean text**.
 
+## The logs, before and after (2026-10-22 ~00:30 UTC, box logs to 00:08 UTC)
+Data: the box's `logs/swan_actions.jsonl` (every write carries `git_sha`), `swan_outcomes.jsonl`, `swan_followups.jsonl`, `deploys.jsonl`, `data/portal.json`. These numbers support the echo diagnosis for "neither", but they add three things it doesn't explain.
+
+1. **A bundle lines up, not one change.**
+   - The last toward events (21 Oct 06:53, 07:53) ran on `842ea78` (deployed 05:52).
+   - 08:00–14:00 UTC had ~6 citizen-facing writes/h, so ~1 event was expected. Its zero says nothing.
+   - The drop starts **14:29–15:49 UTC**, when ~25 commits deployed together (todo/19–23, the split).
+2. **The same Sydney clock hours on two nights (14:00–24:00 UTC):**
+
+   | | 20 Oct | 21 Oct |
+   |---|---|---|
+   | citizen-facing writes | 122 | 1,180 |
+   | own posts / own-thread replies / reposts | 22 / 67 / 79 | 13 / 0 / 0 |
+   | reply model | qwen3.8-27b 68%, flash-lite 22% | Kimi 77%, flash-lite 17%, GLM 6% |
+   | portal toward / away / neither | 1 / 5 / 12 | 0 / 0 / 46 |
+   | citizen views / likes / replies (portal) | 217 / 54 / 47 | 316 / 72 / 84 |
+
+   - **Away stopped too.** Toward + away went 6 → 0 while writes went ×10. At 20 Oct's rate per write we'd expect ~59; at its rate per hour ~6 (P(0) ≈ 0.25%). Echo explains "neither" rising, but not away vanishing. Our posts stopped being read in sessions where a referendum view moved at all.
+   - **Engagement is not fine.** 10× the writes bought 1.3–1.8× the citizen engagement. Per reply, age-matched (under 3 h): views 1.87 → 1.27, citizen likes 0.086 → 0.038, citizen replies 0.104 → 0.053. The citizen reply rate is 5–8% by arm (`conversion_report.py`, 14:11–00:11), against 16% for replies in the 24 h to 21 Oct 08:00.
+   - **Echo isn't new.** F14 (yes-but) was 34% of writes before and 37% after.
+3. **Changed in the same bundle, so a lab can't test them, only live arms can:**
+   - the reply model (qwen / flash-lite → Kimi);
+   - own posts, own-thread replies and reposts stopped (amplification off 14:12; citizen writes first);
+   - lean/firm No now answered (~31% by `read_stance`). The old targeter skipped them;
+   - the sweep's old posts (citizen reply rate 2%).
+4. **The vaccine-words idea is weak.** Only ~10% of citizen-facing writes mention vaccines, jabs, doses or boosters, in both eras. F3 + F13 fell from ~20% to ~7% of writes, yet "neither, on vaccination" per hour rose ~4×, roughly with volume. The No-vaccine variant is cheap; expect little from it.
+5. **A parser gap.** The 21 Oct 17:53 line has "1 contribution to a change of mind" (no side, no "on vaccination"). `analysis.parse_activity` files it as `mind_contribution_other`, which `conversion_report.py` drops. By the guide's wording it's an "other view" change (20 / pool 10), ~2 h after todo/23 C (off-topic) went on. Not a toward event.
+6. **Our followup agrees.** Stance labels on replied citizens: before 14:00 moved_no 3, moved_yes 1; after, moved_no 0, moved_yes 3.
+7. **Scale.** The old regime's persuasion paid little: toward contributions ~7–8 points each, away −1 to −7, about +16 net in the 24 h to 21 Oct 08:00. **We have never had a primary toward (160).** The lab should aim at primaries, not at getting the old contribution rate back.
+
 ## Phase 1: the NPC lab (offline, no writes, ~half a day)
 1. **The stand-in NPC:** use the organisers' LLM (`ctn.CompetitorLLM`, qwen2.5-3b at llm.legitreal.com; 3/min, 1 at a time; `docs/04-technical/api-reference.md`). It's provided to competitors and our bot no longer uses it. **The stand-in NPC and the classifier both run only on CompetitorLLM.** CLAUDE.md rule 2: external LLMs (Kimi, Gemini, GLM) may generate content, here the reply variants under test, but not play the citizen or judge it (that's analysis; open question #5).
 2. **Personas from real citizens:**
