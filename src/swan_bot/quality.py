@@ -160,11 +160,18 @@ def figures(text):
 
 # ...plus every figure an active fact in content/facts.toml states (text and numbers), so a fact approved through
 # scripts/facts_review.py can't be blocked by this gate. A paused fact adds none; the hand-checked ones above stay.
-for _fact in fact_store.TABLE.values():
-    if _fact.get("status") == "active":
-        _nums, _pcts = figures(" ".join([_fact["text"], *map(str, _fact.get("numbers") or [])]))
-        ALLOWED_NUMBERS |= _nums
-        ALLOWED_PERCENTS |= _pcts
+# Re-run on every table reload (facts.ON_RELOAD): since 2026-10-22 the desk no longer restarts the bot, and its new
+# facts' figures were rejected as unapproved_number (the 25 nurses, 23 Oct).
+def sync_numbers():
+    for fact in fact_store.TABLE.values():
+        if fact.get("status") == "active":
+            nums, pcts = figures(" ".join([fact["text"], *map(str, fact.get("numbers") or [])]))
+            ALLOWED_NUMBERS.update(nums)
+            ALLOWED_PERCENTS.update(pcts)
+
+
+sync_numbers()
+fact_store.ON_RELOAD.append(sync_numbers)
 # a reply must touch the target's point or one in-world fact; a post must carry a local detail
 FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|sunset|review|exemption|binding|certificate|"
                           r"\bjab|vaccinat|vaxx|papers at|finish date|stop date|expiry|temporary|permanent|"

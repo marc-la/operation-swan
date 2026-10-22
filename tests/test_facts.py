@@ -298,8 +298,11 @@ def test_an_auto_accepted_fact_reaches_a_frame_prompt_without_a_restart(tmp_path
             '[harbour_clinic_hours]\ntext = "The Crown Harbour clinic now opens on Saturdays for H2D2 doses."\n'
             'note = "Crown Harbour clinic opens Saturdays"\nstatus = "active"\n'
             'source = "daily-kingstonia/clinic-saturday-hours"\n'
-            f'checked = {now}\nadded = {now}\nnumbers = []\nsays = []\nframes = ["F2_no_end"]\n')
+            f'checked = {now}\nadded = {now}\nnumbers = ["37"]\nsays = []\nframes = ["F2_no_end"]\n')
+        from swan_bot import quality
+        assert quality.unapproved_number("the clinic takes 37 a day") == "37"
         fact_store.refresh()
+        assert quality.unapproved_number("the clinic takes 37 a day") is None     # the gate learns its figures too
         assert "harbour_clinic_hours" in content.FRAMES["F2_no_end"]["facts"]
         assert fact_store.active(content.FRAMES["F2_no_end"]["facts"])[0] == "harbour_clinic_hours"
         system = content.system_prompt(content.PERSONAS[0], "F2_no_end")
