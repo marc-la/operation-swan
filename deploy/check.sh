@@ -3,8 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
-$PY -m compileall -q src/swan_bot src/swan_blue src/swan_dash scripts
-$PY -c "import sys; sys.path.insert(0, 'src'); import swan_bot.bot, swan_bot.swarm, swan_bot.content, swan_bot.quality, swan_bot.targeting, swan_bot.llm, swan_dash.build, swan_dash.portal, swan_blue.service"
+$PY -m compileall -q src/swan_bot src/swan_blue src/swan_dash src/swan_lab scripts
+$PY -c "import sys; sys.path.insert(0, 'src'); import swan_bot.bot, swan_bot.swarm, swan_bot.content, swan_bot.quality, swan_bot.targeting, swan_bot.llm, swan_dash.build, swan_dash.portal, swan_blue.service, swan_lab.trials, swan_lab.report"
 $PY scripts/run_swan.py --help > /dev/null
 $PY scripts/swan_swarm.py --help > /dev/null
 bash -n deploy/*.sh

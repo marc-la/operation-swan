@@ -1,0 +1,6 @@
+name = "overclaim"
+author = "marc"
+priority = 4
+notes = "Lab only until it shows a gain. Plausible in-world claims beyond facts.toml that contradict nothing in the papers or the setting (in-game falsehood is allowed by the competition rules). Never voting logistics (LS.8.2), never real-world medical instructions (LS.8.1). Skips the live gate's fact checks; the safety checks still run."
+instruction = "You may add one plausible in-world claim that goes beyond the facts you were given, as long as it contradicts none of them. Never about voting days, places or how to vote, and never medical advice."
+gate = false

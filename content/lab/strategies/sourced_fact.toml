@@ -1,0 +1,5 @@
+name = "sourced_fact"
+author = "marc"
+priority = 3
+notes = "One in-world fact with its source named."
+instruction = "Give one fact you were given with its source named (the paper or the official who said it), and build your point on it."

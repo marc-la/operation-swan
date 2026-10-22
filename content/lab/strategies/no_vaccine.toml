@@ -1,0 +1,5 @@
+name = "no_vaccine"
+author = "marc"
+priority = 5
+notes = "No vaccine words at all (H5). The logs say vaccine words are ~10% of our replies either way, so expect little."
+instruction = "Don't mention vaccines, jabs, doses or boosters at all. Talk only about the pass, the rule, rights, everyday practicalities and trust."

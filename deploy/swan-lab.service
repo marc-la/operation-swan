@@ -1,0 +1,21 @@
+[Unit]
+Description=Operation Swan NPC lab (src/swan_lab, todo/25): reply strategies against a stand-in citizen on CompetitorLLM; read-only
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=1800
+StartLimitBurst=20
+OnFailure=swan-alert@%n.service
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn/src
+ExecStart=/home/ec2-user/ctn/.venv/bin/python -u -m swan_lab run
+# every trial is appended to data/lab/trials.jsonl when it finishes, so a stop loses at most the one in flight
+KillSignal=SIGINT
+TimeoutStopSec=30
+Restart=always
+RestartSec=120
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

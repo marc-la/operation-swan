@@ -1,0 +1,6 @@
+name = "control"
+author = "marc"
+priority = 0
+notes = "The stand-in reads an unrelated post: its drift with nothing persuasive to read. Every strategy is compared with it."
+npc_reads = "control"
+control_text = "Lovely calm morning on the harbour. The early ferry was on time for once and the market had mangoes."

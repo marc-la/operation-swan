@@ -1,0 +1,5 @@
+name = "confident"
+author = "marc"
+priority = 2
+notes = "True facts at full certainty, strong cause and effect; tests a small model's sensitivity to certainty."
+instruction = "Write with full certainty and plain cause and effect (for example: the pass will outlive the flu, because nothing in the question ends it). No hedging, no 'I think', no conceding a point. Use only the facts you were given."

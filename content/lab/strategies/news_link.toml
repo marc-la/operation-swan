@@ -1,0 +1,6 @@
+name = "news_link"
+author = "marc"
+priority = 1
+notes = "One recent in-world article that supports No, tied to their concern; code appends its verified sites.legitreal.com URL. The stand-in sees the link's preview card (headline and summary)."
+instruction = "Tie your reply to one recent article from the papers that bears on their concern, naming the paper."
+insert = "link"

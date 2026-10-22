@@ -1,0 +1,6 @@
+name = "at_address"
+author = "marc"
+priority = 1
+notes = "Opens with the citizen's @handle (added by code) and their own words: salience to a small model. A reply already notifies them."
+instruction = "Open with 'you said' and a few of their own words in quotes, then answer that exact point directly."
+insert = "mention"

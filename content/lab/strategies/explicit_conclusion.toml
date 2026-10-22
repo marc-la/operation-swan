@@ -1,0 +1,5 @@
+name = "explicit_conclusion"
+author = "marc"
+priority = 2
+notes = "A small model won't make a two-step inference: say the conclusion for them."
+instruction = "End by drawing the conclusion for them in plain words: 'so for someone who wants X, the vote that gets X is No', where X is what they said they want. End on that sentence, not a question."
