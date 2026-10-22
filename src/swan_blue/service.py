@@ -771,6 +771,7 @@ class Blue:
         pol = policy()
         write_json(self.status_file, dict(
             ts=iso(), live=self.live, mode=mode, why=why, reporter=self.reporter_name,
+            own_ids=sorted(self.ours),        # todo/28: our account ids only (public), for "own accounts reported: 0"
             locked_until=iso(self.s["lock_until"]) if self.locked() else None, lock_why=self.s["lock_why"],
             lock_src=self.s.get("lock_src") if self.locked() else None,
             pending=len(pend), cap=CAP,

@@ -502,6 +502,9 @@ def test_never_files_against_our_own_accounts(tmp_path, monkeypatch):
     log = [json.loads(x) for x in (tmp_path / "reports.jsonl").read_text().splitlines()]
     assert [x["key"] for x in log if x.get("refused") == "own account"] == ["a3000", "p1", "a3001"]
     assert b.file(c("p2", "post", 2, 7000)) and b.reporter.filed == [("post", 2)]   # another team's: files
+    b.status("auto", "x", [])
+    st = json.loads((tmp_path / "status.dry.json").read_text())
+    assert st["own_ids"] == [3000, 3001, 9100]                              # ids only, for the dashboard
 
 
 def test_no_post_report_where_our_boosters_acted(tmp_path, monkeypatch):
