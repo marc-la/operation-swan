@@ -88,6 +88,8 @@ def when(value):
 
 
 TABLE, FALSE_CLAIM_PATTERNS = load()
+# keys only the desk's overlay has (added before facts carried `added`: their `checked` is when they went live)
+AUTO_NEW = set(read_overlay(AUTO_FILE)) - set(load(FILE, auto="")[0])
 FALSE_CLAIMS = either(FALSE_CLAIM_PATTERNS)
 SAYS = {k: either(f["says"]) for k, f in TABLE.items() if f.get("says")}
 TEXTS, NOTES = {}, {}       # the active facts: key -> text / note
@@ -162,7 +164,8 @@ def refresh(force=False):
 def added(key):
     """When a fact first went live, as an aware UTC datetime: its `added` (stamped by the fact desk on every new fact
     and every replacement key since 22 Oct, todo/29), else None (facts older than that). For preferring fresh facts."""
-    return when((TABLE.get(key) or {}).get("added"))
+    f = TABLE.get(key) or {}
+    return when(f.get("added")) or (when(f.get("checked")) if key in AUTO_NEW else None)
 
 
 def ok(keys):
