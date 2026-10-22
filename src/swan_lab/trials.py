@@ -147,11 +147,25 @@ def run_trial(strategy, card, seed, gen, stand_in, news):
                                             f"{meta['article']['summary']}"
         reads = npc.reads_reply(v["name"], v["handle"], text, card_text)
     rec["reply"] = text
-    after, vaccine_line, raw = npc.session(stand_in, card, reads, seed)
-    verdict, vaccine, craw = npc.classify(stand_in, card, after, seed)
-    rec.update(after=after, vaccine_line=vaccine_line, verdict=verdict, vaccine=vaccine, classifier_raw=craw,
+    base = baseline_for(stand_in, card, seed)
+    after, vaccine_line, _ = npc.session(stand_in, card, reads, seed)
+    score, raw = npc.rate(stand_in, after)
+    rec.update(after=after, vaccine_line=vaccine_line, before_view=base["view"], before=base["score"], after_score=score,
+               rating_raw=raw, verdict=npc.verdict(base["score"], score), instrument=npc.INSTRUMENT,
                npc_calls=stand_in.calls - calls0)
     return rec
+
+
+def baseline_for(stand_in, card, seed):
+    """The card's baseline on this stand-in model and seed: from data/lab/baselines.jsonl, else made and stored."""
+    key = (card["id"], stand_in.model, seed, npc.INSTRUMENT)
+    for b in library.baselines():
+        if (b["persona"], b["lab_model"], b["seed"], b.get("instrument")) == key:
+            return b
+    b = dict(npc.baseline(stand_in, card), persona=card["id"], lab_model=stand_in.model, seed=seed,
+             instrument=npc.INSTRUMENT, ts=dt.datetime.now(dt.timezone.utc).isoformat())
+    library.record(b, "baselines.jsonl")
+    return b
 
 
 def write_status(name="status.json", **kw):

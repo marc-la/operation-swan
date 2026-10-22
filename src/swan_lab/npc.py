@@ -1,13 +1,12 @@
-"""The stand-in citizen and its classifier (todo/25 Phase 1), on config.LAB_MODEL only: the organisers' qwen2.5-3b.
+"""The stand-in citizen and its rater (todo/25 Phase 1), on config.LAB_MODEL only: the organisers' qwen2.5-3b family.
 
 Our best guess at the organisers' NPC: a persona card with the citizen's own words, "hard to persuade", "you read: ...",
-"give your view after reading". The classifier then compares the card's view (their own words) with the view after
-reading: toward Yes / toward No / the same. Its three answers get letters in a per-trial shuffled order, so a small
-model's letter bias averages out; the control strategy (an unrelated post) measures what drift is left.
+"give your view after reading". The same model then rates one view at a time as a vote intention (YES .. NO, at
+temperature 0): the stand-in's view with nothing new read (the baseline, once per card and seed) against its view after
+reading our reply. The move is the difference. The control strategy (an unrelated post) measures what drift is left.
 
 These prompts are the lab's only. Nothing from them goes into a live post (todo/25 rules).
 """
-import random
 import re
 import time
 
@@ -19,9 +18,6 @@ from swan_bot import config
 QUESTION = ('Kingstonia votes on 2 November 2026 on this referendum question: should proof of H2D2 ("Dolphin Flu") '
             'vaccination be required to enter public places? Yes means require the proof. No means keep public places '
             'open to everyone.')
-VERDICTS = {"toward_yes": "closer to YES: more for requiring the proof, or less against it",
-            "toward_no": "closer to NO: more against requiring the proof, or less for it",
-            "same": "the same position, maybe in other words"}
 
 
 class Backend:
@@ -159,6 +155,9 @@ def session_prompt(card, reads):
             "on your view of vaccination in general.")
 
 
+NOTHING_NEW = "Nothing new about the referendum has come up in your feed today."
+
+
 def reads_reply(name, handle, text, card_text=None):
     out = f'{name} (@{handle}) replied to your post:\n"{text}"'
     if card_text:
@@ -171,39 +170,48 @@ def reads_post(name, handle, text):
 
 
 def session(npc, card, reads, seed):
-    """(view after, vaccination sentence) from one simulated session."""
+    """(view after, vaccination sentence, raw) from one simulated session."""
     out = npc.ask(persona_prompt(card), session_prompt(card, reads), max_tokens=200, temperature=0.7)
     m = re.search(r"\n\s*\**vaccination\**\s*:\s*(.+)", out, re.I)
     view = out[:m.start()].strip() if m else out.strip()
     return view, (m.group(1).strip() if m else None), out
 
 
-def letters(seed, card_id):
-    """{letter: verdict} in a per-trial shuffled order."""
-    keys = list(VERDICTS)
-    random.Random(f"{card_id}:{seed}:letters").shuffle(keys)
-    return dict(zip("ABC", keys))
+# The instrument (v2, 2026-10-22). v1 asked the classifier to compare BEFORE with AFTER and answer a letter; the 3B
+# model answered "B" 5 times in 6 whatever B meant. Now one text at a time is rated as a vote intention on a word
+# scale, at temperature 0, and the move is the difference: the same instrument on both sides, no letters.
+INSTRUMENT = 2
+LABELS = {"YES": -2, "LEAN YES": -1, "UNDECIDED": 0, "LEAN NO": 1, "NO": 2}
+RATE_SYSTEM = ("You read what a citizen of Kingstonia wrote and judge how they will vote in the referendum. "
+               "Answer with the label only.")
+_LABEL = re.compile(r"\b(LEAN(?:ING)?\s+YES|LEAN(?:ING)?\s+NO|UNDECIDED|YES|NO)\b", re.I)
 
 
-def classify_prompt(before, after, order):
-    opts = "\n".join(f"{k} = {VERDICTS[v]}" for k, v in order.items())
-    return (f"{QUESTION}\n\nA citizen's view BEFORE: \"{before[:500]}\"\nThe same citizen's view AFTER: \"{after[:500]}\"\n\n"
-            f"Compared with BEFORE, the AFTER view is:\n{opts}\n\n"
-            "Then say how the AFTER view treats vaccination itself: P = positive about vaccines, N = negative, "
-            "M = mixed or not stated.\nAnswer in exactly this form and nothing else:\nVIEW: <A, B or C>\nVACCINE: <P, N or M>")
+def rate_prompt(text):
+    return (f"{QUESTION}\n\nWhat they wrote: \"{text[:600]}\"\n\nHow will they vote? Answer with exactly one of these "
+            "labels: YES, LEAN YES, UNDECIDED, LEAN NO, NO")
 
 
-def parse_verdict(raw, order):
-    """(verdict, vaccine) from the classifier's answer; None where it can't be read."""
-    v = re.search(r"VIEW\W*([ABC])\b", raw or "", re.I) or re.match(r"\W*([ABC])\b", raw or "")
-    x = re.search(r"VACCINE\W*([PNM])\b", raw or "", re.I)
-    return (order.get(v.group(1).upper()) if v else None,
-            {"P": "positive", "N": "negative", "M": "mixed"}.get(x.group(1).upper()) if x else None)
+def parse_rating(raw):
+    """-2 (Yes) .. +2 (No) from the first label in the answer, or None."""
+    m = _LABEL.search(raw or "")
+    return None if not m else LABELS[re.sub(r"LEANING", "LEAN", re.sub(r"\s+", " ", m.group(1).upper()))]
 
 
-def classify(npc, card, after, seed):
-    order = letters(seed, card["id"])
-    raw = npc.ask("You compare two statements carefully and answer in the exact form asked.",
-                  classify_prompt(card["view"], after, order), max_tokens=20, temperature=0.0)
-    verdict, vaccine = parse_verdict(raw, order)
-    return verdict, vaccine, raw
+def rate(npc, text):
+    raw = npc.ask(RATE_SYSTEM, rate_prompt(text), max_tokens=6, temperature=0.0)
+    return parse_rating(raw), raw
+
+
+def verdict(before, after):
+    """toward_no / toward_yes / same from two ratings (None when either is unreadable)."""
+    if before is None or after is None:
+        return None
+    return "toward_no" if after > before else "toward_yes" if after < before else "same"
+
+
+def baseline(npc, card):
+    """The stand-in's own view with nothing new read, rated: the 'before' of every trial for this card and seed."""
+    view, _, _ = session(npc, card, NOTHING_NEW, None)
+    score, raw = rate(npc, view)
+    return dict(view=view, score=score, raw=raw)

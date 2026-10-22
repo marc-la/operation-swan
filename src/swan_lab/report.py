@@ -35,8 +35,10 @@ def net(rows):
 
 def current(rows, strats):
     """Trials of the strategies' current versions, with a verdict."""
+    from .npc import INSTRUMENT
     versions = {s["name"]: s["version"] for s in strats}
-    return [r for r in rows if versions.get(r["strategy"]) == r.get("version") and r.get("verdict")]
+    return [r for r in rows if versions.get(r["strategy"]) == r.get("version") and r.get("verdict")
+            and r.get("instrument") == INSTRUMENT]
 
 
 def markdown(rows=None, strats=None):

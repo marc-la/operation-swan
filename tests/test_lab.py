@@ -8,18 +8,12 @@ from swan_bot import config  # noqa: E402
 from swan_lab import cards, library, npc, report, trials  # noqa: E402
 
 
-def test_letters_are_shuffled_per_trial_and_cover_every_verdict():
-    orders = {tuple(npc.letters(seed, "c1").values()) for seed in range(12)}
-    assert len(orders) > 1 and all(set(o) == set(npc.VERDICTS) for o in orders)
-    assert npc.letters(3, "c1") == npc.letters(3, "c1")
-
-
-def test_parse_verdict_reads_the_form_and_a_bare_letter():
-    order = {"A": "toward_yes", "B": "toward_no", "C": "same"}
-    assert npc.parse_verdict("VIEW: B\nVACCINE: P", order) == ("toward_no", "positive")
-    assert npc.parse_verdict("view - c\nvaccine: m", order) == ("same", "mixed")
-    assert npc.parse_verdict("A", order) == ("toward_yes", None)
-    assert npc.parse_verdict("I think it is unclear", order) == (None, None)
+def test_ratings_parse_words_not_letters():
+    assert npc.parse_rating("LEAN NO") == 1 and npc.parse_rating("Lean yes.") == -1
+    assert npc.parse_rating("NO") == 2 and npc.parse_rating("YES") == -2 and npc.parse_rating("Undecided") == 0
+    assert npc.parse_rating("Leaning No") == 1 and npc.parse_rating("I can't tell") is None
+    assert npc.verdict(0, 1) == "toward_no" and npc.verdict(1, -1) == "toward_yes" and npc.verdict(2, 2) == "same"
+    assert npc.verdict(None, 1) is None
 
 
 def test_session_splits_the_vaccination_line():
@@ -84,7 +78,7 @@ def test_safety_blocks_logistics_and_other_links():
 def test_report_ranks_against_control():
     def row(s, v, cls="yes_but"):
         return dict(strategy=s, version="v", verdict=v, stance_class=cls, certainty="plain", concerns=["sunset"],
-                    lab_model="competitor")
+                    lab_model="competitor", instrument=npc.INSTRUMENT)
     strats = [dict(name="control", version="v"), dict(name="base", version="v"), dict(name="news_link", version="v")]
     rows = ([row("control", "same")] * 9 + [row("control", "toward_yes")] + [row("base", "same")] * 10 +
             [row("news_link", "toward_no")] * 3 + [row("news_link", "same")] * 7)
@@ -133,7 +127,8 @@ def test_competitor_alone_has_no_fallback():
 
 
 def test_trials_on_another_model_are_not_done_and_not_pooled():
-    rows = [dict(strategy="base", version="v", persona="c1", seed=0, lab_model="competitor", verdict="same")]
+    rows = [dict(strategy="base", version="v", persona="c1", seed=0, lab_model="competitor", verdict="same",
+                 instrument=npc.INSTRUMENT)]
     assert library.done_keys(rows, "competitor") == {("base", "v", "c1", 0)}
     assert library.done_keys(rows, "local") == set()
     md = report.markdown(rows + [dict(rows[0], lab_model="local", verdict="toward_no")],
@@ -152,7 +147,8 @@ def test_the_lab_page_renders_per_model_with_examples(tmp_path):
                          tmp_path / "content" / "lab" / "personas")
     strats = {s["name"]: s for s in library.strategies(tmp_path / "content" / "lab" / "strategies")}
     rows = [dict(strategy=n, version=strats[n]["version"], persona="c1", stance_class="yes_but", seed=0,
-                 lab_model="competitor", verdict=v, reply="No end date. I'm voting No.", after="Still Yes", voice="lani")
+                 lab_model="competitor", verdict=v, reply="No end date. I'm voting No.", after="Still Yes", voice="lani",
+                 instrument=npc.INSTRUMENT)
             for n, v in (("base", "toward_no"), ("control", "same"))]
     (tmp_path / "data" / "lab").mkdir(parents=True)
     (tmp_path / "data" / "lab" / "trials.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
@@ -162,3 +158,24 @@ def test_the_lab_page_renders_per_model_with_examples(tmp_path):
     assert base["net"] == 100 and base["vs"] == 100 and base["by_class"]["yes_but"] == 100
     html = build.render(dict(ctx, built="09:00"), "lab.html.j2")
     assert "Only with a sunset &lt;b&gt;." in html and "toward_no" in html     # their words, escaped
+
+
+def test_a_trial_rates_baseline_and_after_with_one_instrument(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "LAB_DIR", tmp_path)
+
+    class Fake:
+        model, calls = "local:q4", 0
+
+        def ask(self, system, user, **kw):
+            self.calls += 1
+            if system == npc.RATE_SYSTEM:
+                return "LEAN NO" if "convinced" in user else "UNDECIDED"
+            return "I'm convinced now." if "replied" in user or "scroll past" in user else "Still thinking."
+    card = dict(id="c1", name="T", handle="t", view="Yes if there's a sunset", target_text="sunset please", posts=[],
+                stance_class="yes_but")
+    strat = dict(name="control", version="v", npc_reads="control", control_text="Nice day.")
+    rec = trials.run_trial(strat, card, 0, None, Fake(), None)
+    assert (rec["before"], rec["after_score"], rec["verdict"], rec["instrument"]) == (0, 1, "toward_no", npc.INSTRUMENT)
+    assert rec["npc_calls"] == 4 and len(library.baselines()) == 1          # baseline: a session and a rating
+    rec = trials.run_trial(strat, card, 0, None, Fake(), None)
+    assert rec["npc_calls"] == 2 and len(library.baselines()) == 1          # cached for this card, model and seed

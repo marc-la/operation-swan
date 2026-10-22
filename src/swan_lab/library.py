@@ -79,12 +79,8 @@ def version(s):
     return hashlib.sha1(json.dumps({k: s.get(k) for k in keys}, sort_keys=True).encode()).hexdigest()[:8]
 
 
-def trials_path():
-    return config.LAB_DIR / "trials.jsonl"
-
-
-def trials():
-    p = trials_path()
+def trials(name="trials.jsonl"):
+    p = config.LAB_DIR / name
     out = []
     if p.exists():
         for line in p.read_text().splitlines():
@@ -95,10 +91,14 @@ def trials():
     return out
 
 
-def record(trial):
+def baselines():
+    return trials("baselines.jsonl")
+
+
+def record(row, name="trials.jsonl"):
     config.LAB_DIR.mkdir(parents=True, exist_ok=True)
-    with open(trials_path(), "a") as f:
-        f.write(json.dumps(trial, ensure_ascii=False) + "\n")
+    with open(config.LAB_DIR / name, "a") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def queue(strats, cards, done):
@@ -117,6 +117,9 @@ def queue(strats, cards, done):
 
 
 def done_keys(rows, lab_model=None):
-    """Finished trials on this stand-in model (a new stand-in re-runs the queue rather than pooling unlike trials)."""
+    """Finished trials on this stand-in model and the current instrument (a new stand-in or rater re-runs the queue
+    rather than pooling unlike trials)."""
+    from .npc import INSTRUMENT
     return {(t["strategy"], t["version"], t["persona"], t["seed"]) for t in rows
-            if not t.get("error") and (lab_model is None or t.get("lab_model") == lab_model)}
+            if not t.get("error") and t.get("instrument") == INSTRUMENT
+            and (lab_model is None or t.get("lab_model") == lab_model)}
