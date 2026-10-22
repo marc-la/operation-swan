@@ -11,6 +11,8 @@ Code: [`src/swan_lab/`](../../src/swan_lab/). Service: `swan-lab.service` on swa
   - `"competitor"`: CompetitorLLM, 3 calls/min, 1 at a time, backing off on 429 and on outages;
   - `"local"`: the same qwen2.5-3b (`qwen2.5:3b-instruct-q8_0` on Ollama, Marc's laptop) through an SSH tunnel to the box (`LAB_LOCAL_URL`). Allowed since 2026-10-22 (CLAUDE.md rule 2: offline analysis and testing). No rate limit, 1 call at a time. CompetitorLLM takes over while the tunnel is down, and the lab goes back to local within 10 min of it returning. A whole trial runs on one model, and results are reported per model, never pooled.
 
+  - `"remote"`: full-precision `Qwen/Qwen2.5-3B-Instruct` on Modal (vLLM on an L4, Marc's account, scales to zero; `deploy/modal_qwen.py`), OpenAI-compatible behind a bearer key. `LAB_REMOTE_URL` and `LAB_REMOTE_KEY` live in the box's `.env`, never in the repo. Runs `config.LAB_CONCURRENCY["remote"]` (8) trials at once, with no fallback: if it's down, trials wait. The first call after idle is a cold start (allow a few minutes).
+
   The replies under test are drafted on our usual models (Kimi, flash-lite…).
 - **Read-only.** Persona cards come from `get_account`, `account_posts` and `account_likes` at 30 reads/min. Those routes have their own 300/min buckets, never the feed budget. The lab never writes to Legit Social.
 - **The lab's simulated-NPC prompts stay in the lab.** Nothing from them goes into a live post. Live replies stay honest persuasion, with no text aimed at the model inside a citizen (CLAUDE.md 5).

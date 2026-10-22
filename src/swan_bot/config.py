@@ -341,6 +341,10 @@ SWITCHBACK = [("arm_conv", CONV_ARMS, CONV_BLOCK_S)]
 LAB_MODEL = "local"
 LAB_LOCAL_URL = "http://127.0.0.1:11434/v1"
 LAB_LOCAL_MODEL = "qwen2.5:3b-instruct-q4_K_M"
+# "remote": full-precision Qwen/Qwen2.5-3B-Instruct on Modal (vLLM on an L4, Marc's account, scales to zero),
+# OpenAI-compatible behind a bearer key. LAB_REMOTE_URL (with /v1) and LAB_REMOTE_KEY live in .env, never here.
+LAB_REMOTE_MODEL = "qwen2.5-3b-instruct"
+LAB_CONCURRENCY = {"remote": 8, "local": 1, "competitor": 1}    # trials at once, by stand-in kind
 LAB_LLM_PER_MIN = 3                 # CompetitorLLM's team limit: 3/min, 1 at a time (the headers can only lower it)
 LAB_READS_PER_MIN = 30              # the persona builder's read pace (per-endpoint budgets, never the feed budget)
 LAB_SEEDS = 2                       # trials per persona x strategy; a strategy file may ask for more

@@ -7,7 +7,9 @@ reading our reply. The move is the difference. The control strategy (an unrelate
 
 These prompts are the lab's only. Nothing from them goes into a live post (todo/25 rules).
 """
+import os
 import re
+import threading
 import time
 
 import openai
@@ -35,8 +37,16 @@ class Backend:
             self.client = openai.OpenAI(base_url=config.LAB_LOCAL_URL, api_key="local", max_retries=0, timeout=180)
             self.model_id, self.gap, self.waits = model_id or config.LAB_LOCAL_MODEL, 0.0, 5
             self.name = f"local:{self.model_id}"           # q4 and q8 trials are kept apart
+        elif name == "remote":                             # the key is read from the environment, never logged
+            url, key = os.environ.get("LAB_REMOTE_URL", ""), os.environ.get("LAB_REMOTE_KEY", "")
+            if not url or not key:
+                raise SystemExit("LAB_MODEL remote needs LAB_REMOTE_URL and LAB_REMOTE_KEY in .env")
+            self.client = openai.OpenAI(base_url=url, api_key=key, max_retries=0, timeout=300)   # a cold start
+            self.model_id, self.gap, self.waits = model_id or config.LAB_REMOTE_MODEL, 0.0, 15
+            self.name = f"remote:{self.model_id}"
         else:
-            raise SystemExit(f"unknown LAB_MODEL {name!r} (competitor or local)")
+            raise SystemExit(f"unknown LAB_MODEL {name!r} (competitor, local or remote)")
+        self.kind = name
         self.last = 0.0
 
     def ask(self, system, user, max_tokens, temperature, tries):
@@ -77,15 +87,23 @@ class Switched(RuntimeError):
 
 
 class StandIn:
-    """config.LAB_MODEL, with "competitor" as the fallback for "local" (the tunnel may be down). A whole trial runs on
-    one model (stand_in.model is recorded on it); after a switch, the primary is tried again every RETRY_PRIMARY_S."""
+    """config.LAB_MODEL, with "competitor" as the fallback for "local" (the laptop tunnel may be down; "remote" has
+    none: 3/min can't stand in for its parallel trials). A whole trial runs on one model (stand_in.model is recorded on
+    it); after a switch, the primary is tried again every RETRY_PRIMARY_S. Several trials may run at once (remote):
+    calls are counted per thread."""
     RETRY_PRIMARY_S = 600
 
     def __init__(self, model=None, backend=Backend, local_model=None, fallback=True):
         name = model or config.LAB_MODEL
-        self.primary = backend(name, local_model) if name == "local" else backend(name)
-        self.fallback = backend("competitor") if name != "competitor" and fallback else None
+        self.primary = backend(name, local_model) if name in ("local", "remote") else backend(name)
+        self.fallback = backend("competitor") if name == "local" and fallback else None
         self.active, self.down_at, self.calls = self.primary, 0.0, 0
+        self._mine, self._lock = threading.local(), threading.Lock()
+
+    @property
+    def thread_calls(self):
+        """Calls made by this thread so far (a trial's own count, when trials run in parallel)."""
+        return getattr(self._mine, "n", 0)
 
     @property
     def model(self):
@@ -101,7 +119,9 @@ class StandIn:
                 print(f"lab: {self.primary.name} down, trials go to {self.fallback.name}")
                 raise Switched(f"{self.primary.name} down") from None
             raise
-        self.calls += 1
+        with self._lock:
+            self.calls += 1
+        self._mine.n = self.thread_calls + 1
         return out
 
     def restore(self):

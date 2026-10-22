@@ -17,6 +17,7 @@ A strategy file:
 """
 import hashlib
 import json
+import threading
 import tomllib
 
 from swan_bot import config
@@ -95,9 +96,12 @@ def baselines():
     return trials("baselines.jsonl")
 
 
+_WRITE = threading.Lock()
+
+
 def record(row, name="trials.jsonl"):
     config.LAB_DIR.mkdir(parents=True, exist_ok=True)
-    with open(config.LAB_DIR / name, "a") as f:
+    with _WRITE, open(config.LAB_DIR / name, "a") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 

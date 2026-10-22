@@ -4,10 +4,13 @@ reply models), show it to the stand-in citizen, classify the move. The loop runs
 A trial costs 2 stand-in calls (the session, the classifier) on CompetitorLLM; the reply draft is content, drafted on
 our usual models (CLAUDE.md rule 2). Nothing here writes to Legit Social.
 """
+import collections
+import concurrent.futures
 import datetime as dt
 import json
 import random
 import re
+import threading
 import time
 import types
 
@@ -131,7 +134,7 @@ def run_trial(strategy, card, seed, gen, stand_in, news):
     rec = dict(ts=dt.datetime.now(dt.timezone.utc).isoformat(), strategy=strategy["name"],
                version=strategy["version"], persona=card["id"], stance_class=card.get("stance_class"),
                certainty=card.get("certainty"), concerns=card.get("concerns"), seed=seed, lab_model=stand_in.model)
-    calls0 = stand_in.calls
+    calls0 = stand_in.thread_calls
     if strategy["npc_reads"] == "control":
         v = voice_for(card, seed)
         text = strategy.get("control_text") or "Lovely calm morning on the harbour, the ferries are all on time."
@@ -152,20 +155,27 @@ def run_trial(strategy, card, seed, gen, stand_in, news):
     score, raw = npc.rate(stand_in, after)
     rec.update(after=after, vaccine_line=vaccine_line, before_view=base["view"], before=base["score"], after_score=score,
                rating_raw=raw, verdict=npc.verdict(base["score"], score), instrument=npc.INSTRUMENT,
-               npc_calls=stand_in.calls - calls0)
+               npc_calls=stand_in.thread_calls - calls0)
     return rec
 
 
+_BASE_LOCKS, _BASE_GUARD = collections.defaultdict(threading.Lock), threading.Lock()
+
+
 def baseline_for(stand_in, card, seed):
-    """The card's baseline on this stand-in model and seed: from data/lab/baselines.jsonl, else made and stored."""
+    """The card's baseline on this stand-in model and seed: from data/lab/baselines.jsonl, else made and stored.
+    One lock per key, so parallel trials of the same card and seed make it once."""
     key = (card["id"], stand_in.model, seed, npc.INSTRUMENT)
-    for b in library.baselines():
-        if (b["persona"], b["lab_model"], b["seed"], b.get("instrument")) == key:
-            return b
-    b = dict(npc.baseline(stand_in, card), persona=card["id"], lab_model=stand_in.model, seed=seed,
-             instrument=npc.INSTRUMENT, ts=dt.datetime.now(dt.timezone.utc).isoformat())
-    library.record(b, "baselines.jsonl")
-    return b
+    with _BASE_GUARD:
+        lock = _BASE_LOCKS[key]
+    with lock:
+        for b in library.baselines():
+            if (b["persona"], b["lab_model"], b["seed"], b.get("instrument")) == key:
+                return b
+        b = dict(npc.baseline(stand_in, card), persona=card["id"], lab_model=stand_in.model, seed=seed,
+                 instrument=npc.INSTRUMENT, ts=dt.datetime.now(dt.timezone.utc).isoformat())
+        library.record(b, "baselines.jsonl")
+        return b
 
 
 def write_status(name="status.json", **kw):
@@ -173,13 +183,32 @@ def write_status(name="status.json", **kw):
     (config.LAB_DIR / name).write_text(json.dumps(dict(ts=dt.datetime.now(dt.timezone.utc).isoformat(), **kw)))
 
 
+def attempt(s, c, seed, gen, stand_in, news):
+    """One queued trial, recorded the moment it finishes: ("ok", rec), ("switched", None), ("down", why) or
+    ("error", why). Runs in a worker thread."""
+    try:
+        rec = run_trial(s, c, seed, gen, stand_in, news)
+    except npc.Switched:                                # the primary went down: run again on the fallback
+        return "switched", None
+    except RuntimeError as e:                           # the stand-in is down (an outage, not this trial)
+        return "down", str(e)
+    except Exception as e:                              # noqa: BLE001 (this trial's own failure: counted, then left out)
+        return "error", f"{type(e).__name__}: {e}"
+    library.record(rec)
+    print(f"lab: {s['name']:<20} {c['id']:<7} {c.get('stance_class') or '-':<10} seed {seed}: "
+          f"{rec.get('verdict') or rec.get('skip')}")
+    return "ok", rec
+
+
 def loop(once=False, limit=None, model=None, local_model=None, fallback=True):
-    """Run the queue (new strategy files and cards are picked up each round); wait when it is empty. A second pool
-    (another model, e.g. competitor beside local) runs as its own process: one result set, lab_model on each trial,
+    """Run the queue (new strategy files and cards are picked up each round); wait when it is empty. Trials run
+    config.LAB_CONCURRENCY at a time for the stand-in's kind (remote: several; local and competitor: one). A second
+    pool (another model, e.g. local beside remote) runs as its own process: one result set, lab_model on each trial,
     its own status file."""
     config.SWITCHBACK = []                              # the lab drafts today's base behaviour, not a live arm
     gen, news = Generator(config.team_code()), News()
     stand_in = npc.StandIn(model, local_model=local_model, fallback=fallback)
+    workers = config.LAB_CONCURRENCY.get(stand_in.primary.kind, 1)
     status_file = "status.json" if model is None and local_model is None else \
         f"status-{stand_in.primary.name.replace(':', '-')}.json"
 
@@ -187,38 +216,35 @@ def loop(once=False, limit=None, model=None, local_model=None, fallback=True):
         write_status(status_file, **kw)
 
     errors, ran, down = {}, 0, False
-    while True:
-        rows = library.trials()
-        done = library.done_keys(rows, stand_in.model)
-        q = [x for x in library.queue(library.strategies(), library.personas(), done)
-             if errors.get((x[0]["name"], x[1]["id"], x[2]), 0) < MAX_ERRORS]
-        status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model)
-        if not q or (limit and ran >= limit):
-            if once or (limit and ran >= limit):
-                return ran
-            time.sleep(300)
-            continue
-        s, c, seed = q[0]
-        stand_in.restore()
-        if down and not stand_in.up():                  # still down: no reply drafted for nothing
-            time.sleep(300)
-            continue
-        down = False
-        try:
-            rec = run_trial(s, c, seed, gen, stand_in, news)
-        except npc.Switched:                            # the primary went down: run it again on the fallback
-            continue
-        except RuntimeError as e:                       # the stand-in is down (an outage, not this trial): wait
-            print(f"lab: {e}; waiting 5 min")
-            down = True
-            status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model, down=str(e))
-            time.sleep(300)
-            continue
-        except Exception as e:                          # noqa: BLE001 (this trial's own failure: counted, then left out)
-            errors[(s["name"], c["id"], seed)] = errors.get((s["name"], c["id"], seed), 0) + 1
-            print(f"lab: {s['name']} {c['id']} seed {seed} failed: {type(e).__name__}: {e}")
-            continue
-        library.record(rec)
-        ran += 1
-        print(f"lab: {s['name']:<20} {c['id']:<7} {c.get('stance_class') or '-':<10} seed {seed}: "
-              f"{rec.get('verdict') or rec.get('skip')}")
+    with concurrent.futures.ThreadPoolExecutor(workers) as pool:
+        while True:
+            rows = library.trials()
+            done = library.done_keys(rows, stand_in.model)
+            q = [x for x in library.queue(library.strategies(), library.personas(), done)
+                 if errors.get((x[0]["name"], x[1]["id"], x[2]), 0) < MAX_ERRORS]
+            status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model, workers=workers)
+            if not q or (limit and ran >= limit):
+                if once or (limit and ran >= limit):
+                    return ran
+                time.sleep(300)
+                continue
+            stand_in.restore()
+            if down and not stand_in.up():              # still down: no reply drafted for nothing
+                time.sleep(300)
+                continue
+            down = False
+            batch = q[:workers * 2] if not limit else q[:min(workers * 2, limit - ran)]
+            outcomes = list(pool.map(lambda x: attempt(*x, gen, stand_in, news), batch))
+            for (s, c, seed), (kind, why) in zip(batch, outcomes):
+                if kind == "ok":
+                    ran += 1
+                elif kind == "error":
+                    errors[(s["name"], c["id"], seed)] = errors.get((s["name"], c["id"], seed), 0) + 1
+                    print(f"lab: {s['name']} {c['id']} seed {seed} failed: {why}")
+                elif kind == "down":
+                    down = True
+            if down:
+                why = next(w for k, w in outcomes if k == "down")
+                print(f"lab: {why}; waiting 5 min")
+                status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model, down=why)
+                time.sleep(300)

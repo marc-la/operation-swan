@@ -166,6 +166,10 @@ def test_a_trial_rates_baseline_and_after_with_one_instrument(tmp_path, monkeypa
     class Fake:
         model, calls = "local:q4", 0
 
+        @property
+        def thread_calls(self):
+            return self.calls
+
         def ask(self, system, user, **kw):
             self.calls += 1
             if system == npc.RATE_SYSTEM:
@@ -188,3 +192,42 @@ def test_paired_shift_against_control_cancels_the_ceiling():
     rows = [r("base", "c1", 0, 2), r("base", "c2", 0, 1), r("base", "c3", 0, 2)]      # c3 has no control pair
     assert report.shift(rows, ctrl) == (0.5, 2)
     assert report.shift(rows, []) == (None, 0)
+
+
+def test_remote_needs_its_env_and_has_no_fallback(monkeypatch):
+    monkeypatch.delenv("LAB_REMOTE_URL", raising=False)
+    monkeypatch.delenv("LAB_REMOTE_KEY", raising=False)
+    try:
+        npc.Backend("remote")
+        raise AssertionError("expected SystemExit")
+    except SystemExit as e:
+        assert "LAB_REMOTE_URL" in str(e)
+    monkeypatch.setenv("LAB_REMOTE_URL", "http://example.invalid/v1")
+    monkeypatch.setenv("LAB_REMOTE_KEY", "test-key")
+    si = npc.StandIn("remote")
+    assert si.model == "remote:qwen2.5-3b-instruct" and si.fallback is None and si.primary.kind == "remote"
+    assert config.LAB_CONCURRENCY["remote"] > 1 == config.LAB_CONCURRENCY["competitor"]
+
+
+def test_parallel_trials_make_one_baseline_per_card_and_seed(tmp_path, monkeypatch):
+    import threading
+    import time as _time
+    monkeypatch.setattr(config, "LAB_DIR", tmp_path)
+    made = []
+
+    def slow_baseline(stand_in, card):
+        made.append(card["id"])
+        _time.sleep(0.05)
+        return dict(view="v", score=0, raw="UNDECIDED")
+    monkeypatch.setattr(npc, "baseline", slow_baseline)
+    si = types_ns(model="remote:x")
+    card = dict(id="c1")
+    threads = [threading.Thread(target=trials.baseline_for, args=(si, card, 0)) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert made == ["c1"] and len(library.baselines()) == 1
+
+
+def types_ns(**kw):
+    import types
+    return types.SimpleNamespace(**kw)
