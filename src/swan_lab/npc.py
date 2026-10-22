@@ -30,14 +30,15 @@ class Backend:
     (config.LAB_LOCAL_URL, e.g. Ollama behind an SSH tunnel), no rate limit. Both: one call at a time (the lab is one
     thread), backing off on errors, never a tight retry loop."""
 
-    def __init__(self, name):
+    def __init__(self, name, model_id=None):
         self.name = name
         if name == "competitor":
             self.client = ctn.CompetitorLLM(team_code=config.team_code(), max_retries=0)
             self.model_id, self.gap, self.waits = ctn.competitorllm.MODEL, 60.0 / config.LAB_LLM_PER_MIN + 0.5, 30
         elif name == "local":
             self.client = openai.OpenAI(base_url=config.LAB_LOCAL_URL, api_key="local", max_retries=0, timeout=180)
-            self.model_id, self.gap, self.waits = config.LAB_LOCAL_MODEL, 0.0, 5
+            self.model_id, self.gap, self.waits = model_id or config.LAB_LOCAL_MODEL, 0.0, 5
+            self.name = f"local:{self.model_id}"           # q4 and q8 trials are kept apart
         else:
             raise SystemExit(f"unknown LAB_MODEL {name!r} (competitor or local)")
         self.last = 0.0
@@ -84,10 +85,10 @@ class StandIn:
     one model (stand_in.model is recorded on it); after a switch, the primary is tried again every RETRY_PRIMARY_S."""
     RETRY_PRIMARY_S = 600
 
-    def __init__(self, model=None, backend=Backend):
+    def __init__(self, model=None, backend=Backend, local_model=None, fallback=True):
         name = model or config.LAB_MODEL
-        self.primary = backend(name)
-        self.fallback = backend("competitor") if name != "competitor" else None
+        self.primary = backend(name, local_model) if name == "local" else backend(name)
+        self.fallback = backend("competitor") if name != "competitor" and fallback else None
         self.active, self.down_at, self.calls = self.primary, 0.0, 0
 
     @property

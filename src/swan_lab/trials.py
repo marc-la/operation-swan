@@ -154,15 +154,24 @@ def run_trial(strategy, card, seed, gen, stand_in, news):
     return rec
 
 
-def status(**kw):
+def write_status(name="status.json", **kw):
     config.LAB_DIR.mkdir(parents=True, exist_ok=True)
-    (config.LAB_DIR / "status.json").write_text(json.dumps(dict(ts=dt.datetime.now(dt.timezone.utc).isoformat(), **kw)))
+    (config.LAB_DIR / name).write_text(json.dumps(dict(ts=dt.datetime.now(dt.timezone.utc).isoformat(), **kw)))
 
 
-def loop(once=False, limit=None):
-    """Run the queue (new strategy files and cards are picked up each round); wait when it is empty."""
+def loop(once=False, limit=None, model=None, local_model=None, fallback=True):
+    """Run the queue (new strategy files and cards are picked up each round); wait when it is empty. A second pool
+    (another model, e.g. competitor beside local) runs as its own process: one result set, lab_model on each trial,
+    its own status file."""
     config.SWITCHBACK = []                              # the lab drafts today's base behaviour, not a live arm
-    gen, stand_in, news = Generator(config.team_code()), npc.StandIn(), News()
+    gen, news = Generator(config.team_code()), News()
+    stand_in = npc.StandIn(model, local_model=local_model, fallback=fallback)
+    status_file = "status.json" if model is None and local_model is None else \
+        f"status-{stand_in.primary.name.replace(':', '-')}.json"
+
+    def status(**kw):
+        write_status(status_file, **kw)
+
     errors, ran, down = {}, 0, False
     while True:
         rows = library.trials()

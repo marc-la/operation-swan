@@ -45,6 +45,10 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("--once", action="store_true", help="stop when the queue is empty")
     r.add_argument("--limit", type=int, help="stop after this many trials")
+    r.add_argument("--model", choices=("local", "competitor"), help="the stand-in (default config.LAB_MODEL)")
+    r.add_argument("--local-model", help="the local model id (default config.LAB_LOCAL_MODEL), e.g. the q8 spot check")
+    r.add_argument("--no-fallback", action="store_true", help="local only: wait instead of using CompetitorLLM "
+                   "(when a competitor pool runs beside it)")
     o = sub.add_parser("report")
     o.add_argument("--out")
     sub.add_parser("status")
@@ -53,7 +57,8 @@ def main():
     if args.cmd == "personas":
         personas(args)
     elif args.cmd == "run":
-        trials.loop(once=args.once, limit=args.limit)
+        trials.loop(once=args.once, limit=args.limit, model=args.model, local_model=args.local_model,
+                    fallback=not args.no_fallback)
     elif args.cmd == "report":
         md = report.markdown()
         if args.out:
@@ -61,7 +66,8 @@ def main():
         print(md)
     else:
         q = library.queue(library.strategies(), library.personas(),
-                          library.done_keys(library.trials(), config.LAB_MODEL))
+                          library.done_keys(library.trials(), config.LAB_MODEL if config.LAB_MODEL != "local"
+                                            else f"local:{config.LAB_LOCAL_MODEL}"))
         print(json.dumps(dict(queued=len(q), trials=len(library.trials()), personas=len(library.personas()),
                               strategies=[s["name"] for s in library.strategies()]), indent=1))
 

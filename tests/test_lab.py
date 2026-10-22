@@ -98,7 +98,7 @@ class FakeBackend:
     """A stand-in model that answers, or is down."""
     down = set()
 
-    def __init__(self, name):
+    def __init__(self, name, model_id=None):
         self.name = name
 
     def ask(self, system, user, max_tokens, temperature, tries):
