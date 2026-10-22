@@ -343,7 +343,7 @@ def test_reach_conversion_queue_and_notes(tmp_path):
     (root / "data" / "reach_notes.json").write_text(json.dumps({"Drafts passing": "prompt fix live 15:20, recheck 16:30"}))
     ctx, html = page(root)
     r = ctx["reach"]
-    assert rowof(ctx, "Changes of mind")["now"].startswith("0 toward No") and light(ctx, "conversion") == "green"
+    assert rowof(ctx, "Changes of mind")["now"].startswith("net 0: 0 toward No") and light(ctx, "conversion") == "amber"
     assert rowof(ctx, "Citizens waiting")["now"] == "10" and "20 extra-group posts queued" in r["extra"]
     assert "2 off topic" in r["extra"][0] and "In hand: prompt fix live 15:20, recheck 16:30" in html
 
@@ -611,3 +611,12 @@ def test_stage_times_logged_on_a_write():
     assert got["t_sent"] > 1.7e9 and got["drafted_ahead"] is True
     none = bot.stage_times({}, None)
     assert none["t_made"] is None and none["t_pick"] is None and none["drafted_ahead"] is None
+
+
+def test_stealth_bars_zero_green_to_allowance_per_day_amber_above_red(tmp_path):
+    for new, want in ((0, "green"), (14, "amber"), (15, "red")):
+        root = make_root(tmp_path / f"s{new}", [write(3)])
+        log = {"counts": [{"ts": iso(1500), "registered": 50, "banned": 2}, {"ts": iso(30), "registered": 50, "banned": 2 + new}]}
+        (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
+        ctx, _ = page(root)
+        assert rowof(ctx, "New bans")["light"] == want, new

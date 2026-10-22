@@ -271,7 +271,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% for x in reach.extra %}<p class="sub">{{ x }}</p>{% endfor %}
 </details>
 
-<div class="label">Activity</div>
+<details id="activity"><summary><b>Activity</b><span class="sub">{{ activity | length }}{% if older %} + {{ older | length }} older{% endif %} · newest {{ activity[0].time if activity and activity[0].time }}</span></summary>
 <ol class="activity">
 {% for r in activity %}
   {{ item(r) }}
@@ -287,6 +287,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% endfor %}
 </ol></details>
 {% endif %}
+</details>
 
 {% set bot_warn = llm.degraded or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
@@ -303,13 +304,14 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <h3>Accounts</h3>
   {% if portal_accounts %}<p><b>{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} voices · {{ accounts.boosters | n }} boosters</p>
   {% else %}<p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} voices, {{ accounts.boosters | n }} boosters) · {{ accounts.suspended | n }} suspended</p>{% endif %}
-  <h3>Accounts by day</h3>
-  {% if acct_days %}<table>
+  <details id="acct-days"><summary><b>Accounts by day</b><span class="sub">{% if acct_days %}{{ acct_days | length }} days{% endif %}</span></summary>
+  <div>{% if acct_days %}<table>
     <tr><th>Day (9pm–9pm Perth)</th><th class="num">Registered</th><th class="num">Banned</th><th class="num">New bans</th><th>Why</th></tr>
     {% for d in acct_days %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num">{{ d.registered }} <span class="sub">{{ '+' if d.new_reg > 0 }}{{ d.new_reg }}</span></td><td class="num">{{ d.banned }}</td><td class="num {{ 'down' if d.new > 0 else '' }}">{{ '+' if d.new > 0 }}{{ d.new }}</td><td class="sub">{{ d.why }}</td></tr>{% endfor %}
   </table>
   {% for x in banned_list %}<p class="pl"><span class="sub">{{ x.time }}</span> @{{ x.username }} <span class="sub">#{{ x.id }} · {{ x.why }}</span></p>{% endfor %}
   {% else %}<p class="sub">No history yet: it fills at the next portal read (every 15 min).</p>{% endif %}
+  </div></details>
   <h3>Last hour</h3>
   <p>{{ writes.hour }} writes{% if writes.planned %} (bot's pace {{ writes.planned }}, team cap {{ writes.cap }}){% endif %} ·
     {{ errors.rate_limited | n }} rate-limited · {{ errors.rejects }} drafts rejected by our quality check</p>

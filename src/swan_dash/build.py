@@ -759,18 +759,18 @@ REACH_BACK_MIN = 1             # a citizen answering us gets our reply within th
 VOLUME_WINDOW_MIN = 30         # posting rate is measured over this long, so a stall or a recovery shows within minutes
 VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minute: green at or above, red below AMBER
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
-STEALTH_BANS_AMBER, STEALTH_BANS_RED = 3, 8   # new bans since 9pm Perth: a guess (12 on the worst day so far)
+STEALTH_BANS_DAY = TOTAL_CAP / 14             # new bans since 9pm Perth: 0 green, up to the 200-account allowance over 14 days amber, above red (Marc, 23 Oct)
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
-REACH_CONVERT_AFTER = 100      # citizen-facing writes today before "no change toward No" counts as a problem
 MIND = re.compile(r"(\d+) (.*)")
 
 
 def _id_clock(actions):
-    """(post id, unix time) of our own live writes: ids rise with time, so a citizen post's id dates it."""
+    """(post id, unix time) of our own live writes: ids rise with time, so a citizen post's id dates it. Reposts are
+    left out: their post_id may be the old post that was reposted, which would put the clock hours out."""
     pts = []
     for a in actions:
         try:
-            if a.get("live") is True and a.get("act") in WRITES and a.get("post_id") not in (None, "None"):
+            if a.get("live") is True and a.get("act") in WRITES and a.get("act") != "repost" and a.get("post_id") not in (None, "None"):
                 pts.append((int(a["post_id"]), a["_t"].timestamp()))
         except (TypeError, ValueError):
             pass
@@ -869,8 +869,9 @@ def reach(actions, status, points, now, day_start, notes=None):
             "back" if a.get("act") == "reply_back" else None
         if kind and (st := _stages(a)):
             stages[kind].append(st)
-        w = _written_at(a.get("target_post"), clock)
-        lag = (a["_t"].timestamp() - w) / 60 if w is not None else None
+        st = _stages(a)
+        w = _written_at(a.get("target_post"), clock) if st is None else None    # the bot's own stamps beat the id guess
+        lag = sum(st) if st else (a["_t"].timestamp() - w) / 60 if w is not None else None
         if lag is None or lag < 0:
             continue
         if a.get("act") == "reply" and a.get("source") == "latest":
@@ -935,10 +936,10 @@ def reach(actions, status, points, now, day_start, notes=None):
     # ---- conversion ----
     minds = _minds(points, day_start)
     cit_today = sum(1 for a in live if a.get("act") in CITIZEN_WRITES and a["_t"] >= day_start)
-    worse, stuck = minds["toward"] < minds["away"], cit_today >= REACH_CONVERT_AFTER and minds["toward"] == 0
-    row("conversion", "Changes of mind today", "red" if worse else "amber" if stuck else "green",
-        f"{minds['toward']} toward No · {minds['away']} away · {minds['neither']} neither ({cit_today} replies)",
-        "toward > away", "Replies aren't moving people toward No: see the todo/20 read-out.")
+    net = minds["toward"] - minds["away"]
+    row("conversion", "Changes of mind today", "green" if net > 0 else "red" if net < 0 else "amber",
+        f"net {net:+d}".replace("+0", "0") + f": {minds['toward']} toward No · {minds['away']} away · {minds['neither']} neither ({cit_today} replies)",
+        "toward > away (equal: amber)", "Replies aren't moving people toward No: see the todo/20 read-out.")
 
     for r in rows:
         r["note"] = next((v for k, v in (notes or {}).items() if r["name"].startswith(k)), "")
@@ -1178,9 +1179,9 @@ def gather(root, now, service):
     today_acct = next((d for d in acct_days if d["today"]), None)
     bans = today_acct["new"] if today_acct else 0
     hidden_today = sum(1 for r in rows if r.get("kind") == "hidden" and r["t"] >= day_start)
-    srows = [dict(group="stealth", name="New bans today", light="red" if bans >= STEALTH_BANS_RED else "amber" if bans >= STEALTH_BANS_AMBER else "green",
+    srows = [dict(group="stealth", name="New bans today", light="green" if bans == 0 else "amber" if bans <= STEALTH_BANS_DAY else "red",
                   now=f"{bans}" + (f" · {today_acct['why']}" if today_acct and today_acct["why"] else ""),
-                  target=f"< {STEALTH_BANS_AMBER} (our guess)", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
+                  target=f"0 (amber up to {STEALTH_BANS_DAY:.0f}: {TOTAL_CAP} accounts over 14 days)", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
              dict(group="stealth", name="Posts hidden today", light="amber" if hidden_today else "green", now=f"{hidden_today}",
                   target="0", fix="3 hidden posts suspend an account. See Activity.", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
