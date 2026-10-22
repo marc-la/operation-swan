@@ -18,6 +18,7 @@ or a dry run. Reads keep going in every mode.
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import time
 from zoneinfo import ZoneInfo
@@ -62,8 +63,24 @@ EVERY = dict(trending=10 * 60, latest=3 * 60, authors=3 * 60, rulings=10 * 60, h
              calibrate=15 * 60)
 WATCH_AUTHORS = 40            # ring authors whose timelines we poll for fresh posts
 AUDITS_PER_TICK = 15
-HARVEST_CHECKS = 40           # unreported ring posts re-checked for a hide per harvest round
+HARVEST_CHECKS = 80           # ring posts and ring replies checked for someone else's hide per harvest round
+HIDE_RECHECK_S = 2 * 3600     # a post checked for a hide isn't checked again for this long
 FEED_RESERVE = 4              # leave the bot this many feed calls of the team's 10/min
+# todo/26, lock economics: with this many targets ready, a post report must be under PG_MAX P(genuine) to file (a
+# genuine ruling locks all reporting for 6 h; with plenty ready, the riskier reports aren't worth a lock)
+READY_STRICT = 10
+PG_MAX = 0.06
+# todo/26, more teams at full rate: while a cluster is under its 5 full-rate awards today, each award already counted
+# against it lowers its next report's rank by this share, so new clusters go first and fresh ring posts of the busy
+# ones still find a full-rate award later in the day
+SPREAD = 0.04
+# todo/26, wider discovery from what the bot already read (data/latest_snapshot.json; never an extra feed read): a
+# post that collects this many team replies or reposts inside the snapshot gets (re)audited...
+WIDEN_MIN_ACTORS = 4
+WIDEN_LOOKUPS = 8             # ...unknown ones looked up with get_post (its own 300/min route) per Latest pass
+WIDEN_RECHECK_S = 2 * 3600    # a root looked up (a citizen's post, say) isn't looked up again for this long
+# the platform's answer while we're locked: "reporting is suspended for your team until 2026-10-22T02:00:49Z"
+LOCK_UNTIL_RE = re.compile(r"suspended .*until (\d{4}-\d\d-\d\dT[\d:.]+Z?)", re.I)
 
 
 def now():
@@ -105,7 +122,9 @@ class Blue:
         self.ours = set()
         self.s = read_json(self.state_file, {})
         for k, v in dict(labels={}, posts={}, authors={}, author_ring={}, reports={}, harvest={}, last={}, alerts={},
-                         lock_until=0, lock_why=None, last_error=None, pf_scale=1.0, first=None, locks=[]).items():
+                         lock_until=0, lock_why=None, last_error=None, pf_scale=1.0, first=None, locks=[],
+                         lock_src=None, lock_confirm=False, server_lock=None, hide_checks={}, roots_seen={},
+                         widen=dict(lookups=0, noted=0, reaudits=0, rings=0)).items():
             self.s.setdefault(k, v)
         self.feed_hold = 0
 
@@ -136,7 +155,8 @@ class Blue:
     # ---- our accounts (ids only) and the reporter's session ----
     def load_ours(self):
         records = read_json(config.ACCOUNTS_FILE, [])
-        self.ours = {r["account_id"] for r in records if r.get("account_id")}
+        swarm = read_json(config.SWARM_ACCOUNTS_FILE, [])           # the swarm's likers are ours too (ids only)
+        self.ours = {r["account_id"] for r in records + swarm if r.get("account_id")}
         rec = config.blue_reporter(records)
         self.reporter_name = rec and rec["username"]
         return rec
@@ -189,7 +209,7 @@ class Blue:
         if not ev.is_team(post["author_id"], self.ours) or post.get("repost_of_post_id"):
             return
         pid = str(post["post_id"])
-        p = self.s["posts"].setdefault(pid, dict(post=post, first_seen=now(), audits=0, trending=False))
+        p = self.s["posts"].setdefault(pid, dict(post=post, first_seen=now(), audits=0, trending=False, src=source))
         p["known"] = str(post["author_id"]) in self.s["author_ring"]      # its author ran a confirmed ring before
         if source == "trending":
             p["trending"] = True
@@ -203,9 +223,11 @@ class Blue:
                 self.note(post, "trending")
         if self.due("latest"):
             posts = self.snapshot("latest")
-            for post in (posts if posts is not None else self.feed(self.social.feed_latest)):
+            posts = posts if posts is not None else self.feed(self.social.feed_latest)
+            for post in posts:
                 if not post.get("reply_to_post_id"):
                     self.note(post, "latest")
+            self.widen(posts)
         if self.due("authors"):
             ring = sorted(self.s["authors"].items(), key=lambda kv: -kv[1])[:WATCH_AUTHORS]
             for author, _ in ring:
@@ -217,6 +239,43 @@ class Blue:
                     continue
         self.audit_some()
         self.prune()
+
+    def widen(self, posts):
+        """More ring posts from Latest as the bot already read it (replies and reposts included; no extra feed read).
+        A post that collects WIDEN_MIN_ACTORS team replies or reposts inside the snapshot window is a ring forming:
+        a known post whose audits found nothing (or that left the schedule) gets one more audit; an unknown one (older
+        than the snapshot, a post we never saw) is looked up and noted, unless it's a citizen's (replies from several
+        teams under a citizen post, 1-3 each on 22 Oct, are no ring)."""
+        actors, t = {}, now()
+        for post in posts:
+            root = post.get("root_post_id") or post.get("reply_to_post_id") or post.get("repost_of_post_id")
+            if root and ev.is_team(post["author_id"], self.ours):
+                actors.setdefault(str(root), set()).add(post["author_id"])
+        self.s["roots_seen"] = {k: v for k, v in self.s["roots_seen"].items() if t - v < WIDEN_RECHECK_S}
+        w, looked = self.s["widen"], 0
+        for root, who in sorted(actors.items(), key=lambda kv: -len(kv[1])):
+            if len(who) < WIDEN_MIN_ACTORS:
+                break
+            p = self.s["posts"].get(root)
+            if p is not None:
+                if p.get("audit") and not p.get("classes") and not p.get("gone") and "reaudit" not in p:
+                    p["reaudit"] = True                   # one more audit, outside the age schedule
+                    w["reaudits"] += 1
+                continue
+            if root in self.s["roots_seen"] or looked >= WIDEN_LOOKUPS:
+                continue
+            looked += 1
+            self.s["roots_seen"][root] = t
+            try:
+                post = self.social.get_post(int(root))
+            except ctn.APIError:
+                continue
+            w["lookups"] += 1
+            if post.get("reply_to_post_id") or t - ev.ts(post["created_at"]) > MAX_POST_AGE_H * 3600:
+                continue
+            if ev.is_team(post["author_id"], self.ours) and not post.get("repost_of_post_id"):
+                self.note(post, "widen")
+                w["noted"] += 1
 
     def audit_some(self):
         """Audit posts at their scheduled ages: known ring authors' posts first (that's where we can be first), then
@@ -230,9 +289,12 @@ class Blue:
             age = t - ev.ts(p["post"]["created_at"])
             sched = KNOWN_AUDITS_MIN if p.get("known") else AUDITS_MIN
             i = p["audits"]
-            if age > MAX_POST_AGE_H * 3600 or p.get("gone") or i >= len(sched) or (i and p.get("classes")):
+            extra = p.get("reaudit") is True and not p.get("classes")        # widen(): a ring forming late
+            if age > MAX_POST_AGE_H * 3600 or p.get("gone"):
                 continue
-            if not (age >= sched[i] * 60 or (i == 0 and p["trending"])) or (i and age > 3 * 3600):
+            if not extra and (i >= len(sched) or (i and p.get("classes"))):
+                continue
+            if not extra and (not (age >= sched[i] * 60 or (i == 0 and p["trending"])) or (i and age > 3 * 3600)):
                 continue
             try:
                 a = ev.audit(self.social, p["post"], self.ours)
@@ -242,10 +304,16 @@ class Blue:
                 continue
             done += 1
             p["audits"] += 1
+            if extra:
+                p["reaudit"] = False
             prior = self.s["author_ring"].get(str(a["author"]))
             if prior and prior["post"] != int(pid):
                 a["overlap"], a["prior_post"] = len(ev.members(a) & set(prior["members"])), prior["post"]
             p["audit"], p["classes"] = a, ev.classes(a)
+            if p["classes"] and (extra or p.get("src") == "widen"):
+                self.s["widen"]["rings"] += 1
+                self.log({"act": "widen", "post": int(pid), "classes": p["classes"],
+                          "how": "reaudit" if extra else "lookup"})
             if p["classes"]:
                 p["label"] = ev.label_for(a, self.s["labels"])
                 self.s["authors"][str(a["author"])] = t
@@ -329,6 +397,7 @@ class Blue:
                 out.append(dict(key=f"p{pid}", kind="post", target=int(pid), author=a["author"], label=p["label"],
                                 age_min=round(age_min), trending=p["trending"], classes=cls,
                                 detail=ev.post_detail(a), ring=int(pid), ring_why=ring_why,
+                                pg=ev.p_genuine(a, cls, str(a["author"]) in self.s["harvest"]),
                                 base=(age_min, p["trending"], strong)))
             if "reply_ring" in cls:
                 seen = set()
@@ -340,6 +409,7 @@ class Blue:
                     out.append(dict(key=f"p{r['post_id']}", kind="post", target=r["post_id"], author=r["author"],
                                     label=p["label"], age_min=round(r_age), trending=False, classes=["reply_ring"],
                                     detail=ev.reply_detail(r, a), ring=int(pid), ring_why=ring_why,
+                                    pg=ev.p_genuine(a, ["reply_ring"], str(r["author"]) in self.s["harvest"]),
                                     base=(r_age, False, 0.95)))
                     if len(seen) >= 3:
                         break
@@ -348,19 +418,22 @@ class Blue:
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), classes=["hidden_post"],
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"]),
-                                ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
+                                pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
         return out
 
     def ranked(self):
-        """Greedy order: the best expected value first, the team's count updated after every pick."""
+        """Greedy order: the best expected value first, the team's count updated after every pick. Expected value
+        counts P(genuine), and a cluster that already has awards today ranks a little lower (SPREAD) while it's still
+        at full rate."""
         cands, counts, picked = self.candidates(), self.counts_today(), []
         while cands and len(picked) < 2 * CAP:
             for c in cands:
                 n = counts.get(c["label"], 0)
                 c["n_today"] = n
                 c["ev"] = round(ev.account_ev(n) if c["kind"] == "account" else
-                                ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"]), 1)
-            best = max(cands, key=lambda c: c["ev"])
+                                ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"], pg=c["pg"]), 1)
+                c["rank"] = c["ev"] * (1 - SPREAD * n if n < 5 else 1)
+            best = max(cands, key=lambda c: c["rank"])
             if best["ev"] < MIN_EV:
                 break
             cands.remove(best)
@@ -388,23 +461,60 @@ class Blue:
     def locked(self):
         return now() < self.s["lock_until"]
 
+    def fileable(self, ranked):
+        """What fill() may file, in order: account leads first (a dismissed account report pays nothing but can't
+        lock us), then post reports; with READY_STRICT or more ready, only posts under PG_MAX P(genuine)."""
+        accounts = [c for c in ranked if c["kind"] == "account"]
+        posts = [c for c in ranked if c["kind"] == "post"]
+        if len(ranked) >= READY_STRICT:
+            posts = [c for c in posts if c.get("pg", ev.PG_BASE) <= PG_MAX]
+        return accounts, posts
+
     def fill(self, ranked, mode):
-        if mode == "off" or self.locked():
+        """Fill the free slots. Locked: nothing, except one report right after we detect a genuine ruling ourselves
+        (lock_confirm): the platform's answer gives the exact end of its lock, which is often earlier than our
+        estimate (a ruling comes sooner when other teams reported the post too)."""
+        confirm = self.locked() and self.s.get("lock_src") == "estimate" and self.s.get("lock_confirm")
+        if mode == "off" or (self.locked() and not confirm):
             return
         free = CAP - len(self.pending())
         ok = self.approved()
-        accounts = [c for c in ranked if c["kind"] == "account"]
-        if len(accounts) >= free:            # enough account leads for every slot: no post report, so no lock risk
-            ranked = accounts
+        accounts, posts = self.fileable(ranked)
+        ranked = accounts if len(accounts) >= free else accounts + posts   # enough account leads: no lock risk
         for c in ranked:
-            if free <= 0 or self.locked():
+            if free <= 0 or (self.locked() and not confirm):
                 break
             if c["kind"] == "post" and c.get("age_min", 0) > FRESH_MIN and free <= FRESH_RESERVE:
                 continue                      # keep the last slots for fresh ring posts, where we can be first
             if mode == "approve" and c["kind"] == "post" and c["key"] not in ok:
                 continue
+            if confirm:
+                if self.file(c):              # taken: the platform's lock is over, ours was too long
+                    free -= 1
+                    self.unlock("the platform took a report")
+                elif self.s["reports"].get(c["key"], {}).get("status") == "refused":
+                    continue                  # refused for that target only (gone, say): the next one asks
+                self.s["lock_confirm"] = confirm = False
+                continue
             if self.file(c):
                 free -= 1
+
+    def unlock(self, why):
+        t = now()
+        self.s["locks"] = [[a, min(b, t)] for a, b in self.s["locks"]]
+        self.s.update(lock_until=t, lock_why=None, lock_src=None)
+        self.log({"act": "unlock", "why": why})
+
+    def server_lock(self, until, msg):
+        """The platform says when its lock ends: that's the truth, earlier or later than our estimate. It covers
+        every genuine ruling made before now (overlapping locks run at the same time), so recorded locks end there."""
+        t = now()
+        named = self.s["lock_why"] if self.s.get("lock_src") == "estimate" and self.s["lock_why"] else None
+        if self.s.get("lock_src") != "server" or abs(until - self.s["lock_until"]) > 60:
+            self.log({"act": "lock", "until": iso(until), "why": msg[:160], "src": "server"})
+        self.s["locks"] = [[a, min(b, until)] for a, b in self.s["locks"]] + [[until - LOCK_S, until]]
+        self.s.update(lock_until=until, lock_src="server", lock_confirm=False, server_lock=dict(at=t, until=until),
+                      lock_why=named or "a report ruled genuine (the platform's lock)")
 
     def file(self, c):
         acc = self.session()
@@ -422,10 +532,13 @@ class Blue:
             return self.refused(c, e)
         t = now()
         pf = ev.p_first(*c["base"][:2], self.s["pf_scale"]) if c["kind"] == "post" else None
+        pg = c.get("pg") if c["kind"] == "post" else None
         self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"], label=c["label"],
-                                           filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf)
+                                           filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf, pg=pg,
+                                           classes=c["classes"])
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
-                  "label": c["label"], "classes": c["classes"], "ev": c["ev"], "age_min": c.get("age_min"),
+                  "label": c["label"], "classes": c["classes"], "ev": c["ev"], "pg": pg, "n_today": c.get("n_today"),
+                  "age_min": c.get("age_min"),
                   "detail": c["detail"], "reporter": self.reporter_name, "owner": config.operator(),
                   "response": resp if isinstance(resp, dict) else None})
         self.save()
@@ -449,12 +562,19 @@ class Blue:
             return False
         if "suspended" in low and "account" in low:
             self.s["lock_until"] = now() + 24 * 3600
-            self.s["lock_why"] = "reporter account suspended"
+            self.s["lock_why"], self.s["lock_src"] = "reporter account suspended", "reporter"
             self.alert("reporter", f"the reporter account is suspended ({msg[:120]}). Blue stopped; a person decides.")
             return False
+        until = LOCK_UNTIL_RE.search(msg)
+        if e.status == 403 and until:                # the 6 h lock, with its exact end: wait for it, no 30-min retries
+            try:
+                self.server_lock(ev.ts(until.group(1)), msg)
+                return False
+            except ValueError:
+                pass
         # anything else on a report (403 and the like): most likely the 6 h reporting suspension or the pending cap
         self.s["lock_until"] = max(self.s["lock_until"], now() + LOCK_PROBE_S)
-        self.s["lock_why"] = f"refused: {e.status} {msg[:120]}"
+        self.s["lock_why"], self.s["lock_src"] = f"refused: {e.status} {msg[:120]}", "refused"
         self.alert("refused", f"report refused ({e.status} {msg[:160]}). Retrying in 30 min.", gap_s=3 * 3600)
         return False
 
@@ -475,11 +595,16 @@ class Blue:
                 continue
             if t >= r["filed"] + RULE_S + RULE_GRACE_S:
                 self.ruled(key, r, "genuine", r["filed"] + RULE_S)
-                until = r["filed"] + RULE_S + LOCK_S
+                why = f"#{r['target']} ruled genuine"
+                if (self.s.get("server_lock") or {}).get("at", 0) >= r["filed"] + RULE_S:
+                    if self.locked():         # the platform named its lock after this ruling: it already counts it
+                        self.s["lock_why"] = why
+                    continue
+                until = r["filed"] + RULE_S + LOCK_S       # at the latest (sooner if other teams reported it too)
                 if until > self.s["lock_until"]:
-                    self.s["lock_until"], self.s["lock_why"] = until, f"#{r['target']} ruled genuine"
+                    self.s.update(lock_until=until, lock_why=why, lock_src="estimate", lock_confirm=True)
                     self.s["locks"].append([r["filed"] + RULE_S, until])      # for the hours-locked history
-                    self.log({"act": "lock", "until": iso(until), "why": self.s["lock_why"]})
+                    self.log({"act": "lock", "until": iso(until), "why": why, "src": "estimate"})
 
     def ruled(self, key, r, outcome, at):
         r.update(status=outcome, ruled=at, ruled_day=sydney_day(at))
@@ -487,21 +612,43 @@ class Blue:
                   "hours": round((at - r["filed"]) / 3600, 1)})
 
     # ---- account harvest: authors with a moderator-hidden post and 100+ actions ----
-    def harvest(self):
-        t, checks = now(), 0
+    def hide_targets(self):
+        """Posts worth a check for someone else's hide (todo/26): ring posts, and the replies of reply rings (other
+        teams report those too), that we didn't report, aren't known gone, are 30 min to MAX_POST_AGE_H old and
+        whose author isn't a lead yet. [(post id, author, ring post or None)]"""
+        t, out = now(), []
         reported = {r["target"] for r in self.s["reports"].values() if r["kind"] == "post"}
-        for pid, p in self.s["posts"].items():            # ring posts someone else got hidden
-            if checks >= HARVEST_CHECKS:
-                break
-            if not p.get("classes") or p.get("gone") or int(pid) in reported:
+        for pid, p in self.s["posts"].items():
+            a = p.get("audit")
+            if not p.get("classes") or not a:
                 continue
-            checks += 1
+            items = ([] if p.get("gone") else [(int(pid), a["author"], a["created"], None)]) + \
+                [(r["post_id"], r["author"], r["created"], int(pid)) for r in a["reply_posts"]]
+            for post_id, author, created, ring in items:
+                age = t - ev.ts(created)
+                if post_id in reported or str(author) in self.s["harvest"] or author in self.ours or \
+                        not 1800 <= age <= MAX_POST_AGE_H * 3600 or \
+                        t - self.s["hide_checks"].get(str(post_id), 0) < HIDE_RECHECK_S:
+                    continue
+                out.append((self.s["hide_checks"].get(str(post_id), 0), -age, post_id, author, ring))
+        return [x[2:] for x in sorted(out)]           # never checked first, then oldest (likeliest ruled by now)
+
+    def harvest(self):
+        t = now()
+        self.s["hide_checks"] = {k: v for k, v in self.s["hide_checks"].items() if t - v < MAX_POST_AGE_H * 3600}
+        for post_id, author, ring in self.hide_targets()[:HARVEST_CHECKS]:
+            if str(author) in self.s["harvest"]:
+                continue                                  # found already this round
+            self.s["hide_checks"][str(post_id)] = t
             try:
-                self.social.get_post(int(pid))
+                self.social.get_post(post_id)
             except ctn.APIError as e:
                 if e.status == 404:
-                    p["gone"] = True
-                    self.s["harvest"].setdefault(str(p["audit"]["author"]), dict(hidden_post=int(pid), checked=0))
+                    if ring is None:
+                        self.s["posts"][str(post_id)]["gone"] = True
+                    self.s["harvest"][str(author)] = dict(hidden_post=post_id, checked=0, by="other",
+                                                          ring=ring or post_id)
+                    self.log({"act": "lead", "account": author, "hidden_post": post_id, "ring": ring or post_id})
         for aid, h in self.s["harvest"].items():
             if h.get("ready") or int(aid) in self.ours or t - h.get("checked", 0) < 2 * 3600:
                 continue
@@ -513,8 +660,8 @@ class Blue:
             except ctn.APIError:
                 continue
             h["actions"] = n
-            h["ring_posts"] = [int(k) for k, v in self.s["posts"].items()
-                               if v.get("classes") and int(aid) in [v["audit"]["author"], *v["audit"]["liker_ids"]]][:3]
+            h["ring_posts"] = [int(k) for k, v in self.s["posts"].items() if v.get("classes") and int(aid) in ev.members(
+                v["audit"]) | {v["audit"]["author"]}][:3]
             h["ready"] = n >= 100
 
     # ---- status for the dashboard: only what a decision needs ----
@@ -527,10 +674,20 @@ class Blue:
         ok = self.approved()
         waiting = [c for c in ranked if c["kind"] == "post" and c["key"] not in ok][:CAP - len(pend)] \
             if mode == "approve" and not self.locked() else []
+        accounts, posts = self.fileable(ranked)
+        counts = self.counts_today()
         write_json(self.status_file, dict(
             ts=iso(), live=self.live, mode=mode, why=why, reporter=self.reporter_name,
             locked_until=iso(self.s["lock_until"]) if self.locked() else None, lock_why=self.s["lock_why"],
+            lock_src=self.s.get("lock_src") if self.locked() else None,
             pending=len(pend), cap=CAP,
+            # todo/26: what would file now (accounts, and posts under the P(genuine) bar when many are ready)
+            ready_ok=len(accounts) + len(posts), ready_accounts=len(accounts),
+            pg_max=PG_MAX if len(ranked) >= READY_STRICT else None, pg_check=self.pg_check(),
+            clusters=dict(today=len(counts), full=sum(n < 5 for n in counts.values()),
+                          ready=len({c["label"] for c in ranked}),
+                          new=len({c["label"] for c in ranked if counts.get(c["label"], 0) == 0})),
+            widen=self.s["widen"],
             next_ruling=iso(pend[0]["filed"] + RULE_S) if pend else None,
             today=dict(filed=len(filed_today), hidden=sum(r["status"] == "hidden" for r in ruled_today),
                        genuine=sum(r["status"] == "genuine" for r in ruled_today),
@@ -546,6 +703,13 @@ class Blue:
                     for k, r in sorted(self.s["reports"].items(), key=lambda kv: kv[1]["filed"])
                     if r["status"] == "pending" or sydney_day(r["filed"]) == today],
             last_error=self.s["last_error"], last_error_ts=self.s.get("last_error_ts")))
+
+    def pg_check(self):
+        """P(genuine) at filing against the rulings: post reports ruled so far that carried an estimate."""
+        rs = [r for r in self.s["reports"].values() if r["kind"] == "post" and r.get("pg") is not None
+              and r["status"] in ("hidden", "genuine")]
+        return dict(n=len(rs), expected=round(sum(r["pg"] for r in rs), 1),
+                    genuine=sum(r["status"] == "genuine" for r in rs))
 
     def days(self, n=14):
         """Per Sydney day, the levers behind the day's Blue points: reports filed (slot use), rulings hidden and

@@ -28,7 +28,8 @@ def ts(s):
 
 
 def is_team(account_id, ours):
-    return account_id > config.CITIZEN_MAX_ID and account_id not in ours
+    """A competitor team's account: registered after launch, not a citizen added mid-game, not one of ours."""
+    return account_id > config.CITIZEN_MAX_ID and not config.is_citizen(account_id) and account_id not in ours
 
 
 def longest_run(ids, gap=RUN_GAP):
@@ -162,9 +163,40 @@ def p_first(age_min, trending, scale=1.0):
     return min(0.97, p * (0.7 if trending else 1.0) * scale)
 
 
-def post_ev(age_min, trending, strong=1.0, n=0, scale=1.0):
+def post_ev(age_min, trending, strong=1.0, n=0, scale=1.0, pg=None):
+    """Expected points of a post report: hidden (1 - P(genuine)) x (25 if first, else 5) x the team's daily rate."""
     pf = p_first(age_min, trending, scale)
-    return MODERATOR_RIGHT * (FIRST * pf + LATER * (1 - pf)) * rate(n) * strong
+    return (MODERATOR_RIGHT if pg is None else 1 - pg) * (FIRST * pf + LATER * (1 - pf)) * rate(n) * strong
+
+
+# ---- lock economics (todo/26): P(genuine) by evidence class ----
+# Every genuine ruling locks ALL our reporting for 6 h, and with 25 pending, one weak report is enough. On 22 Oct
+# (46 post rulings) both genuine rulings were like-ring-only posts (2 of 19); reply rings (24) and like rings with a
+# second class went 0 for 27. The moderator is "wrong ~1 in 10" overall; these factors move a report around that.
+PG_BASE = 0.10                    # a like ring alone: the scoring page's error rate, and 2 of 19 on 22 Oct
+PG_FACTORS = dict(reply_ring=0.4,     # replies in lockstep: 0 genuine of 24 on 22 Oct
+                  second_class=0.7,   # like ring plus early ring (repeat accounts): 0 of 3
+                  author_hidden=0.6,  # the moderator already hid a post by this author
+                  long_run=0.85,      # >= 10 near-consecutive ids among the accounts acting on it
+                  weak=1.4)           # a small, slow like ring (< 30 likes, no 60-s burst of 8)
+PG_RANGE = (0.01, 0.3)
+
+
+def p_genuine(a, cls, author_hidden=False):
+    """Chance the moderator rules this post report genuine (and locks us for 6 h). a is the audit the evidence comes
+    from (for a reply-ring member, its root's), cls its classes."""
+    p = PG_BASE
+    if "reply_ring" in cls:
+        p *= PG_FACTORS["reply_ring"]
+    elif len(cls) >= 2:
+        p *= PG_FACTORS["second_class"]
+    if author_hidden:
+        p *= PG_FACTORS["author_hidden"]
+    if a.get("run", 0) >= 10:
+        p *= PG_FACTORS["long_run"]
+    if "reply_ring" not in cls and a.get("team_likes", 0) < 30 and a.get("burst60", 0) < LIKE_RING["burst60"]:
+        p *= PG_FACTORS["weak"]
+    return round(min(PG_RANGE[1], max(PG_RANGE[0], p)), 3)
 
 
 def account_ev(n_today):
@@ -174,6 +206,26 @@ def account_ev(n_today):
 # ---- measuring first: the portal's points log says which awards paid as first reporter ----
 FIRST_RE = re.compile(r"(\d+) first inauthentic reports?", re.I)
 LATER_RE = re.compile(r"(\d+) inauthentic reports?", re.I)          # "1 first inauthentic report" doesn't match
+
+
+UPHELD_RE = re.compile(r"(\d+) upheld account reports?", re.I)
+MULT_RE = re.compile(r"\((?:x|\u00d7)\s*([\d.]+) points\)", re.I)
+
+
+def awards_by_rate(messages):
+    """(Blue awards paid at full rate, at a reduced rate) over portal messages: post reports (first or later) and
+    upheld account reports. A line headed 'Moderation (x0.5 points)' pays all of its awards at that rate."""
+    full = reduced = 0
+    for m in messages:
+        m = m or ""
+        f, later = first_later([m])
+        n = f + later + sum(int(x) for x in UPHELD_RE.findall(m))
+        mult = MULT_RE.search(m)
+        if mult and float(mult.group(1)) < 1:
+            reduced += n
+        else:
+            full += n
+    return full, reduced
 
 
 def first_later(messages):

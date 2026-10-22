@@ -260,3 +260,171 @@ def test_dashboard_verdict_names_the_weakest_lever():
     assert y["pct"] == 53 and y["level"] == "down"
     assert y["day"] == "Wed 21 9pm → Thu 22 9pm"                                   # a competition day, in Perth hours
     assert y["lever"] == "moderator: only 67% of rulings hidden (about 90% expected)"   # filed 68 is fine, hit isn't
+
+
+# ---- todo/26: lock economics, more teams, wider discovery ----
+def test_p_genuine_by_evidence_class():
+    like = audit(team_replies=0, reply_authors=0, run=3)
+    assert ev.p_genuine(like, ["like_ring"]) == ev.PG_BASE
+    assert ev.p_genuine(audit(), ["reply_ring", "like_ring"]) < ev.p_genuine(like, ["like_ring", "early_ring"]) \
+        < ev.p_genuine(like, ["like_ring"])
+    assert ev.p_genuine(like, ["like_ring"], author_hidden=True) < ev.PG_BASE
+    weak = audit(team_likes=22, likes=22, burst60=3, team_replies=0, reply_authors=0, run=3)   # #155963, 21 Oct
+    assert ev.p_genuine(weak, ["like_ring"]) > ev.PG_BASE
+    assert ev.post_ev(10, False, pg=0.04) > ev.post_ev(10, False, pg=0.14)
+
+
+def test_many_ready_files_accounts_first_then_only_low_risk_posts(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.live = True
+    filed = []
+    monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
+    risky = [dict(key=f"r{i}", kind="post", ev=20, pg=0.14, age_min=10) for i in range(6)]
+    safe = [dict(key=f"s{i}", kind="post", ev=18, pg=0.04, age_min=10) for i in range(4)]
+    b.fill(risky + safe + [dict(key="a1", kind="account", ev=14, pg=0.0)], "auto")
+    assert filed == ["a1", "s0", "s1", "s2", "s3"]                    # 11 ready: the 14% ones wait
+    filed.clear()
+    b.fill(risky[:3] + safe[:2], "auto")                              # few ready: every one may file
+    assert filed == ["r0", "r1", "r2", "s0", "s1"]
+
+
+def test_ranking_puts_new_clusters_first_at_equal_value(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    t = time.time()
+    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=t, label="cA") for i in range(3)}
+    b.s["posts"]["100"] = post(100, "cA", 5000)
+    b.s["posts"]["200"] = post(200, "cB", 7000)
+    assert [c["label"] for c in b.ranked()][:2] == ["cB", "cA"]       # same evidence, cA already has 3 today
+
+
+def test_platform_lock_message_sets_the_exact_end(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    until = time.time() + 2 * 3600
+    b.s["locks"] = [[time.time() - 3600, time.time() + 5 * 3600]]          # our estimate ran too long
+    c = dict(key="p9", kind="post", target=9, author=5000, label="cA", detail="x")
+    b.refused(c, ctn.APIError("POST", "/report", 403, '{"error": "reporting is suspended for your team until '
+                              + S.iso(until).replace("+00:00", "Z") + '"}'))
+    assert b.locked() and abs(b.s["lock_until"] - until) < 1 and b.s["lock_src"] == "server"
+    assert max(e for _, e in b.s["locks"]) <= until + 1                     # locked hours end where the platform says
+
+
+def test_genuine_we_detect_is_confirmed_by_one_report(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.live = True
+    old = time.time() - S.RULE_S - S.RULE_GRACE_S - 60
+    b.s["reports"] = {"p2": dict(kind="post", target=2, author=5001, label="cA", filed=old, status="pending")}
+    b.social = FakeSocial()
+    b.rulings()
+    assert b.locked() and b.s["lock_src"] == "estimate" and b.s["lock_confirm"]
+    tries = []
+    real = time.time() + 3600                                              # ruled sooner: the lock ends sooner
+
+    def refuse(c):
+        tries.append(c["key"])
+        return b.refused(c, ctn.APIError("POST", "/report", 403, '{"error": "reporting is suspended for your team '
+                                         'until ' + S.iso(real).replace("+00:00", "Z") + '"}'))
+    monkeypatch.setattr(b, "file", refuse)
+    ranked = [dict(key="a1", kind="account", ev=14, pg=0.0), dict(key="p5", kind="post", ev=20, pg=0.04)]
+    b.fill(ranked, "auto")
+    b.fill(ranked, "auto")
+    assert tries == ["a1"]                                                 # one try, then it waits
+    assert abs(b.s["lock_until"] - real) < 1 and b.s["lock_why"] == "#2 ruled genuine"
+
+
+def test_genuine_after_the_platform_named_its_lock_does_not_extend_it(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    old = time.time() - S.RULE_S - S.RULE_GRACE_S - 60
+    until = time.time() + 3600
+    b.s.update(lock_until=until, lock_src="server", server_lock=dict(at=time.time() - 60, until=until))
+    b.s["reports"] = {"p2": dict(kind="post", target=2, author=5001, label="cA", filed=old, status="pending")}
+    b.social = FakeSocial()
+    b.rulings()
+    assert b.s["reports"]["p2"]["status"] == "genuine" and b.s["lock_until"] == until
+
+
+class WidenSocial(FakeSocial):
+    def __init__(self, posts):
+        super().__init__()
+        self.posts, self.asked = posts, []
+
+    def get_post(self, pid):
+        self.asked.append(pid)
+        return self.posts[pid]
+
+
+def test_widen_from_the_snapshot_reaudits_and_looks_up_roots(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    t = S.iso(time.time() - 2 * 3600)
+    plain = post(100, "cA", 5000)
+    plain.update(classes=[], audits=2)
+    b.s["posts"]["100"] = plain
+    b.social = WidenSocial({300: dict(post_id=300, author_id=8000, created_at=t, reply_to_post_id=None),
+                            400: dict(post_id=400, author_id=500, created_at=t, reply_to_post_id=None)})
+    snap = [dict(post_id=1000 + 10 * root + i, author_id=6000 + i, root_post_id=root, reply_to_post_id=root,
+                 created_at=S.iso()) for root in (100, 300, 400) for i in range(5)]
+    snap += [dict(post_id=2000, author_id=6100, root_post_id=500, reply_to_post_id=500, created_at=S.iso())]
+    b.widen(snap)
+    assert plain["reaudit"] is True                                        # known, no ring yet: one more audit
+    assert sorted(b.social.asked) == [300, 400]                            # 500 has one reply: not looked up
+    assert "300" in b.s["posts"] and "400" not in b.s["posts"]             # 400 is a citizen's post
+    b.widen(snap)
+    assert sorted(b.social.asked) == [300, 400]                            # looked up once
+    seen = []
+    monkeypatch.setattr(S.ev, "audit", lambda social, p, ours: seen.append(p["post_id"]) or audit(
+        post_id=p["post_id"], author=p["author_id"], liker_ids=list(range(6000, 6045))))
+    b.audit_some()
+    assert 100 in seen and b.s["posts"]["100"]["classes"] and b.s["widen"]["rings"] >= 1
+
+
+def test_leads_include_ring_replies_other_teams_got_hidden(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    ring = post(100, "cA", 5000)
+    ring["post"]["created_at"] = ring["audit"]["created"] = S.iso(time.time() - 2 * 3600)
+    ring["audit"]["reply_posts"] = [dict(post_id=101, author=6001, created=S.iso(time.time() - 2 * 3600)),
+                                    dict(post_id=102, author=6002, created=S.iso(time.time() - 2 * 3600))]
+    b.s["posts"]["100"] = ring
+    assert {p for p, _, _ in b.hide_targets()} == {100, 101, 102}
+
+    class Social(FakeSocial):
+        account_posts = account_likes = None
+
+        def iterate(self, fn, *a, max_items=100):
+            return iter([{}] * max_items)
+    b.social = Social(gone={102})
+    b.harvest()
+    assert b.s["harvest"]["6002"]["hidden_post"] == 102 and b.s["harvest"]["6002"]["ready"]
+    assert "5000" not in b.s["harvest"] and b.hide_targets() == []         # checked: not again for 2 h
+
+
+def test_our_swarm_accounts_count_as_ours(tmp_path, monkeypatch):
+    import json
+    b = blue(tmp_path, monkeypatch)
+    (tmp_path / "acc.json").write_text(json.dumps([dict(account_id=3000, username="v", role="voice")]))
+    (tmp_path / "swarm.json").write_text(json.dumps([dict(account_id=9100, username="s")]))
+    monkeypatch.setattr(S.config, "ACCOUNTS_FILE", tmp_path / "acc.json")
+    monkeypatch.setattr(S.config, "SWARM_ACCOUNTS_FILE", tmp_path / "swarm.json")
+    b.load_ours()
+    assert b.ours == {3000, 9100} and not ev.is_team(9100, b.ours) and ev.is_team(9101, b.ours)
+    monkeypatch.setattr(S.config, "EXTRA_CITIZEN_RANGES", [(9200, 9300)])
+    assert not ev.is_team(9250, b.ours)                                    # a citizen added mid-game
+
+
+def test_portal_awards_split_by_rate():
+    msgs = ["NPC engagement and moderation: 53 views, 4 first inauthentic reports and 1 upheld account report",
+            "Moderation (×0.5 points): 1 first inauthentic report and 3 upheld account reports",
+            "Moderation (×0.1 points): 1 inauthentic report"]
+    assert ev.awards_by_rate(msgs) == (5, 5)
+
+
+def test_dashboard_says_locked_until_perth_why_and_ready(tmp_path):
+    import datetime as dt
+    import json
+    from swan_dash import build
+    until = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)
+    (tmp_path / "blue_status.json").write_text(json.dumps(dict(
+        ts=S.iso(), mode="auto", why="x", pending=0, cap=25, today={}, locked_until=until.isoformat(),
+        lock_why="#155963 ruled genuine", lock_src="server", ready=43, ready_ok=30, ready_accounts=2)))
+    now = dt.datetime.now(dt.timezone.utc)
+    b = build.blue_panel(tmp_path, now, [], now - dt.timedelta(hours=1))
+    assert f"locked until {build.hm(until)} Perth (#155963 ruled genuine)" in b["summary"]
+    assert "30 ready" in b["summary"] and b["ready"] == 30 and not b["lock_estimate"]

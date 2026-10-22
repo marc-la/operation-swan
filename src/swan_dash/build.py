@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 import jinja2
 
-from swan_blue.evidence import first_later
+from swan_blue.evidence import awards_by_rate, first_later
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
@@ -415,9 +415,12 @@ def blue_days(days, points, now):
         msg = e.get("message") or ""
         if not BLUE_MSG.search(f"{e.get('type')} {msg}"):
             continue
-        p = portal.setdefault(e["_t"].astimezone(SYDNEY).date().isoformat(), dict(points=0, first=0, later=0))
+        p = portal.setdefault(e["_t"].astimezone(SYDNEY).date().isoformat(),
+                              dict(points=0, first=0, later=0, full=0, reduced=0))
         f, later = first_later([msg])
+        full, reduced = awards_by_rate([msg])
         p["points"], p["first"], p["later"] = p["points"] + e["points"], p["first"] + f, p["later"] + later
+        p["full"], p["reduced"] = p["full"] + full, p["reduced"] + reduced
     today, rows = now.astimezone(SYDNEY).date().isoformat(), []
     for d in sorted(set(days) | set(portal), reverse=True):
         a, p = days.get(d, {}), portal.get(d, {})
@@ -425,7 +428,7 @@ def blue_days(days, points, now):
         r = dict(day=perth_span(dt.date.fromisoformat(d)), today=d == today, points=p.get("points", 0),
                  filed=a.get("filed", 0), hidden=a.get("hidden", 0), genuine=a.get("genuine", 0),
                  accounts=a.get("accounts", 0), first=p.get("first", 0), paid=paid, locked_h=a.get("locked_h", 0),
-                 lever=None)
+                 full=p.get("full", 0), awards=p.get("full", 0) + p.get("reduced", 0), lever=None)
         r["pct"] = round(100 * r["points"] / BLUE_TARGET_DAY)
         r["level"] = "up" if r["pct"] >= 100 * BLUE_GOOD else "warn" if r["pct"] >= 100 * BLUE_POOR else "down"
         if not r["today"] and r["level"] != "up":
@@ -457,9 +460,11 @@ def blue_panel(data, now, points, day_start):
     waiting, teams = len(s.get("waiting") or []), {}
     history = blue_days(s.get("days") or {}, points, now)
     last = next((r for r in history if not r["today"]), None)       # the last finished day decides the verdict
+    ready = s.get("ready_ok", s.get("ready")) or 0
+    lock_why = short(s.get("lock_why") or "reason not recorded", 60)
     bits = ([f"last day {last['pct']}% of target"] if last else []) + \
         ([f"{waiting} waiting for approval"] if waiting else []) + \
-        ([f"locked until {hm(locked)}"] if locked else []) + \
+        ([f"locked until {hm(locked)} Perth ({lock_why})", f"{ready} ready"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
         ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
         ([f"{pts:+,} pts since 9pm"] if pts else [])
@@ -467,6 +472,8 @@ def blue_panel(data, now, points, day_start):
         stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
         summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
         locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), pending=s.get("pending"),
+        lock_estimate=s.get("lock_src") == "estimate", ready=ready, ready_accounts=s.get("ready_accounts") or 0,
+        pg_max=s.get("pg_max"), pg_check=s.get("pg_check") or {}, clusters=s.get("clusters") or {},
         next_ruling=hm(nxt) if nxt else None, waiting=waiting, rings=rings,
         teams=len({r.get("team") for r in s.get("rings") or []}),
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
