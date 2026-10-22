@@ -489,7 +489,7 @@ def blue_panel(data, now, points, day_start):
 CITIZEN_WRITES = {"reply", "reply_back", "second_voice", "journalist"}
 REACH_SPEED_MIN = 3            # a new citizen post answered within this (median)
 REACH_BACK_MIN = 1             # a citizen answering us gets our reply within this (median)
-REACH_QUEUE_MIN = 10           # the oldest citizen item still waiting
+REACH_PACE_SHARE = 0.9         # writes a minute under this share of the bot's pace, citizens waiting: amber
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
 REACH_CONVERT_AFTER = 100      # citizen-facing writes today before "no change toward No" counts as a problem
 MIND = re.compile(r"(\d+) (.*)")
@@ -566,12 +566,13 @@ def reach(actions, status, points, now, day_start, notes=None):
         answerable = max(f.get("seen", 0) - sum(skipped.values()), 0)
         light = "red" if n_lost else ("amber" if answerable and f.get("answered", 0) / answerable < REACH_SHARE
                                       and not n_wait else "green")
+        share = f.get("answered", 0) / answerable if answerable else 1.0
         row("Citizens answered (last full hour)", light,
-            f"{f.get('answered', 0)} of {answerable}" + (f" · {n_wait} waiting" if n_wait else "")
+            f"{f.get('answered', 0)} of {answerable} ({share:.0%})" + (f" · {n_wait} waiting" if n_wait else "")
             + (f" · {n_lost} lost" if n_lost else " · 0 lost"), "all · 0 lost",
             "Citizens lost: " + ", ".join(f"{v} {k}" for k, v in lost.items()) + ". Tell targeting / drafting." if n_lost
             else "Some answerable citizens weren't answered: check Activity.")
-        tile = dict(answered=f.get("answered", 0), answerable=answerable, lost=n_lost, light=light)
+        tile = dict(answered=f.get("answered", 0), answerable=answerable, share=share, lost=n_lost, light=light)
     else:
         skipped = {}
         row("Citizens answered", "amber", "no figures yet", "all · 0 lost", "The bot isn't refreshing: check Bot.")
@@ -600,17 +601,24 @@ def reach(actions, status, points, now, day_start, notes=None):
     if tile:
         tile["speed"] = mf
 
-    # queue: time in OUR queue since found (status.json, todo/22's heartbeat); a post's own age is no measure
+    # throughput: writes a minute in the last full hour against the team budget and the bot's pace (Marc, 22 Oct:
+    # "longest wait" swung with the time of day and said little). Amber only when the budget idled while citizens waited.
+    hour_end = now.replace(minute=0, second=0, microsecond=0)
+    full_hour = [a for a in actions if a.get("live") is True and a.get("act") in WRITES
+                 and hour_end - dt.timedelta(hours=1) <= a["_t"] < hour_end]
+    budget = (status.get("write_budget") or {}).get("limit") or TEAM_CAP_PER_MIN
+    pace = status.get("per_min")
+    rate = len(full_hour) / 60
     q = status.get("queue") or {}
-    oldest = status.get("oldest_queued_s")
     waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
     groups_q = sum((g or {}).get("queued") or 0 for g in ((refreshes[-1].get("groups") if refreshes else None) or {}).values())
-    old_min = oldest / 60 if oldest is not None else None
-    row("Longest wait in our queue", "amber" if old_min and old_min > REACH_QUEUE_MIN else "green",
-        (f"{old_min:.0f} min" if old_min is not None else "not measured yet")
-        + (f" · {max(waiting - groups_q, 0)} citizens waiting" if waiting is not None else "")
-        + (f" · {groups_q} extra-group posts queued" if groups_q else ""), f"< {REACH_QUEUE_MIN} min",
-        "The bot isn't keeping up: free voices, a parked LLM or a stuck loop. Check alerts and Bot.")
+    # citizens left waiting in that same hour (the funnel); without one, the queue now
+    waited = sum((f.get("pending") or {}).values()) if f else (waiting or 0)
+    behind = pace is not None and rate < pace * REACH_PACE_SHARE and waited > 0
+    row("Throughput (last full hour)", "amber" if behind else "green",
+        f"{rate:.1f}/min of {budget:.1f} ({rate / budget:.0%})" + (f" · pace {pace:g}" if pace is not None else ""),
+        f"≥ pace{f' {pace:g}' if pace is not None else ''}/min",
+        "The budget idled while citizens waited: the drafter is slower than the writer. Check the LLM line under Bot.")
 
     # writes (budget)
     hour_writes = [a for a in actions if a.get("live") is True and a.get("act") in WRITES and a["_t"] >= hour_ago]
@@ -621,10 +629,9 @@ def reach(actions, status, points, now, day_start, notes=None):
     by_group = {}
     for a in grp:
         by_group[a["group"]] = by_group.get(a["group"], 0) + 1
-    backlog = old_min is not None and old_min > REACH_QUEUE_MIN
-    row("Writes, last hour", "amber" if backlog and spare > 30 else "green",
+    row("Writes, last hour", "green",
         f"{len(cit)} citizens · {len(grp)} groups · {len(hour_writes) - len(cit) - len(grp)} other · {spare} spare",
-        f"of {cap}; spare only when nothing waits", "Budget idle while citizens wait: the bot is slower than the queue.")
+        f"of {cap}", "")
 
     # rejections
     acc = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("llm_calls") not in (None, "None")]
@@ -650,7 +657,7 @@ def reach(actions, status, points, now, day_start, notes=None):
     bad = lambda names, levels=("red", "amber"): any(r["name"].startswith(names) and r["light"] in levels for r in rows)
     if bad(("Citizens answered", "Drafts passing"), ("red",)):
         verdict = "losing citizens"
-    elif bad(("Citizens answered", "Reply time", "Longest wait", "Writes")):
+    elif bad(("Citizens answered", "Reply time", "Throughput")):
         verdict = "falling behind"
     elif bad(("Changes of mind",)):
         verdict = "not converting yet"
@@ -659,12 +666,16 @@ def reach(actions, status, points, now, day_start, notes=None):
     light = "red" if any(r["light"] == "red" for r in rows) else ("amber" if verdict != "keeping up" else "green")
     summary = " · ".join(x for x in (
         f"today {minds['toward']} toward No / {minds['away']} away / {minds['neither']} neither",
-        tile and f"{tile['answered']}/{tile['answerable']} answered", tile and f"{tile['lost']} lost",
-        mf is not None and f"reply {mf:.1f} min") if x)
+        tile and f"{tile['answered']}/{tile['answerable']} answered ({tile['share']:.0%})",
+        tile and f"{tile['lost']} lost", mf is not None and f"reply {mf:.1f} min",
+        f"{rate:.1f}/min of {budget:g}") if x)
     extra = []
     if skipped:
         extra.append("Skipped on purpose (last full hour): "
                      + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(skipped.items(), key=lambda kv: -kv[1])))
+    if waiting is not None:
+        extra.append(f"Queue now: {max(waiting - groups_q, 0)} citizens waiting"
+                     + (f" · {groups_q} extra-group posts" if groups_q else ""))
     if by_group:
         extra.append("Extra groups (last hour): " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in sorted(by_group.items())))
     for r in rows:

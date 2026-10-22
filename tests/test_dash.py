@@ -290,15 +290,31 @@ def test_reach_no_funnel_yet_is_amber_and_page_renders(tmp_path):
     assert "posts last hour" in html
 
 
-def test_reach_queue_uses_time_in_our_queue_not_post_age(tmp_path):
-    f = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
-    old_post = {"ts": iso(1), "act": "wait", "why": "drafting", "age_min": 29.0}
-    ctx, _ = page(make_root(tmp_path, [refresh(1, f), old_post]))
-    q = rowof(ctx, "Longest wait")
-    assert q["light"] == "green" and q["now"].startswith("not measured yet")
-    ctx, _ = page(make_root(tmp_path / "b", [refresh(1, f)], status={"oldest_queued_s": 900}))
-    q = rowof(ctx, "Longest wait")
-    assert q["light"] == "amber" and q["now"].startswith("15 min") and ctx["reach"]["verdict"] == "falling behind"
+def test_reach_throughput_last_full_hour_against_budget_and_pace(tmp_path):
+    f = {"2026-10-22T05": {"seen": 9, "answered": 1, "skipped": {}, "lost": {}, "pending": {"queued": 8}}}
+    calm = {"2026-10-22T05": {"seen": 1, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
+    # NOW is 06:00 UTC: the last full hour is 05:00-06:00; 96 writes there = 1.6/min, one more at 06:00 is not in it
+    acts = [dict(write(1 + i * 0.6), post_id=1000 + i) for i in range(96)] + [dict(write(0), post_id=9)]
+    ctx, html = page(make_root(tmp_path, [refresh(1, f, candidates=40)] + acts,
+                               status={"write_budget": {"limit": 3, "remaining": 2}, "queue": {"candidates": 40}}))
+    t = rowof(ctx, "Throughput")
+    assert t["now"] == "1.6/min of 3.0 (53%) · pace 2.5" and t["light"] == "amber"          # under 0.9 × 2.5, 40 waiting
+    assert ctx["reach"]["verdict"] == "falling behind" and "1.6/min of 3" in ctx["reach"]["summary"]
+    assert not any(r["name"].startswith("Longest wait") for r in ctx["reach"]["rows"])
+    ctx, _ = page(make_root(tmp_path / "b", [refresh(1, calm)] + acts, status={"queue": {"candidates": 40}}))
+    assert rowof(ctx, "Throughput")["light"] == "green"         # every citizen of that hour answered: a quiet hour
+    acts = [dict(write(1 + i * 0.4), post_id=1000 + i) for i in range(150)]
+    ctx, _ = page(make_root(tmp_path / "c", [refresh(1, f)] + acts))      # at pace, citizens waiting: green
+    assert rowof(ctx, "Throughput")["light"] == "green" and rowof(ctx, "Throughput")["now"].startswith("2.5/min")
+
+
+def test_reach_answered_is_a_share_too(tmp_path):
+    f = {"2026-10-22T04": {"seen": 220, "answered": 125, "skipped": {"off_topic": 12}, "lost": {},
+                           "pending": {"queued": 83}},
+         "2026-10-22T05": {"seen": 2, "answered": 1, "skipped": {}, "lost": {}, "pending": {}}}
+    ctx, html = page(make_root(tmp_path, [refresh(1, f)]))
+    assert rowof(ctx, "Citizens answered")["now"] == "125 of 208 (60%) · 83 waiting · 0 lost"
+    assert "125/208 answered (60%)" in ctx["reach"]["summary"] and "60% · 0 lost" in html
 
 
 def test_reach_dates_citizen_posts_from_our_post_ids():
@@ -327,7 +343,7 @@ def test_reach_outcome_first_queue_split_and_notes(tmp_path):
     ctx, html = page(root)
     r = ctx["reach"]
     assert r["rows"][0]["name"].startswith("Changes of mind") and r["summary"].startswith("today 0 toward No")
-    assert "10 citizens waiting · 20 extra-group posts queued" in rowof(ctx, "Longest wait")["now"]
+    assert "Queue now: 10 citizens waiting · 20 extra-group posts" in r["extra"]
     assert "In hand: prompt fix live 15:20, recheck 16:30" in html
 
 

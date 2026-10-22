@@ -196,7 +196,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <div class="kpi"><div class="label">Citizens answered</div>
     {% if reach.tile %}
     <div class="val {{ 'down' if reach.tile.light == 'red' else ('warn' if reach.tile.light == 'amber' else 'up') }}">{{ reach.tile.answered }} / {{ reach.tile.answerable }}</div>
-    <div class="sub">{{ reach.tile.lost }} lost{% if reach.tile.speed is defined and reach.tile.speed is not none %} · reply in {{ '%.1f' % reach.tile.speed }} min{% endif %} · last full hour</div>
+    <div class="sub">{{ (reach.tile.share * 100) | round | int }}% · {{ reach.tile.lost }} lost{% if reach.tile.speed is defined and reach.tile.speed is not none %} · reply in {{ '%.1f' % reach.tile.speed }} min{% endif %} · last full hour</div>
     {% else %}<div class="val">—</div><div class="sub">{{ writes.hour }} posts last hour</div>{% endif %}</div>
 </div>
 
