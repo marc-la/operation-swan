@@ -1,4 +1,4 @@
-"""todo/31 stealth, the behaviour half: each voice keeps a human day (todo/31-stealth.md).
+"""todo/31 stealth, the behaviour half: each voice keeps a human day (docs/06-strategy/stealth.md).
 
 Audit 2026-10-22 ~10:15 UTC: each voice wrote 100-200 times in 24 h and was active 18-24 hours of the 24, and 294 of 730
 citizens got two of our voices within 60 min. Other teams' Blue reporters read that as a bot farm (33 posts hidden on

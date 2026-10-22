@@ -328,11 +328,11 @@ WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1
 # and persona posts) are still read every refresh.
 NEWS_THREADS_S = 30 * 60
 
-# ---- todo/27 fingerprint (todo/27-stop-the-fingerprint.md) ----
+# ---- todo/27 fingerprint (docs/06-strategy/stealth.md) ----
 # 2026-10-22 05:00 UTC: the moderator hid 2, 5, 6 of our posts an hour (other teams' Blue reports on one reply template,
-# "...no end date... I'm voting No."). deploy/run.sh --per-min 2.9 -> 2.4 until hides stay under 1/h for 6 h.
+# "...no end date... I'm voting No."). deploy/run.sh --per-min 2.9 -> 2.4 until hides stay under 1/h for 6 h; back to 2.9 in 87c6e8e (throughput over stealth).
 
-# ---- todo/31 stealth (todo/31-stealth.md; swan_bot/stealth.py), 2026-10-22 ----
+# ---- todo/31 stealth (docs/06-strategy/stealth.md; swan_bot/stealth.py), 2026-10-22 ----
 # 2026-10-22 evening (Marc): ALL STEALTH SWITCHES OFF below (and SECOND_VOICE back on, --per-min 2.9): writes were
 # under 2/min and nothing was reaching citizens. Throughput over stealth until the team decides otherwise.
 # Audit 22 Oct ~10:15 UTC: each voice wrote 100-200 times in 24 h across 18-24 hours of the day, and 294 of 730 citizens
