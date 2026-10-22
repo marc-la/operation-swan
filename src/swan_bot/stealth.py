@@ -77,6 +77,10 @@ def window_text(key):
 
 
 def key_of(rec):
+    """The key a voice's sleep window comes from: its persona, or for a booster turned voice its username (the
+    suspended voice on the same card kept that card's hours)."""
+    if rec.get("converted"):
+        return rec.get("username")
     return rec.get("persona") or rec.get("username")
 
 

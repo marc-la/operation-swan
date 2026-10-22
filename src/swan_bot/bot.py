@@ -22,6 +22,7 @@ import json
 import os
 import pathlib
 import random
+import re
 import secrets
 import signal
 import subprocess
@@ -791,13 +792,26 @@ def log_rest(why, **fields):
     last[:] = [t, 0]
 
 
+_TITLES = {"Mr", "Mrs", "Ms", "Dr", "Aunty", "Uncle", "Nana", "Papa"}
+
+
 def persona_of(rec):
-    """The persona card a voice drafts as. A booster turned voice (scripts/convert_boosters.py) keeps its own display
-    name, so the card's name gives way to it; role, place, frames and style stay the card's."""
+    """The persona card a voice drafts as. A booster turned voice (scripts/convert_boosters.py) takes only the card's
+    role, place, frames and argument, under its own display name: the suspended voice's people, signature lines,
+    events, arc and any text naming its people are left out, and its style and typing hand (`hand`) come from another
+    suspended card (rec["converted"]["style_of"]), so it doesn't read as the old account back (todo/31)."""
     card = content.PERSONA_BY_KEY[rec["persona"]]
-    if rec.get("converted") and rec.get("display_name"):
-        return dict(card, name=rec["display_name"])
-    return card
+    conv = rec.get("converted")
+    if not conv:
+        return card
+    style = content.PERSONA_BY_KEY.get(conv.get("style_of")) or card
+    names = {w for x in card.get("people") or [] for w in re.findall(r"\b[A-Z][\w'-]+", x.split(",")[0])} - _TITLES
+    named = re.compile(r"\b(" + "|".join(map(re.escape, sorted(names))) + r")\b") if names else None
+    clean = lambda t: t if t and not (named and named.search(t)) else None
+    return dict(card, name=rec.get("display_name") or card["name"], voice=style["voice"],
+                register=style.get("register", card.get("register")), hand=style["key"],
+                people=[], lines=[], now=[], arc=None, details=[d for d in card["details"] if clean(d)],
+                covid=clean(card.get("covid")), problem=clean(card.get("problem")))
 
 
 def candidate_voice(pick, cand, **kw):
@@ -1301,7 +1315,7 @@ def main():
                 return
         clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
         if text and not args.no_humanize:
-            text, hand = humanize.apply(text, persona["key"], mode)
+            text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode)
 
         # ---- send ----
         post_id = None
