@@ -17,7 +17,7 @@
 2. Is **editing a post** to re-screen it risk-free, i.e. no penalty for having tripped the injection screen?
 3. Are **verified accounts** organiser-controlled personas (public figures, journalists)? Can a team account get verified?
 4. Is it within the rules for our own accounts to **like or repost our own posts** (in-game LS.5.3 calls this "reaction farming")? Is the only consequence in-game (reports, hides)? See [scoring-roi](../06-strategy/scoring-roi.md#legitimate-edges-confirm-the-asterisked-ones).
-5. May we use an **external LLM for analysis** (classifying the stance and topics of posts we read), or only for content generation (§5.1 vs §6.1)?
+5. May we use an **external LLM for analysis** (classifying the stance and topics of posts we read), or only for content generation (§5.1 vs §6.1)? *Decided internally 2026-10-22 (Marc): yes for offline analysis and testing that never touches the platform. §5.1 allows "personal machines or cloud services to develop and test" and §6.1 allows AI for "data analysis". CLAUDE.md rule 2 updated. Still worth an organiser confirmation in `#questions`.*
 6. May we **automate reading our own portal activity log**, or should it be read manually?
 7. Does the in-world **campaign silence** (00:00 1 Nov: paid ads, mass campaign messaging and rallies restricted) change how NPCs, the moderator or scoring treat campaign-style posts during the ×4 days?
 8. Do NPCs perceive **GIF/image links** or the `embed` field, or only text?
