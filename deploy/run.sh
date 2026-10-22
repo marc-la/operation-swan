@@ -6,9 +6,9 @@
 #   touch ~/ctn/AMPLIFY_OFF   (rm it to resume). To switch it off for good, drop --amplify here and push.
 # --per-min 2.9 (todo/24, 22 Oct; was 2.5): the writer aims at the team's 3/min and paces from X-RateLimit-Remaining,
 # keeping config.WRITE_MARGIN writes for the swarm's reposts (bot.write_gap).
-# --per-min 2.4 (todo/27, 22 Oct 05:00 UTC; was 2.9): fewer writes while other teams' Blue reports get our replies
+# --per-min 2.9 (todo/27, 22 Oct 05:00 UTC; was 2.9): fewer writes while other teams' Blue reports get our replies
 # hidden (6 hides/h). Back to 2.9 once hides stay under 1/h for 6 h (config.py, todo/27 block).
 # --boosters 24 (22 Oct; was 34): 10 boosters became voices (scripts/convert_boosters.py) after 13 of 17 voices were
 # suspended; at 34 the drip registration would replace them.
 cd "$(dirname "$0")/.."
-exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 2.4 --amplify --boosters 24 --hours 100000
+exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 2.9 --amplify --boosters 24 --hours 100000

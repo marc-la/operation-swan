@@ -76,6 +76,8 @@ def test_an_original_voice_drafts_under_its_card():
 
 
 def test_a_converted_voice_sleeps_its_own_hours_and_keeps_the_caps(monkeypatch):
+    monkeypatch.setattr(config, "VOICE_DAY_CAP", True)      # the switches are off in production (22 Oct)
+    monkeypatch.setattr(config, "VOICE_HOUR_CAP", True)
     rec = converted()
     assert stealth.key_of(rec) == "owen_bakes" and stealth.key_of(dict(persona="wally", username="x")) == "wally"
     monkeypatch.setattr(config, "VOICE_SLEEP", False, raising=False)
