@@ -30,3 +30,41 @@
 
 ## Done when
 Cap 30 is live, the per-class risk table is in the doc, the no-lock mode is the default, and the first 24 h after it show genuine rulings and points against today (write them here).
+
+## Shipped (2026-10-22, background agent)
+
+| Commit | What |
+|---|---|
+| 13fda57 | Step 1: `CAP = 30` (Discord 22 Oct), the 30th slot kept for an account report; the cap and the multi-team boost in blue-reporting, quick reference, cheatsheet, CLAUDE.md, answers log |
+| 8603d2c | Step 3: the no-lock mode, the default: accounts first; post reports only at P(genuine) ≤ `BLUE_POST_PG_MAX` (2%), worth the lock they risk (ev ≥ pg × 300), within a risk bucket of `BLUE_PG_PER_DAY` (0.4 expected genuine a day, holds 0.1). `p_genuine` recalibrated: reply ring 2% (was 4%), id-run factor dropped. Live since 05:17 UTC |
+| 9760288 | Marc's addendum: never report our own content: `file()` re-reads our ids and asks the platform for the post's author; refuses, logs `"refused": "own account"`, alerts. Posts with 3+ of our accounts among likers/repliers are never post-reported |
+| 6ff0adf | Steps 4 and 6: time to ruling and `co` (< 2 h = 2+ teams) on every post ruling; a co-reported hide flags its author's lead and puts its ring first in the hide checks; a genuine ruling takes its time from the platform's lock and alerts with class, P(genuine), age, cluster |
+| 226a606, fcec111 | blue-reporting §8: the per-class risk table, why 1% is not demonstrable, the policy and its cost, co-reporting, detectors |
+| 9208052 | `own_ids` in `blue_status.json` (ids only) |
+| 545ecdf | Step 5: `swan_blue/detect.py`: one wording from 5+ accounts in 24 h, cadence, registration block; watched accounts → hide checks → account leads with the measured numbers; never a post report |
+
+### Measured (all post rulings to 22 Oct 05:20 UTC, 59)
+
+| Class | Genuine / rulings |
+|---|---|
+| Reply ring (root or ring reply) | 0 / 34 (estimate 1.4%, 95% upper 9%) |
+| Like ring alone | 2 / 19 (11%) |
+| Like ring + early ring | 0 / 6 |
+| Ruled < 2 h (2+ teams) | 1 / 10 (#155963) |
+| Accounts | 5 of 6 ruled upheld; none can lock |
+
+The todo/26 model predicted 3.2 genuine over these, 2 came. **The spec's number is off:** 70 post reports a day at 1–2% is 5–10 genuine a week, not 2–3; 2–3 a week needs ≤ 0.5% a report, which no class can show (it would take ~300 clean rulings). Hence the risk bucket (0.4/day ≈ 3 a week): about 20 reply-ring post reports a day. Estimated cost: ~750 Blue points a day against ~1,100 in the first 15.5 h under todo/26 (§8 has the assumptions); `BLUE_PG_PER_DAY=1.0` in `.env` (then restart swan-blue) is the lever if points matter more than locks. **Marc's call.**
+
+### New `blue_status.json` fields for todo/29
+`own_ids` (our account ids), `risk` {level, per_day, cap, posts_now}, `pg_max` (always set now), `pg_by_class` {class: n, genuine, expected}, `co` {fast, of} (post rulings today under 2 h), `detect` {posts_seen, sequences, groups, by: {fingerprint|cadence|block: watched, hidden, reported}}.
+
+### First 24 h after (to fill in by 23 Oct 05:20 UTC)
+
+| Measure | Before (21 Oct 13:46 → 22 Oct 05:20, todo/26) | After (22 Oct 05:20 → 23 Oct 05:20) |
+|---|---|---|
+| Post reports filed | ~70 a day | |
+| Account reports filed | 12 in 15.5 h | |
+| Genuine rulings | 2 | |
+| Hours locked | 7.5 | |
+| Blue points | ~1,120 | |
+| Leads from detectors (`"by": "watch"`) | n/a | |
