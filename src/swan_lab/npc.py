@@ -24,22 +24,25 @@ VERDICTS = {"toward_yes": "closer to YES: more for requiring the proof, or less 
             "same": "the same position, maybe in other words"}
 
 
-class StandIn:
-    """One LLM call at a time, at most config.LAB_LLM_PER_MIN a minute, slower when the headers say so; a 429 waits
-    its Retry-After. Never retries in a tight loop."""
+class Backend:
+    """One stand-in model. "competitor": the organisers' qwen2.5-3b, at most config.LAB_LLM_PER_MIN a minute, slower
+    when the headers say so, a 429 waits its Retry-After. "local": the same model family on our own endpoint
+    (config.LAB_LOCAL_URL, e.g. Ollama behind an SSH tunnel), no rate limit. Both: one call at a time (the lab is one
+    thread), backing off on errors, never a tight retry loop."""
 
-    def __init__(self, model=None):
-        self.model = model or config.LAB_MODEL
-        if self.model == "competitor":
+    def __init__(self, name):
+        self.name = name
+        if name == "competitor":
             self.client = ctn.CompetitorLLM(team_code=config.team_code(), max_retries=0)
-            self.model_id = ctn.competitorllm.MODEL
-        else:       # "local-qwen2.5-3b" waits for organiser question #5 (an external LLM for analysis)
-            raise SystemExit(f"LAB_MODEL {self.model!r} is off: only 'competitor' runs until question #5 is answered")
-        self.gap = 60.0 / config.LAB_LLM_PER_MIN + 0.5
+            self.model_id, self.gap, self.waits = ctn.competitorllm.MODEL, 60.0 / config.LAB_LLM_PER_MIN + 0.5, 30
+        elif name == "local":
+            self.client = openai.OpenAI(base_url=config.LAB_LOCAL_URL, api_key="local", max_retries=0, timeout=180)
+            self.model_id, self.gap, self.waits = config.LAB_LOCAL_MODEL, 0.0, 5
+        else:
+            raise SystemExit(f"unknown LAB_MODEL {name!r} (competitor or local)")
         self.last = 0.0
-        self.calls = 0
 
-    def ask(self, system, user, max_tokens=220, temperature=0.7, tries=4):
+    def ask(self, system, user, max_tokens, temperature, tries):
         for attempt in range(tries):
             time.sleep(max(0.0, self.last + self.gap - time.time()))
             self.last = time.time()
@@ -49,25 +52,17 @@ class StandIn:
                     messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
             except openai.RateLimitError as e:
                 wait = _retry_after(getattr(e, "response", None)) or 60
-                print(f"lab: stand-in rate limited, waiting {wait:.0f} s")
+                print(f"lab: {self.name} rate limited, waiting {wait:.0f} s")
                 self.last = time.time() + wait - self.gap
                 continue
             except (openai.APIConnectionError, openai.APITimeoutError, openai.InternalServerError) as e:
-                print(f"lab: stand-in error ({type(e).__name__}), waiting {30 * (attempt + 1)} s")
-                self.last = time.time() + 30 * (attempt + 1) - self.gap
+                wait = self.waits * (attempt + 1)
+                print(f"lab: {self.name} error ({type(e).__name__}), waiting {wait} s")
+                self.last = time.time() + wait - self.gap
                 continue
-            self.calls += 1
             self._pace(raw.headers)
             return raw.parse().choices[0].message.content or ""
-        raise RuntimeError("stand-in unavailable")
-
-    def up(self):
-        """One tiny call: True when the stand-in answers (used after an outage, before drafting more replies)."""
-        try:
-            self.ask("Answer with one word.", "Say ok.", max_tokens=2, temperature=0.0, tries=1)
-            return True
-        except RuntimeError:
-            return False
+        raise RuntimeError(f"stand-in {self.name} unavailable")
 
     def _pace(self, headers):
         """A remaining count of 0 holds the next call until the window resets."""
@@ -78,6 +73,58 @@ class StandIn:
                 self.last = time.time() + float(reset) - self.gap
             except (TypeError, ValueError):
                 self.last = time.time() + 60 - self.gap
+
+
+class Switched(RuntimeError):
+    """The primary stand-in went down mid-trial: the trial is run again on the fallback (no mixed-model trials)."""
+
+
+class StandIn:
+    """config.LAB_MODEL, with "competitor" as the fallback for "local" (the tunnel may be down). A whole trial runs on
+    one model (stand_in.model is recorded on it); after a switch, the primary is tried again every RETRY_PRIMARY_S."""
+    RETRY_PRIMARY_S = 600
+
+    def __init__(self, model=None, backend=Backend):
+        name = model or config.LAB_MODEL
+        self.primary = backend(name)
+        self.fallback = backend("competitor") if name != "competitor" else None
+        self.active, self.down_at, self.calls = self.primary, 0.0, 0
+
+    @property
+    def model(self):
+        return self.active.name
+
+    def ask(self, system, user, max_tokens=220, temperature=0.7, tries=4):
+        try:
+            out = self.active.ask(system, user, max_tokens, temperature,
+                                  tries if self.active.name == "competitor" else 2)
+        except RuntimeError:
+            if self.active is self.primary and self.fallback:
+                self.active, self.down_at = self.fallback, time.time()
+                print(f"lab: {self.primary.name} down, trials go to {self.fallback.name}")
+                raise Switched(f"{self.primary.name} down") from None
+            raise
+        self.calls += 1
+        return out
+
+    def restore(self):
+        """Back to the primary when it answers again (checked at most every RETRY_PRIMARY_S)."""
+        if self.active is not self.primary and time.time() - self.down_at > self.RETRY_PRIMARY_S:
+            self.down_at = time.time()
+            try:
+                self.primary.ask("Answer with one word.", "Say ok.", 2, 0.0, 1)
+            except RuntimeError:
+                return
+            self.active = self.primary
+            print(f"lab: {self.primary.name} is back")
+
+    def up(self):
+        """One tiny call: True when the stand-in answers (used after an outage, before drafting more replies)."""
+        try:
+            self.ask("Answer with one word.", "Say ok.", max_tokens=2, temperature=0.0, tries=1)
+            return True
+        except RuntimeError:
+            return False
 
 
 def _retry_after(response):

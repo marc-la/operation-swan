@@ -92,3 +92,50 @@ def test_report_ranks_against_control():
     lines = [l for l in md.splitlines() if l.startswith("| news_link")]
     assert lines and "+30" in lines[0] and "+40" in lines[0]                   # net +30, +40 against Control's −10
     assert "| yes_but |" in md and "news_link" in md.split("Movability")[1]
+
+
+class FakeBackend:
+    """A stand-in model that answers, or is down."""
+    down = set()
+
+    def __init__(self, name):
+        self.name = name
+
+    def ask(self, system, user, max_tokens, temperature, tries):
+        if self.name in FakeBackend.down:
+            raise RuntimeError(f"stand-in {self.name} unavailable")
+        return f"{self.name} ok"
+
+
+def test_local_falls_back_to_competitor_for_whole_trials_and_comes_back(monkeypatch):
+    FakeBackend.down = {"local"}
+    si = npc.StandIn("local", backend=FakeBackend)
+    assert si.model == "local"
+    try:
+        si.ask("s", "u")
+        raise AssertionError("expected a switch")
+    except npc.Switched:
+        pass
+    assert si.model == "competitor" and si.ask("s", "u") == "competitor ok"
+    si.restore()                                                   # too soon: stays on the fallback
+    assert si.model == "competitor"
+    FakeBackend.down = set()
+    si.down_at -= si.RETRY_PRIMARY_S + 1
+    si.restore()
+    assert si.model == "local" and si.ask("s", "u") == "local ok"
+
+
+def test_competitor_alone_has_no_fallback():
+    FakeBackend.down = {"competitor"}
+    si = npc.StandIn("competitor", backend=FakeBackend)
+    assert si.fallback is None and not si.up()
+    FakeBackend.down = set()
+
+
+def test_trials_on_another_model_are_not_done_and_not_pooled():
+    rows = [dict(strategy="base", version="v", persona="c1", seed=0, lab_model="competitor", verdict="same")]
+    assert library.done_keys(rows, "competitor") == {("base", "v", "c1", 0)}
+    assert library.done_keys(rows, "local") == set()
+    md = report.markdown(rows + [dict(rows[0], lab_model="local", verdict="toward_no")],
+                         [dict(name="base", version="v")])
+    assert md.count("# NPC lab results") == 2

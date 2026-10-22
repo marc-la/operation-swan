@@ -24,7 +24,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from swan_bot import config  # noqa: E402
-from swan_bot.analysis import latest_by_post, parse_activity, ts_of, wilson  # noqa: E402
+from swan_bot.analysis import block_window, latest_by_post, parse_activity, ts_of, wilson  # noqa: E402
 
 CITIZEN_WRITES = ("reply", "reply_back", "second_voice")
 LAG_S = 3 * 3600                     # a portal event is shared over the writes of the 3 h before it
@@ -33,7 +33,9 @@ DIMS = [("style", "reply style (mirror_concede vs current)"), ("read_stance", "t
         ("sv_delay", "second-voice delay (second voices)"), ("lever", "lever"), ("read_frame", "frame the read picked"),
         ("frame", "frame written"), ("reply_mode", "reply mode (current style)"), ("group", "todo/23 group"),
         ("source", "where the target came from (todo/23: sweep, engaged; else latest, news, thread...)"),
-        ("arm", "todo/21 arm"), ("backend", "model"), ("act", "kind of write")]
+        ("arm", "todo/21 arm"), ("backend", "model"), ("act", "kind of write"),
+        ("arm_conv", "todo/25 conversion arm (2 h switchback blocks)")]
+BLOCK_LAG_S = 3600                   # todo/25: a block's portal lines are those 1 h after its writes (hourly at ~:53)
 
 
 def jsonl(path):
@@ -48,7 +50,8 @@ def jsonl(path):
 
 
 def portal_events(root, activity=None):
-    """[{ts, towards, away, neither, primary_towards, neither_vaccination}] from data/portal.json (or a CSV export)."""
+    """[{ts, towards, away, neither, other, primary_towards, neither_vaccination}] from data/portal.json (or a CSV
+    export). other: a change of mind with no side named, an "other view" change (todo/25)."""
     if activity:
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
         from zoneinfo import ZoneInfo
@@ -66,6 +69,7 @@ def portal_events(root, activity=None):
         p = parse_activity(e.get("message") or "")
         msg = (e.get("message") or "").lower()
         out.append(dict(ts=ts_of(e["ts"]), towards=p["towards"], away=p["away"], neither=p["neither"],
+                        other=sum(v for k, v in p.items() if k.startswith("mind_") and k.endswith("_other")),
                         primary_towards=p.get("mind_primary_towards", 0),
                         neither_vaccination=p["neither"] if "neither" in msg and "vaccination" in msg else 0))
     return out
@@ -110,14 +114,14 @@ def window_report(rows, outcomes, followups, events, since, until, title, dims=D
     writes = citizen_writes(rows, since, until)
     evs = [e for e in events if since <= e["ts"] < until + LAG_S]
     tot = {k: sum(e[k] for e in evs if since <= e["ts"] < until) for k in
-           ("towards", "away", "neither", "primary_towards", "neither_vaccination")}
+           ("towards", "away", "neither", "other", "primary_towards", "neither_vaccination")}
     n = len(writes)
     p = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%d %b %H:%M UTC")
     out = [f"## {title}: {p(since)} to {p(until)}", "",
            f"- Citizen-facing writes: **{n}** ({', '.join(f'{k} {v}' for k, v in collections.Counter(w['act'] for w in writes).most_common())}).",
            f"- Portal ({len([e for e in evs if since <= e['ts'] < until])} hourly rows): towards **{tot['towards']}** "
            f"(primary {tot['primary_towards']}), away **{tot['away']}**, neither {tot['neither']} (on vaccination "
-           f"{tot['neither_vaccination']}).",
+           f"{tot['neither_vaccination']}), other view {tot['other']}.",
            f"- Per 100 citizen-facing writes: towards **{per100(tot['towards'], n)}**, away {per100(tot['away'], n)}, "
            f"neither {per100(tot['neither'], n)}. Goal: towards > away + neither.", ""]
     for dim, what in dims:
@@ -195,6 +199,57 @@ def widen_report(rows, outcomes, followups, events, hidden, since, until):
                    f"{st['away']:.1f} | {st['hidden']} | {verdict} |")
     return out + ["", "Raise needs the rate to hold for 24 h: run it with --hours 24. Kill and raise are a human call "
                       "on these numbers (config, the todo/23 block).", ""]
+
+
+def switchback_report(rows, followups, events, since, until, dim="arm_conv"):
+    """todo/25: per arm, the portal lines of its blocks (1 h lag) per 100 writes, the followup's stance moves per 100
+    citizens, the citizen reply rate and turns per citizen. Blocks are whole: one arm all through (experiment.block)."""
+    writes = [r for r in rows if r.get("live") and r.get("post_id") and r.get(dim) and r.get("block_id")
+              and r["act"] in CITIZEN_WRITES + ("post",) and since <= ts_of(r["ts"]) < until]
+    if not writes:
+        return []
+    blocks = collections.defaultdict(list)
+    for w in writes:
+        blocks[(w[dim], w["block_id"])].append(w)
+    arms = collections.defaultdict(lambda: dict(blocks=0, writes=0, posts=0, ev=collections.Counter(), ws=[]))
+    for (arm, bid), ws in blocks.items():
+        start, end = block_window(bid)
+        a = arms[arm]
+        a["blocks"] += 1
+        a["writes"] += sum(w["act"] != "post" for w in ws)
+        a["posts"] += sum(w["act"] == "post" for w in ws)
+        a["ws"] += ws
+        for e in events:
+            if start + BLOCK_LAG_S <= e["ts"] < end + BLOCK_LAG_S:
+                for k in ("towards", "away", "neither", "other"):
+                    a["ev"][k] += e[k]
+    out = [f"## {dim}: the switchback blocks (portal lines {BLOCK_LAG_S // 3600} h after each block's writes)", "",
+           "Kill an arm with away above base; promote one with towards > 0 and stance moves above base after ~150 "
+           "writes (todo/25). Broadcast: off the same day if away beats towards (Marc, 2026-10-22).", "",
+           "| arm | blocks | citizen writes | posts | towards | away | neither | other view | towards / away per 100 "
+           "writes | citizens read later | moved No / Yes per 100 citizens | citizen replied | turns per citizen |",
+           "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for arm in sorted(arms):
+        a = arms[arm]
+        cw = [w for w in a["ws"] if w["act"] != "post"]
+        labels = {}
+        for w in cw:
+            f = followups.get(w["post_id"])
+            if f and f.get("label") not in (None, "silent", "private"):
+                labels.setdefault(w.get("target_author"), set()).add(f["label"])
+        n_cit = len(labels)
+        moved_no = sum("moved_no" in v for v in labels.values())
+        moved_yes = sum("moved_yes" in v for v in labels.values())
+        read = [w for w in cw if w["post_id"] in followups]
+        replied = sum(bool(followups[w["post_id"]].get("replied_to_this")) for w in read)
+        per_cit = collections.Counter(w.get("target_author") for w in cw)
+        ev, n = a["ev"], a["writes"] + a["posts"]
+        out.append(f"| {arm} | {a['blocks']} | {a['writes']} | {a['posts']} | {ev['towards']} | {ev['away']} | "
+                   f"{ev['neither']} | {ev['other']} | {per100(ev['towards'], n)} / {per100(ev['away'], n)} | {n_cit} | "
+                   f"{per100(moved_no, n_cit)} / {per100(moved_yes, n_cit)} | "
+                   f"{pct(replied / len(read) if read else None)} | "
+                   f"{(len(cw) / len(per_cit)) if per_cit else 0:.2f} |")
+    return out + [""]
 
 
 def read_report(rows, since, until):
@@ -285,6 +340,8 @@ def main():
            "unread.", ""]
     for since, until, title in windows:
         out += window_report(rows, outcomes, followups, events, since, until, title, dims)
+        if not args.by or "arm_conv" in args.by.split(","):
+            out += switchback_report(rows, followups, events, since, until)
         if widen:
             out += widen_report(rows, outcomes, followups, events, hidden, since, until)
         if not args.by:

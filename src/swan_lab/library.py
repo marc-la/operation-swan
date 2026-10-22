@@ -116,5 +116,7 @@ def queue(strats, cards, done):
     return sorted(out, key=lambda x: (x[2], x[0]["priority"], x[0]["name"], x[1]["id"]))
 
 
-def done_keys(rows):
-    return {(t["strategy"], t["version"], t["persona"], t["seed"]) for t in rows if not t.get("error")}
+def done_keys(rows, lab_model=None):
+    """Finished trials on this stand-in model (a new stand-in re-runs the queue rather than pooling unlike trials)."""
+    return {(t["strategy"], t["version"], t["persona"], t["seed"]) for t in rows
+            if not t.get("error") and (lab_model is None or t.get("lab_model") == lab_model)}

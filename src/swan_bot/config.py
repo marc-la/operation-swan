@@ -334,9 +334,12 @@ SWITCHBACK = [("arm_conv", CONV_ARMS, CONV_BLOCK_S)]
 # The NPC lab (src/swan_lab, docs/06-strategy/npc-lab.md): a stand-in citizen scores reply strategies offline.
 # The stand-in and its classifier run on LAB_MODEL only: "competitor" is the organisers' qwen2.5-3b (CompetitorLLM).
 # External models may draft the replies under test (content), never play or judge the citizen (CLAUDE.md rule 2).
-# "local-qwen2.5-3b" (LAB_LOCAL_URL, OpenAI-compatible) stays off until organiser question #5 is answered.
+# "local": the same model family (qwen2.5:3b-instruct-q8_0 on Ollama, Marc's laptop) through an SSH tunnel to the
+# box, allowed since 2026-10-22 (CLAUDE.md rule 2: offline analysis and testing). No rate limit, 1 at a time, and
+# "competitor" takes over while the tunnel is down. Switch to "local" once the tunnel is confirmed.
 LAB_MODEL = "competitor"
-LAB_LOCAL_URL = ""
+LAB_LOCAL_URL = "http://127.0.0.1:11434/v1"
+LAB_LOCAL_MODEL = "qwen2.5:3b-instruct-q8_0"
 LAB_LLM_PER_MIN = 3                 # CompetitorLLM's team limit: 3/min, 1 at a time (the headers can only lower it)
 LAB_READS_PER_MIN = 30              # the persona builder's read pace (per-endpoint budgets, never the feed budget)
 LAB_SEEDS = 2                       # trials per persona x strategy; a strategy file may ask for more

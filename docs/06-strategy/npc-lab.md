@@ -7,7 +7,11 @@ A stand-in citizen on the organisers' own model (qwen2.5-3b, `ctn.CompetitorLLM`
 Code: [`src/swan_lab/`](../../src/swan_lab/). Service: `swan-lab.service` on swan-ec2. Plan and rules: [todo/25](../../todo/25-conversion-what-moves-them.md).
 
 ## Rules it keeps
-- **The stand-in and its classifier run only on CompetitorLLM** (`config.LAB_MODEL = "competitor"`): 3 calls/min, 1 at a time, backing off on 429 and on outages. External models (Kimi, flash-lite…) only *draft the replies under test*, which is content (CLAUDE.md rule 2). A local qwen2.5-3b stays off until organiser question #5 is answered.
+- **The stand-in and its classifier run on the organisers' model family only** (`config.LAB_MODEL`):
+  - `"competitor"`: CompetitorLLM, 3 calls/min, 1 at a time, backing off on 429 and on outages;
+  - `"local"`: the same qwen2.5-3b (`qwen2.5:3b-instruct-q8_0` on Ollama, Marc's laptop) through an SSH tunnel to the box (`LAB_LOCAL_URL`). Allowed since 2026-10-22 (CLAUDE.md rule 2: offline analysis and testing). No rate limit, 1 call at a time. CompetitorLLM takes over while the tunnel is down, and the lab goes back to local within 10 min of it returning. A whole trial runs on one model, and results are reported per model, never pooled.
+
+  The replies under test are drafted on our usual models (Kimi, flash-lite…).
 - **Read-only.** Persona cards come from `get_account`, `account_posts` and `account_likes` at 30 reads/min. Those routes have their own 300/min buckets, never the feed budget. The lab never writes to Legit Social.
 - **The lab's simulated-NPC prompts stay in the lab.** Nothing from them goes into a live post. Live replies stay honest persuasion, with no text aimed at the model inside a citizen (CLAUDE.md 5).
 
@@ -17,7 +21,7 @@ Code: [`src/swan_lab/`](../../src/swan_lab/). Service: `swan-lab.service` on swa
 3. **Classify** (call 2): their real view before against the stand-in's view after: closer to Yes, closer to No, or the same position. The three answers get letters in a shuffled order per trial, so the small model's letter bias averages out. The same call rates the vaccination line positive / negative / mixed.
 4. **Control** reads an unrelated post instead of a reply. Its drift is the stand-in's noise, and every strategy is ranked against it.
 
-A trial costs 2 stand-in calls, so ~90 trials an hour. Results go to `data/lab/trials.jsonl`, one line per trial: the reply, the stand-in's answer, the verdict, the segment.
+A trial costs 2 stand-in calls, so ~90 trials an hour on CompetitorLLM, and as many as the laptop allows on local. Results go to `data/lab/trials.jsonl`, one line per trial: the reply, the stand-in's answer, the verdict, the segment.
 
 ## Add a strategy (one file and a push)
 Add `content/lab/strategies/<name>.toml` and push to main. The lab rereads the folder each round and queues personas × seeds for it. Editing what a strategy does (instruction, style, gate, insert, what the stand-in reads) re-queues it; editing its notes doesn't.

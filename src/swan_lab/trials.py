@@ -166,7 +166,7 @@ def loop(once=False, limit=None):
     errors, ran, down = {}, 0, False
     while True:
         rows = library.trials()
-        done = library.done_keys(rows)
+        done = library.done_keys(rows, stand_in.model)
         q = [x for x in library.queue(library.strategies(), library.personas(), done)
              if errors.get((x[0]["name"], x[1]["id"], x[2]), 0) < MAX_ERRORS]
         status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model)
@@ -176,12 +176,15 @@ def loop(once=False, limit=None):
             time.sleep(300)
             continue
         s, c, seed = q[0]
+        stand_in.restore()
         if down and not stand_in.up():                  # still down: no reply drafted for nothing
             time.sleep(300)
             continue
         down = False
         try:
             rec = run_trial(s, c, seed, gen, stand_in, news)
+        except npc.Switched:                            # the primary went down: run it again on the fallback
+            continue
         except RuntimeError as e:                       # the stand-in is down (an outage, not this trial): wait
             print(f"lab: {e}; waiting 5 min")
             down = True

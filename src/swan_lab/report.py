@@ -40,8 +40,14 @@ def current(rows, strats):
 
 
 def markdown(rows=None, strats=None):
+    """One section per stand-in model: trials on different models are never pooled."""
     strats = strats if strats is not None else library.strategies()
     allrows = rows if rows is not None else library.trials()
+    models = sorted({r.get("lab_model") or "?" for r in allrows}) or ["–"]
+    return "\n".join(section([r for r in allrows if (r.get("lab_model") or "?") == m], strats) for m in models)
+
+
+def section(allrows, strats):
     rows = current(allrows, strats)
     by = collections.defaultdict(list)
     for r in rows:

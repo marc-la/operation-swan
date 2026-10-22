@@ -60,7 +60,8 @@ def main():
             pathlib.Path(args.out).write_text(md)
         print(md)
     else:
-        q = library.queue(library.strategies(), library.personas(), library.done_keys(library.trials()))
+        q = library.queue(library.strategies(), library.personas(),
+                          library.done_keys(library.trials(), config.LAB_MODEL))
         print(json.dumps(dict(queued=len(q), trials=len(library.trials()), personas=len(library.personas()),
                               strategies=[s["name"] for s in library.strategies()]), indent=1))
 
