@@ -54,7 +54,8 @@ def test_reply_modes_differ_only_in_the_reason(monkeypatch):
         meta = {}
         out[mode] = content.reply_prompt(text, "F14_no_yes_but", ["the list"], meta=meta, persona=content.PERSONAS[0])
         assert meta["reply_mode"] == mode and meta["lever"] in content.LEVERS
-        assert experiment.ASK_KINDS[meta["ask_kind"]] in out[mode]
+        assert (content.REPLY_ASK_NONE if meta["ask_kind"] == "none" else experiment.ASK_KINDS[meta["ask_kind"]]) \
+            in out[mode]
     assert "Answer WHY they lean Yes" in out["reason_first"] and "Don't argue about these" in out["reason_first"]
     assert "Answer WHY" not in out["conditions_first"] and "Use their terms" in out["conditions_first"]
     assert "answer the reason above" in out["reason_first"]
@@ -74,7 +75,7 @@ def test_no_ask_drops_the_question(monkeypatch):
     monkeypatch.setattr(config, "PIN", {"ask_kind": "none"})
     meta = {}
     u = content.reply_prompt("not sure about the mandate", "F1_blank_cheque", [], meta=meta)
-    assert meta["ask_kind"] == "none" and experiment.ASK_KINDS["none"] in u
+    assert meta["ask_kind"] == "none" and content.REPLY_ASK_NONE in u          # replies end on the reason
     # a post told to end without a question passes the gate without one (bot.draft_checked reads closing_question)
     meta = {}
     u = content.post_prompt("F1_blank_cheque", meta=meta, persona=content.PERSONAS[0])

@@ -869,9 +869,10 @@ REPLY_ASK_NONE = "End on your reason, said plainly, with no question at all (thi
 
 
 def worn_line(target_text):
-    """Keep off our worn phrases, except those the citizen used first (then they're their words, not our template)."""
+    """Keep off our worn phrases, except those the citizen used first (then they're their words, not our template)
+    and those that say a paused fact (the prompt never brings that fact up, and must not name it)."""
     theirs = (target_text or "").lower()
-    worn = [p for p in WORN_PHRASES if p not in theirs]
+    worn = [p for p in WORN_PHRASES if p not in theirs and not fact_store.paused_in(p)]
     return (f"Build your sentences your own way, and keep off these worn phrases: "
             f"{', '.join(repr(p) for p in worn)}. " if worn else "")
 
