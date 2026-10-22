@@ -297,6 +297,14 @@ DRAFTER_SILENT_S = 30 * 60          # ...or the drafter (one draft may try sever
 # (n=195), GLM-5 0 of 69 (not_specific 36, near_duplicate 28): GLM-5 drafts amplified posts only (AMP_MODELS).
 REPLY_MODELS = ("moonshotai.kimi-k2.5", "gemini-3.5-flash-lite")
 REPLY_NEVER = {"zai.glm-5"}
+# Pacing. 22 Oct overnight: 2.2-2.3 writes/min (per_min 2.5 clamped, jitter 0.7-1.5) and the queue grew at Sydney peak.
+# The writer now aims at the team limit (deploy/run.sh --per-min 2.9): the next write waits for the larger of the pace
+# gap and the headers' gap (bot.write_gap): X-RateLimit-Remaining must be back to WRITE_MARGIN + 1, so each of our
+# writes leaves WRITE_MARGIN for the swarm (swan-swarm reposts while >= SWARM_WRITE_RESERVE are left). A 429 waits its
+# Retry-After. MAX_PER_MIN is the rules' 3/min (posts + replies + reposts, team-wide); the headers bind first.
+MAX_PER_MIN = 3.0
+WRITE_MARGIN = 1
+WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1.0)
 
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped

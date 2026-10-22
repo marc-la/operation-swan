@@ -75,8 +75,28 @@ def save_json(path, obj, private=False):
 
 
 def pace_gap(per_min):
-    """Seconds from one write to the next: 60 / per_min, times 0.7-1.5 (the live pace since todo/03)."""
-    return 60.0 / per_min * random.uniform(0.7, 1.5)
+    """Seconds from one write to the next at per_min on average: 60 / per_min, times WRITE_JITTER (todo/24; the live
+    pace was 0.7-1.5, 10% slow on average, from todo/03 to 22 Oct)."""
+    return 60.0 / per_min * random.uniform(*config.WRITE_JITTER)
+
+
+def header_gap(rl, margin=None):
+    """Seconds until the team's write budget, as our last write's X-RateLimit-* reported it, has margin + 1 writes in
+    it again, so our next write leaves `margin` for the swarm's reposts (todo/24). The bucket refills steadily: the
+    writes it is short of come back over `reset` seconds, one every reset / (limit - remaining). 0 with no headers."""
+    margin = config.WRITE_MARGIN if margin is None else margin
+    if rl is None or rl.limit <= 0:
+        return 0.0
+    short = (margin + 1) - rl.remaining
+    if short <= 0:
+        return 0.0
+    return short * rl.reset / max(rl.limit - rl.remaining, 1)
+
+
+def write_gap(rl, per_min):
+    """Seconds from this write to our next: never faster than pace_gap(per_min) on average, and never before the
+    headers say the budget is back above the margin (header_gap). A 429 still waits its Retry-After (handle())."""
+    return max(pace_gap(per_min), header_gap(rl))
 
 
 def alert(msg):
@@ -729,7 +749,8 @@ def main():
     ap.add_argument("--live", action="store_true", help="really register accounts and post (default: dry run)")
     ap.add_argument("--accounts", type=int, default=6, help=f"active accounts to grow to, one every 20-40 min (max {config.MAX_ACCOUNTS})")
     ap.add_argument("--hours", type=float, default=8)
-    ap.add_argument("--per-min", type=float, default=1.0, help="max team writes per minute (hard max 2.5); real pace follows the target queue")
+    ap.add_argument("--per-min", type=float, default=1.0, help=f"max team writes per minute (hard max {config.MAX_PER_MIN}); the write budget's headers and the target "
+                    f"queue set the real pace")
     ap.add_argument("--amplify", action="store_true", help="own-team amplification of our posts (todo/04); "
                     "touch AMPLIFY_OFF in the repo root to pause it without a restart")
     ap.add_argument("--boosters", type=int, default=0, help=f"with --amplify: like-only accounts to grow to, one every "
@@ -750,7 +771,7 @@ def main():
     config.assigned_side()
     code, owner = config.team_code(), config.operator()
     k = max(1, min(args.accounts, config.MAX_ACCOUNTS))
-    per_min = max(0.1, min(args.per_min, 2.5))
+    per_min = max(0.1, min(args.per_min, config.MAX_PER_MIN))    # the headers bind first (write_gap)
 
     split = config.SPLIT_LOOP                           # todo/22: reader, drafter and writer threads
     social = ctn.LegitSocial()
@@ -786,6 +807,7 @@ def main():
     beats = {}                           # thread name -> time its loop last went round (status.json, the watchdog)
     workers = []
     rate_limited = []                    # times of 429s in the last hour (dashboard)
+    write_rl = [None]                    # the write budget as our last write's headers reported it (todo/24)
     last_status = [0.0]
 
     def write_status():
@@ -801,6 +823,8 @@ def main():
         try:                             # the dashboard must never stop the bot
             save_json(config.STATUS_FILE, dict(
                 ts=now_iso(), per_min=per_min, llm=gen.status(), rate_limited_last_hour=len(rate_limited),
+                write_budget=(dict(limit=write_rl[0].limit, remaining=write_rl[0].remaining, reset=write_rl[0].reset,
+                                   margin=config.WRITE_MARGIN) if write_rl[0] else None),
                 accounts=dict(live=len(accounts.active()), voices=len(accounts.voices()),
                               boosters=len(accounts.boosters()), used=len(recs),
                               suspended=sum(r.get("status") == "suspended" for r in recs)),
@@ -1131,9 +1155,7 @@ def main():
                 acc = accounts.relogin(rec)
                 r = write(acc)
             post_id = r["post_id"]
-            rl = acc.rate_limit                      # the team-wide write budget, as this answer reported it
-            if rl and rl.remaining == 0:
-                pause(rl.reset / max(rl.limit, 1) + 1)
+            write_rl[0] = acc.rate_limit             # the team-wide write budget, as this answer reported it
             # a citizen who talks back to us: follow them from that persona (separate follow budget)
             if mode == "reply_back" and target["author_id"] not in rec.setdefault("followed", []):
                 try:
@@ -1146,7 +1168,7 @@ def main():
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
             accounts.save()
             if args.live:
-                next_write = time.time() + pace_gap(per_min)
+                next_write = time.time() + write_gap(write_rl[0], per_min)      # todo/24: from the headers
             stats["accepted"] += 1
             stats["by_mode"][mode] = stats["by_mode"].get(mode, 0) + 1
             state["modes"] = (state["modes"] + [mode])[-20:]
