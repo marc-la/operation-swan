@@ -32,20 +32,20 @@ class Targeter:
 
 
 def test_citizen_candidate_beats_a_due_thread_job():
-    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(): dict(username="v2"))
+    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(), **kw: dict(username="v2"))
     citizen = lambda: bot.citizen_reply(Targeter(candidate()), accounts, set(), [], {})
     job = bot.pick_job(None, citizen, amp())
     assert job["mode"] == "reply" and job["target"]["post_id"] == 7
 
 
 def test_thread_job_when_no_citizen_waits():
-    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(): dict(username="v2"))
+    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(), **kw: dict(username="v2"))
     assert bot.pick_job(None, lambda: bot.citizen_reply(Targeter(), accounts, set(), [], {}), amp())["mode"] == "thread"
 
 
 def test_candidate_kept_when_no_voice_is_free():
     t = Targeter(candidate())
-    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(): None)
+    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(), **kw: None, resting=lambda t: None)
     job = bot.pick_job(None, lambda: bot.citizen_reply(t, accounts, set(), [], {}), amp())
     assert job["mode"] == "thread" and 7 in t.candidates, "the citizen waits for the next free voice"
 
@@ -58,7 +58,7 @@ def test_queued_reply_back_goes_first():
 def test_every_candidate_field_reaches_the_job():
     """todo/23: group (and any later candidate field) is copied to the reply job; the targeter's bookkeeping isn't."""
     cand = dict(candidate(), group="sweep", target_class="unsure", priority=4.2, arm=None, tries=2, not_before=9.0)
-    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(): dict(username="v2", persona="mere"))
+    accounts = types.SimpleNamespace(eligible=lambda frame, prefer=(), **kw: dict(username="v2", persona="mere"))
     job = bot.citizen_reply(Targeter(cand), accounts, set(), [], {})
     assert job["group"] == "sweep" and job["target_class"] == "unsure" and job["priority"] == 4.2
     assert job["target"]["post_id"] == 7 and job["cand"] is cand and job["mode"] == "reply"
@@ -67,7 +67,7 @@ def test_every_candidate_field_reaches_the_job():
 
 def voices(*free):
     """accounts.eligible over these free personas, preferring as Accounts.eligible does (any of prefer, else first)."""
-    def eligible(frame, prefer=()):
+    def eligible(frame, prefer=(), **kw):
         mine = [p for p in free if p in prefer]
         return dict(username=(mine or list(free))[0], persona=(mine or list(free))[0]) if free else None
     return types.SimpleNamespace(eligible=eligible)

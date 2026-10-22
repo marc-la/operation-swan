@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 
 import capturethenarrative as ctn
 
-from . import config, content
+from . import config, content, stealth
 from .targeting import FIRM_NO, FIRM_YES, REFERENDUM
 
 NO_TAGS = re.compile(r"#(voteno|keepkingstoniaopen|choicenotcoercion|nomandate|protectchoice)\b", re.I)
@@ -137,6 +137,8 @@ class Amplifier:
         return config.AMP_OFF_FILE.exists()
 
     def asleep(self, rec, at=None):
+        if rec.get("role", "voice") != "booster" and rec.get("persona"):     # todo/31: a voice's own sleep window
+            return self.live and stealth.asleep(rec["persona"], at)
         start = rec.get("sleep_start")
         if start is None or not config.SLEEP_H:
             return False
@@ -189,7 +191,7 @@ class Amplifier:
         config.AMP_AUTHOR_EXPLORE of the time."""
         hidden = self.accounts.hidden()
         reserved = getattr(self.accounts, "reserved", ())     # a draft of theirs waits to be sent (bot.py, todo/22)
-        ready = [r for r in self.accounts.voices() if self.accounts.ready(r) and r["persona"] not in reserved
+        ready = [r for r in self.accounts.voices() if self.accounts.ready(r, citizen=False) and r["persona"] not in reserved
                  and hidden.get(r["username"], 0) < config.HIDDEN_OFF_AMP]          # a voice with a hidden post stays off
         if not ready:
             return None
@@ -273,7 +275,8 @@ class Amplifier:
             reposted = post.setdefault("reposted", [])            # personas that reposted it (once each)
             if th["kind"] == "answer":
                 rec = self.accounts.by_persona(th["author"])
-                if not rec or rec.get("last_write", 0) + config.REPOST_MIN_GAP_S > t:
+                if (not rec or rec.get("last_write", 0) + config.REPOST_MIN_GAP_S > t
+                        or self.accounts.rest(rec, t, citizen=False)):        # todo/31: asleep or capped
                     continue
             else:
                 gap = config.REPOST_MIN_GAP_S if th["kind"] == "repost" else None

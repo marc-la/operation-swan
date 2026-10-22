@@ -38,6 +38,7 @@ RETRY_AFTER = 1           # the one 429 the world answers (on the first journali
 RUN_S = 12                # a run's --hours, in seconds
 VOICES = 6                # seeded voices; the last is parked (HIDDEN_STOP hidden posts)
 JOB_TYPES = {"reply", "reply_back", "second_voice", "journalist", "post", "repost"}
+STEALTH_RULES = ("VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN")
 
 
 def iso(t=None):
@@ -266,6 +267,10 @@ def setup_world(mp, tmp, split, amp_off=False):
                       ("SECOND_VOICE_ARMS", {"fast": (0, 0.05), "slow": (0, 0.05)}), ("OWN_LIKE_DELAY_S", (0, 0.05)),
                       ("AMP_PRIORITY_S", 0), ("READER_SILENT_S", 30), ("DRAFTER_SILENT_S", 30)):
         mp.setattr(config, attr, val)
+    # todo/31's human day is off here (the checklist needs second voices and many writes in 12 s); it runs end to end
+    # with these worlds in tests/test_stealth.py
+    for attr in STEALTH_RULES:
+        mp.setattr(config, attr, False)
     mp.setattr(config, "load_env", lambda *a, **kw: None)
     mp.setattr(config, "assigned_side", lambda: "no")
     mp.setattr(config, "team_code", lambda: "dummy-team-code")

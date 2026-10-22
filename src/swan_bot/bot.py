@@ -32,7 +32,7 @@ import traceback
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, experiment, feeds, humanize, pulse, quality, themes, watch
+from . import batch, config, content, experiment, feeds, humanize, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
@@ -202,16 +202,47 @@ class Accounts:
         """Too many hidden posts to write again (config.HIDDEN_STOP): a person decides what happens to it."""
         return self.hidden().get(rec["username"], 0) >= config.HIDDEN_STOP
 
-    def ready(self, rec, t=None):
-        """May this voice write now (its per-account gap has passed)?"""
+    def rest(self, rec, t=None, citizen=True):
+        """Why this voice keeps from writing now under todo/31's human day ("voice_asleep", "voice_capped"), or None.
+        citizen: the write is to a citizen (the end of the daily budget is kept for those). Live only."""
+        return stealth.rest(rec, t, citizen) if self.live else None
+
+    def gap_ok(self, rec, t):
+        """Its jittered gap, or the start stagger, has passed (todo/31; an ordinary write's gap, live only)."""
+        return not (self.live and stealth.gap_on()) or rec.get("next_ok", 0) <= t
+
+    def status(self, rec, t=None, citizen=True):
+        """What holds this voice now, for status.json: parked, voice_asleep, voice_capped, gap, or None (free).
+        citizen=False: for a write that isn't to a citizen (capped earlier, VOICE_CITIZEN_RESERVE)."""
+        t = time.time() if t is None else t
+        if self.parked(rec):
+            return "parked"
+        gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
+        return self.rest(rec, t, citizen) or (None if self.gap_ok(rec, t) and rec.get("last_write", 0) + gap <= t
+                                              else "gap")
+
+    def resting(self, t=None, citizen=True):
+        """The reason most of the unparked voices keep from writing when none of them is free or merely in its gap,
+        else None: the skip reason that explains a quiet writer (todo/31). citizen: as in status()."""
+        t = time.time() if t is None else t
+        states = [self.status(r, t, citizen) for r in self.voices() if not self.parked(r)]
+        if not states or None in states or "gap" in states:
+            return None
+        why = [s for s in states if s in ("voice_asleep", "voice_capped")]
+        return max(set(why), key=why.count) if why else None
+
+    def ready(self, rec, t=None, citizen=True):
+        """May this voice write now (its per-account gap has passed, and todo/31's human day allows it)?"""
+        t = t or time.time()
         gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
         return (rec.get("status", "active") == "active" and not self.parked(rec)
-                and rec.get("last_write", 0) + gap <= (t or time.time()))
+                and rec.get("last_write", 0) + gap <= t and self.gap_ok(rec, t) and not self.rest(rec, t, citizen))
 
-    def assignable(self, frame=None, exclude=(), prefer=()):
+    def assignable(self, frame=None, exclude=(), prefer=(), citizen=False):
         """Like eligible(), but the voice may still be in its gap: for batched drafts that wait in the pool."""
+        t = time.time()
         free = [r for r in self.voices() if r["persona"] not in exclude and r["persona"] not in self.reserved
-                and not self.parked(r)]
+                and not self.parked(r) and not self.rest(r, t, citizen)]
         mine = [r for r in free if r["persona"] in prefer]
         if mine:
             free = mine
@@ -219,14 +250,18 @@ class Accounts:
             free = [r for r in free if frame in content.PERSONA_BY_KEY[r["persona"]]["frames"]] or free
         return min(free, key=lambda r: r.get("last_write", 0)) if free else None
 
-    def eligible(self, frame=None, exclude=(), gap=None, prefer=()):
+    def eligible(self, frame=None, exclude=(), gap=None, prefer=(), citizen=False):
         """The voice that wrote longest ago among those free now: a shared-identity messenger (prefer) first,
-        then personas whose home frames include the frame."""
+        then personas whose home frames include the frame. todo/31: not asleep or capped (citizen: the write is to a
+        citizen, so the end of the daily budget is open to it), and an ordinary write (gap None) waits for the
+        voice's jittered gap; a repost (gap given) only for its own."""
         t = time.time()
+        jitter = gap is None
         if gap is None or not self.live:                         # dry runs rotate personas without waiting
             gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
         ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude
-                 and r["persona"] not in self.reserved and not self.parked(r)]
+                 and r["persona"] not in self.reserved and not self.parked(r)
+                 and (not jitter or self.gap_ok(r, t)) and not self.rest(r, t, citizen)]
         mine = [r for r in ready if r["persona"] in prefer]
         if mine:
             ready = mine
@@ -289,19 +324,24 @@ def voice_wait(job, accounts, live, t=None):
     The split loop's writer checks it at send time, since a draft may have waited (todo/22)."""
     if not live:
         return 0.0
-    mode = job["mode"]
+    mode, t = job["mode"], time.time() if t is None else t
     gap = (REPLY_BACK_GAP_S if mode == "reply_back" else config.REPOST_MIN_GAP_S if mode in ("repost", "thread_answer")
            else config.ACCOUNT_MIN_GAP_S)
-    return max(0.0, job["rec"].get("last_write", 0) + gap - (time.time() if t is None else t))
+    wait = job["rec"].get("last_write", 0) + gap - t
+    if gap == config.ACCOUNT_MIN_GAP_S and stealth.gap_on():          # todo/31: an ordinary write's jittered gap
+        wait = max(wait, job["rec"].get("next_ok", 0) - t)
+    return max(0.0, wait)
 
 
 def gone_at_send(job, state, t=None):
     """Why a draft that waited may no longer go out (split loop, todo/22), or None: its target was answered meanwhile
-    ("replied"), or the citizen is now talking with SESSION_VOICES of our voices ("session_cap"). The serial loop
-    checks the same when it chooses, right before it sends."""
+    ("replied"), another voice of ours has the citizen today ("voice_owner", todo/31), or the citizen is now talking
+    with SESSION_VOICES of our voices ("session_cap"). The serial loop checks the same when it chooses."""
     mode, target = job["mode"], job.get("target") or {}
     if mode in ("reply", "reply_back") and target.get("post_id") in state["replied_posts"]:
         return "replied"
+    if stealth.owner_problem(state, job, t):        # todo/31: one voice per citizen per day
+        return "voice_owner"
     if mode in ("reply", "second_voice"):
         voices = set(sessions(state["contacted"], t).get(str(target.get("author_id")), ())) | {job["rec"]["persona"]}
         if len(voices) > config.SESSION_VOICES:
@@ -696,7 +736,8 @@ def own_likes(state, accounts, live, now=None):
     for x in due:
         state["own_likes"].remove(x)
         likers = [r for r in accounts.boosters() if not accounts.parked(r)] or \
-                 [r for r in accounts.voices() if r["username"] != x["author"] and not accounts.parked(r)]
+                 [r for r in accounts.voices() if r["username"] != x["author"] and not accounts.parked(r)
+                  and not (live and stealth.asleep(r["persona"], now))]          # todo/31: not in its sleep
         if not likers or x["post_id"] is None:
             continue
         rec = random.choice(likers)
@@ -729,9 +770,26 @@ def reply_job(cand, rec):
                 cand=cand)
 
 
+_REST_LOGGED = {}             # todo/31: why -> [time last logged, times seen since]
+
+
+def log_rest(why, **fields):
+    """A skip for todo/31's human day ("voice_asleep", "voice_capped", "voice_owner"), logged at most every
+    STEALTH_LOG_S per reason, with n: how often it happened since the last line (the writer waits meanwhile)."""
+    t = time.time()
+    last = _REST_LOGGED.setdefault(why, [0.0, 0])
+    last[1] += 1
+    if t - last[0] < config.STEALTH_LOG_S:
+        return
+    log({"act": "skip", "why": why, "n": last[1], **fields})
+    last[:] = [t, 0]
+
+
 def candidate_voice(pick, cand, **kw):
     """The voice for a candidate: the one the citizen engaged with (cand["prefer"], todo/23) when it is free, else a
-    shared-identity messenger, else one whose home frames fit. pick: accounts.eligible or accounts.assignable."""
+    shared-identity messenger, else one whose home frames fit. pick: accounts.eligible or accounts.assignable. The
+    write is to a citizen, so the end of a voice's daily budget is open to it (citizen=True, todo/31)."""
+    kw.setdefault("citizen", True)
     want = cand.get("prefer")
     if want:
         rec = pick(cand["frame"], prefer=(want,), **kw)
@@ -740,18 +798,46 @@ def candidate_voice(pick, cand, **kw):
     return pick(cand["frame"], prefer=messengers(cand.get("identity")), **kw)
 
 
-def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted, engaged=()):
+OWNER_TRIES = 5               # todo/31: candidates looked at in one slot when their voice is held
+
+
+def citizen_reply(targeter, accounts, our_ids, replied_posts, contacted, engaged=(), state=None):
     """The best waiting citizen candidate with a voice free to answer it, as a reply job, or None. contacted: our
     voices per citizen this session (targeting.sessions); engaged: citizens who replied to us before. frame is None
-    when no doubt regex matched (the drafting call picks one, todo/20)."""
-    cand = targeter.next_target(our_ids, set(replied_posts), contacted, engaged)
-    if not cand:
-        return None
-    rec = candidate_voice(accounts.eligible, cand)
-    if not rec:
-        targeter.requeue(cand, "no_voice")                       # keep it for the next slot
-        return None
-    return reply_job(cand, rec)
+    when no doubt regex matched (the drafting call picks one, todo/20).
+    todo/31, one voice per citizen per day (state's voice_of / thread_voice): a citizen one of our voices wrote to
+    today is answered by that voice only. While it is asleep, capped or in its gap the citizen waits for it (backed
+    off until it is free, 1-30 min at a time) and the next candidate is tried."""
+    t = time.time()
+    for _ in range(OWNER_TRIES):
+        cand = targeter.next_target(our_ids, set(replied_posts), contacted, engaged)
+        if not cand:
+            return None
+        want, conflict = stealth.required_voice(state or {}, cand["post"], t)
+        if conflict:                                   # two voices have them today (one was mentioned): no third
+            targeter.skip(cand["post"], conflict, cand.get("source"))
+            log_rest(conflict, mode="reply", target_post=cand["post"]["post_id"])
+            continue
+        owner = accounts.by_persona(want) if want else None
+        if owner is not None and not accounts.parked(owner):
+            rec = accounts.eligible(cand["frame"], prefer=(want,), citizen=True)
+            if rec and rec["persona"] == want:
+                return reply_job(cand, rec)
+            why = accounts.rest(owner, t) or "voice_owner"
+            cand["not_before"] = t + min(max(stealth.free_in(owner, t), 60), 1800)
+            targeter.requeue(cand, why)
+            log_rest(why, mode="reply", persona=want, target_post=cand["post"]["post_id"])
+            continue
+        # nobody has them today, or their voice is parked or gone: any free voice may answer
+        rec = candidate_voice(accounts.eligible, cand)
+        if not rec:
+            why = accounts.resting(t)
+            targeter.requeue(cand, why or "no_voice")                  # keep it for the next slot
+            if why:
+                log_rest(why, mode="reply", target_post=cand["post"]["post_id"])
+            return None
+        return reply_job(cand, rec)
+    return None
 
 
 def pick_job(job, citizen, amp):
@@ -816,6 +902,9 @@ def main():
                          ("theme_log", []), ("turns", {}), ("styles", {}), ("own_likes", [])):
         state.setdefault(key, default)
     ledger = themes.Ledger(state["theme_log"])          # the themes we sent, team-wide (saved with the state)
+    if args.live:                                       # todo/31: the last day's writes count from the first minute,
+        stealth.seed(accounts.records, state, config.ACTIONS_LOG)      # and the voices start at their own times
+        stealth.stagger(accounts.voices())
 
     amp = None
     if args.amplify:
@@ -854,6 +943,9 @@ def main():
                 accounts=dict(live=len(accounts.active()), voices=len(accounts.voices()),
                               boosters=len(accounts.boosters()), used=len(recs),
                               suspended=sum(r.get("status") == "suspended" for r in recs)),
+                # todo/31: per voice its writes, active hours, hidden posts and what holds it; the two-voice share
+                stealth=stealth.metrics(accounts.voices(), accounts.hidden(), state, t,
+                                        status=lambda r: accounts.status(r, t)),
                 # todo/22: each thread's heartbeat (max_silent_s: the watchdog's limit) and the queues between them
                 **(dict(loop="split", threads={name: dict(
                     last_run=dt.datetime.fromtimestamp(b, dt.timezone.utc).isoformat(), age_s=round(t - b),
@@ -981,14 +1073,21 @@ def main():
         engaged = set(state["engaged"])
         pending = [j["mode"] for j in held()]               # chosen but not sent yet: counted as written (todo/22)
         job = None
-        if queue:
-            job = queue.pop(0)
+        # the first reply-back whose voice may write: not within REPLY_BACK_GAP_S of its last write (don't double-post
+        # from one account), and awake and under its caps (todo/31: it answers when it wakes; the rest go meanwhile)
+        for j in queue:
+            if j["rec"].get("last_write", 0) + REPLY_BACK_GAP_S > t:
+                continue
+            why = accounts.rest(j["rec"], t)
+            if why:
+                log_rest(why, mode="reply_back", persona=j["rec"]["persona"], target_post=j["target"]["post_id"])
+                continue
+            job = j
+            queue.remove(j)
             job["frame"] = content.PERSONA_BY_KEY[job["rec"]["persona"]]["frames"][0]
             # the conversation goes on in the style of our reply they answered (todo/20 step 3)
             job["style"] = state["styles"].get(str(job["target"].get("reply_to_post_id")))
-            if job["rec"].get("last_write", 0) + REPLY_BACK_GAP_S > t:      # don't double-post from one account
-                queue.insert(0, job)
-                job = None
+            break
         conv_arm = experiment.block("arm_conv")[1]      # todo/25 broadcast arm: a plain persona post ahead of citizens
         if (job is None and conv_arm == "broadcast" and (not amp or amp.paused())
                 and "post" not in pending and t - state.get("last_post", 0) > config.CONV_POST_GAP_S):
@@ -997,16 +1096,18 @@ def main():
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
         job = pick_job(job, (lambda: None) if desk else
-                       (lambda: citizen_reply(targeter, accounts, ids, state["replied_posts"], contacted, engaged)), amp)
+                       (lambda: citizen_reply(targeter, accounts, ids, state["replied_posts"], contacted, engaged,
+                                              state)), amp)
         drafted = None
         if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
             return None, None, WAIT_S["priority"]
         gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
                           or (j["mode"] == "reply"
                               and len(contacted.get(str(j["target"]["author_id"]), ())) >= config.SESSION_VOICES))
-        if job is None and desk and config.SECOND_VOICE:
+        second = config.SECOND_VOICE and not config.ONE_VOICE_PER_CITIZEN     # todo/31: one voice per citizen
+        if job is None and desk and second:
             drafted = desk.take("second_voice", t, gone)
-        if job is None and drafted is None and config.SECOND_VOICE:
+        if job is None and drafted is None and second:
             state["second_voice"] = [s for s in state["second_voice"] if t - s["due"] < 3600]   # stale after 1 h
             due = [s for s in state["second_voice"] if s["due"] <= t]
             picked = []
@@ -1085,6 +1186,11 @@ def main():
             if rec:
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         if job is None:
+            # todo/31: no voice may write a post or a thread reply now (asleep or capped; citizens may still get the
+            # rest of a voice's day): the writer just waits, and the skip says why the volume is lower
+            why = accounts.resting(t, citizen=False)
+            if why:
+                log_rest(why, mode=None, voices=len(accounts.voices()))
             return None, None, WAIT_S["nothing"]
         if job.get("target") and not drafted:                 # todo/24: the strict near-duplicate comparison
             job["same_texts"] = same_target_texts(state.get("recent_sent", []), ready, job["target"])
@@ -1153,9 +1259,19 @@ def main():
                 if gone:
                     log({"act": "skip", "why": f"{gone}_at_send", "mode": mode, "persona": persona["key"],
                          "target_post": target and target["post_id"], "draft_id": job["draft_id"]})
-                    if job.get("cand") and gone == "session_cap":
-                        targeter.requeue(job["cand"], "held")     # answered once their session is over
+                    if job.get("cand") and gone in ("session_cap", "voice_owner"):
+                        targeter.requeue(job["cand"], "held")     # answered once their session is over / by their voice
                     return
+            # todo/31: the voice fell asleep or reached a cap while its draft waited (both loops check it here)
+            rest = accounts.rest(rec, citizen=mode in stealth.CITIZEN_MODES)
+            if rest:
+                log({"act": "skip", "why": f"{rest}_at_send", "mode": mode, "persona": persona["key"],
+                     "target_post": target and target["post_id"], "draft_id": job["draft_id"]})
+                if job.get("cand"):
+                    targeter.requeue(job["cand"], "held")
+                elif mode == "reply_back":
+                    queue.append(job)                     # answered when its voice wakes
+                return
             # the slogan budget again at send time (a pooled draft waited; another account may have used it since)
             thread = themes.thread_of(target) if target else None
             why = text and (ledger.send_problem(text, persona["key"], thread) or
@@ -1202,6 +1318,9 @@ def main():
                     print("follow:", e.status, e.message)
         with mu:
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
+            stealth.on_write(rec, rec["last_write"])            # todo/31: its day's writes and its next gap
+            if target:
+                stealth.record(state, target, persona["key"], mode)     # todo/31: this voice has the citizen today
             accounts.save()
             if args.live:
                 next_write = time.time() + write_gap(write_rl[0], per_min)      # todo/24: from the headers

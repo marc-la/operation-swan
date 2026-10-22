@@ -28,7 +28,7 @@ def is_citizen(account_id):
 
 MAX_ACCOUNTS = 21                   # lifetime cap on voices: 12 used + 5 promoted 21 Oct + 4 replacements; boosters: MAX_BOOSTERS
 REGISTER_GAP_S = (20 * 60, 40 * 60) # drip registration: one new account every 20-40 min, never a burst
-ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03)
+ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03); todo/31 jitters it (VOICE_GAP)
 # Moderator-hidden posts per voice (scripts/swan_watch.py). 1 hidden + ≥100 actions = the next account report
 # suspends it; 3 hidden = suspended (scoring guide §3). Lost @lani_wharfcafe23 this way on 2026-10-20.
 HIDDEN_OFF_AMP = 1                  # this many: off amplified posts and threads (less on show, fewer reports)
@@ -324,6 +324,42 @@ NEWS_THREADS_S = 30 * 60
 # ---- todo/27 fingerprint (todo/27-stop-the-fingerprint.md) ----
 # 2026-10-22 05:00 UTC: the moderator hid 2, 5, 6 of our posts an hour (other teams' Blue reports on one reply template,
 # "...no end date... I'm voting No."). deploy/run.sh --per-min 2.9 -> 2.4 until hides stay under 1/h for 6 h.
+
+# ---- todo/31 stealth (todo/31-stealth.md; swan_bot/stealth.py), 2026-10-22 ----
+# Audit 22 Oct ~10:15 UTC: each voice wrote 100-200 times in 24 h across 18-24 hours of the day, and 294 of 730 citizens
+# got two of our voices within 60 min: what other teams' Blue reporters see (33 posts hidden on 16 voices, 13 of 61
+# accounts banned). Each voice now keeps a human day. Every rule has its own switch (False + a restart: as before);
+# they hold for the live bot only. Fewer, human-looking writes is the trade (persuasion pays, volume barely does).
+# Kingstonia has no stated time zone (docs/01-competition/setting.md: "a few hours' flight from Australia and NZ"),
+# so its clock is the competition's, Sydney (LOCAL_TZ): when citizens are online and when the day rolls over.
+VOICE_DAY_CAP = True
+VOICE_WRITES_PER_DAY = 40           # writes per voice in any 24 h: posts, replies, reposts, thread replies, all of them
+VOICE_CITIZEN_RESERVE = 8           # ...of which the last 8 are only for writes to citizens (reply, reply-back)
+VOICE_HOUR_CAP = True
+VOICE_WRITES_PER_H = 6              # and in any 60 min (todo/27's unfinished per-hour cap)
+# A fixed sleep window per voice (Sydney hours), from its persona key: a start in its kind's range, a length in
+# VOICE_SLEEP_H. Stable across restarts and machines; the voices go to sleep at different times. Kinds from the cards:
+# night-shift nurse Ana sleeps in the day, the early-ferry and before-dawn people go to bed early. 25.5 = 01:30.
+VOICE_SLEEP = True
+VOICE_SLEEP_H = (7.0, 8.0)
+VOICE_SLEEP_STARTS = {"night": (22.0, 25.5), "early": (20.0, 21.5), "day": (8.0, 10.5)}
+VOICE_SLEEP_KIND = {"ana": "day", "lani": "early", "ben": "early", "tomasi": "early", "esther": "early"}
+# No fixed cadence: after each write a voice's next ordinary write waits a lognormal gap (median s, sigma, min s,
+# max s; the min is the old fixed ACCOUNT_MIN_GAP_S), and VOICE_BREAK_P of the time a 1-2 h break instead.
+# Reply-backs, reposts and own-thread answers keep their short gaps (a person answers someone who talks to them).
+VOICE_JITTER = True
+VOICE_GAP = (12 * 60, 0.6, 4 * 60, 45 * 60)
+VOICE_BREAK_P = 0.08
+VOICE_BREAK_S = (60 * 60, 120 * 60)
+VOICE_STAGGER = True                # after a (re)start each voice waits its own random 0-20 min before its first write
+VOICE_STAGGER_S = 20 * 60
+# One voice per citizen per day: no other voice of ours replies to a citizen, or under their post, for ONE_VOICE_S
+# unless the citizen addressed that voice (a reply-back stays with the voice they answered or mentioned). A citizen
+# whose voice is asleep or capped waits for it. Second voices can't run under it (SECOND_VOICE is off anyway).
+ONE_VOICE_PER_CITIZEN = True
+ONE_VOICE_S = 24 * 3600
+STEALTH_SEED_BYTES = 64 * 2 ** 20   # on start the last day of writes is read back from the tail of the actions log
+STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is logged at most this often per reason
 
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped

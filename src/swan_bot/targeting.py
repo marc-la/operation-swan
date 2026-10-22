@@ -228,7 +228,8 @@ def contact(contacted, author, persona, t=None):
     contacted.setdefault(str(author), []).append([t, persona])
 
 
-DELIBERATE_WAITS = ("session_cap", "firm_yes_cap", "reply_back")   # pending on purpose, not slow (oldest_pending)
+VOICE_WAITS = ("voice_asleep", "voice_capped", "voice_owner")      # todo/31: a voice keeping a human day
+DELIBERATE_WAITS = ("session_cap", "firm_yes_cap", "reply_back") + VOICE_WAITS   # pending on purpose (oldest_pending)
 
 
 def locked(method):
@@ -896,10 +897,13 @@ class Targeter:
         """Put a handed-out candidate back, pending for `why` (G8): "no_voice" is tried again at the next slot, and so
         is "held" (a draft that waited when the bot stopped, todo/22); anything else (a failed draft, no model
         answering) after a backoff of 2, 4, 8... up to 30 min, until it ages out (then it is lost as expired:<why>).
-        A "no_voice" or "held" hand-out doesn't count against its group's cap."""
-        if why in ("no_voice", "held") and cand.get("out_at") in self.group_out.get(cand.get("net"), []):
+        A "no_voice" or "held" hand-out doesn't count against its group's cap. todo/31's VOICE_WAITS are no_voice
+        with the reason (the voice is asleep, capped, or the citizen's voice of the day is busy): no try counted, and
+        the caller's not_before (until that voice is free) is kept."""
+        free = why in ("no_voice", "held") + VOICE_WAITS
+        if free and cand.get("out_at") in self.group_out.get(cand.get("net"), []):
             self.group_out[cand["net"]].remove(cand["out_at"])
-        if why not in ("no_voice", "held"):
+        if not free:
             cand["tries"] = cand.get("tries", 0) + 1
             cand["not_before"] = time.time() + min(120 * 2 ** (cand["tries"] - 1), 1800)
         self.candidates[cand["post"]["post_id"]] = cand
