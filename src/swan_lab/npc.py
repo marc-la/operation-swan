@@ -39,8 +39,8 @@ class StandIn:
         self.last = 0.0
         self.calls = 0
 
-    def ask(self, system, user, max_tokens=220, temperature=0.7):
-        for attempt in range(4):
+    def ask(self, system, user, max_tokens=220, temperature=0.7, tries=4):
+        for attempt in range(tries):
             time.sleep(max(0.0, self.last + self.gap - time.time()))
             self.last = time.time()
             try:
@@ -60,6 +60,14 @@ class StandIn:
             self._pace(raw.headers)
             return raw.parse().choices[0].message.content or ""
         raise RuntimeError("stand-in unavailable")
+
+    def up(self):
+        """One tiny call: True when the stand-in answers (used after an outage, before drafting more replies)."""
+        try:
+            self.ask("Answer with one word.", "Say ok.", max_tokens=2, temperature=0.0, tries=1)
+            return True
+        except RuntimeError:
+            return False
 
     def _pace(self, headers):
         """A remaining count of 0 holds the next call until the window resets."""

@@ -163,7 +163,7 @@ def loop(once=False, limit=None):
     """Run the queue (new strategy files and cards are picked up each round); wait when it is empty."""
     config.SWITCHBACK = []                              # the lab drafts today's base behaviour, not a live arm
     gen, stand_in, news = Generator(config.team_code()), npc.StandIn(), News()
-    errors, ran = {}, 0
+    errors, ran, down = {}, 0, False
     while True:
         rows = library.trials()
         done = library.done_keys(rows)
@@ -176,10 +176,15 @@ def loop(once=False, limit=None):
             time.sleep(300)
             continue
         s, c, seed = q[0]
+        if down and not stand_in.up():                  # still down: no reply drafted for nothing
+            time.sleep(300)
+            continue
+        down = False
         try:
             rec = run_trial(s, c, seed, gen, stand_in, news)
         except RuntimeError as e:                       # the stand-in is down (an outage, not this trial): wait
             print(f"lab: {e}; waiting 5 min")
+            down = True
             status(queued=len(q), trials=len(rows), ran=ran, lab_model=stand_in.model, down=str(e))
             time.sleep(300)
             continue

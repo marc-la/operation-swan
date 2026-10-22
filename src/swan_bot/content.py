@@ -857,8 +857,9 @@ FIRST_CALL_RULES = ("Name one concrete detail from their post. Put any fact in y
                     "your notes.")
 
 
-def avoid_line(recent, n=3, words=5):
-    """'Don't open the way our latest replies did: «...»' for the last n texts (their first words), or ""."""
+def avoid_line(recent, n=10, words=5):
+    """'Don't open the way our latest replies did: «...»' for the last n texts (their first words), or "". n=10 since
+    2026-10-22 (todo/24: near_duplicate was the top reject at 3)."""
     opens = [" ".join(t.split()[:words]) for t in list(recent or ())[-n:] if t and t.strip()]
     return f"Don't open the way our latest replies did ({'; '.join(f'«{o}»' for o in opens)}), or reuse their phrasing. " \
         if opens else ""
