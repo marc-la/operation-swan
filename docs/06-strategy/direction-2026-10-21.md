@@ -20,7 +20,7 @@
 | # | Move | Now (×1) | At ×4 (1–2 Nov) | Status | Who / next step |
 |---|---|---|---|---|---|
 | 1 | **Ship todo/19:** citizen reply before any thread job; Latest every 2 min, paged to the last seen post; fresh posts first; classify keeps "Yes, with conditions" (43 of 53 brought back); reply-backs and second voices on | 15–25 → **250–500** at peak (120–250 measured at 25% coverage) | ~1,000–2,000 | Allowed | **Shipped** 2026-10-21 (d99bd34) |
-| 2 | **Replies that convert** ([todo/20](../../todo/20-replies-that-convert.md)): the style citizens answer (mirror their detail, concede it, one anchor or fact, state No; 150–280 characters); the levers that worked; drop the weak frames; no pro-vaccine praise until Q3 is answered | Unknown, the biggest ceiling. One toward change an hour ≈ +200; the leaders' implied pace is ~4/h | ×4 | Allowed | New session tonight |
+| 2 | **Replies that convert** (todo/20): the style citizens answer (mirror their detail, concede it, one anchor or fact, state No; 150–280 characters); the levers that worked; drop the weak frames; no pro-vaccine praise until Q3 is answered | Unknown, the biggest ceiling. One toward change an hour ≈ +200; the leaders' implied pace is ~4/h | ×4 | Allowed | New session tonight |
 | 3 | **Blue account-first reporting:** account reports can't lock us; each suspension pays 15 to every open reporter. Leads are post authors and reply-ring repliers (pure likers never get a hidden post). A lock delays a lead rather than losing it, and our own post hides create leads, so post reports still matter | 25–100, ×1 for the rest of the game | same (Blue stays ×1) | Allowed | **Live** (`swan-blue`, 8cd57ac: only account reports go out when there are enough leads to fill every free slot) |
 | 4 | **Fix Kimi's length rejects** (47 of its 64 rejects; 2.8 calls per accepted reply) | +25–75 (10–25% more replies saved, drafting 17 s → ~8 s) | ×4 | Allowed | todo/20 step |
 | 5 | **LLM headroom:** replies already draft on Kimi/GLM first (Bedrock credits). Full coverage costs ~$0.8–1.6/day against a $2.55/day reply share | Protects ~3.5 h/day of peak | ×4 | Allowed | **Gemini billing not needed now** (Marc, 2026-10-22). Revisit only if `llm_spend.json` shows the daily share running out, or second voices stall when flash-lite runs out (then move `second_voice` to the strong models) |
@@ -33,7 +33,7 @@ The leaders' points are changes of mind at volume. That needs three things, in t
 | Layer | Where | What | Target |
 |---|---|---|---|
 | Volume | [todo/19](../../todo/README.md) (shipped), todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c) | Read Latest every 2 min; fresh posts first; hard-skip only non-citizens, off-topic, hostile and replied posts; the stance sets priority; per-post and per-session limits, not 72 h per author; citizen replies count as targets too | ≥ 80% of citizen items answered; 40–55 citizen-facing writes/h at peak |
-| The light read | [todo/20](../../todo/20-replies-that-convert.md) step 2 | One drafting call returns stance, doubt, frame and reply (or skip); the stance picks the approach; logged | Calibrated against the regex class in a day |
+| The light read | todo/20 step 2 | One drafting call returns stance, doubt, frame and reply (or skip); the stance picks the approach; logged | Calibrated against the regex class in a day |
 | Conversion | todo/20 steps 3–8 | Concede-and-anchor style A/B; weak frames out; no vaccine advocacy; reply-backs within minutes, up to 3 turns; a second voice inside the session; one own like A/B | "Towards your side" per 100 citizen-facing writes > "away" + "neither" |
 | Feedback | todo/20 step 1 | Portal hourly events joined to writes; per-class and per-arm reply rates; skip reasons; followup re-reads | A daily read-out, then winners become defaults |
 | Blue (steady) | `swan-blue` (live) | Account leads first | 25–100/h at ×1 |
@@ -67,7 +67,7 @@ Drafts are in [A (Q2–Q5)](research-2026-10-21/A-rules.md#c-top-7) and [B](rese
 1. ~~Push todo/19~~ **done** (d99bd34).
 2. **Marc:** pause amplification (`AMPLIFY_OFF`, above).
 3. Questions: **not posted for now** (Marc, 2026-10-22), so mentions, the alliance and "other view" posting stay off, and todo/20 takes the safe path on vaccine talk.
-4. **Start [todo/20](../../todo/20-replies-that-convert.md) and todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c)** in fresh sessions. They touch the same files: small commits, `git diff` first.
+4. **Start todo/20 and todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c)** in fresh sessions. They touch the same files: small commits, `git diff` first.
 5. ~~Gemini billing~~: not needed now (row 5).
 6. **Morning check (~07:00 Perth):**
    - `data/portal.json` events: ≥150 points/h and ≥5 citizen replies/h;
@@ -94,3 +94,29 @@ Drafts are in [A (Q2–Q5)](research-2026-10-21/A-rules.md#c-top-7) and [B](rese
 - todo/24: ~2.9 writes/min, GLM out, no wasted drafts.
 - [todo/25](../../todo/25-conversion-what-moves-them.md): conversion, top priority.
 - todo/26: fewer locked hours, more teams at full rate.
+
+## 24 h read-out, 2026-10-22 15:04 UTC (todo/20, todo/23, todo/25)
+
+`scripts/conversion_report.py --split 2026-10-21T15:00 --hours 24` on the box. The portal shares are weak inference (events spread over the writes of the 3 h before them).
+
+| Window (UTC) | Citizen-facing writes | Towards / away / neither (portal) | Per 100 writes |
+|---|---|---|---|
+| 20 Oct 15:00 → 21 Oct 15:00 | ~250 | 4 / 6 / 25 | **1.6** / 2.4 / 9.8 |
+| 21 Oct 15:00 → 22 Oct 15:00 | 2,302 (reply 1,837, second voice 266, reply-back 199) | 1 / 11 / 93 | **0.0** / 0.5 / 4.0 |
+
+**The headline:** ~9× the writes brought fewer changes toward No (4 → 1). Volume buys engagement points, not persuasion. Conversion is todo/25's job (the NPC lab, now on the GPU).
+
+**todo/20 arms (after window), decided by the rules:**
+- Reply style: `current` 12% citizen replies [10–13%] against `mirror_concede` 9% [8–11%], portal 0.1/0.6 against 0.0/0.5 → `REPLY_STYLES = ["current"]`.
+- Own like: 12% [10–13%] with, 9% [8–11%] without, portal the same → on for every reply (`OWN_LIKE_VARIANTS = [True]`).
+- Second voices: 5% replies [3–8%], 0.03 likes/write, slow ones 2.9 away per 100. Off at 13:00 UTC (stealth), back on at 11:50 UTC in 87c6e8e by team decision (throughput over stealth).
+- firm_yes arm: 8 writes, held.
+- Models: Kimi K2.5 1,798 writes, 10% replies; GLM-5 16% [10–24%] on 76; qwen-plus-character 0% on 52.
+
+**todo/25 switchback arms (blocks, portal lines 1 h after):** base 459 writes, 0 towards / 1 away; broadcast 196, 0 / 3; old_models 266, 1 / 8; no_leaners 158, 0 / 2. old_models and no_leaners killed in 102feb7 (away above base). Broadcast had 0 / 0 at the 18:13 Perth check and stayed; it now shows 0 / 3, so on the same rule it goes too (todo/25 session).
+
+**todo/23 groups (baseline: ordinary on-topic replies, 1,407 writes, 10%):**
+- sweep: 275 writes, 11%, 0.02 likes/write, **3 hidden posts** → killed (`SWEEP_ARM = False`).
+- off_topic: 20 writes, 20% [9–38%] → cap 3 → 6/h.
+- turnout: 121 writes, 10% → raise, but it has no cap; unchanged.
+- older (12 writes) and engaged (2) → held, too thin; engaged's `visits` too few to judge `ENGAGED_RECONTACT_S`.

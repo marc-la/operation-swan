@@ -98,7 +98,9 @@ FIRM_YES_PER_H = 2                  # a few % of ~40-55 citizen-facing writes an
 # rate holds at or above the baseline for 24 h.
 # A, the sweep: walk every citizen (ids 12-CITIZEN_MAX_ID plus EXTRA_CITIZEN_RANGES), read their last posts and queue
 # their most recent post on the vote, any age. A reply lands in their notifications and is read at their next session.
-SWEEP_ARM = True
+# 2026-10-22 read-out (todo/23 rules): killed. 275 writes, reply rate 11% but 0.02 citizen likes/write, and 3 of
+# our hidden posts came from it (the kill rule: an arm that caused a hidden post).
+SWEEP_ARM = False
 SWEEP_PER_H = 20
 SWEEP_NIGHT_PER_H = 40              # Sydney night (NIGHT_HOURS): few citizens post, the write budget is idle
 NIGHT_HOURS = range(0, 7)           # Sydney hours (LOCAL_TZ)
@@ -117,7 +119,7 @@ OLDER_PER_H = 10
 # prompt leaves the referendum out and the gate rejects a turn to it (quality: off_topic_vote, 60-220 characters):
 # 6 of 6 dry-run drafts on their topic, first call. On.
 OFF_TOPIC_ARM = True
-OFF_TOPIC_PER_H = 3
+OFF_TOPIC_PER_H = 6                 # 2026-10-22 read-out: raised from 3 (20% citizen replies vs 10% baseline, 20 writes)
 OFF_TOPIC_RECONTACT_S = 3 * 86400
 # D, engaged quiet citizens: citizens who liked our voices' recent posts or follow a voice; we answer their most
 # recent post from the voice they engaged with (job["prefer"], bot.candidate_voice). Their off-topic posts need
@@ -283,7 +285,9 @@ LIGHT_READ = True
 # Reply style arm, taken in turn per reply (experiment.alternate): "mirror_concede" (mirror one detail, concede, one
 # anchor, state No; 150-280 characters, no question) against "current". The firm-Yes arm (todo/21) is always
 # mirror_concede. To keep a winner, list only it here.
-REPLY_STYLES = ["mirror_concede", "current"]
+# 2026-10-22 24 h read-out (21 Oct 15:00 to 22 Oct 15:00 UTC): current 12% citizen replies [10-13] vs mirror_concede
+# 9% [8-11], portal per 100 writes 0.1/0.6 vs 0.0/0.5 towards/away. Current kept.
+REPLY_STYLES = ["current"]
 # Second voice inside the citizen's session (step 7): sessions last 1-5 min, and the contribution pool counts only
 # posts read in the session where the change happens. Delays taken in turn, logged as sv_delay (was always 10-30 min).
 SECOND_VOICE_ARMS = {"fast": (60, 4 * 60), "slow": (10 * 60, 30 * 60)}
@@ -291,6 +295,9 @@ SECOND_VOICE_ARMS = {"fast": (60, 4 * 60), "slow": (10 * 60, 30 * 60)}
 # 1-4 min after it goes out (logged as own_like on the reply, and as a like with purpose reply_like). Drop it if
 # citizen likes and replies don't rise.
 OWN_LIKE_ARM = True
+# 2026-10-22 read-out: with an own like 12% citizen replies [10-13] vs 9% [8-11] without, portal the same. Kept on
+# every reply; list [True, False] to test again.
+OWN_LIKE_VARIANTS = [True]
 OWN_LIKE_DELAY_S = (60, 4 * 60)
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"

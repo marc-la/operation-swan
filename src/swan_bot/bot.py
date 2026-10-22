@@ -1379,7 +1379,7 @@ def main():
                                                   first_persona=persona["key"], wants=job.get("wants"),
                                                   context=job.get("context")))
             if mode == "reply" and config.OWN_LIKE_ARM:            # todo/20 step 8: one own like, alternate replies
-                job["own_like"] = experiment.alternate("own_like", [True, False])
+                job["own_like"] = experiment.alternate("own_like", config.OWN_LIKE_VARIANTS)
                 if job["own_like"]:
                     state["own_likes"].append(dict(post_id=post_id, due=time.time() + random.uniform(*config.OWN_LIKE_DELAY_S),
                                                    author=rec["username"], draft_id=job["draft_id"]))
