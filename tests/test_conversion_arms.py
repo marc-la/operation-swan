@@ -99,3 +99,34 @@ def test_replies_no_longer_state_our_vote_and_keep_off_worn_phrases():
         assert "'end date'" in p and "'sunset'" not in p                    # the citizen said sunset first
     assert "plain statement of your No" not in "".join(prompts)
     assert content.worn_line(" ".join(content.WORN_PHRASES)) == ""
+
+
+def test_fresh_facts_arm_offers_news_that_fits_the_citizen(tmp_path, monkeypatch):
+    import datetime as dt
+    from swan_bot import content
+    from swan_bot import facts as fact_store
+    now = dt.datetime.now(dt.timezone.utc)
+    stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    old = (now - dt.timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    overlay = tmp_path / "facts_auto.toml"
+    overlay.write_text(
+        f'[ferry_queue_checks]\ntext = "The ferry company says it has no staff to check passes at the wharf gate."\n'
+        f'note = "ferry company has no staff to check passes"\nstatus = "active"\n'
+        f'source = "kingstonia-herald/ferry-pass-checks"\nchecked = {stamp}\nadded = {stamp}\nnumbers = []\n'
+        f'says = []\nframes = []\n'
+        f'[stale_news]\ntext = "An old story about the ferry."\nnote = "old ferry story"\nstatus = "active"\n'
+        f'source = "daily-kingstonia/old"\nchecked = {old}\nadded = {old}\nnumbers = []\nsays = []\nframes = []\n')
+    monkeypatch.setattr(fact_store, "AUTO_FILE", overlay)
+    try:
+        picked = content.fresh_facts("Worried about the ferry queue if they check passes at the wharf")
+        assert [k for k, _, _ in picked] == ["ferry_queue_checks"]                 # 48 h only, the fitting one
+        assert picked[0][2] == "Kingstonia Herald"
+        monkeypatch.setattr(config, "SWITCHBACK", [("arm_conv", ["fresh_facts"], 7200)])
+        job = job_for(None, body="Worried about the ferry queue if they check passes at the wharf")
+        _, _, user = bot.build_prompt(job, types.SimpleNamespace(headline=None))
+        assert "New this week in the papers: ferry company has no staff to check passes (Kingstonia Herald)" in user
+        assert job["meta"]["fresh"] == ["ferry_queue_checks"] and "fresh" in bot.ARMS
+        assert user.index("New this week") < user.index("First read them")         # before the JSON instructions
+    finally:
+        monkeypatch.undo()
+        fact_store.refresh(force=True)

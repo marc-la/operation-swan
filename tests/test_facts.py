@@ -282,3 +282,29 @@ def test_the_gate_rejects_paused_wording_and_false_claims(pause):
     assert quality.check(post, "post")[1] == "paused_fact_no_spread"
     false = post.replace("There's no community spread on the island", "There are no cases on the island")
     assert quality.check(false, "post")[1] == "false_claim"
+
+
+def test_an_auto_accepted_fact_reaches_a_frame_prompt_without_a_restart(tmp_path, monkeypatch):
+    """The desk writes its overlay mid-run; the next refresh() re-reads the table, content.sync_frames joins the fact
+    to its frame, and the frame's system prompt can state it, newest first (2026-10-22: no restart on a facts change)."""
+    import datetime as dt
+    overlay = tmp_path / "facts_auto.toml"
+    monkeypatch.setattr(fact_store, "AUTO_FILE", overlay)
+    try:
+        fact_store.refresh()
+        assert "harbour_clinic_hours" not in content.FRAMES["F2_no_end"]["facts"]
+        now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        overlay.write_text(
+            '[harbour_clinic_hours]\ntext = "The Crown Harbour clinic now opens on Saturdays for H2D2 doses."\n'
+            'note = "Crown Harbour clinic opens Saturdays"\nstatus = "active"\n'
+            'source = "daily-kingstonia/clinic-saturday-hours"\n'
+            f'checked = {now}\nadded = {now}\nnumbers = []\nsays = []\nframes = ["F2_no_end"]\n')
+        fact_store.refresh()
+        assert "harbour_clinic_hours" in content.FRAMES["F2_no_end"]["facts"]
+        assert fact_store.active(content.FRAMES["F2_no_end"]["facts"])[0] == "harbour_clinic_hours"
+        system = content.system_prompt(content.PERSONAS[0], "F2_no_end")
+        assert "Crown Harbour clinic opens Saturdays" in system
+    finally:
+        monkeypatch.undo()
+        fact_store.refresh(force=True)
+        assert "harbour_clinic_hours" not in content.FRAMES["F2_no_end"]["facts"]

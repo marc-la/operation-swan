@@ -9,7 +9,9 @@ stamps `checked`. (The EC2 box can't push, so the pause file is never edited to 
 
 TEXTS and NOTES are the active facts (content.FACTS and content.FACT_NOTES are the same dicts). They are rebuilt in
 place whenever the pause file changes: every accessor here calls refresh(), which costs one stat, so the bot picks
-up a pause on its next draft without a restart.
+up a pause on its next draft without a restart. Since 2026-10-22 refresh() also re-reads the table itself when
+content/facts.toml or the desk's overlay changes (three stats), and calls ON_RELOAD (content.sync_frames), so a fact
+the desk accepts reaches the prompts without a restart either.
 """
 import datetime as dt
 import json
@@ -24,7 +26,7 @@ from . import config
 FILE = config.ROOT / "content" / "facts.toml"
 # tests/conftest.py points this at a missing file, so a live pause on the box can't change what the tests see
 PAUSED_FILE = pathlib.Path(os.environ.get("SWAN_FACTS_PAUSED") or config.DATA / "facts_paused.json")
-# the fact desk's own decisions (todo/29, factdesk.auto_decide): read at start, so the desk restarts the bot after one;
+# the fact desk's own decisions (todo/29, factdesk.auto_decide): re-read by refresh() when it changes (reload_table);
 # tests/conftest.py points this at a missing file too
 AUTO_FILE = pathlib.Path(os.environ.get("SWAN_FACTS_AUTO") or config.DATA / "facts_auto.toml")
 STATUSES = ("active", "paused")
@@ -97,6 +99,47 @@ PAUSED = {}                 # key -> why it is out of the prompts: "file" (its s
 changed_at = 0.0            # when a refresh last paused something new (drafts pooled before it are dropped)
 _UNREAD = object()
 _stamp = _UNREAD
+ON_RELOAD = []              # called after the table is re-read (content.sync_frames joins new facts to their frames)
+
+
+def _file_stamp(path):
+    try:
+        st = pathlib.Path(path).stat()
+        return st.st_mtime_ns, st.st_size, st.st_ino
+    except FileNotFoundError:
+        return None
+
+
+def _table_stamp():
+    return _file_stamp(FILE), _file_stamp(AUTO_FILE), str(FILE), str(AUTO_FILE)
+
+
+_loaded = _table_stamp()
+
+
+def reload_table(force=False):
+    """Re-read facts.toml and the desk's overlay if either changed (or force): TABLE, the false claims and SAYS are
+    replaced in place, then ON_RELOAD runs. True if re-read. A file that doesn't parse keeps the last table."""
+    global FALSE_CLAIMS, _loaded
+    stamp = _table_stamp()
+    if stamp == _loaded and not force:
+        return False
+    try:
+        table, false_claims = load()
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        print(f"facts: re-read failed ({type(e).__name__}: {e}); keeping the last table")
+        _loaded = stamp
+        return False
+    _loaded = stamp
+    TABLE.clear()
+    TABLE.update(table)
+    FALSE_CLAIM_PATTERNS[:] = false_claims
+    FALSE_CLAIMS = either(false_claims)
+    SAYS.clear()
+    SAYS.update({k: either(f["says"]) for k, f in TABLE.items() if f.get("says")})
+    for hook in ON_RELOAD:
+        hook()
+    return True
 
 
 def linked(frame_key):
@@ -132,12 +175,13 @@ def refresh(force=False):
     """Re-read the pause file if it changed (or force) and rebuild TEXTS, NOTES and PAUSED in place. True if it was
     re-read. An unreadable file keeps the last pauses (and is an error at first load: deploy/check.sh then fails)."""
     global _stamp, changed_at
+    reloaded = reload_table()
     try:
         st = PAUSED_FILE.stat()
         stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
     except FileNotFoundError:
         stamp = None
-    if stamp == _stamp and not force:
+    if stamp == _stamp and not force and not reloaded:
         return False
     try:
         runtime = read_pauses() if stamp else {}

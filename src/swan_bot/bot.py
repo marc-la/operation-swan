@@ -467,7 +467,7 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
-        "block_id", "arm_conv")
+        "block_id", "arm_conv", "fresh")
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level")
 
@@ -554,6 +554,10 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
                                     theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"],
                                     recent=recent_texts)
+        if meta.get("arm_conv") == "fresh_facts" and job["style"] != "off_topic":     # todo/25: news first
+            fresh = content.fresh_line(body, meta)
+            user = user.replace("\n\nFirst read them", f" {fresh}\n\nFirst read them", 1) \
+                if job["read"] else f"{user} {fresh}"
         if content.group_style(job):                              # todo/23's groups: one line of guidance
             user = user.replace("\n\nFirst read them", f" {content.group_style(job)}\n\nFirst read them", 1) \
                 if job["read"] else f"{user} {content.group_style(job)}"
@@ -565,6 +569,8 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     else:
         user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"))
         meta["style"] = job.get("style")
+        if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
+            user = f"{user} {content.fresh_line(body, meta)}".rstrip()
     return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
                                           pulse_parts=parts), user
 

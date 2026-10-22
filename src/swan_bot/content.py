@@ -130,8 +130,17 @@ FRAMES = {
         facts=["free_either_way", "covid_business", "no_spread"],
         requires=["free_either_way", "list_later"], weight=2, second="F1_blank_cheque"),
 }
-for _key, _frame in FRAMES.items():      # facts.toml `frames = [...]`: an approved fact joins after the frame's own
-    _frame["facts"] = _frame["facts"] + [k for k in fact_store.linked(_key) if k not in _frame["facts"]]
+def sync_frames():
+    """facts.toml `frames = [...]`: an approved fact joins after the frame's own facts. Run at import and again each
+    time the fact table is re-read (facts.ON_RELOAD), so a fact the desk accepts mid-run reaches the frame prompts
+    without a restart (2026-10-22)."""
+    for key, frame in FRAMES.items():
+        own = frame.setdefault("own_facts", list(frame["facts"]))
+        frame["facts"] = own + [k for k in fact_store.linked(key) if k not in own]
+
+
+sync_frames()
+fact_store.ON_RELOAD.append(sync_frames)
 
 # Yes arguments citizens repeat, our answer (grant the concern first), and the facts the answer states (it isn't used
 # while one is paused). Added to reply prompts when matched.
@@ -866,6 +875,40 @@ WORN_PHRASES = ("binds us", "no review", "end date", "venue list", "list of plac
 # a reply's ask_kind "none" ends on the reason, not on experiment.ASK_KINDS' "plain statement of your No" (posts keep it)
 REPLY_ASK_NONE = "End on your reason, said plainly, with no question at all (this replaces any instruction above to " \
                  "finish on a question)."
+
+
+_WORD = re.compile(r"[a-z]{4,}")
+
+
+def fresh_facts(target_text, n=2, now=None):
+    """Up to n active facts the desk added in the last fact_store.FRESH_S, from any frame (todo/25, Marc 22 Oct: new
+    information is one of the few things that can move a settled citizen): those sharing the most words with the
+    citizen's post first, then the newest. [(key, note, paper)]."""
+    fact_store.refresh()
+    now = now or dt.datetime.now(dt.timezone.utc)
+    words = set(_WORD.findall((target_text or "").lower()))
+    fresh = []
+    for k in fact_store.NOTES:
+        when = fact_store.added(k)
+        if when and (now - when).total_seconds() < fact_store.FRESH_S:
+            f = fact_store.TABLE[k]
+            overlap = len(words & set(_WORD.findall(f"{f['text']} {f['note']}".lower())))
+            paper = (f.get("source") or "").split("/")[0].replace("-", " ").title()
+            fresh.append((overlap, when, k, f["note"], paper))
+    fresh.sort(key=lambda x: (-x[0], -x[1].timestamp()))
+    return [(k, note, paper) for _, _, k, note, paper in fresh[:n]]
+
+
+def fresh_line(target_text, meta=None):
+    """'New this week: ...' for the reply prompt (the fresh_facts arm), or "" when the desk added nothing lately."""
+    picked = fresh_facts(target_text)
+    if meta is not None:
+        meta["fresh"] = [k for k, _, _ in picked]
+    if not picked:
+        return ""
+    rows = "; ".join(f"{note}" + (f" ({paper})" if paper else "") for _, note, paper in picked)
+    return (f"New this week in the papers: {rows}. If one bears on their point, build your reply on it, in your own "
+            f"words, and name the paper; it's news they may not have seen. ")
 
 
 def worn_line(target_text):

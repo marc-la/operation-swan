@@ -3,8 +3,8 @@ articles from the two papers are checked against content/facts.toml; a contradic
 (data/facts_paused.json, which the bot re-reads on its next draft) and everything else is proposed. With
 config.FACTDESK_AUTO (todo/29, on since 22 Oct) the desk then decides its open proposals itself
 (factdesk.auto_decide): changes go to the overlay data/facts_auto.toml, each logged in data/facts_auto.jsonl
-(by "factdesk-auto") and alerted with its undo command, with no daily cap (config.FACTDESK_AUTO_PER_DAY), and the bot is
-restarted once to read them. Pauses, proposals and decisions go to logs/alerts.log (the dashboard shows it) and the
+(by "factdesk-auto") and alerted with its undo command, with no daily cap (config.FACTDESK_AUTO_PER_DAY). The bot
+picks the overlay up on its next draft (facts.refresh re-reads it); no restart since 22 Oct. Pauses, proposals and decisions go to logs/alerts.log (the dashboard shows it) and the
 team Mongo; scripts/facts_review.py still decides by hand whatever the desk leaves.
 
     python scripts/swan_factdesk.py                      # what the timer runs
@@ -99,16 +99,6 @@ def main():
     if not args.dry:
         state["last_run"] = dt.datetime.now(dt.timezone.utc).isoformat()    # the dashboard's "desk stalled" check
         factdesk.write_json(factdesk.STATE_FILE, state)      # after the decisions: a failed mirror waits in it
-        if auto and auto["applied"]:
-            restart_bot()
-
-
-def restart_bot():
-    """The bot reads its facts at start (facts.load, overlay included): restart it, as a deploy does (update.sh)."""
-    try:
-        subprocess.run(["sudo", "-n", "systemctl", "try-restart", "swan-bot"], check=False, timeout=60)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        print(f"restart: {type(e).__name__}; the overlay goes live on the next deploy or restart")
 
 
 if __name__ == "__main__":

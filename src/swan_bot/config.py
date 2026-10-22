@@ -374,7 +374,9 @@ STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is 
 # 2026-10-22 10:30 UTC: old_models and no_leaners killed by the rule "away above base" (block table at 10:14 UTC,
 # portal lines 1 h after: base 2 blocks 0 toward / 0 away; old_models 2 blocks 1 / 5; no_leaners 1 block 0 / 2;
 # broadcast 1 block 0 / 0, kept). old_models was the only arm touching the referendum view, but net away.
-CONV_ARMS = ["base", "broadcast"]
+# 2026-10-22: fresh_facts (Marc): replies offered 1-2 facts the desk added in the last 48 h that fit the citizen's
+# post, "New this week in the papers: ..." (content.fresh_line; logged as `fresh` on the write).
+CONV_ARMS = ["base", "broadcast", "fresh_facts"]
 CONV_BLOCK_S = 2 * 3600
 CONV_POST_GAP_S = 20 * 60
 CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
