@@ -13,7 +13,7 @@ A strategy file:
     gate = true                  # the live quality gate and its repairs (false: one draft, safety checks only)
     insert = "mention" | "link"  # optional: code adds the citizen's @handle, or a verified article URL
     drafter = "deepseek.v3.2"    # optional: the one drafting model (config.LAB_DRAFTERS); default the live reply order
-    npc_reads = "reply" | "control" | "two_voice"   # what the stand-in reads (default "reply")
+    npc_reads = "reply" | "control" | "post"   # what the stand-in reads (default "reply"); post: a persona post in its feed
     control_text = "..."         # for npc_reads = "control": the unrelated post it reads instead
 """
 import hashlib

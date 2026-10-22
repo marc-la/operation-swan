@@ -1,0 +1,5 @@
+name = "question_close"
+author = "marc"
+priority = 10
+notes = "Round 2 (2026-10-22). The 20-21 Oct pattern: 44% of replies before toward events ended on a real question (20% now)."
+instruction = "End on one real question they can answer from their own week, not a rhetorical one."

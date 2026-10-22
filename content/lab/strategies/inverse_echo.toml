@@ -1,0 +1,6 @@
+name = "inverse_echo"
+author = "marc"
+priority = 13
+notes = "Round 2 (2026-10-22). Lab only: a pure echo of their own position (expect about 0)."
+instruction = "Only agree with what they said, restating their own position in your words. Add no new point and no reason of your own."
+gate = false

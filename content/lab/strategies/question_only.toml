@@ -1,0 +1,5 @@
+name = "question_only"
+author = "marc"
+priority = 10
+notes = "Round 2 (2026-10-22). A question only: they do the reasoning."
+instruction = "Write only one real question, about their own week or the people around them, that makes them weigh what the rule would mean in practice. No argument, no claims of your own."

@@ -1,0 +1,5 @@
+name = "ask_permission"
+author = "marc"
+priority = 13
+notes = "Round 2 (2026-10-22). Ask before making the case."
+instruction = "Begin by asking whether you can share what gives you pause, then give one reason in a single sentence."

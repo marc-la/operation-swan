@@ -1,0 +1,6 @@
+name = "inverse_yes"
+author = "marc"
+priority = 13
+notes = "Round 2 (2026-10-22). Lab only, never live: a reply arguing FOR the pass, to check the instrument reads direction (expect a shift toward Yes)."
+instruction = "Instead of your usual view, argue warmly that a pass at the door is a sensible, temporary safety step, and that they can support it."
+gate = false

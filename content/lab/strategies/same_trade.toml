@@ -1,0 +1,5 @@
+name = "same_trade"
+author = "marc"
+priority = 10
+notes = "Round 2 (2026-10-22). Messenger match: speak as one of them."
+instruction = "If their post shows their work, suburb or island, speak as someone in that same trade or place, from that shared experience. Otherwise speak as a near neighbour."

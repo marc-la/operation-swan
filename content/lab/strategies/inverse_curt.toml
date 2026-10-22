@@ -1,0 +1,6 @@
+name = "inverse_curt"
+author = "marc"
+priority = 13
+notes = "Round 2 (2026-10-22). Lab only: a curt, dismissive reply (backfire check: expect toward Yes or 0)."
+instruction = "Reply curtly and dismissively, as if their concern is obvious nonsense, in one or two short sentences. No insults or slurs."
+gate = false

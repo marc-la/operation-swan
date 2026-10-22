@@ -1,0 +1,5 @@
+name = "concede_pivot"
+author = "marc"
+priority = 10
+notes = "Round 2 (2026-10-22). Concede-then-pivot."
+instruction = "Grant their safety goal fully, in one short line of your own. Then show one concrete way a pass at the door fails that same goal."

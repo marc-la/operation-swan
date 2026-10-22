@@ -122,6 +122,19 @@ def draft(strategy, card, seed, gen, news):
     return text, backend, meta
 
 
+def draft_post(strategy, card, seed, gen):
+    """(text, backend, meta): a persona post as the live bot drafts one (build_prompt "post", the gate), plus the
+    strategy's instruction. The voice is the card's voice for this seed, as for replies."""
+    persona = voice_for(card, seed)
+    job = dict(mode="post", rec=dict(persona=persona["key"]), frame=content.pick_frame(persona))
+    _, system, user = bot.build_prompt(job, types.SimpleNamespace(headline=None))
+    if strategy["instruction"]:
+        user += f"\n\nFor this post, also: {strategy['instruction']}"
+    text, backend, _ = bot.draft_checked(gen, job, system, user, [])
+    meta = dict(voice=persona["key"], frame=job["frame"], llm_calls=job["meta"].get("llm_calls"))
+    return (text, backend, meta) if text else (None, backend, dict(meta, skip=f"gate:{job['meta'].get('last_reject')}"))
+
+
 def safety(text):
     """The checks no strategy may skip: forbidden content, voting logistics, vaccine advocacy. None when safe."""
     if quality.FORBIDDEN.search(text):
@@ -142,6 +155,14 @@ def run_trial(strategy, card, seed, gen, stand_in, news):
         v = voice_for(card, seed)
         text = strategy.get("control_text") or "Lovely calm morning on the harbour, the ferries are all on time."
         reads, rec["voice"] = npc.reads_post(v["name"], v["handle"], text), v["key"]
+    elif strategy["npc_reads"] == "post":              # a persona post in their feed, not a reply to them
+        text, backend, meta = draft_post(strategy, card, seed, gen)
+        rec.update(meta, backend=backend)
+        if not text:
+            rec["verdict"] = None
+            return rec
+        v = content.PERSONA_BY_KEY[meta["voice"]]
+        reads = npc.reads_post(v["name"], v["handle"], text)
     else:
         text, backend, meta = draft(strategy, card, seed, gen, news)
         rec.update(meta, backend=backend)

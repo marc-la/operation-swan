@@ -1,0 +1,5 @@
+name = "one_line"
+author = "marc"
+priority = 11
+notes = "Round 2 (2026-10-22). Very short."
+instruction = "Write a single sentence of under 90 characters that answers their actual point."

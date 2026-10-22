@@ -1,0 +1,5 @@
+name = "status_quo"
+author = "marc"
+priority = 11
+notes = "Round 2 (2026-10-22). What already works today."
+instruction = "Show what already works today without a pass, using one fact you were given (the free vaccine, uptake, exemptions), and why that's enough."

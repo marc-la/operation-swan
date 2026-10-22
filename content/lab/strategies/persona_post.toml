@@ -1,0 +1,6 @@
+name = "persona_post"
+author = "marc"
+priority = 10
+notes = "Round 2 (2026-10-22). The 20-21 Oct pattern: toward events came with 1-6 persona posts an hour in citizens' feeds. The stand-in scrolls past one of today's persona posts instead of reading a reply."
+npc_reads = "post"
+instruction = ""

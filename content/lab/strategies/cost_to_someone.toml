@@ -1,0 +1,5 @@
+name = "cost_to_someone"
+author = "marc"
+priority = 10
+notes = "Round 2 (2026-10-22). The cost to someone they care about."
+instruction = "Name one person they mention or plainly care about, and show the concrete cost the rule would put on that person on an ordinary day."

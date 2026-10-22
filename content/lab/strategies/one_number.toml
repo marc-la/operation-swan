@@ -1,0 +1,5 @@
+name = "one_number"
+author = "marc"
+priority = 12
+notes = "Round 2 (2026-10-22). One striking in-world number."
+instruction = "Use one striking number from the facts you were given and say what it means for them, and nothing else."
