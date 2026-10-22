@@ -455,6 +455,37 @@ def test_blue_risk_classes_co_reporting_and_detectors(tmp_path):
     assert 'id="blue-risk"' in page(root)[1]
 
 
+def test_facts_section_is_the_autopilot_log_with_undo(tmp_path):
+    root = make_root(tmp_path)
+    (root / "content").mkdir()
+    (root / "content" / "facts.toml").write_text((pathlib.Path(__file__).resolve().parents[1] / "content" /
+                                                  "facts.toml").read_text())
+    base = dict(site="daily-kingstonia", slug="s", quote="The poll moved.", status="open")
+    props = [dict(base, id=1, kind="new_fact", key="k1", text="T"), dict(base, id=2, kind="angle", idea="An idea"),
+             dict(base, id=3, kind="reword", fact="nurses", text="N"), dict(base, id=4, kind="new_fact", key="k4"),
+             dict(base, id=5, kind="contradiction", fact="polls_1021", text="P")]
+    (root / "data" / "fact_proposals.jsonl").write_text("".join(json.dumps(p) + "\n" for p in props))
+    rec = lambda i, status, m, **kw: dict(id=i, status=status, by="factdesk-auto", decided_at=iso(m), site="daily-"
+                                          "kingstonia", slug="s", quote="The poll moved.", summary=f"#{i} {status}", **kw)
+    log = [rec(1, "accepted", 50, kind="new_fact", text="T"), rec(2, "logged", 50, kind="angle"),
+           rec(3, "failed", 50, kind="reword"), rec(4, "accepted", 40, kind="new_fact"), rec(4, "undone", 30),
+           rec(5, "retired", 20, kind="contradiction")]
+    (root / "data" / "facts_auto.jsonl").write_text("".join(json.dumps(r) + "\n" for r in log))
+    (root / "data" / "facts_auto.toml").write_text('[polls_1021]\ntext = "x"\nnote = "y"\nstatus = "paused"\nsource = '
+                                                   f'"s"\nchecked = {iso(20)[:19]}Z\n')
+    (root / "data" / "facts_paused.json").write_text(json.dumps({"polls_1021": {"since": iso(60), "proposal": 5}}))
+    ctx, html = page(root)
+    f = ctx["facts"]
+    assert f["auto"]["on"] and f["auto"]["today"] == 3 and not f["paused"]          # the overlay settled the pause
+    assert [(d["id"], d["status"]) for d in f["auto"]["log"]] == [(5, "retired"), (4, "undone"), (4, "accepted"),
+                                                                  (3, "failed"), (1, "accepted")]
+    undo = {d["id"]: d["undo"] for d in f["auto"]["log"] if d["undo"]}
+    assert set(undo) == {1, 5} and "facts_review.py --undo 5" in html               # #4 was undone already
+    assert [i["id"] for i in f["auto"]["ideas"]] == [2] and 'id="facts-ideas"' in html
+    assert [p["id"] for p in f["proposals"]] == [3, 4]                             # failed and undone: for a human
+    assert f["proposals"][0]["left"] == "#3 failed" and "autopilot: 3 of 5 changes today · 2 for a human" in html
+
+
 def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
     p = {"ts": iso(20), "act": "pulse", "id": 77, "hooks": [{"text": "ferry cuts"}, {"text": "nurses"}],
          "no_shapes": ["a"], "yes_lines": ["b", "c"], "avoid": []}

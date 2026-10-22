@@ -6,6 +6,7 @@ import json
 import pathlib
 import random
 import re
+import time
 import sys
 
 import pytest
@@ -42,6 +43,20 @@ def test_file_parses_and_every_fact_is_valid():
     assert table == fact_store.TABLE and len(table) >= 15 and claims
     for key, fact in table.items():
         assert not factdesk.problems(key, fact), (key, factdesk.problems(key, fact))
+
+
+def test_the_desks_in_process_check_agrees(tmp_path):
+    """factdesk.validate is what the autopilot runs on the box (no pytest there): the file passes it, and it catches
+    a broken fact and a key the code names going missing. An overlay table merges over its key."""
+    assert factdesk.validate(fact_store.TABLE) == []
+    broken = dict(fact_store.TABLE, no_spread=dict(fact_store.TABLE["no_spread"], text=""))
+    assert any("no_spread" in p for p in factdesk.validate(broken))
+    assert any("named in content.py" in p for p in factdesk.validate(
+        {k: v for k, v in fact_store.TABLE.items() if k != "no_end"}))
+    overlay = tmp_path / "auto.toml"
+    overlay.write_text(factdesk.render_tables({"no_spread": dict(fact_store.TABLE["no_spread"], status="paused",
+                                                                 checked=factdesk.stamp(time.time()))}))
+    assert fact_store.load(auto=overlay)[0]["no_spread"]["status"] == "paused"
 
 
 def test_validator_rejects_broken_edits():

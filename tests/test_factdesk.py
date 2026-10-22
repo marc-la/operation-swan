@@ -352,3 +352,131 @@ def test_review_applies_tests_and_records(tmp_path, monkeypatch):
     log = [json.loads(x) for x in (tmp_path / "fact_decisions.jsonl").read_text().splitlines()]
     assert [(d["id"], d["status"]) for d in log] == [(1, "accepted"), (2, "accepted")] and review.decided_ids() == {1, 2}
     assert all(d["decided_by"] and d["summary"] for d in log)
+
+
+# ---- autopilot (todo/29): the desk decides its own proposals into an overlay on the box ------------------------------
+
+QUOTE = "The Health Ministry confirmed a handful of locally acquired cases in Kingstonia City this week."
+SPREAD = dict(text="H2D2 in Kingstonia: a handful of local cases; spread is limited so far.",
+              note="a few local cases; limited spread so far")
+NEW = dict(key="polls_latest", text="Latest poll: No 36.2%, Yes 33.8%, unsure 29.5%; within the margin.",
+           note="No just ahead, within the margin", numbers=["36.2%", "33.8%", "29.5%"], frames=["F1_blank_cheque"])
+NOW = time.mktime((2026, 10, 23, 12, 0, 0, 0, 0, 0))
+
+
+@pytest.fixture
+def auto(tmp_path):
+    """auto(*proposals, **kw): one autopilot run on temporary files; returns (result, paths, alerts, mirrored)."""
+    paths = dict(base=tmp_path / "facts.toml", proposals=tmp_path / "proposals.jsonl", overlay=tmp_path / "auto.toml",
+                 log=tmp_path / "auto.jsonl", decisions=tmp_path / "decisions.jsonl", paused=tmp_path / "paused.json")
+    paths["base"].write_text(TOML)
+
+    def go(*props, now=NOW, **kw):
+        if props:
+            factdesk.append_jsonl(paths["proposals"], props)
+        alerts, mirrored = [], []
+        out = factdesk.auto_decide(now=now, alert=alerts.append, mirror=lambda k, d: mirrored.append((k, d)),
+                                   log=lambda r: None, proposals_file=paths["proposals"], overlay_file=paths["overlay"],
+                                   log_file=paths["log"], decisions_file=paths["decisions"],
+                                   paused_file=paths["paused"], base_file=paths["base"], **kw)
+        return out, alerts, mirrored
+
+    def table():
+        return fact_store.load(paths["base"], auto=paths["overlay"])[0]
+    go.paths, go.table = paths, table
+    return go
+
+
+def test_auto_contradiction_new_key_with_undo_and_record(auto):
+    out, alerts, mirrored = auto(prop("contradiction", id=1, fact="no_spread", quote=QUOTE, **SPREAD))
+    t = auto.table()
+    new_key = next(k for k in t if k.startswith("no_spread_"))
+    assert t["no_spread"]["status"] == "paused" and t[new_key]["text"] == SPREAD["text"]
+    assert not factdesk.validate(t)
+    rec = json.loads(auto.paths["log"].read_text())
+    assert rec["by"] == "factdesk-auto" and rec["status"] == "accepted" and set(rec["keys"]) == {"no_spread", new_key}
+    assert rec["before"] == {"no_spread": None, new_key: None}
+    assert "Undo: ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo 1'" in alerts[0]
+    assert mirrored[0][0] == "decision" and "before" not in mirrored[0][1]
+    assert factdesk.read_proposals(auto.paths["proposals"])[1]["status"] == "accepted"
+    assert "factdesk-auto: proposal 1" in auto.paths["overlay"].read_text()
+    assert auto()[0] == dict(applied=[], logged=[], failed=[], waiting=0)          # decided once, never again
+    factdesk.undo(1, "Marc", now=NOW + 60, overlay_file=auto.paths["overlay"], log_file=auto.paths["log"],
+                  proposals_file=auto.paths["proposals"])
+    t = auto.table()
+    assert t["no_spread"]["status"] == "active" and new_key not in t
+    assert factdesk.read_proposals(auto.paths["proposals"])[1]["status"] == "open"   # back to a human
+    assert auto()[0]["applied"] == []
+    with pytest.raises(ValueError):
+        factdesk.undo(1, "Marc", overlay_file=auto.paths["overlay"], log_file=auto.paths["log"],
+                      proposals_file=auto.paths["proposals"])
+
+
+def test_auto_hedged_or_unusable_contradiction_retires(auto):
+    out, _, _ = auto(prop("contradiction", id=1, fact="no_spread", quote="Officials say H2D2 may now be spreading "
+                          "in the community.", **SPREAD),
+                     prop("contradiction", id=2, fact="polls_1021", quote=QUOTE, text=None, note=None,
+                          failed_checks="voting_logistics"))
+    assert [(r["id"], r["status"]) for r in out["applied"]] == [(1, "retired"), (2, "retired")]
+    t = auto.table()
+    assert t["no_spread"]["status"] == t["polls_1021"]["status"] == "paused" and not factdesk.validate(t)
+
+
+def test_auto_reword_in_place_but_not_under_a_holding_pause(auto):
+    reword = prop("reword", id=3, fact="bill_failed", quote=QUOTE, text="On 15 Oct the Assembly voted the bill down, "
+                  "some of the President's own party too.", note="Assembly said no on 15 Oct, the President's party split")
+    auto.paths["paused"].write_text(json.dumps({"bill_failed": {"since": "2099-01-01T00:00:00Z"}}))
+    out, _, _ = auto(reword)
+    assert out["failed"] and "pause" in out["failed"][0]["summary"] and not auto.paths["overlay"].exists()
+    assert factdesk.read_proposals(auto.paths["proposals"])[3]["status"] == "open"   # a human can still decide it
+    auto.paths["paused"].unlink()
+    out, _, _ = auto(dict(reword, id=4))
+    assert out["applied"][0]["status"] == "accepted"
+    t = auto.table()
+    assert t["bill_failed"]["text"].startswith("On 15 Oct") and not any(k.startswith("bill_failed_") for k in t)
+
+
+def test_auto_new_fact_only_from_news_ideas_logged_and_the_daily_cap(auto):
+    out, alerts, _ = auto(prop("new_fact", id=5, quote=QUOTE, opinion=True, **NEW),
+                          prop("new_fact", id=6, quote="too short", **NEW),
+                          prop("new_fact", id=7, quote=QUOTE, **NEW),
+                          prop("angle", id=8, quote=QUOTE, idea="A sunset clause is the least they owe us."),
+                          cap=1)
+    assert [r["id"] for r in out["applied"]] == [7] and [r["id"] for r in out["logged"]] == [8]
+    assert {r["id"] for r in out["failed"]} == {5, 6} and len(alerts) == 1
+    assert auto.table()["polls_latest"]["status"] == "active"
+    out, _, _ = auto(prop("contradiction", id=9, fact="no_spread", quote=QUOTE, **SPREAD), cap=1)
+    assert out["waiting"] == 1 and not out["applied"]                               # today's one change is spent
+    out, _, _ = auto(cap=1, now=NOW + 86400)
+    assert [r["id"] for r in out["applied"]] == [9]                                 # the next Sydney day
+
+
+def test_auto_changes_go_live_only_if_test_facts_passes_with_them(auto):
+    seen = []
+
+    def failing(path):
+        seen.append(fact_store.read_overlay(path))
+        return False, ["FAILED tests/test_facts.py::x", "1 failed"]
+    out, alerts, _ = auto(prop("contradiction", id=1, fact="no_spread", quote=QUOTE, **SPREAD), test=failing)
+    assert "no_spread" in seen[0] and not out["applied"] and not alerts
+    assert "tests/test_facts.py failed" in out["failed"][0]["summary"] and not auto.paths["overlay"].exists()
+    assert auto.table()["no_spread"]["status"] == "active"
+    out, _, _ = auto(prop("contradiction", id=2, fact="no_spread", quote=QUOTE, **SPREAD), test=lambda p: (True, []))
+    assert [r["id"] for r in out["applied"]] == [2] and auto.table()["no_spread"]["status"] == "paused"
+
+
+def test_auto_dry_writes_nothing(auto):
+    out, alerts, mirrored = auto(prop("contradiction", id=1, fact="no_spread", quote=QUOTE, **SPREAD), dry=True)
+    assert out["applied"] and not alerts and not mirrored
+    assert not auto.paths["overlay"].exists() and not auto.paths["log"].exists()
+    assert factdesk.read_proposals(auto.paths["proposals"])[1]["status"] == "open"
+
+
+def test_a_later_human_commit_wins_over_the_overlay(auto):
+    auto(prop("contradiction", id=1, fact="no_spread", quote=QUOTE, **SPREAD))
+    assert auto.table()["no_spread"]["status"] == "paused"
+    later = factdesk.toml_set(TOML, "no_spread", checked=factdesk.stamp(NOW + 3600))   # re-affirmed by hand after
+    auto.paths["base"].write_text(later)
+    assert auto.table()["no_spread"]["status"] == "active"
+    auto.paths["overlay"].write_text("not [ toml")
+    assert fact_store.load(auto.paths["base"], auto=auto.paths["overlay"])[0]["no_spread"]["status"] == "active"

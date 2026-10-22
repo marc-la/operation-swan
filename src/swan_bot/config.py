@@ -207,6 +207,11 @@ PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
 # A few calls a day (one per batch of new articles), so the strongest models go first; the rest of the chain after.
 # 3.8 and 3.6 Flash are 20 a day each on the bot's free key and shared with the amplified posts (AMP_MODELS).
 FACTDESK_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "openai/gpt-oss-120b", "gemini-3.5-flash-lite")
+# Autopilot (todo/29, Marc 22 Oct: "I don't want to review anymore"): the desk applies its own proposals, with the
+# checks a human decision runs, into data/facts_auto.toml (factdesk.auto_decide). False: everything waits for
+# scripts/facts_review.py as before. Undo one: ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo ID'
+FACTDESK_AUTO = True
+FACTDESK_AUTO_PER_DAY = 5           # fact changes a competition day (Sydney); the rest wait for the next day
 
 # ---- swarm (src/swan_bot/swarm.py, docs/04-technical/swarm.md): like + repost other Vote No posts every 5 min ----
 SWARM_ACCOUNTS_FILE = SECRETS / "swarm_accounts.json"   # its own file: the bot process never writes it

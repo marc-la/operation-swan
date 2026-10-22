@@ -10,6 +10,12 @@ of main: the EC2 box can't push, and the commit author is the approver (attribut
     python scripts/facts_review.py --reject 8          # a contradiction: re-affirms the fact (lifts its pause)
     python scripts/facts_review.py --accept 9,12 --reject 2,4,5   # a day's decisions, one test run, one commit
     python scripts/facts_review.py --recheck no_spread # re-affirm a fact without a proposal (lifts its pause)
+    ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo 34'   # undo an autopilot decision
+
+Autopilot (todo/29, config.FACTDESK_AUTO): the desk decides its own proposals on the box (data/facts_auto.toml,
+logged in data/facts_auto.jsonl); what it leaves (a check failed, or over the daily cap) is still decided here.
+--undo runs ON THE BOX (the overlay lives there): it puts back what that decision replaced, reopens the proposal
+for a human here, and restarts the bot. A commit to facts.toml later than an auto decision wins over it.
 
 Proposals and pauses come from the team Mongo (the desk mirrors them there); --local reads data/ instead (on the
 box, or in tests). The dashboard's Facts section lists the same items with the command for each. Every decision
@@ -215,6 +221,26 @@ def apply(store, decisions, yes=False):
     return True
 
 
+def undo(pid, restart=True):
+    """Undo autopilot decision #pid in the box's overlay (factdesk.undo), mirror it, restart the bot to read it."""
+    try:
+        rec = factdesk.undo(pid, approver())
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
+    print(f"  {rec['summary']}")
+    try:
+        from swan_sync_mongo import connect
+        db = connect()
+        db.fact_proposals.update_one({"id": pid}, {"$set": dict(status="open", decided_by=None)})
+        db.fact_decisions.update_one({"_id": f"{pid}|undone|{rec['decided_at']}"}, {"$setOnInsert": rec}, upsert=True)
+    except Exception as e:                           # noqa: BLE001 (Mongo down: data/facts_auto.jsonl still has it)
+        print(f"  (Mongo: {type(e).__name__}; the undo is in data/facts_auto.jsonl)")
+    subprocess.run([str(ROOT / "deploy" / "alert.sh"), f"fact desk: {rec['summary']} by {rec['by']}"], check=False)
+    if restart:
+        subprocess.run(["sudo", "-n", "systemctl", "try-restart", "swan-bot"], check=False)
+        print("  Bot restarted with the overlay as it is now. The proposal is open again: decide it here if needed.")
+
+
 def interactive(store):
     opened = list_all(store)
     decisions = []
@@ -268,8 +294,12 @@ def main():
                     help="accept a contradiction in place: the code that requires the fact still holds")
     ap.add_argument("--yes", action="store_true", help="don't ask before rejecting a contradiction")
     ap.add_argument("--local", action="store_true", help="read data/ instead of Mongo")
+    ap.add_argument("--undo", type=int, metavar="ID", help="on the box: undo the fact desk's auto decision on proposal ID")
     args = ap.parse_args()
     config.load_env()
+    if args.undo is not None:
+        undo(args.undo)
+        return
     store = LocalStore() if args.local else MongoStore()
     if args.list:
         list_all(store)

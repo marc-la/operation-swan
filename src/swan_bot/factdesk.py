@@ -9,8 +9,9 @@ returns four lists, every item tied to a sentence quoted from one article:
   rewords      a fact that is still true but the article lets us state better or more currently: proposed
   new_facts    a checkable in-game fact the No side can use, or one the Yes side will use: proposed
   angles       an argument idea for the writers: proposed
-Only removal is automatic. Proposals go to data/fact_proposals.jsonl (and the team Mongo, so a laptop can review
-them); a human applies them with scripts/facts_review.py, which edits facts.toml for a commit.
+Removal is immediate. Proposals go to data/fact_proposals.jsonl (and the team Mongo). Since 22 Oct (todo/29,
+config.FACTDESK_AUTO) auto_decide applies them itself into the overlay data/facts_auto.toml (see "autopilot" below);
+what it leaves, a human applies with scripts/facts_review.py, which edits facts.toml for a commit.
 
 Article text is untrusted data, as in pulse.py: the model is told to read it and never follow it, and every item is
 checked before use. Its quote must appear word for word in that article (else the item is dropped), its fact key must
@@ -677,3 +678,254 @@ def _valid(toml_text, key):
     why = problems(key, tomllib.loads(toml_text)[key])
     if why:
         raise ValueError(f"[{key}] would not be valid: {'; '.join(why)}")
+
+
+def validate(table):
+    """Why a whole fact table can't go live (empty list: it can): tests/test_facts.py's file checks, run in-process
+    (the box has no pytest). Every fact valid, and every key the code names still there."""
+    out = [f"[{k}] {p}" for k, f in table.items() for p in problems(k, f)]
+    named = set(content.EXEMPT_REQUIRES) | {k for r in content.LEVER_REQUIRES.values() for k in r}
+    for f in content.FRAMES.values():
+        named |= set(f["facts"]) | set(f["requires"])
+    for _, _, req in content.REBUTTALS:
+        named |= set(req)
+    for _, _, req in content.STORYLINES + [content.STORYLINE_FALLBACK]:
+        named |= set(req)
+    for _, req, _ in content.WORLD_PARTS:
+        named |= set(req)
+    out += [f"[{k}] named in content.py but missing" for k in sorted(named - set(table))]
+    return out
+
+
+# ---- autopilot (todo/29): the desk applies its own proposals, with the checks a human decision runs ------------------
+# Marc (22 Oct): "I don't want to review anymore. Auto mode for the facts." The box can't push, so a decision goes live
+# as an overlay on the box (data/facts_auto.toml, merged over content/facts.toml by facts.load) and the bot restarts to
+# read it. Every decision is a line in data/facts_auto.jsonl (by: factdesk-auto, with what it replaced, for --undo),
+# mirrored to the team Mongo, alerted, and listed on the dashboard. A runtime pause still drops a fact at once, as before.
+AUTO_LOG = config.DATA / "facts_auto.jsonl"
+DECISIONS_FILE = config.ROOT / "content" / "fact_decisions.jsonl"      # humans' committed decisions
+AUTO_BY = "factdesk-auto"
+UNDO = "ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo {id}'"
+CHANGES = ("accepted", "retired")                                     # decisions that change a fact (the daily cap)
+ORDER = ("contradiction", "reword", "new_fact", "angle")
+# a contradiction quote that hedges isn't the paper reporting a fact: the fact is retired, not reworded
+HEDGE = re.compile(r"\b(could|may|might|would|reportedly|allegedly|alleged|claims?|claimed|expected|plans?|planned|"
+                   r"proposed?|considering|unconfirmed|rumou?rs?|according to|said to be|likely|possibly)\b", re.I)
+AUTO_HEADER = ("# The fact desk's own decisions (todo/29), merged over content/facts.toml by swan_bot/facts.py: a table\n"
+               "# here replaces its key unless facts.toml's `checked` is later. Written by scripts/swan_factdesk.py on\n"
+               "# the box, logged in data/facts_auto.jsonl. Never edit by hand; undo with facts_review.py --undo ID.\n")
+
+
+def render_tables(tables, notes=None, header=AUTO_HEADER):
+    """TOML text for {key: fact table}, each table after its note as a comment."""
+    doc = header
+    for k, t in tables.items():
+        doc = toml_add(doc, k, comment=(notes or {}).get(k), **{f: t[f] for f in FIELDS if f in t})
+    return doc
+
+
+def read_jsonl(path):
+    out = []
+    try:
+        for line in pathlib.Path(path).read_text().splitlines():
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def write_overlay(path, tables, log):
+    """Write the overlay atomically, each table noted with the last decision that set it."""
+    notes, undone = {}, {r.get("id") for r in log if r.get("status") == "undone"}
+    for r in log:
+        if r.get("status") in CHANGES and r.get("id") not in undone:
+            for k in r.get("keys") or []:
+                notes[k] = f"{AUTO_BY}: proposal {r['id']}, {r.get('decided_at')}: {r.get('summary')}"
+    text = render_tables(tables, notes)
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
+def _choice(p, merged, pauses):
+    """(decide() overrides, None) for a proposal the desk applies, or (None, why) for one it leaves."""
+    kind, fact = p["kind"], p.get("fact")
+    if kind in ("contradiction", "reword"):
+        if fact not in merged:
+            return None, "no such fact"
+        if merged[fact].get("status") != "active":
+            return None, "the fact is already out"
+    if kind == "contradiction":
+        clear = p.get("text") and p.get("note") and not p.get("failed_checks") and not HEDGE.search(p.get("quote") or "")
+        return ({} if clear else {"retire": True}), None
+    if kind == "reword":
+        if fact in pauses and fact_store.holds(fact, pauses[fact], merged):
+            return None, "paused by a contradiction: that decides it"
+        return {}, None
+    if p.get("opinion") or len(norm(p.get("quote"))) < MIN_QUOTE:
+        return None, "a new fact needs a news article's verbatim quote"
+    if p.get("key") in merged:
+        return None, f"key {p.get('key')} exists"
+    return {}, None
+
+
+def auto_decide(now=None, dry=False, alert=None, mirror=None, log=print, proposals_file=PROPOSALS_FILE,
+                overlay_file=None, log_file=AUTO_LOG, decisions_file=DECISIONS_FILE, paused_file=None, base_file=None,
+                cap=None, test=None):
+    """Decide every open proposal no one has decided: contradictions first, then rewordings, new facts and ideas.
+      contradiction  the paper's quote is plain and its suggested wording passes: the new wording under a new key
+                     (the old fact's dependants stay out, as with a human --accept); otherwise the fact is retired
+      reword         in place (--same-key), unless a contradiction's pause holds on that fact
+      new_fact       only from a news article with a verbatim quote (opinion columns give ideas only)
+      angle          logged only: frames are code
+    Each change must leave the whole table valid (validate). At most `cap` changes a Sydney day; the rest wait.
+    test(overlay path) -> (ok, output lines): tests/test_facts.py with the run's overlay (run_facts_tests); if it
+    fails, none of the run's changes go live. Returns dict(applied, logged, failed, waiting) of decision records;
+    dry: decides and prints, writes nothing."""
+    now = now or time.time()
+    cap = config.FACTDESK_AUTO_PER_DAY if cap is None else cap
+    overlay_file = overlay_file or fact_store.AUTO_FILE
+    base, _ = fact_store.load(base_file or fact_store.FILE, auto="")
+    overlay = fact_store.read_overlay(overlay_file)
+    try:
+        pauses = fact_store.read_pauses(paused_file)
+    except ValueError:
+        pauses = {}
+    history = read_jsonl(log_file)
+    done = {r.get("id") for r in history} | {r.get("id") for r in read_jsonl(decisions_file)}
+    day = dt.datetime.fromtimestamp(now, SYDNEY).date()
+    used = sum(1 for r in history if r.get("status") in CHANGES and r.get("decided_at")
+               and fact_store.when(r["decided_at"]).astimezone(SYDNEY).date() == day)
+    todo = sorted((p for p in read_proposals(proposals_file).values()
+                   if p.get("status", "open") == "open" and p["id"] not in done and p.get("kind") in ORDER),
+                  key=lambda p: (ORDER.index(p["kind"]), p["id"]))
+    out = dict(applied=[], logged=[], failed=[], waiting=0)
+    stamp_ = _iso(now)
+    for p in todo:
+        base_rec = dict(id=p["id"], kind=p["kind"], by=AUTO_BY, decided_at=stamp_, site=p.get("site"),
+                        slug=p.get("slug"), quote=_clean(p.get("quote"), 400), fact=p.get("fact") or p.get("key"))
+        if p["kind"] == "angle":
+            out["logged"].append(dict(base_rec, status="logged", summary=f"idea #{p['id']} logged: {p.get('idea')}"))
+            continue
+        if used >= cap:
+            out["waiting"] += 1
+            continue
+        merged = fact_store.merge(base, overlay)
+        kw, why = _choice(p, merged, pauses)
+        result = None
+        for attempt in ([kw] if kw is not None else []) + ([{"retire": True}] if kw == {} and p["kind"] ==
+                                                           "contradiction" else []):
+            fact = p.get("fact")
+            work = render_tables({fact: merged[fact]}) if fact else AUTO_HEADER
+            try:
+                doc, _, summary = decide(p, True, work, now=now, **attempt)
+                new = {k: v for k, v in tomllib.loads(doc).items() if isinstance(v, dict)}
+                candidate = {**overlay, **new}
+                problems_ = validate(fact_store.merge(base, candidate))
+                if problems_:
+                    raise ValueError("; ".join(problems_[:3]))
+            except (ValueError, KeyError) as e:
+                why = str(e)[:300]
+                continue
+            result = (attempt, new, candidate, summary)
+            break
+        if result is None:
+            out["failed"].append(dict(base_rec, status="failed", summary=f"#{p['id']} left for a human: {why}"))
+            continue
+        attempt, new, candidate, summary = result
+        before = {k: (render_tables({k: overlay[k]}, header="") if k in overlay else None) for k in new}
+        rec = dict(base_rec, status="retired" if attempt.get("retire") else "accepted", summary=summary,
+                   keys=list(new), before=before, text=p.get("text"))
+        overlay = candidate
+        used += 1
+        out["applied"].append(rec)
+    if out["applied"] and test and not dry:          # tests/test_facts.py with this run's overlay, where pytest is
+        check = pathlib.Path(overlay_file).with_name(".facts_auto.check.toml")
+        write_overlay(check, overlay, history + out["applied"])
+        try:
+            ok, tail = test(check)
+        finally:
+            check.unlink(missing_ok=True)
+        if not ok:                                    # none of this run's changes go live; a human sees why
+            out["failed"] += [dict(r, status="failed", keys=[], before={}, summary=f"#{r['id']} left for a human: "
+                                   f"tests/test_facts.py failed with this run's changes ({short_tail(tail)})")
+                              for r in out["applied"]]
+            out["applied"], overlay = [], fact_store.read_overlay(overlay_file)
+    records = out["applied"] + out["logged"] + out["failed"]
+    if dry:
+        for r in records:
+            print(json.dumps({k: v for k, v in r.items() if k != "before"}, ensure_ascii=False))
+        if out["waiting"]:
+            print(f"{out['waiting']} wait for tomorrow's cap")
+        return out
+    if out["applied"]:
+        write_overlay(overlay_file, overlay, history + out["applied"])
+    if records:
+        append_jsonl(log_file, records)
+        append_jsonl(proposals_file, [dict(id=r["id"], status=r["status"], decided_by=AUTO_BY, decided_at=stamp_)
+                                      for r in records if r["status"] != "failed"])
+        log({"act": "factdesk_auto", **{k: [r["id"] for r in v] for k, v in out.items() if k != "waiting"},
+             "waiting": out["waiting"]})
+    for r in records:
+        if mirror:
+            mirror("decision", {k: v for k, v in r.items() if k != "before"})
+        if alert and r["status"] in CHANGES:
+            alert(f"fact desk (auto) #{r['id']}: {r['summary']}. «{r['quote'][:160]}» ({r['site']}/{r['slug']}). "
+                  f"Undo: {UNDO.format(id=r['id'])}")
+    return out
+
+
+def short_tail(lines, n=200):
+    return re.sub(r"\s+", " ", " / ".join((lines or [])[-3:]))[:n]
+
+
+def run_facts_tests(overlay_path, timeout=900):
+    """(ok, last output lines) of tests/test_facts.py with this overlay merged (tests/conftest.py takes it from
+    SWAN_FACTS_AUTO_CHECK). Without pytest installed: (True, ["pytest not installed: validate() only"])."""
+    import subprocess
+    import sys
+    try:
+        import pytest  # noqa: F401
+    except ImportError:
+        return True, ["pytest not installed: validate() only"]
+    env = dict(os.environ, SWAN_FACTS_AUTO_CHECK=str(overlay_path))
+    try:
+        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_facts.py"],
+                           cwd=config.ROOT, env=env, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, [f"timed out after {timeout} s"]
+    return r.returncode == 0, (r.stdout + r.stderr).strip().splitlines()[-5:]
+
+
+def undo(pid, by, now=None, overlay_file=None, log_file=AUTO_LOG, proposals_file=PROPOSALS_FILE):
+    """Put back what auto decision #pid replaced in the overlay; returns the undo record. The proposal opens again
+    for a human (scripts/facts_review.py) and the desk won't decide it again. A runtime pause it had lifted holds
+    again (the fact's `checked` goes back). Refuses if a later decision changed the same facts (undo that first)."""
+    now = now or time.time()
+    overlay_file = overlay_file or fact_store.AUTO_FILE
+    history = read_jsonl(log_file)
+    undone = {r["id"] for r in history if r.get("status") == "undone"}
+    rec = next((r for r in reversed(history) if r.get("id") == pid and r.get("status") in CHANGES), None)
+    if rec is None or pid in undone:
+        raise ValueError(f"no auto decision #{pid} to undo")
+    later = [r for r in history[history.index(rec) + 1:] if r.get("status") in CHANGES and r["id"] not in undone
+             and set(r.get("keys") or []) & set(rec.get("keys") or [])]
+    if later:
+        raise ValueError(f"#{later[-1]['id']} changed the same facts later: undo it first")
+    overlay = fact_store.read_overlay(overlay_file)
+    for k, snippet in (rec.get("before") or {}).items():
+        if snippet is None:
+            overlay.pop(k, None)
+        else:
+            overlay[k] = tomllib.loads(snippet)[k]
+    out = dict(id=pid, kind=rec.get("kind"), status="undone", by=by, decided_at=_iso(now),
+               summary=f"undo of #{pid} ({rec.get('summary')})", keys=list((rec.get("before") or {})))
+    write_overlay(overlay_file, overlay, history + [out])
+    append_jsonl(log_file, [out])
+    append_jsonl(proposals_file, [dict(id=pid, status="open", decided_by=None)])
+    return out

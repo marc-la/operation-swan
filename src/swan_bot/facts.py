@@ -24,15 +24,47 @@ from . import config
 FILE = config.ROOT / "content" / "facts.toml"
 # tests/conftest.py points this at a missing file, so a live pause on the box can't change what the tests see
 PAUSED_FILE = pathlib.Path(os.environ.get("SWAN_FACTS_PAUSED") or config.DATA / "facts_paused.json")
+# the fact desk's own decisions (todo/29, factdesk.auto_decide): read at start, so the desk restarts the bot after one;
+# tests/conftest.py points this at a missing file too
+AUTO_FILE = pathlib.Path(os.environ.get("SWAN_FACTS_AUTO") or config.DATA / "facts_auto.toml")
 STATUSES = ("active", "paused")
 UTC = dt.timezone.utc
 
 
-def load(path=FILE):
-    """(table, false_claims): every fact in file order, and the patterns of claims that are false in-game."""
+def load(path=FILE, auto=None):
+    """(table, false_claims): every fact in file order, and the patterns of claims that are false in-game. With the
+    fact desk on autopilot (todo/29), its decisions live in an overlay on the box (data/facts_auto.toml, which the box
+    can't commit): each overlay table replaces or adds the fact of its key, unless facts.toml's own `checked` is later
+    (a human decision committed after the desk's wins). For the real file the overlay is AUTO_FILE; a broken overlay
+    is skipped with a message, never a failed start."""
     data = tomllib.loads(pathlib.Path(path).read_text())
-    return ({k: v for k, v in data.items() if isinstance(v, dict)},
-            [p for p in data.get("false_claims", []) if isinstance(p, str)])
+    table = {k: v for k, v in data.items() if isinstance(v, dict)}
+    auto = AUTO_FILE if auto is None and pathlib.Path(path) == FILE else auto
+    return merge(table, read_overlay(auto)), [p for p in data.get("false_claims", []) if isinstance(p, str)]
+
+
+def merge(table, overlay):
+    """facts.toml's table with the overlay's tables over it (a new dict): an overlay table replaces its key unless
+    the file's `checked` is later, and a new key joins at the end."""
+    out = dict(table)
+    for k, t in overlay.items():
+        if k not in out or (when(t.get("checked")) or dt.datetime.min.replace(tzinfo=UTC)) >= \
+                (when(out[k].get("checked")) or dt.datetime.min.replace(tzinfo=UTC)):
+            out[k] = t
+    return out
+
+
+def read_overlay(path):
+    """The overlay's fact tables ({} without one, or if it doesn't parse)."""
+    if not path:
+        return {}
+    try:
+        return {k: v for k, v in tomllib.loads(pathlib.Path(path).read_text()).items() if isinstance(v, dict)}
+    except FileNotFoundError:
+        return {}
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        print(f"facts: {path} skipped ({type(e).__name__}: {e})")
+        return {}
 
 
 def either(patterns):

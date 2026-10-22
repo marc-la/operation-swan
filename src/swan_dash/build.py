@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 import jinja2
 
 from swan_blue.evidence import awards_by_rate, first_later
+from swan_bot import config as bot_config  # constants only (FACTDESK_AUTO): it reads no .env on import
 from swan_dash.lab import gather_lab
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -404,23 +405,69 @@ def _when(v):
     return None
 
 
-def fact_desk(root):
-    """The Facts section: pauses that hold (facts.toml not re-checked since) and proposals without a committed
-    decision (content/fact_decisions.jsonl), urgent first, each with its review command. None without the files."""
+MIN_T = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+AUTO_SHOWN = 15                                # autopilot decisions listed, newest first
+AUTO_UNDO = "ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo {id}'"   # = factdesk.UNDO
+AUTO_WORDS = {"accepted": "applied", "retired": "retired the fact", "logged": "idea logged",
+              "failed": "left for a human", "undone": "undone"}
+
+
+def fact_desk(root, now=None):
+    """The Facts section (todo/29: the desk on autopilot): its decisions, newest first, each with its undo command;
+    pauses that hold (facts.toml and the desk's overlay not re-checked since); and what is left for a human
+    (proposals without a committed or auto decision), urgent first, with the review commands. None without the
+    files."""
+    now = now or dt.datetime.now(dt.timezone.utc)
     try:
         table = {k: v for k, v in tomllib.loads((root / "content" / "facts.toml").read_text()).items()
                  if isinstance(v, dict)}
     except (FileNotFoundError, tomllib.TOMLDecodeError):
         return None
+    try:                                       # the desk's overlay (todo/29), merged as swan_bot/facts.py does
+        for k, t in tomllib.loads((root / "data" / "facts_auto.toml").read_text()).items():
+            if isinstance(t, dict) and (k not in table or (_when(t.get("checked")) or MIN_T)
+                                        >= (_when(table[k].get("checked")) or MIN_T)):
+                table[k] = t
+    except (FileNotFoundError, tomllib.TOMLDecodeError):
+        pass
     pauses = read_json(root / "data" / "facts_paused.json") or {}
     held = {k: v for k, v in pauses.items() if isinstance(v, dict) and k in table
-            and (_when(table[k].get("checked")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc))
+            and (_when(table[k].get("checked")) or MIN_T)
             < (_when(v.get("since")) or dt.datetime.max.replace(tzinfo=dt.timezone.utc))}
     decided = {d.get("id") for d in tail_jsonl(root / "content" / "fact_decisions.jsonl")}
+    autolog = tail_jsonl(root / "data" / "facts_auto.jsonl")
+    last = {r.get("id"): r for r in autolog}                       # a proposal's latest auto decision
+    decided |= {i for i, r in last.items() if r.get("status") not in ("failed", "undone")}
     props = {}
     for r in tail_jsonl(root / "data" / "fact_proposals.jsonl"):
         if "kind" in r and r.get("kind") in KINDS:
             props[r["id"]] = r
+    undone = {r.get("id") for r in autolog if r.get("status") == "undone"}
+    today = sydney_midnight(now.astimezone(SYDNEY).date())
+    log, ideas = [], []
+    for r in reversed(autolog):
+        t = ts(r.get("decided_at"))
+        if not t:
+            continue
+        if r.get("status") == "logged":           # ideas change nothing: one line each, collapsed
+            if len(ideas) < AUTO_SHOWN:
+                ideas.append(dict(id=r.get("id"), time=perth(t).strftime("%a %H:%M"),
+                                  text=short(props.get(r.get("id"), {}).get("idea") or r.get("summary"), 200)))
+            continue
+        if len(log) >= AUTO_SHOWN:
+            continue
+        p = props.get(r.get("id"), {})
+        log.append(dict(
+            id=r.get("id"), time=perth(t).strftime("%a %H:%M"), status=r.get("status"),
+            word=AUTO_WORDS.get(r.get("status"), r.get("status")), label=KINDS.get(r.get("kind"), r.get("kind")),
+            summary=short(r.get("summary"), 300), quote=short(r.get("quote") or p.get("quote"), 300),
+            text=r.get("text") if r.get("status") == "accepted" else None, by=r.get("by"),
+            url=f"https://sites.legitreal.com/{r.get('site')}/articles/{r.get('slug')}" if r.get("site") else None,
+            undo=AUTO_UNDO.format(id=r.get("id")) if r.get("status") in ("accepted", "retired")
+            and r.get("id") not in undone else None))
+    auto = dict(on=bot_config.FACTDESK_AUTO, cap=bot_config.FACTDESK_AUTO_PER_DAY, log=log, ideas=ideas,
+                today=sum(1 for r in autolog if r.get("status") in ("accepted", "retired")
+                          and (ts(r.get("decided_at")) or MIN_T) >= today))
     items = []
     for p in props.values():
         if p["id"] in decided:
@@ -442,13 +489,14 @@ def fact_desk(root):
             url=f"https://sites.legitreal.com/{p.get('site')}/articles/{p.get('slug')}",
             when=(ts(p.get("published_at")) or ts(p.get("ts")) or dt.datetime.now(dt.timezone.utc)).strftime("%-d %b"),
             stated_in=p.get("stated_in") or [], numbers=p.get("new_numbers") or [], also=len(p.get("also") or []),
-            hint=HINTS[p["kind"]], commands=commands))
+            hint=HINTS[p["kind"]], commands=commands,
+            left=short(last[p["id"]].get("summary"), 200) if p["id"] in last else None))
     order = list(KINDS)
     items.sort(key=lambda i: (not i["paused"], order.index(i["kind"]), -i["id"]))
     rest = [i["id"] for i in items if i["kind"] == "angle"]
     return dict(paused=[dict(fact=k, since=hm(ts(v.get("since"))) if ts(v.get("since")) else "?",
                              proposal=v.get("proposal")) for k, v in held.items()],
-                proposals=items, count=len(items),
+                proposals=items, count=len(items), auto=auto,
                 reject_ideas=f"{REVIEW} --reject {','.join(map(str, rest))}" if len(rest) > 1 else None)
 
 
@@ -888,7 +936,7 @@ def gather(root, now, service):
     acc = status.get("accounts") or {}
     per_min = status.get("per_min")
 
-    facts = fact_desk(root)
+    facts = fact_desk(root, now)
     blue = blue_panel(data, now, points, day_start, logs)
 
     # ---- banner: the first problem wins, worst first ----
@@ -922,7 +970,8 @@ def gather(root, now, service):
         amber = "PORTAL: no score update for " + (ago(now - portal_t).replace(" ago", "") if portal_t else "a while")
     elif facts and facts["paused"]:
         amber = (f"FACT PAUSED: {', '.join(p['fact'] for p in facts['paused'])} (the bot leaves it out). "
-                 f"Review it under Facts below")
+                 + ("The desk decides it on its next hourly run (Facts, below)" if facts["auto"]["on"]
+                    else "Review it under Facts below"))
     elif blue and blue["own"] and blue["own"]["hits"]:
         amber = (f"BLUE: {blue['own']['hits']} report(s) in logs/blue_reports.jsonl against our own accounts. "
                  f"Stop filing: ssh swan-ec2 'touch ctn/BLUE_OFF'")
