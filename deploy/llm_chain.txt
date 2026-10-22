@@ -18,6 +18,8 @@ gemini:gemini-3.5-flash-lite
 # DeepSeek V3.2 3/6 at 64 s. Kimi and GLM lead the amplified post (config.AMP_MODELS) and take over from flash-lite
 # when its free 500/day is spent. Needs BEDROCK_API_KEY in .env.
 bedrock:moonshotai.kimi-k2.5
+# 2026-10-22 (todo/24): GLM-5 passed first time on 0 of 69 reply drafts. Replies no longer use it (config.REPLY_MODELS:
+# Kimi, then flash-lite, then this chain without GLM-5); it stays here for amplified posts and other drafts.
 bedrock:zai.glm-5
 gemini:gemini-3.8-flash
 gemini:gemini-3.6-flash

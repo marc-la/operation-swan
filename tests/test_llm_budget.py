@@ -84,12 +84,42 @@ def models_for(job, monkeypatch):
     return gen.models[0]
 
 
+class OrderGen(StubGen):
+    """Answers only from the models in `up`, like a chain whose other models are parked."""
+    chain = [("gemini", "gemini-3.5-flash-lite"), ("bedrock", KIMI), ("bedrock", "zai.glm-5"),
+             ("groq", "openai/gpt-oss-120b")]
+
+    def __init__(self, up):
+        super().__init__()
+        self.up = up
+
+    def complete(self, system, user, models=None, **kw):
+        self.models.append(models)
+        m = next((m for _, m in self.chain if (not models or m in models) and m in self.up), None)
+        return ("draft", m) if m else (None, None)
+
+
 def test_tiering(monkeypatch):
     assert models_for(dict(mode="post", amp=True), monkeypatch) == config.AMP_MODELS
-    assert models_for(dict(mode="reply"), monkeypatch) == config.AMP_MODELS
-    assert models_for(dict(mode="reply_back"), monkeypatch) == config.AMP_MODELS
+    assert models_for(dict(mode="reply"), monkeypatch) == (KIMI,), "replies try Kimi first (todo/24)"
+    assert models_for(dict(mode="reply_back"), monkeypatch) == (KIMI,)
     assert models_for(dict(mode="thread"), monkeypatch) == ["gemini-3.5-flash-lite", "openai/gpt-oss-120b"]
     assert models_for(dict(mode="post"), monkeypatch) is None
+
+
+def test_replies_kimi_then_flash_lite_never_glm(monkeypatch):
+    monkeypatch.setattr(bot.quality, "check", lambda raw, *a, **kw: (raw, None))
+    for up, want in (({KIMI, "gemini-3.5-flash-lite"}, KIMI), ({"gemini-3.5-flash-lite", "zai.glm-5"},
+                     "gemini-3.5-flash-lite"), ({"zai.glm-5", "openai/gpt-oss-120b"}, "openai/gpt-oss-120b")):
+        gen = OrderGen(up)
+        text, backend, _ = bot.draft_checked(gen, dict(mode="reply", meta={}), "sys", "user", [])
+        assert backend == want, (up, backend)
+        assert not any(ms and "zai.glm-5" in ms for ms in gen.models), "GLM-5 never drafts a reply"
+    gen = OrderGen({"zai.glm-5"})
+    assert bot.draft_checked(gen, dict(mode="reply", meta={}), "sys", "user", [])[0] is None
+    gen = OrderGen({"zai.glm-5"})
+    assert bot.draft_checked(gen, dict(mode="post", amp=True, meta={}), "sys", "user", [])[1] == "zai.glm-5", \
+        "amplified posts keep GLM-5"
 
 
 def test_reply_backs_only_in_amplified_threads():
@@ -137,10 +167,11 @@ def test_reserve_keeps_the_paid_models_for_amplified_posts(tmp_path, monkeypatch
     assert gen.complete("s", "u", priority=True)[1] == KIMI
 
 
-def test_priority_window_holds_other_writes():
+def test_priority_window_holds_other_writes(tmp_path, monkeypatch):
     import time
     from swan_bot import amplify
     from test_amplify import make_accounts
+    monkeypatch.setattr(config, "AMP_OFF_FILE", tmp_path / "AMPLIFY_OFF")   # not the repo's (the box may have one)
     amp = amplify.Amplifier(None, make_accounts(), {}, live=False, log=lambda r: None)
     assert not amp.priority_window()
     amp.on_post(None, amp.accounts.records[0], "our post", "F1_blank_cheque", "heavy")

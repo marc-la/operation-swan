@@ -504,6 +504,31 @@ def gate(raw, job, user, recent_texts, ledger=None):
     return text, why, fixes
 
 
+def draft_models(job, gen):
+    """(models, ordered) for a draft. Amplified posts: AMP_MODELS (chain order). Replies to citizens (STRONG_MODES,
+    todo/24): REPLY_MODELS in that order, then the rest of the chain, never REPLY_NEVER (ordered). Thread one-liners:
+    the free models. Anything else: None, the whole chain."""
+    chain = [m for _, m in getattr(gen, "chain", ())]
+    if job.get("amp"):                                          # our best content
+        return config.AMP_MODELS, False
+    if job["mode"] in config.STRONG_MODES:                      # where minds change
+        order = list(config.REPLY_MODELS) + [m for m in chain if m not in config.REPLY_MODELS]
+        return [m for m in order if m not in config.REPLY_NEVER], True
+    if job["mode"] in config.CHEAP_MODES:                       # one-liners: free models first, paid ones as backup
+        return [m for m in chain if m not in config.LLM_PRICES], False
+    return None, False
+
+
+def complete_in_order(gen, system, prompt, models, **kw):
+    """gen.complete on each model in turn (the chain's own order would put flash-lite before Kimi): the first answer,
+    or (None, None). A parked or over-budget model returns at once, so this costs no extra time."""
+    for m in models:
+        raw, backend = gen.complete(system, prompt, models=(m,), **kw)
+        if raw is not None:
+            return raw, backend
+    return None, None
+
+
 def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=None):
     """Draft and gate (todo/20 G9: a citizen may not be lost to the gate). Each draft goes through gate(): the quality
     check and the code fixes, then the theme check. A draft that still fails goes back to the model with the exact
@@ -515,22 +540,19 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
     mode = job["mode"]
     meta = job.setdefault("meta", {})
     prompt, repair, backend = user, None, None
-    if job.get("amp") or mode in config.STRONG_MODES:          # our best content and where minds change
-        models = config.AMP_MODELS
-    elif mode in config.CHEAP_MODES:                            # one-liners: free models first, paid ones as backup
-        models = [m for _, m in getattr(gen, "chain", ()) if m not in config.LLM_PRICES]
-    else:
-        models = None
+    models, ordered = draft_models(job, gen)
     failed = {}                                                 # model -> rejected drafts this job
     meta.update(llm_calls=0, repairs=0, fixes=[])
     for _ in range(config.GATE_TRIES.get(mode, 2)):
         tired = {m for m, n in failed.items() if n >= 2}
         use = [m for m in (models or [m for _, m in getattr(gen, "chain", ())]) if m not in tired] if tired else models
-        raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
-                                    models=use or models, priority=bool(job.get("amp")))
-        if raw is None and use:                                 # out of quota: the usual chain
-            raw, backend = gen.complete(system, prompt, max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7),
-                                        priority=bool(job.get("amp")))
+        kw = dict(max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7), priority=bool(job.get("amp")))
+        if ordered:                                             # replies: the whole order is already the fallback
+            raw, backend = complete_in_order(gen, system, prompt, use or models, **kw)
+        else:
+            raw, backend = gen.complete(system, prompt, models=use or models, **kw)
+        if raw is None and use and not ordered:                 # out of quota: the usual chain
+            raw, backend = gen.complete(system, prompt, **kw)
         if raw is None:
             break
         meta["llm_calls"] += 1

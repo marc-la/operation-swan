@@ -156,8 +156,9 @@ AMP_PRIORITY_S = 5 * 60
 # free Gemini Flash models and qwen-plus-character (Alibaba free quota, 1M tokens to 2027-01-20).
 # Order comes from deploy/llm_chain.txt, not from this tuple.
 AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3.6-flash", "qwen-plus-character")
-# Where persuasion happens, drafts get AMP_MODELS too: replies to citizens (a change of mind is 160 points). Thread
-# one-liners and author answers try the free models first and reach the paid ones only when those are out.
+# Where persuasion happens, drafts get strong models too: replies to citizens (a change of mind is 160 points), on
+# REPLY_MODELS since 2026-10-22 (todo/24: Kimi then flash-lite, never GLM-5). Thread one-liners and author answers try
+# the free models first and reach the paid ones only when those are out.
 STRONG_MODES = {"reply", "reply_back"}
 CHEAP_MODES = {"thread", "thread_answer"}
 
@@ -245,8 +246,8 @@ FOLLOWUP_MAX_READS = 600               # per run (every 30 min); the read budget
 
 # ---- todo/20 conversion (replies that change minds; todo/20-replies-that-convert.md) ----
 # G9 (2026-10-22, "we cannot afford a rejection"): LLM calls per draft before it is given up, by mode: the first draft
-# and then repairs with the exact problem. A model that failed twice is left out of the next call (Kimi -> GLM-5 ->
-# the next in the chain). Code fixes (quality.fix: trim, drop a sentence) cost no call. Other modes: 2.
+# and then repairs with the exact problem. A model that failed twice is left out of the next call (Kimi -> flash-lite ->
+# the next in the chain; todo/24). Code fixes (quality.fix: trim, drop a sentence) cost no call. Other modes: 2.
 GATE_TRIES = {"reply": 4, "reply_back": 4, "second_voice": 3}
 # G7 conversation turns: a citizen who answers us is looked for this often (was 5 min), and gets our reply-backs at
 # most this many times in one session, never once their reply sits this deep in a thread (citizens stop there).
@@ -289,6 +290,13 @@ SPLIT_LOOP = True                   # reader, drafter, writer threads. False + a
 DRAFT_AHEAD = 2                     # drafts waiting for the writer, at most (more would go stale)
 READER_SILENT_S = 20 * 60           # the watchdog stops the bot when the reader goes this long without a round
 DRAFTER_SILENT_S = 30 * 60          # ...or the drafter (one draft may try several models with 90 s timeouts)
+
+# ---- todo/24 throughput (todo/24-throughput-to-three.md; docs/04-technical/swan-bot-runbook.md) ----
+# Replies to citizens (STRONG_MODES) are drafted on these models, tried in THIS order (not the chain's), then the rest
+# of deploy/llm_chain.txt without REPLY_NEVER. 2026-10-22 overnight first-call pass: Kimi 89% (n=857), flash-lite 86%
+# (n=195), GLM-5 0 of 69 (not_specific 36, near_duplicate 28): GLM-5 drafts amplified posts only (AMP_MODELS).
+REPLY_MODELS = ("moonshotai.kimi-k2.5", "gemini-3.5-flash-lite")
+REPLY_NEVER = {"zai.glm-5"}
 
 # ---- Blue track (todo/07, src/swan_blue): a separate process reports from one booster the bot no longer uses ----
 BLUE_OFF_FILE = ROOT / "BLUE_OFF"       # touch it to stop filing reports (the scan and rulings carry on)
