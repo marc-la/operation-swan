@@ -116,51 +116,53 @@ todo/26. The first full day showed the cycle model of §2 was right about locks:
 
 Marc's bar: Blue runs unattended and earns as few "genuine" rulings as the rules allow (each locks **all** our reporting for 6 h). The floor is the moderator, not our evidence: it is wrong about 1 in 10 either way (scoring page, 20 Oct). Only two routes go under that: account reports (a dismissed one can't lock us) and the evidence classes the rulings show are safer.
 
-### The genuine risk per evidence class (measured 2026-10-22 05:20 UTC)
+### The genuine risk per evidence class (measured 2026-10-22 10:00 UTC)
 
-Every post ruling so far: 59 (21 Oct 13:46 → 22 Oct 05:20 UTC), 57 hidden, 2 genuine. Source: `logs/blue_reports.jsonl` and `data/blue_state.json` on the box, read offline from copies (the running tally per class is `pg_by_class` in `blue_status.json`). "Estimate" is the Jeffreys mean, (genuine + ½) / (n + 1); "95% upper" is the rule of three (3/n) when none was genuine.
+Every post ruling so far: 86 (21 Oct 13:46 → 22 Oct 10:00 UTC), 82 hidden, 4 genuine. Source: `logs/blue_reports.jsonl` and `data/blue_state.json` on the box, read offline from copies (the running tally per class is `pg_by_class` in `blue_status.json`). "Estimate" is the Jeffreys mean, (genuine + ½) / (n + 1); "95% upper" is the rule of three (3/n) when none was genuine.
 
-| Class | Genuine / rulings | Estimate | 95% upper bound |
+| Class | Genuine / rulings | Estimate | Note |
 |---|---|---|---|
-| **Reply ring** (the root, or one of its ring replies) | **0 / 34** (31 of them replies) | **1.4%** | 9% |
-| Like ring alone | **2 / 19** | 12.5% | (observed 11%) |
-| Like ring + early ring | 0 / 6 | 7% | 50% |
-| Account reports | 5 of 6 ruled were upheld (portal); a dismissed one costs nothing | none can lock | |
+| **Reply ring** (the root, or one of its ring replies) | **2 / 56** (51 of them replies) | **4.4%** (observed 3.6%) | 0 / 34 at 05:20 UTC, which looked like 1.4%; then #185124 (filed 03:33) and #190875 (filed 05:07, a 10%-rate report) came back genuine |
+| Like ring alone | **2 / 20** | 12% (observed 10%) | the scoring page's "1 in 10" |
+| Like ring + early ring | 0 / 10 | 4.5% | 95% upper bound 30% |
+| Account reports | 7 upheld (portal) of 13 ruled | none can lock | a dismissed one costs nothing |
 
-The same 59 by other cuts (none of them separates risk the way the class does):
+The same 86 by other cuts (none separates risk well):
 
 | Cut | Genuine / rulings |
 |---|---|
-| Post age at filing ≤ 30 min / 31–60 / 61–180 / > 180 | 1/16 · 0/31 · 1/10 · 0/2 (the 0/31 is mostly reply-ring replies) |
-| Trending root / Latest or author root / ring reply | 1/13 · 1/15 · 0/31 |
-| Ruled in < 2 h (2+ teams reported it) / at ~3 h (us alone) | 1/10 (#155963, ruled at 1.5 h by the platform's lock time) · 1/49 |
-| Id run of 10+ among its accounts / none | 2/30 · 0/29 (no support, so the factor is gone) |
-| Author already had a post hidden | 0/2 (too few to say) |
-| `pg` at filing, recomputed with the old (todo/26) model: ≤ 4% / 6–10% / > 10% | 0/34 · 1/18 · 1/6 |
+| Post age at filing ≤ 30 min / 31–60 / 61–180 / > 180 | 3/26 · 0/43 · 1/12 · 0/5 |
+| Trending root / Latest or author root / ring reply | 1/14 · 1/21 · 2/51 |
+| Ruled in < 2 h (2+ teams reported it) / at ~3 h (us alone) | **2/13** (#155963 at 1.5 h, #190875 at 1.44 h, by the platform's lock times) · 2/73 |
+| Id run of 10+ among its accounts / none | 3/38 · 1/48 (no support: the factor is gone) |
+| Author already had a post hidden / not | 1/8 · 3/78 (no support: the factor is gone) |
 
-**Calibration.** The todo/26 model predicted 3.2 genuine over these 59 and 2 came; the 13 reports that logged `pg` at filing (22 Oct) predicted 0.55 and got 0. Too few rulings to say more than "not badly off". The new factors (`evidence.PG_FACTORS`): like ring 10%, like ring + a second class 7%, reply ring **2%** (was 4%), author hidden ×0.6 (unmeasured), small slow like ring ×1.4; the id-run factor is dropped. The dashboard gets `pg_by_class` (rulings, genuine, expected per class) in `blue_status.json` to keep checking.
+**Co-reported posts are not safer.** Both genuine rulings that came in under 2 h had 2+ teams on them, one of them (#190875) after the 22 Oct "boost to accuracy". 2 of 13 is too few to say they're riskier, but nothing says the boost protects a post report.
 
-**1% is not demonstrable for post reports.** The safest class has 0 genuine in 34; that is consistent with 1–2% but also with up to 9%. Showing 1% would take about 300 clean rulings of one class. And the todo's target doesn't add up: 70 post reports a day at 1–2% is 5–10 genuine a week, not 2–3; 2–3 a week at 70 a day needs 0.5% a report, which no class can show. So the volume of post reports has to be capped as well as their class.
+**Calibration.** Recomputed over all 86 with the todo/26 factors, the model predicted 3.9 genuine and 4 came; the 40 reports that logged `pg` at filing predicted 1.6 and got 2. Right overall, but it can't tell the classes apart beyond "like ring alone ≈ 10%, anything with a second signal ≈ 4%". New factors (`evidence.PG_FACTORS`, 10:00 UTC): like ring 10%, like ring + a second class 7%, reply ring **4%**, small slow like ring ×1.4; the id-run and author-hidden factors are gone.
 
-### The no-lock mode (the default since 22 Oct 05:17 UTC)
+**1–2% is unreachable for post reports.** The safest class is about 4% (2 of 56; 95% interval roughly 0.4–12%), and no cut of our data goes lower. Showing 1% would take about 300 clean rulings of one class. The todo's target doesn't add up either: 70 post reports a day at 1–2% is 5–10 genuine a week, not 2–3; 2–3 a week at 70 a day needs 0.5% a report. So the no-lock mode caps the **volume** of post reports as well as their class, and runs accounts first.
 
-- **Account reports always first.** They can't lock us. 55 account leads were ready on 22 Oct; most wait behind the per-team daily rate (11+ awards a team pay 10%) and file at full rate after the Sydney midnight.
-- **Post reports only at P(genuine) ≤ `BLUE_POST_PG_MAX`** (default **2%**): reply rings and their ring replies. No like ring files as a post report, whatever its size.
-- **Only when worth the lock they risk:** expected points ≥ P(genuine) × 300 (a 6 h lock is about a quarter of a ~1,200-point Blue day). A 2% report must be worth 6+, so reports at the 10% daily rate (2.3) never go.
-- **A risk bucket:** post reports may take on `BLUE_PG_PER_DAY` expected genuine rulings a day (default **0.4**, about 3 a week, the todo's bar). It refills continuously and holds a quarter of a day's worth (0.1, five 2% reports), so post reports spread over the day instead of going in one burst.
+### The no-lock mode (the default since 22 Oct 05:17 UTC; recalibrated 10:00 UTC)
+
+- **Account reports always first.** They can't lock us. 102 account leads were ready at 10:00 UTC; most wait behind the per-team daily rate (11+ awards a team pay 10%) and file at full rate after the Sydney midnight.
+- **Post reports only at P(genuine) ≤ `BLUE_POST_PG_MAX`** (default **4%**, was 2% until 10:00 UTC): reply rings and their ring replies, the safest class measured. No like ring files as a post report, whatever its size.
+- **Only when worth the lock they risk:** expected points ≥ P(genuine) × 300 (a 6 h lock is about a quarter of a ~1,200-point Blue day). A 4% report must be worth 12+, so only full-rate reports go; a 10%-rate one (2.3, like #190875) never does.
+- **A risk bucket:** post reports may take on `BLUE_PG_PER_DAY` expected genuine rulings a day (default **0.4**, about 3 a week, the todo's bar): about 10 reply-ring reports a day. It refills continuously and holds a quarter of a day's worth (0.1, two 4% reports), so they spread over the day.
 - **The last pending slot** of the 30 is an account report's.
 - **Never our own content** (Marc, 22 Oct): `file()` re-reads our ids (voices, boosters, swarm) and asks the platform who wrote the post; one of ours is refused, logged `"refused": "own account"` and alerted. A post with 3+ of our accounts among its likers or repliers is never post-reported (the report would point the moderator at our boosters). The 22 Oct audit: 0 of 199 report-log lines touched our 54 accounts; our boosters had liked #141107, a ring post we then reported correctly.
-- Settings: `BLUE_POST_PG_MAX=0.02` and `BLUE_PG_PER_DAY=0.4` in `.env` on the box (loaded when swan-blue starts: set them, then restart it). `BLUE_PG_PER_DAY=1.0` roughly restores the todo/26 volume of reply-ring reports.
+- Settings: `BLUE_POST_PG_MAX=0.04` and `BLUE_PG_PER_DAY=0.4` in `.env` on the box (loaded when swan-blue starts: set them, then restart it). `BLUE_POST_PG_MAX=0` files accounts only (zero lock risk); `BLUE_PG_PER_DAY=1.0` roughly restores the todo/26 volume of reply-ring reports.
 
 ### What it costs (estimates; the first 24 h will measure it)
 
 | Policy | Post reports a day | Genuine a day (expected) | Locked h a day | Blue points a day |
 |---|---|---|---|---|
-| todo/26 (6% bar when 10+ ready), measured 21 Oct 13:46 → 22 Oct 05:20 UTC | ~70 | 2 in the first 15 h | 7.5 h in the first 15 h | ~1,120 in 15.5 h (44 first, 3 later, 5 upheld account awards) |
-| **No-lock, `BLUE_PG_PER_DAY=0.4` (default)** | ~20 (reply rings) | 0.4 (≈ 3 a week) | ~2.4 | ~750: posts ~350, accounts ~470, less the locked time |
-| No-lock, `BLUE_PG_PER_DAY=1.0` | ~50 (reply rings worth ≥ 6) | 1 | ~6 | ~930 |
+| todo/26 (6% bar when 10+ ready), measured 21 Oct 13:46 → 22 Oct 05:20 UTC | ~70 | 2 in the first 15 h, 2 more from its last reports | 7.5 h, then 06:33 → 14:08 UTC on 22 Oct | ~1,120 in 15.5 h (44 first, 3 later, 5 upheld account awards) |
+| **No-lock (default: 4%, 0.4 a day)** | ~10 (full-rate reply rings) | 0.4 (≈ 3 a week) | ~2.4 | ~650: posts ~230, accounts ~470 at 5 of 6 upheld (7 of 13 so far, so maybe ~350), less the locked time |
+| No-lock, `BLUE_PG_PER_DAY=1.0` | ~25 | 1 | ~6 | ~800 |
+| Accounts only (`BLUE_POST_PG_MAX=0`) | 0 | 0 | 0 | ~350–470 |
 
-Assumptions: ~50 account leads a day (55 found in the first ~16 h), 5 of 6 upheld, 15 each; post reports paid first 94% of the time (44 of 47 so far); most awards at full or half rate (accounts take a team's first awards, so posts mostly land at half rate). The default trades roughly a third of Blue's points for about a fifth of the locked hours, which is what "as close to zero genuine rulings as the rules allow" asks. If points matter more than locks, `BLUE_PG_PER_DAY=1.0` is the lever.
+Assumptions: ~50 account leads a day that reach 100 actions (55 found in the first ~16 h, 102 by 10:00 UTC), 15 each; post reports paid first 94% of the time (44 of 47 on 21 Oct); most awards at full or half rate. On 22 Oct the per-team daily rate already bit hard: 13 first reports paid ×0.5 and 10 paid ×0.1 by 08:19 UTC. The default trades roughly 40% of Blue's points for about a third of the locked hours, which is what "as close to zero genuine rulings as the rules allow" asks. If points matter more than locks, `BLUE_PG_PER_DAY=1.0` is the lever; if locks matter more, `BLUE_POST_PG_MAX=0`.
 
 ### Co-reporting and new account leads
 
