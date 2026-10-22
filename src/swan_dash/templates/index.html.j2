@@ -333,18 +333,19 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<p class="sub">swan-blue hasn't written a status yet.</p>{% endif %}
 </div></details>
 
-<details id="facts"><summary><b>Facts</b><span class="sub {{ 'down' if facts and facts.paused else '' }}">
-  {% if facts %}{% if facts.paused %}{{ facts.paused | length }} paused · {% endif %}{{ facts.auto.log | rejectattr('reverted') | list | length }} approved automatically{% else %}fact desk not set up{% endif %}</span></summary>
+<details id="facts"><summary><b>Facts</b><span class="sub {{ 'down' if facts and (facts.paused or facts.auto.problems) else '' }}">
+  {% if facts %}{% if facts.paused %}{{ facts.paused | length }} paused · {% endif %}{% if facts.auto.problems %}{{ facts.auto.problems | length }} problem{{ 's' if facts.auto.problems | length != 1 }} · {% endif %}{{ facts.auto.log | rejectattr('reverted') | list | length }} recently added{% else %}fact desk not set up{% endif %}</span></summary>
 <div>
   {% if facts %}
   {% for p in facts.paused %}<p class="down"><b>Paused: {{ p.fact }}</b> since {{ p.since }}{% if p.paper %} ({{ p.paper }}){% endif %}. {{ p.text }}</p>{% endfor %}
-  <h3>Facts approved automatically</h3>
+  {% for x in facts.auto.problems %}<p class="down"><b>{{ x | capitalize }}</b></p>{% endfor %}
+  <details class="pts" id="facts-recent"><summary>Recently added facts ({{ facts.auto.log | rejectattr('reverted') | list | length }})</summary><div>
   {% for d in facts.auto.log %}
   <div class="fact"><p><span class="sub">{{ d.date }}</span> {% if d.reverted %}<s>{{ d.text }}</s> <span class="sub">(reverted)</span>{% else %}{{ d.text }}{% endif %}
     <span class="sub">· {% if d.url %}<a href="{{ d.url }}" rel="noreferrer noopener" target="_blank">{{ d.paper }}</a>{% else %}{{ d.paper }}{% endif %}</span></p>
     {% if not d.reverted %}<code class="cmd">{{ d.undo }}</code>{% endif %}</div>
-  {% else %}<p class="sub">None yet: the desk checks the papers every hour.</p>{% endfor %}
-  <p class="sub">Revert one: run its command. {% if facts.count %}{{ facts.count }} still open (the next hourly run, or a human): <code>python scripts/facts_review.py --list</code>.{% endif %}</p>
+  {% else %}<p class="sub">None yet: the desk checks the papers every hour and adds what they report.</p>{% endfor %}
+  <p class="sub">Revert one: run its command.</p></div></details>
   {% endif %}
 </div></details>
 

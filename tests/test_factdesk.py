@@ -465,6 +465,39 @@ def test_auto_changes_go_live_only_if_test_facts_passes_with_them(auto):
     assert [r["id"] for r in out["applied"]] == [2] and auto.table()["no_spread"]["status"] == "paused"
 
 
+FRESH = dict(key="poll_tonight", text="Tonight's poll: No 41.7%, Yes 33.8%; the gap is outside the margin.",
+             note="No 41.7% to Yes 33.8% tonight, outside the margin", numbers=["41.7%", "33.8%"],
+             frames=["F1_blank_cheque"])
+E2E = """
+import json, sys
+sys.path.insert(0, "src")
+from swan_bot import content, factdesk, facts
+p = content.PERSONA_BY_KEY["ben"]
+prompt = content.system_prompt(p, "F1_blank_cheque")
+print(json.dumps(dict(note=facts.NOTES.get("poll_tonight"), added=str(facts.added("poll_tonight")),
+                      in_frame="poll_tonight" in content.FRAMES["F1_blank_cheque"]["facts"],
+                      in_prompt=facts.NOTES.get("poll_tonight", "?") in prompt,
+                      new_numbers=factdesk.new_numbers(facts.TEXTS.get("poll_tonight", "")))))
+"""
+
+
+def test_an_auto_accepted_fact_reaches_the_prompts_after_the_restart(auto):
+    """End to end (Marc, 22 Oct): the desk accepts a new fact into the overlay, restarts the bot, and the fresh bot
+    process states it in the next prompt for its frame, with its figures allowed by the gate. Stamped `added`."""
+    import os
+    import subprocess
+    now = time.time()
+    out, _, _ = auto(prop("new_fact", id=11, quote=QUOTE, **FRESH), now=now)
+    assert out["applied"] and fact_store.when(auto.table()["poll_tonight"]["added"]) is not None
+    env = dict(os.environ, SWAN_FACTS_AUTO=str(auto.paths["overlay"]),
+               SWAN_FACTS_PAUSED=str(auto.paths["overlay"].with_name("none.json")))
+    r = subprocess.run([sys.executable, "-c", E2E], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
+    got = json.loads(r.stdout.strip().splitlines()[-1])
+    assert got["note"] == FRESH["note"] and got["in_frame"] and got["in_prompt"], (got, r.stderr[-500:])
+    assert got["new_numbers"] == [] and got["added"].startswith(dt.datetime.fromtimestamp(now, dt.timezone.utc)
+                                                                .strftime("%Y-%m-%d"))
+
+
 def test_auto_dry_writes_nothing(auto):
     out, alerts, mirrored = auto(prop("contradiction", id=1, fact="no_spread", quote=QUOTE, **SPREAD), dry=True)
     assert out["applied"] and not alerts and not mirrored

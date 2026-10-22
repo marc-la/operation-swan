@@ -159,16 +159,31 @@ def refresh(force=False):
     return True
 
 
+def added(key):
+    """When a fact first went live, as an aware UTC datetime: its `added` (stamped by the fact desk on every new fact
+    and every replacement key since 22 Oct, todo/29), else None (facts older than that). For preferring fresh facts."""
+    return when((TABLE.get(key) or {}).get("added"))
+
+
 def ok(keys):
     """True if every fact in keys is active (an unknown key counts as paused)."""
     refresh()
     return all(k in TEXTS for k in keys)
 
 
+FRESH_S = 2 * 86400         # a fact `added` this recently goes first in active() (todo/29)
+
+
 def active(keys):
-    """The keys that are active, in order."""
+    """The keys that are active: those `added` in the last FRESH_S first (newest first), then the rest in order. So
+    a fact the desk accepted reaches the prompts that take a frame's first few facts (content.system_prompt) as soon
+    as the bot has read it, instead of queueing behind the frame's own facts."""
     refresh()
-    return [k for k in keys if k in TEXTS]
+    keys = [k for k in keys if k in TEXTS]
+    now = dt.datetime.now(UTC)
+    fresh = sorted((k for k in keys if added(k) and (now - added(k)).total_seconds() < FRESH_S),
+                   key=added, reverse=True)
+    return fresh + [k for k in keys if k not in fresh]
 
 
 def paused_in(text):

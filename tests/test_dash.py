@@ -254,7 +254,7 @@ def test_facts_section_lists_pauses_first_and_hides_decided(tmp_path):
     assert ctx["banner"]["level"] == "amber" and "FACT PAUSED: polls" in ctx["banner"]["text"]
     assert 'class="down"><b>Paused: polls</b>' in html                   # red, at the top of Facts (Marc, 22 Oct)
     assert "--accept" not in html and "<script>alert(1)" not in html      # no review queue on the page any more
-    assert "4 still open" in html
+    assert "Recently added facts (0)" in html
 
 
 # ---- Reach (2026-10-22): did we answer every citizen we could, fast, and did it convert? ----
@@ -469,7 +469,26 @@ def test_facts_section_is_the_autopilot_log_with_undo(tmp_path):
     assert f["auto"]["log"][0]["paper"] == "Daily Kingstonia"
     assert "facts_review.py --undo 5" in html and "--undo 1" in html and "--undo 4" not in html   # #4 reverted
     assert [p["id"] for p in f["proposals"]] == [3, 4]                             # failed and undone: for a human
-    assert "2 approved automatically" in html and "2 still open" in html and "An idea" not in html
+    assert "2 recently added" in html and "An idea" not in html and not f["auto"]["problems"]
+
+
+def test_facts_loud_only_for_a_failed_test_or_a_stalled_desk(tmp_path):
+    root = make_root(tmp_path)
+    (root / "content").mkdir()
+    (root / "content" / "facts.toml").write_text((pathlib.Path(__file__).resolve().parents[1] / "content" /
+                                                  "facts.toml").read_text())
+    (root / "data" / "factdesk_state.json").write_text(json.dumps({"seen": {}, "last_run": iso(30)}))
+    ctx, _ = page(root)
+    assert not ctx["facts"]["auto"]["problems"] and ctx["banner"]["level"] == "green"
+    (root / "data" / "factdesk_state.json").write_text(json.dumps({"seen": {}, "last_run": iso(200)}))
+    (root / "data" / "facts_auto.jsonl").write_text(json.dumps(dict(
+        id=9, status="failed", by="factdesk-auto", decided_at=iso(40),
+        summary="#9 left for a human: tests/test_facts.py failed with this run's changes (1 failed)")) + "\n")
+    ctx, html = page(root)
+    probs = ctx["facts"]["auto"]["problems"]
+    assert len(probs) == 2 and "test_facts.py failed" in probs[0] and "hasn't run since" in probs[1]
+    assert ctx["banner"]["level"] == "amber" and ctx["banner"]["text"].startswith("FACTS: tests/test_facts.py failed")
+    assert "2 problems" in html
 
 
 def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):

@@ -43,7 +43,7 @@ MAX_TRIES = 3               # an article whose batch keeps failing is marked see
 MIN_QUOTE = 25              # characters: a shorter "quote" proves nothing
 MIN_LIVE_FRAMES = 4         # fewer live frames than this after a pause: the alert says so
 LIMITS = {"text": 200, "note": 120, "idea": 160, "why": 300}
-FIELDS = ("text", "note", "status", "source", "checked", "numbers", "says", "frames")
+FIELDS = ("text", "note", "status", "source", "checked", "added", "numbers", "says", "frames")
 KEY = re.compile(r"^[a-z][a-z0-9_]{2,30}$")
 SYDNEY = ZoneInfo("Australia/Sydney")
 # our writers never argue vaccine safety (content.SAFETY_RULE), so the desk never proposes it
@@ -136,6 +136,8 @@ def problems(key, fact):
         out.append(f"status {fact.get('status')!r}: one of {fact_store.STATUSES}")
     if fact_store.when(fact.get("checked")) is None or isinstance(fact.get("checked"), str):
         out.append("checked: a TOML date (2026-10-22) or date-time (2026-10-22T09:30:00+08:00)")
+    if "added" in fact and (fact_store.when(fact["added"]) is None or isinstance(fact["added"], str)):
+        out.append("added: a TOML date-time (2026-10-22T09:30:00Z): when the fact first went live")
     for field in ("text", "note"):
         if isinstance(fact.get(field), str):
             out += [f"{field}: {p}" for p in text_problems(fact[field], LIMITS[field])]
@@ -631,7 +633,7 @@ def decide(p, accept, toml_text, text=None, note=None, key=None, frames=None, sa
             return toml_text, None, f"new fact #{p['id']} rejected"
         key = key or p["key"]
         fields = dict(text=text or p["text"], note=note or p["note"], status="active", source=src, checked=checked,
-                      numbers=list(p.get("numbers") or []), says=list(says or []),
+                      added=checked, numbers=list(p.get("numbers") or []), says=list(says or []),
                       frames=list(frames if frames is not None else p.get("frames") or []))
         new = toml_add(toml_text, key, comment=f"fact desk proposal {p['id']}, accepted {checked.date()}", **fields)
         _valid(new, key)
@@ -656,7 +658,7 @@ def decide(p, accept, toml_text, text=None, note=None, key=None, frames=None, sa
                       [k for k, f in content.FRAMES.items() if fact in f["facts"] and fact not in f["requires"]])
         new = toml_add(toml_set(toml_text, fact, status="paused", checked=checked), key,
                        comment=f"replaces {fact} (contradicted: fact desk proposal {p['id']}), accepted {checked.date()}",
-                       text=text, note=note, status="active", source=src, checked=checked, numbers=[],
+                       text=text, note=note, status="active", source=src, checked=checked, added=checked, numbers=[],
                        says=list(says or []), frames=frames)
         _valid(new, key)
         held = content.requiring(fact)
@@ -783,7 +785,8 @@ def auto_decide(now=None, dry=False, alert=None, mirror=None, log=print, proposa
       reword         in place (--same-key), unless a contradiction's pause holds on that fact
       new_fact       only from a news article with a verbatim quote (opinion columns give ideas only)
       angle          logged only: frames are code
-    Each change must leave the whole table valid (validate). At most `cap` changes a Sydney day; the rest wait.
+    Each change must leave the whole table valid (validate). With a `cap` (config.FACTDESK_AUTO_PER_DAY; None since
+    Marc's "completely autonomous", 22 Oct), at most that many changes a Sydney day; the rest wait.
     test(overlay path) -> (ok, output lines): tests/test_facts.py with the run's overlay (run_facts_tests); if it
     fails, none of the run's changes go live. Returns dict(applied, logged, failed, waiting) of decision records;
     dry: decides and prints, writes nothing."""
@@ -812,7 +815,7 @@ def auto_decide(now=None, dry=False, alert=None, mirror=None, log=print, proposa
         if p["kind"] == "angle":
             out["logged"].append(dict(base_rec, status="logged", summary=f"idea #{p['id']} logged: {p.get('idea')}"))
             continue
-        if used >= cap:
+        if cap is not None and used >= cap:
             out["waiting"] += 1
             continue
         merged = fact_store.merge(base, overlay)

@@ -407,6 +407,8 @@ def _when(v):
 
 MIN_T = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 AUTO_SHOWN = 15                                # autopilot decisions listed, newest first
+DESK_STALL_S = 150 * 60                        # swan-factdesk.timer runs hourly: no run for this long is a problem
+DESK_PROBLEM_S = 24 * 3600                     # a failed facts test stays on the page this long
 AUTO_UNDO = "ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo {id}'"   # = factdesk.UNDO
 
 
@@ -456,7 +458,20 @@ def fact_desk(root, now=None):
             paper=(r.get("site") or "").replace("-", " ").title(),
             url=f"https://sites.legitreal.com/{r.get('site')}/articles/{r.get('slug')}" if r.get("site") else None,
             reverted=r.get("id") in undone, undo=AUTO_UNDO.format(id=r.get("id"))))
-    auto = dict(on=bot_config.FACTDESK_AUTO, cap=bot_config.FACTDESK_AUTO_PER_DAY, log=log,
+    # only serious problems are loud (Marc, 22 Oct): a failed facts test, or the desk erroring or stalled
+    problems = []
+    tested = next((r for r in reversed(autolog) if "tests/test_facts.py failed" in (r.get("summary") or "")), None)
+    if tested and (now - (ts(tested.get("decided_at")) or MIN_T)).total_seconds() < DESK_PROBLEM_S:
+        problems.append(f"tests/test_facts.py failed with the desk's changes at {hm(ts(tested['decided_at']))}: "
+                        f"none of them went live")
+    state_file = root / "data" / "factdesk_state.json"
+    last_run = ts((read_json(state_file) or {}).get("last_run"))
+    if last_run is None and state_file.exists():
+        last_run = dt.datetime.fromtimestamp(state_file.stat().st_mtime, dt.timezone.utc)
+    if bot_config.FACTDESK_AUTO and last_run and (now - last_run).total_seconds() > DESK_STALL_S:
+        problems.append(f"the fact desk hasn't run since {hm(last_run)} "
+                        f"(on the box: journalctl -u swan-factdesk -n 50)")
+    auto = dict(on=bot_config.FACTDESK_AUTO, cap=bot_config.FACTDESK_AUTO_PER_DAY, log=log, problems=problems,
                 today=sum(1 for r in autolog if r.get("status") in ("accepted", "retired")
                           and (ts(r.get("decided_at")) or MIN_T) >= today))
     items = []
@@ -965,6 +980,8 @@ def gather(root, now, service):
         amber = (f"FACT PAUSED: {', '.join(p['fact'] for p in facts['paused'])} (the bot leaves it out). "
                  + ("The desk decides it on its next hourly run (Facts, below)" if facts["auto"]["on"]
                     else "Review it under Facts below"))
+    elif facts and facts["auto"]["problems"]:
+        amber = f"FACTS: {facts['auto']['problems'][0]}"
     elif blue and blue["own"] and blue["own"]["hits"]:
         amber = (f"BLUE: {blue['own']['hits']} report(s) in logs/blue_reports.jsonl against our own accounts. "
                  f"Stop filing: ssh swan-ec2 'touch ctn/BLUE_OFF'")

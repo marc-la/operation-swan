@@ -213,7 +213,7 @@ FACTDESK_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "openai/gpt-oss-120b"
 # checks a human decision runs, into data/facts_auto.toml (factdesk.auto_decide). False: everything waits for
 # scripts/facts_review.py as before. Undo one: ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo ID'
 FACTDESK_AUTO = True
-FACTDESK_AUTO_PER_DAY = 5           # fact changes a competition day (Sydney); the rest wait for the next day
+FACTDESK_AUTO_PER_DAY = None        # no cap (Marc, 22 Oct: "completely autonomous"); a number caps changes a Sydney day
 
 # ---- swarm (src/swan_bot/swarm.py, docs/04-technical/swarm.md): like + repost other Vote No posts every 5 min ----
 SWARM_ACCOUNTS_FILE = SECRETS / "swarm_accounts.json"   # its own file: the bot process never writes it
