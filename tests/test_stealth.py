@@ -5,6 +5,7 @@ citizen per day, staggered starts, the status.json numbers, the read-back of the
 end to end on test_bot_split's fake world with every rule on and the limits shrunk to seconds."""
 import datetime as dt
 import json
+import os
 import pathlib
 import sys
 import time
@@ -337,7 +338,9 @@ def test_metrics_per_voice_and_team():
     stealth.record(state, post(14, OTHER), "dan", "reply", t - 300)
     m = stealth.metrics([a, b], {"u_dan": 1}, state, t, status=lambda r: "voice_capped" if r is a else None)
     d = m["voices"]["u_dan"]
-    assert (d["writes_24h"], d["writes_today"], d["writes_1h"], d["hours_active_24h"], d["hidden"]) == (4, 4, 1, 3, 1)
+    assert (d["writes_24h"], d["writes_today"], d["writes_1h"], d["hours_active_24h"], d["hidden"]) == (4, 4, 1, 4, 1)
+    every_half_hour = voice("ruth", day_writes=[t - 1800 * i for i in range(48)])
+    assert stealth.metrics([every_half_hour], {}, {}, t)["voices"]["u_ruth"]["hours_active_24h"] == 24
     assert d["sleep"] == stealth.window_text("dan") and d["now"] == "voice_capped"
     assert m["voices"]["u_mere"]["now"] == "free"
     team = m["team"]
@@ -366,6 +369,31 @@ def test_seed_reads_the_last_day_back_from_the_log(tmp_path):
     assert stealth.owners(state, post(11, CIT), t) == {"dan"}
     assert stealth.owners(state, post(12, OTHER, 10, 10), t) == {"dan"}, "their post's thread too"
     assert stealth.recent_writes(path, t, nbytes=len(json.dumps(rows[-1])) + 5) == [], "only the tail is read"
+
+
+# ---- .env overrides ------------------------------------------------------------------------------------------------------
+def test_env_overrides_the_budget_and_the_switches(monkeypatch):
+    for name in config.STEALTH_ENV:
+        monkeypatch.setattr(config, name, getattr(config, name))         # restored after the test
+    changed = config.stealth_from_env({"SWAN_VOICE_WRITES_PER_DAY": "80", "SWAN_VOICE_DAY_CAP": "off",
+                                       "SWAN_VOICE_SLEEP": "1", "SWAN_VOICE_WRITES_PER_H": " "})
+    assert changed == {"VOICE_WRITES_PER_DAY": 80, "VOICE_DAY_CAP": False, "VOICE_SLEEP": True}
+    assert config.VOICE_WRITES_PER_DAY == 80 and config.VOICE_DAY_CAP is False and config.VOICE_SLEEP is True
+    for bad in ({"SWAN_VOICE_WRITES_PER_DAY": "lots"}, {"SWAN_VOICE_DAY_CAP": "maybe"},
+                {"SWAN_VOICE_WRITES_PER_H": "-1"}):
+        with pytest.raises(SystemExit):
+            config.stealth_from_env(bad)
+    assert config.stealth_from_env({}) == {}
+
+
+def test_load_env_applies_the_overrides(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "VOICE_WRITES_PER_DAY", 40)
+    env = tmp_path / ".env"
+    env.write_text("# test\nSWAN_VOICE_WRITES_PER_DAY=55\n")
+    monkeypatch.delenv("SWAN_VOICE_WRITES_PER_DAY", raising=False)
+    config.load_env(env)
+    os.environ.pop("SWAN_VOICE_WRITES_PER_DAY", None)          # load_env set it in the process
+    assert config.VOICE_WRITES_PER_DAY == 55
 
 
 # ---- end to end: bot.main() on the fake world with every rule on ----------------------------------------------------------

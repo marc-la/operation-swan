@@ -31,6 +31,19 @@ Each rule has its own switch (False + a restart: as before) and holds for the li
 - **4. Staggered starts:** after a (re)start each voice waits its own random 0-20 min.
 - **5. Measure:** `data/status.json` → `stealth`: per voice `writes_24h`, `writes_today` (since Sydney midnight), `writes_1h`, `hours_active_24h`, `hidden`, `sleep`, `now` (free / gap / voice_asleep / voice_capped / parked); team `two_voice_share` (citizens written to by ≥ 2 voices in 24 h), `max_writes_24h`, `max_hours_active_24h`. On start the last day's writes are read back from the tail of the actions log, so the budgets hold from the first minute.
 - When every voice is asleep or capped the writer just waits; `{"act": "skip", "why": "voice_capped" | "voice_asleep" | "voice_owner", "n": ...}` is logged at most every 2 min per reason (n = times since the last line).
+- **Switched off 22 Oct evening (87c6e8e, Marc: throughput over stealth).** The code and tests stay; bring a rule back with its config switch, or without a push in `.env`: `SWAN_<NAME>=...` for `VOICE_DAY_CAP`, `VOICE_WRITES_PER_DAY`, `VOICE_CITIZEN_RESERVE`, `VOICE_HOUR_CAP`, `VOICE_WRITES_PER_H`, `VOICE_SLEEP`, `VOICE_JITTER`, `VOICE_STAGGER`, `ONE_VOICE_PER_CITIZEN` (switches 1/0; read at the bot's next restart; the startup line `todo/31 stealth: ...` in `journalctl -u swan-bot` shows what's in force). The `stealth` block of `data/status.json` is reported whatever the switches.
+- **What each switch costs** (estimates from the live log, 22 Oct ~15:00 UTC, all off: 2,544 writes in 24 h, 1.73/min over the last 3 h; 8 writing voices at ~12 writes/h each, the 4-min gap's ceiling being 15/h; 1,840 replies, 266 second voices, 219 reposts, 200 reply-backs):
+
+  | switch | ceiling with 8 voices | cost vs now (~2,500/day) |
+  |---|---|---|
+  | `VOICE_DAY_CAP` (40) | 8 × 40 = 320/day (80: 640, 150: 1,200) | −85% at 40 |
+  | `VOICE_HOUR_CAP` (6) | 8 × 6 × 24 = 1,150/day | about −55% |
+  | `VOICE_SLEEP` (7-8 h) | each voice ~16.5 h awake; most sleep ~22:00-06:00 Sydney, which carried ~700 of the 2,544 | about −700 to −800/day |
+  | `VOICE_JITTER` (median 12 min, 8% breaks of 1-2 h) | ~3 ordinary writes/h a voice: ~580/day if awake all day | about −75% (the heaviest); reply-backs and reposts keep their short gaps |
+  | `VOICE_STAGGER` (0-20 min) | one-off per restart | ~15 writes per restart |
+  | `ONE_VOICE_PER_CITIZEN` | stops the 266 second voices; 1,050 of the day's replies/second voices went to a citizen another voice already had, and would wait for that voice | −266/day for certain, more when owner voices are busy; mostly delay |
+
+  Combined they're not additive: with all on the day cap binds (320/day at 40). A higher `VOICE_WRITES_PER_DAY` with `VOICE_SLEEP` and `ONE_VOICE_PER_CITIZEN` on is the cheapest stealth: about −1,000/day.
 - **3. Ordinary life: not done here.** It doesn't fit the post path without `content.py` (a non-referendum persona post needs its own prompt and gate in `content.build_prompt`/`quality`, both owned elsewhere). What exists: the off-topic arm (`OFF_TOPIC_ARM`, 3/h) already answers citizens' off-topic posts in persona with no pivot, inside the same budgets; voices don't like citizens' everyday posts (only boosters do filler likes). For the content session: a `post` with `job["everyday"] = True` from the persona card (work, island, family), about 1 in 10 of a voice's writes; the behaviour side then only has to pick it in `choose()`.
 
 ## Do: content (todo/25 session, content.py and prompts)

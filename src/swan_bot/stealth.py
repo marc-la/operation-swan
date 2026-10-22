@@ -294,7 +294,8 @@ def metrics(voices, hidden, state, t=None, status=None):
         key = key_of(r)
         per[r["username"]] = dict(
             persona=r.get("persona"), writes_24h=len(times), writes_today=sum(x >= midnight for x in times),
-            writes_1h=sum(t - x < HOUR_S for x in times), hours_active_24h=len({int(x // HOUR_S) for x in times}),
+            writes_1h=sum(t - x < HOUR_S for x in times),
+            hours_active_24h=len({int((t - x) // HOUR_S) for x in times}),       # of the last 24 hours: at most 24
             hidden=hidden.get(r["username"], 0), sleep=window_text(key) if config.VOICE_SLEEP else None,
             now=(status(r) if status else None) or "free")
     citizens, two = doubles(state, t)

@@ -908,8 +908,9 @@ def main():
                     "the personas' typing habits (humanize.py)")
     args = ap.parse_args()
 
-    config.load_env()
+    config.load_env()                                   # and the todo/31 SWAN_<NAME> overrides
     config.assigned_side()
+    print("todo/31 stealth:", ", ".join(f"{n}={getattr(config, n)}" for n in config.STEALTH_ENV))
     code, owner = config.team_code(), config.operator()
     k = max(1, min(args.accounts, config.MAX_ACCOUNTS))
     per_min = max(0.1, min(args.per_min, config.MAX_PER_MIN))    # the headers bind first (write_gap)

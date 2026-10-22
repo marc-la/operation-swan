@@ -364,11 +364,16 @@ VOICE_STAGGER = False                # after a (re)start each voice waits its ow
 VOICE_STAGGER_S = 20 * 60
 # One voice per citizen per day: no other voice of ours replies to a citizen, or under their post, for ONE_VOICE_S
 # unless the citizen addressed that voice (a reply-back stays with the voice they answered or mentioned). A citizen
-# whose voice is asleep or capped waits for it. Second voices can't run under it (SECOND_VOICE is off anyway).
+# whose voice is asleep or capped waits for it. On, it also stops second voices (SECOND_VOICE is on again).
 ONE_VOICE_PER_CITIZEN = False
 ONE_VOICE_S = 24 * 3600
 STEALTH_SEED_BYTES = 64 * 2 ** 20   # on start the last day of writes is read back from the tail of the actions log
 STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is logged at most this often per reason
+# .env overrides for these, without a push (read by load_env, so they reach the bot at its next restart):
+# SWAN_<NAME>=..., e.g. SWAN_VOICE_WRITES_PER_DAY=80 and SWAN_VOICE_DAY_CAP=1 (switches: 1/0, true/false, on/off).
+# Marc is weighing more voices against a higher cap (22 Oct: 40 a day x 14 voices is ~560 writes a day, ~0.4/min).
+STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE", "VOICE_HOUR_CAP", "VOICE_WRITES_PER_H",
+               "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN")
 
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped
@@ -430,15 +435,42 @@ def blue_reporter(records):
 
 
 def load_env(path=ROOT / ".env"):
-    """Minimal .env loader (strips quotes). .env wins over the shell, so a stale exported key can't shadow it."""
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    """Minimal .env loader (strips quotes). .env wins over the shell, so a stale exported key can't shadow it. Then
+    the todo/31 overrides (SWAN_<name> for the names in STEALTH_ENV)."""
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ[key.strip()] = value.strip().strip('"').strip("'")
+    stealth_from_env()
+
+
+def stealth_from_env(env=None):
+    """Apply SWAN_<NAME> overrides for the todo/31 settings in STEALTH_ENV: an int for a number, 1/0, true/false,
+    on/off or yes/no for a switch. A value that doesn't parse is refused loudly (SystemExit), never half-applied.
+    Returns {name: value} for what it changed."""
+    env = os.environ if env is None else env
+    changed = {}
+    for name in STEALTH_ENV:
+        raw = env.get(f"SWAN_{name}")
+        if raw is None or not raw.strip():
             continue
-        key, value = line.split("=", 1)
-        os.environ[key.strip()] = value.strip().strip('"').strip("'")
+        raw, current = raw.strip().lower(), globals()[name]
+        if isinstance(current, bool):
+            if raw not in ("1", "0", "true", "false", "on", "off", "yes", "no"):
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected 1/0, true/false, on/off or yes/no")
+            value = raw in ("1", "true", "on", "yes")
+        else:
+            try:
+                value = int(raw)
+            except ValueError:
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected a whole number") from None
+            if value < 0:
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected a whole number >= 0")
+        changed[name] = globals()[name] = value
+    return changed
 
 
 def assigned_side():
