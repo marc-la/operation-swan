@@ -72,3 +72,8 @@ Since the mode went live (05:17 → 10:00 UTC): 3 post reports filed under it (0
 | Hours locked | 7.5, then 06:33 → 14:08 UTC | |
 | Blue points | ~1,120 | |
 | Leads from detectors (`"by": "watch"`) | n/a | |
+
+### Addendum (22 Oct, Marc via the orchestrator)
+- `BLUE_PG_PER_DAY=1.0` set on the box ~10:40 UTC (`risk.per_day` reads 1.0).
+- 37f7c38: the one-off cap probe, and Yes-side targets first (`swan_blue/side.py`, `BLUE_SIDE_BIAS` yes 1.3 / unclear 1.0 / no 0.7, ranking only, never in the detail; `side` per report, `today.sides`, `cap_probe` in `blue_status.json`). First 50 min after the lock: 20 Yes, 14 unclear, 1 No-side reports.
+- 16efdbe: **account reports count toward the 30** (observed, not confirmed). The probe at 14:18 was taken and first read "no"; at 14:26 the platform refused with "30 reports awaiting a moderator's ruling" while we held 5 post reports. Our ledger overcounts because account reports can be ruled before 3 h and we can't see it. A full cap is now a 10-minute hold (it had set a 30-minute lock twice, until 15:27). The probe file corrects itself and alerts, and when our ledger says full we still try one report every 10 minutes.
