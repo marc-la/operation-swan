@@ -29,10 +29,13 @@ header { display: flex; justify-content: space-between; align-items: baseline; c
 header b { color: var(--ink); letter-spacing: .08em; }
 .banner { margin: 10px 0 16px; padding: 14px 16px; border-radius: 10px; font-weight: 600; font-size: 17px; }
 .banner::before { content: "●  "; }
-.pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 8px; }
-.pills .banner { margin: 0; padding: 10px 12px; font-size: 14px; }
-@media (max-width: 640px) { .pills { grid-template-columns: 1fr; } }
-.ver { margin: 0 0 14px; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
+.chips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.chip { padding: 1px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip::before { content: "● "; }
+.chip.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+.alerts { margin: 8px 0 0; }
+.alerts p { margin: 3px 0; padding: 5px 10px; border-radius: 8px; font-size: 13px; }
+.ver { margin: 8px 0; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
 td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .green { background: var(--green-bg); color: var(--green); }
 .amber { background: var(--amber-bg); color: var(--amber); }
@@ -52,12 +55,13 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 @media (max-width: 640px) { .reach td:last-child { display: none; } }
 .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
 @media (max-width: 640px) { .kpi .val { font-size: 22px; } }
-.lights { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
-.light { border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.lights { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+.light { border-radius: 8px; padding: 6px 10px; min-width: 0; }
 .light .label { color: inherit; opacity: .85; }
-.light .val { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.light .val { font-size: 16px; font-weight: 700; line-height: 1.2; }
+.light .label, .light .sub { font-size: 11px; }
 .light.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
-@media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } .light .val { font-size: 18px; } .light .sub { font-size: 12px; } }
+@media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
 .kpi .val { font-size: 28px; font-weight: 700; line-height: 1.15; margin: 2px 0; }
@@ -224,13 +228,14 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% endif %}
 {% endmacro %}
 
-<header><b>SWAN</b><span><a href="lab.html">NPC lab</a> · as of {{ now }} Perth</span></header>
-
-<div class="pills">
-  <div class="banner {{ banner.level }}"><b>Red</b> · {{ banner.text }}</div>
-  <div class="banner {{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</div>
+<header><b>SWAN</b>
+  <span class="chips"><span class="chip {{ banner.level }}" title="Red track: the bot">Red</span><span class="chip {{ blue_banner.level }}" title="Blue track: reporting">Blue</span>{% if running %}<span class="chip {{ running.light }}" title="running version, deployed {{ running.when }}">v{{ running.sha }} · {{ running.when }}</span>{% endif %}</span></header>
+<div class="sub" style="text-align:right"><a href="lab.html">NPC lab</a> · as of {{ now }} Perth</div>
+<div class="alerts">
+  {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
+  {% if blue_banner.level != 'green' %}<p class="{{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</p>{% endif %}
+  {% if running and running.failed %}<p class="red"><b>Deploy failed {{ running.failed }}</b>, still on v{{ running.sha }}</p>{% endif %}
 </div>
-{% if running %}<div class="ver {{ running.light }}">v <b>{{ running.sha }}</b> · deployed {{ running.when }}{% if running.failed %} · <b>deploy failed {{ running.failed }}</b>, still on this version{% endif %}</div>{% endif %}
 {% if rollback %}<div class="ver red">Roll back to the last stable version (pauses auto-deploy; restart it with <code>sudo systemctl start swan-update.timer</code> after pushing a fix):<code class="cmd">{{ rollback }}</code></div>{% endif %}
 
 <div class="kpis">
@@ -364,7 +369,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <table class="days"><tr><th>Day</th><th class="num">Points</th><th class="num">Target</th><th class="num">Sent</th><th class="num">Success</th><th class="num">Failed</th><th class="num">1st reporter</th><th class="num">Full pay</th><th class="num">Locked</th></tr>
   {% for d in blue.history %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num" data-l="points">{{ d.points | n }}</td><td class="num {{ '' if d.today else d.level }}" data-l="of target">{{ d.pct }}%</td><td class="num" data-l="sent">{{ d.filed }}</td><td class="num" data-l="success">{{ d.hidden }}</td><td class="num" data-l="failed">{{ d.genuine }}</td><td class="num" data-l="1st reporter">{{ d.first }}/{{ d.paid }}</td><td class="num" data-l="full pay">{{ d.full }}/{{ d.awards }}</td><td class="num" data-l="locked">{{ d.locked_h }} h</td></tr>{% endfor %}
   </table></details>{% endif %}
-  {% if blue.timeline %}<details id="blue-ledger"><summary>Reports since {{ day_start }} and any pending ({{ blue.rows | length }}, times Perth)</summary>
+  {% if blue.timeline %}<details id="blue-ledger"><summary>Reports since {{ day_start }}: <span class="up">{{ blue.counts.success }} successful</span> · <span class="{{ 'down' if blue.counts.failed else '' }}">{{ blue.counts.failed }} failed</span> · <span class="{{ 'warn' if blue.counts.pending else '' }}">{{ blue.counts.pending }} pending</span></summary>
   <table class="ledger">{% for it in blue.timeline %}{% if it.kind == 'run' %}<tr><td colspan="2"><details class="run" id="{{ it.id }}"><summary><span class="out {{ it.css }}">▸ {{ it.out }}</span><span class="det">{{ it.detail }}</span></summary>
     <table class="ledger">{% for r in it.rows %}<tr><td class="out {{ r.css }}">{{ r.out }}</td><td class="det">{{ r.detail }}</td></tr>{% endfor %}</table></details></td></tr>
   {% else %}<tr><td class="out {{ it.css }}">{{ it.out }}</td><td class="det">{{ it.detail }}</td></tr>{% endif %}{% endfor %}</table>

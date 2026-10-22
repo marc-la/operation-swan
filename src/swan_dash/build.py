@@ -730,6 +730,10 @@ def blue_panel(data, now, points, day_start, logs=None):
          if s.get("pending") else []) + \
         ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
         ([f"{pts:+,} pts since 9pm"] if pts else [])
+    rows_all = [r for it in timeline for r in (it["rows"] if it["kind"] == "run" else [it])]
+    kind = lambda r: ("success" if r["out"] in ("hidden", "suspended") else "failed" if r["out"] in ("genuine", "dismissed")
+                      else "pending")                    # pending also holds "ruled, outcome not in the portal log yet"
+    counts = {k: sum(kind(r) == k for r in rows_all) for k in ("success", "failed", "pending")}
     return dict(
         stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
         summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
@@ -742,9 +746,10 @@ def blue_panel(data, now, points, day_start, logs=None):
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
         today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
         queued=s.get("queued") or 0, first={"first": 0, "later": 0, **(s.get("first") or {})}, own=own,
-        timeline=timeline, rows=[r for it in timeline for r in (it["rows"] if it["kind"] == "run" else [it])],
+        timeline=timeline, rows=rows_all, counts=counts,
         rate=prec.get("rate"), ruled=prec.get("n"), history=history, last=last, target=BLUE_TARGET_DAY,
-        error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
+        error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S
+        and not str(s.get("last_error")).startswith("report refused") else None)    # refusals are plumbing (Marc, 23 Oct)
 
 
 # ---- reach: did we answer every citizen we could, fast, and did it convert? (Marc, 2026-10-22) ----
