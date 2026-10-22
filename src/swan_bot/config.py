@@ -314,6 +314,10 @@ WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1
 # and persona posts) are still read every refresh.
 NEWS_THREADS_S = 30 * 60
 
+# ---- todo/27 fingerprint (todo/27-stop-the-fingerprint.md) ----
+# 2026-10-22 05:00 UTC: the moderator hid 2, 5, 6 of our posts an hour (other teams' Blue reports on one reply template,
+# "...no end date... I'm voting No."). deploy/run.sh --per-min 2.9 -> 2.4 until hides stay under 1/h for 6 h.
+
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped
 # broadcast and started answering No-leaners. Each arm runs a whole 2 h block (experiment.block), logged as arm_conv

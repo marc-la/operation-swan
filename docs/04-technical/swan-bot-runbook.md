@@ -6,7 +6,7 @@ Code: `src/swan_bot/`. Strategy behind it: [06-strategy](../06-strategy/README.m
 
 Plan behind it: [second-mover-plan](../06-strategy/second-mover-plan.md).
 
-- **One process does all our writing.** It's capped by `--per-min` (default 1.0, hard max `config.MAX_PER_MIN` = 3; live: 2.9 since 2026-10-22) and paced from the write budget's `X-RateLimit-*` headers ([throughput](#throughput-and-pacing-2026-10-22-todo24)). The real pace follows the target queue. If nothing is worth writing, it waits.
+- **One process does all our writing.** It's capped by `--per-min` (default 1.0, hard max `config.MAX_PER_MIN` = 3; live: 2.4 since 2026-10-22 05:00 UTC (todo/27; was 2.9)) and paced from the write budget's `X-RateLimit-*` headers ([throughput](#throughput-and-pacing-2026-10-22-todo24)). The real pace follows the target queue. If nothing is worth writing, it waits.
 - **Each write slot goes to the best job:**
   1. reply back to a citizen who replied to us (and follow them);
   2. second voice: a different persona and angle on a doubt we answered 10–30 min ago, if the thread is ≤ 8 replies and they haven't answered yet;
