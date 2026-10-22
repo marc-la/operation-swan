@@ -342,16 +342,19 @@ SWITCHBACK = [("arm_conv", CONV_ARMS, CONV_BLOCK_S)]
 # box, allowed since 2026-10-22 (CLAUDE.md rule 2: offline analysis and testing). No rate limit, 1 at a time, and
 # "competitor" takes over while the tunnel is down. Tunnel confirmed 2026-10-22 ~01:30 UTC: q4_K_M (~8 tokens/s on the
 # laptop, ~80-100 trials/h); q8_0 is pulled too, for a fidelity spot check (run --local-model).
-LAB_MODEL = "local"
+LAB_MODEL = "remote"                # 2026-10-22 ~05:30 UTC: Modal verified; the laptop tunnel died at ~04:50 UTC
 LAB_LOCAL_URL = "http://127.0.0.1:11434/v1"
 LAB_LOCAL_MODEL = "qwen2.5:3b-instruct-q4_K_M"
 # "remote": full-precision Qwen/Qwen2.5-3B-Instruct on Modal (vLLM on an L4, Marc's account, scales to zero),
 # OpenAI-compatible behind a bearer key. LAB_REMOTE_URL (with /v1) and LAB_REMOTE_KEY live in .env, never here.
 LAB_REMOTE_MODEL = "qwen2.5-3b-instruct"
-LAB_CONCURRENCY = {"remote": 8, "local": 1, "competitor": 1}    # trials at once, by stand-in kind
+LAB_CONCURRENCY = {"remote": 16, "local": 1, "competitor": 1}   # trials at once, by stand-in kind (Modal: 32 max)
 LAB_LLM_PER_MIN = 3                 # CompetitorLLM's team limit: 3/min, 1 at a time (the headers can only lower it)
 LAB_READS_PER_MIN = 30              # the persona builder's read pace (per-endpoint budgets, never the feed budget)
-LAB_SEEDS = 2                       # trials per persona x strategy; a strategy file may ask for more
+LAB_SEEDS = 6                       # trials per persona x strategy (6 since remote: the 0.7-temperature noise needs pairs)
+# Drafting models a strategy file may name (drafter = "..."), added to the lab's chain on Bedrock's OpenAI-compatible
+# endpoint: the drafting-model factor of round 2. Kimi K3 isn't served there (404, 2026-10-22).
+LAB_DRAFTERS = ("deepseek.v3.2", "mistral.mistral-large-3-675b-instruct")
 LAB_DIR = DATA / "lab"
 LAB_PERSONAS = ROOT / "content" / "lab" / "personas"
 LAB_STRATEGIES = ROOT / "content" / "lab" / "strategies"

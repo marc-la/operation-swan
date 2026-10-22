@@ -47,15 +47,18 @@ class News:
 
 
 class Capture:
-    """The generator, keeping each raw answer (the article number sits in the JSON the gate never returns)."""
+    """The generator, keeping each raw answer (the article number sits in the JSON the gate never returns). only: the
+    one drafting model a strategy names (drafter); every call, repairs included, goes to it."""
 
-    def __init__(self, gen):
-        self.gen, self.raws = gen, []
+    def __init__(self, gen, only=None):
+        self.gen, self.raws, self.only = gen, [], only
 
     def __getattr__(self, name):
         return getattr(self.gen, name)
 
     def complete(self, *a, **kw):
+        if self.only:
+            kw["models"] = (self.only,)
         raw, backend = self.gen.complete(*a, **kw)
         self.raws.append(raw)
         return raw, backend
@@ -88,7 +91,7 @@ def draft(strategy, card, seed, gen, news):
     if heads:
         user += news_block(heads)
     meta = dict(voice=persona["key"], style=strategy["style"])
-    gen = Capture(gen)
+    gen = Capture(gen, strategy.get("drafter"))
     if strategy["gate"]:
         text, backend, repair = bot.draft_checked(gen, job, system, user, [])
         meta.update({k: job["meta"].get(k) for k in ("llm_calls", "repairs", "last_reject", "read_stance")},
@@ -207,6 +210,9 @@ def loop(once=False, limit=None, model=None, local_model=None, fallback=True):
     its own status file."""
     config.SWITCHBACK = []                              # the lab drafts today's base behaviour, not a live arm
     gen, news = Generator(config.team_code()), News()
+    for m in config.LAB_DRAFTERS:                       # round 2's drafting-model factor (strategy: drafter = "...")
+        if m not in [x for _, x in gen.chain]:
+            gen.chain.append(("bedrock", m))
     stand_in = npc.StandIn(model, local_model=local_model, fallback=fallback)
     workers = config.LAB_CONCURRENCY.get(stand_in.primary.kind, 1)
     status_file = "status.json" if model is None and local_model is None else \

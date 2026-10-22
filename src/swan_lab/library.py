@@ -12,6 +12,7 @@ A strategy file:
     seeds = 2                    # optional, default config.LAB_SEEDS
     gate = true                  # the live quality gate and its repairs (false: one draft, safety checks only)
     insert = "mention" | "link"  # optional: code adds the citizen's @handle, or a verified article URL
+    drafter = "deepseek.v3.2"    # optional: the one drafting model (config.LAB_DRAFTERS); default the live reply order
     npc_reads = "reply" | "control" | "two_voice"   # what the stand-in reads (default "reply")
     control_text = "..."         # for npc_reads = "control": the unrelated post it reads instead
 """
@@ -76,7 +77,7 @@ def strategies(path=None):
 
 def version(s):
     """A strategy's version: editing what it does re-queues its trials; editing its notes doesn't."""
-    keys = ("instruction", "style", "gate", "insert", "npc_reads", "control_text")
+    keys = ("instruction", "style", "gate", "insert", "npc_reads", "control_text", "drafter")
     return hashlib.sha1(json.dumps({k: s.get(k) for k in keys}, sort_keys=True).encode()).hexdigest()[:8]
 
 

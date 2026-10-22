@@ -231,3 +231,20 @@ def test_parallel_trials_make_one_baseline_per_card_and_seed(tmp_path, monkeypat
 def types_ns(**kw):
     import types
     return types.SimpleNamespace(**kw)
+
+
+def test_a_strategys_drafter_takes_every_call_and_versions_the_strategy():
+    class Gen:
+        chain = [("bedrock", "moonshotai.kimi-k2.5"), ("bedrock", "deepseek.v3.2")]
+
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, *a, models=None, **kw):
+            self.calls.append(models)
+            return "ok", models[0] if models else "moonshotai.kimi-k2.5"
+    g = trials.Capture(Gen(), "deepseek.v3.2")
+    assert g.complete("s", "u", models=("moonshotai.kimi-k2.5",)) == ("ok", "deepseek.v3.2") and g.raws == ["ok"]
+    assert trials.Capture(Gen()).complete("s", "u", models=("x",))[1] == "x"            # no drafter: untouched
+    s = dict(name="base", instruction="")
+    assert library.version(s) != library.version(dict(s, drafter="deepseek.v3.2"))
