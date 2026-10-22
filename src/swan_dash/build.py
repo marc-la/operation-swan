@@ -468,17 +468,94 @@ BLUE_PER_AWARD = 20                            # under this per paid award: the 
 BLUE_MSG = re.compile(r"moderat|inauthentic|suspen", re.I)
 
 
-BLUE_WORDS = {"pending": "pending, rules about", "hidden": "hidden (inauthentic)", "genuine": "ruled genuine",
-              "refused": "refused", "ruled": "ruled (outcome in the portal log)"}
+# Reports since 9pm, grouped by outcome (todo/29): genuine first and open (each one locks reporting), then the account
+# reports with their outcome from the portal log, then hidden and refused, collapsed.
+BLUE_GROUPS = (("genuine", "Ruled genuine", "down"), ("account", "Account reports ruled", ""),
+               ("hidden", "Hidden (inauthentic)", "up"), ("refused", "Refused", "down"))
+BLUE_ACCOUNT_PTS = 15                          # an upheld account report (scoring cheatsheet), times the line's ×rate
+BATCH_S = 120                                  # portal lines this close together are one hourly scoring run
+UPHELD = re.compile(r"(\d+) upheld account reports?", re.I)
+RATE = re.compile(r"×\s*([\d.]+) points")
 
 
-def blue_row(r, teams):
-    """One of today's reports for the COP table: what, against which team (numbered as they appear), where it
-    stands, when."""
-    t = ts(r.get("at"))
-    team = teams.setdefault(r.get("team"), len(teams) + 1)
-    return dict(what=f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}", team=f"team {team}",
-                status=r.get("status"), word=BLUE_WORDS.get(r.get("status"), r.get("status")), at=hm(t) if t else "")
+def account_outcomes(ledger, points):
+    """{report key: (words, css)} for our ruled account reports. The API doesn't show them (a suspended account still
+    reads as normal), but the portal's hourly scoring run does: "N upheld account reports". The portal names no
+    account, so each ruling is matched to the first scoring run after it, and a run's upheld count is shared over the
+    rulings it covers: all suspended, all dismissed, or "k of n" when it's split."""
+    runs = []                                  # [time, upheld, points per upheld]
+    for e in sorted(points, key=lambda e: e["_t"]):
+        msg = e.get("message") or ""
+        n = sum(int(m) for m in UPHELD.findall(msg))
+        rate = float(RATE.search(msg).group(1)) if RATE.search(msg) else 1.0
+        if runs and (e["_t"] - runs[-1][0]).total_seconds() <= BATCH_S:
+            runs[-1][1] += n
+            runs[-1][2] = runs[-1][2] or (BLUE_ACCOUNT_PTS * rate if n else 0)
+        else:
+            runs.append([e["_t"], n, BLUE_ACCOUNT_PTS * rate if n else 0])
+    batches, out = {}, {}
+    for r in ledger:
+        t = ts(r.get("at"))
+        if r.get("kind") != "post" and r.get("status") == "ruled" and t:
+            run = next((x for x in runs if x[0] >= t), None)
+            if run is None:
+                out[r.get("key")] = ("ruled · outcome not in the portal log yet", "")
+            else:
+                batches.setdefault(id(run), (run, []))[1].append(r.get("key"))
+    for run, keys in batches.values():
+        k, n = min(run[1], len(keys)), len(keys)
+        word = (f"suspended · +{run[2]:g}" if k == n else "dismissed (no points, no lock)" if k == 0 else
+                f"suspended or dismissed: {k} of these {n} suspended")
+        for key in keys:
+            out[key] = (word, "up" if k == n else "" if k == 0 else "warn")
+    return out
+
+
+def blue_ledger(ledger, points):
+    """(pending, groups). pending: the reports waiting for a ruling, by group of accounts (swan-blue's cluster
+    label), with the earliest ruling time. groups: the rest by outcome, BLUE_GROUPS order, empty ones left out."""
+    outcomes = account_outcomes(ledger, points)
+    pend, groups = {}, {k: [] for k, _, _ in BLUE_GROUPS}
+    for r in ledger:
+        t = ts(r.get("at"))
+        what = f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}"
+        row = dict(what=what, group=f"group {r.get('team') or '?'}", at=hm(t) if t else "", t=t, word="", css="")
+        status = r.get("status")
+        if status == "pending":
+            pend.setdefault(row["group"], []).append(row)
+        elif r.get("kind") != "post" and status == "ruled":
+            row["word"], row["css"] = outcomes.get(r.get("key"), ("ruled", ""))
+            groups["account"].append(row)
+        elif status in groups:
+            groups[status].append(row)
+        else:                                  # a status we don't group: shown with the account outcomes' neighbours
+            row["word"] = str(status)
+            groups["refused" if status == "refused" else "account"].append(row)
+    rows = [r for g in pend.values() for r in g]
+    times = [r["t"] for r in rows if r["t"]]
+    pending = dict(n=len(rows), oldest=hm(min(times)) if times else None,
+                   accounts=sum(r["what"].startswith("account") for r in rows),
+                   groups=sorted(([g, sorted(v, key=lambda r: r["at"])] for g, v in pend.items()),
+                                 key=lambda gv: (-len(gv[1]), gv[0])))
+    out = [dict(key=k, name=name, css=css, rows=sorted(groups[k], key=lambda r: r["at"], reverse=True))
+           for k, name, css in BLUE_GROUPS if groups[k]]
+    return pending, out
+
+
+def own_reported(ids, logs):
+    """(report lines checked, lines against our own accounts) from logs/blue_reports.jsonl: an account report whose
+    target, or any report whose author, is one of ours. ids come from swan-blue's status (ids only: the dashboard
+    never reads secrets/); None without them."""
+    if not ids:
+        return None
+    ours, n, hits = {int(i) for i in ids if str(i).isdigit()}, 0, 0
+    for r in tail_jsonl(logs / "blue_reports.jsonl", 20_000_000):
+        if r.get("act") != "report":
+            continue
+        n += 1
+        if r.get("author") in ours or (r.get("kind") != "post" and r.get("target") in ours):
+            hits += 1
+    return dict(lines=n, hits=hits, accounts=len(ours))
 
 
 def perth_span(day):
@@ -526,7 +603,7 @@ def blue_days(days, points, now):
     return rows
 
 
-def blue_panel(data, now, points, day_start):
+def blue_panel(data, now, points, day_start, logs=None):
     """The Blue section: what needs a decision (the reports waiting, grouped by ring), the state in one line, and
     today's results once there are any. None if swan-blue isn't set up."""
     s = read_json(data / "blue_status.json")
@@ -539,12 +616,15 @@ def blue_panel(data, now, points, day_start):
         r"moderat|inauthentic|suspen|report", f"{e.get('type')} {e.get('message')}", re.I))
     rings = [dict(post=r.get("post"), why=short(r.get("why"), 160), reports=r.get("reports"))
              for r in s.get("rings") or []]
-    waiting, teams = len(s.get("waiting") or []), {}
+    waiting = len(s.get("waiting") or [])
+    pending, groups = blue_ledger(s.get("ledger") or [], points)
+    own = own_reported(s.get("own_ids"), logs or data.parent / "logs")
     history = blue_days(s.get("days") or {}, points, now)
     last = next((r for r in history if not r["today"]), None)       # the last finished day decides the verdict
     ready = s.get("ready_ok", s.get("ready")) or 0
     lock_why = short(s.get("lock_why") or "reason not recorded", 60)
-    bits = ([f"last day {last['pct']}% of target"] if last else []) + \
+    bits = ([f"OUR OWN ACCOUNTS REPORTED: {own['hits']}"] if own and own["hits"] else []) + \
+        ([f"last day {last['pct']}% of target"] if last else []) + \
         ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked until {hm(locked)} Perth ({lock_why})", f"{ready} ready"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
@@ -555,12 +635,14 @@ def blue_panel(data, now, points, day_start):
         summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
         locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), pending=s.get("pending"),
         lock_estimate=s.get("lock_src") == "estimate", ready=ready, ready_accounts=s.get("ready_accounts") or 0,
-        pg_max=s.get("pg_max"), pg_check=s.get("pg_check") or {}, clusters=s.get("clusters") or {},
+        pg_max=s.get("pg_max"), pg_check={"n": 0, **(s.get("pg_check") or {})},
+        clusters={"today": 0, "full": 0, **(s.get("clusters") or {})},
         next_ruling=hm(nxt) if nxt else None, waiting=waiting, rings=rings,
         teams=len({r.get("team") for r in s.get("rings") or []}),
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
         today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
-        queued=s.get("queued") or 0, first=s.get("first") or {}, rows=[blue_row(r, teams) for r in s.get("ledger") or []],
+        queued=s.get("queued") or 0, first={"first": 0, "later": 0, **(s.get("first") or {})}, queue=pending, groups=groups, own=own,
+        rows=[r for _, rows in pending["groups"] for r in rows] + [r for g in groups for r in g["rows"]],
         rate=prec.get("rate"), ruled=prec.get("n"), history=history, last=last, target=BLUE_TARGET_DAY,
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 
@@ -801,7 +883,7 @@ def gather(root, now, service):
     per_min = status.get("per_min")
 
     facts = fact_desk(root)
-    blue = blue_panel(data, now, points, day_start)
+    blue = blue_panel(data, now, points, day_start, logs)
 
     # ---- banner: the first problem wins, worst first ----
     try:                                       # deploy/healthcheck.sh's current problem, the same text it alerts with
@@ -835,6 +917,9 @@ def gather(root, now, service):
     elif facts and facts["paused"]:
         amber = (f"FACT PAUSED: {', '.join(p['fact'] for p in facts['paused'])} (the bot leaves it out). "
                  f"Review it under Facts below")
+    elif blue and blue["own"] and blue["own"]["hits"]:
+        amber = (f"BLUE: {blue['own']['hits']} report(s) in logs/blue_reports.jsonl against our own accounts. "
+                 f"Stop filing: ssh swan-ec2 'touch ctn/BLUE_OFF'")
     elif blue and blue["stale"]:
         amber = f"BLUE: no status from swan-blue since {blue['ago'].replace(' ago', '')}. On the box: journalctl -u swan-blue -n 50"
     elif blue and blue["waiting"]:

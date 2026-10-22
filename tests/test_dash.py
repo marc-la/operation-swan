@@ -378,3 +378,59 @@ def test_points_by_kind_under_score_not_in_activity(tmp_path):
     assert kinds["engagement"]["lines"][0]["of"] == 809 and "34 likes" in kinds["engagement"]["lines"][0]["text"]
     assert not any("pts" in r["what"] for r in ctx["activity"] + ctx["older"])
     assert 'id="pts-blue"' in html and "+3,831 since 9pm" in html
+
+
+# ---- Blue: pending summarised by group, reports by outcome, account outcomes, own-account check (todo/29) ----
+def blue_root(tmp_path, own_ids=None, reports=()):
+    root = make_root(tmp_path, [write(3)])
+    at = lambda m: iso(m)
+    ledger = [dict(key="p1", target=1, kind="post", team="c100", status="pending", at=at(-30)),
+              dict(key="p2", target=2, kind="post", team="c100", status="pending", at=at(-10)),
+              dict(key="a7", target=7, kind="account", team="c200", status="pending", at=at(-50)),
+              dict(key="p3", target=3, kind="post", team="c100", status="hidden", at=at(100)),
+              dict(key="p4", target=4, kind="post", team="c200", status="genuine", at=at(90)),
+              dict(key="a8", target=8, kind="account", team="c200", status="ruled", at=at(200)),     # run at 180: upheld
+              dict(key="a9", target=9, kind="account", team="c300", status="ruled", at=at(130)),     # run at 120: none
+              dict(key="a5", target=5, kind="account", team="c300", status="ruled", at=at(70)),      # run at 60: 1 of 2
+              dict(key="a6", target=6, kind="account", team="c300", status="ruled", at=at(65)),
+              dict(key="a4", target=4, kind="account", team="c300", status="ruled", at=at(20))]      # no run since
+    st = dict(ts=iso(1), mode="auto", why="x", pending=3, cap=30, today={"filed": 9}, waiting=[], rings=[], ledger=ledger)
+    if own_ids is not None:
+        st["own_ids"] = own_ids
+    (root / "data" / "blue_status.json").write_text(json.dumps(st))
+    (root / "logs" / "blue_reports.jsonl").write_text("".join(json.dumps(r) + "\n" for r in reports))
+    ev = [{"ts": iso(180), "points": 7, "message": "Moderation (×0.5 points): 1 upheld account report"},
+          {"ts": iso(120), "points": 50, "message": "NPC engagement: 10 likes"},
+          {"ts": iso(60), "points": 15, "message": "NPC engagement and moderation: 1 upheld account report"}]
+    (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "events": ev}))
+    return root
+
+
+def test_blue_pending_summary_outcome_groups_and_account_outcomes(tmp_path):
+    ctx, html = page(blue_root(tmp_path))
+    b = ctx["blue"]
+    q = b["queue"]
+    assert q["n"] == 3 and q["accounts"] == 1 and q["oldest"] == build.hm(NOW + dt.timedelta(minutes=10))
+    assert [g for g, _ in q["groups"]] == ["group c100", "group c200"]          # biggest group first
+    assert "3 pending · oldest rules" in html and "not the organisers' team numbers" in html and "team 1" not in html
+    groups = {g["key"]: g for g in b["groups"]}
+    assert list(groups) == ["genuine", "account", "hidden"] and 'id="blue-g-genuine" open' in html
+    words = {r["what"]: r["word"] for r in groups["account"]["rows"]}
+    assert words["account 8"] == "suspended · +7.5"
+    assert words["account 9"] == "dismissed (no points, no lock)"
+    assert words["account 5"] == words["account 6"] == "suspended or dismissed: 1 of these 2 suspended"
+    assert words["account 4"] == "ruled · outcome not in the portal log yet"
+    assert "outcome in the portal log)" not in html
+    assert "Own accounts reported: not checked" in html                         # no ids published by swan-blue yet
+
+
+def test_blue_own_account_check(tmp_path):
+    reps = [{"act": "report", "kind": "post", "target": 500, "author": 41},
+            {"act": "report", "kind": "account", "target": 42, "author": 42},
+            {"act": "ruling", "key": "p500"}]
+    ctx, html = page(blue_root(tmp_path, own_ids=[1, 2, 3], reports=reps))
+    assert ctx["blue"]["own"] == {"lines": 2, "hits": 0, "accounts": 3} and "Own accounts reported: <b>0</b>" in html
+    ctx, html = page(blue_root(tmp_path / "b", own_ids=[41, 42], reports=reps))
+    assert ctx["blue"]["own"]["hits"] == 2 and 'class="sub down">Own accounts reported' in html
+    assert ctx["banner"]["level"] == "amber" and "against our own accounts" in ctx["banner"]["text"]
+    assert "OUR OWN ACCOUNTS REPORTED: 2" in ctx["blue"]["summary"]
