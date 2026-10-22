@@ -33,3 +33,18 @@ Today: a contradiction pauses a fact automatically. Rewordings, new facts and id
 
 ## Ownership
 `src/swan_dash/*`, `scripts/swan_factdesk.py`, `src/swan_bot/factdesk.py`, `scripts/facts_review.py`, `tests/test_dash*.py`, `tests/test_facts.py`, `tests/test_factdesk*.py`, system-architecture §9. Don't edit `content.py` (the todo/25 session), `quality.py` or the writer (todo/27), or `src/swan_blue` (todo/28). Rebase on `origin/main` before every push; `deploy/check.sh` must pass.
+
+## Shipped (2026-10-22, background agent)
+
+Each item was checked at 375 px against a read-only copy of the box's data (no sideways scroll), and every push passed `deploy/check.sh` (the full suite).
+
+| Commit | What |
+|---|---|
+| 313a109 | [x] Reach: a throughput row (writes a minute in the last full hour against the team budget and the pace: "1.7/min of 3.0 (56%) · pace 2.9") replaces "Longest wait". Amber only when the budget idled while citizens of that hour waited; never red. "Citizens answered" is a share too ("125 of 208 (60%)"). "In hand" notes kept |
+| 3ba449c, b7aa581, f9d2be0 | [x] Score & targets: four numbers since 9pm (persuasion, views & engagement, Blue awards, penalties; 2×2 on a phone). A combined portal line gives Blue only its counts' worth (first 25, later 5, upheld account 15, × the line's rate), marked ≈. Each score-over-time row opens in place to the portal's notes behind that change. Points are out of Activity |
+| 132ef8c, bfc93bf, 54d09cd, f9d2be0 | [x] Blue: one state line and "own accounts reported: N" (red if > 0, from todo/28's `own_ids`). Reports are a chronological timeline with the outcome in one left column (hidden green, pending amber, genuine red, the rest neutral); runs of the same settled outcome collapse in place. Account outcomes come from the portal's "upheld account report" lines. Groups are cluster labels, not team numbers. "By competition day" becomes one stacked card per day under 480 px. Lock-risk block removed (the data stays in blue_status.json). Reach and Blue start collapsed |
+| 499298e | [x] Trending pulse: one line at the bottom (the bot still uses it) |
+| 0dcaffa, fab93e0, 0b3a5f5 | [x] Facts on autopilot (`FACTDESK_AUTO = True`, no daily cap per Marc's "completely autonomous"). Decisions go into the overlay `data/facts_auto.toml` on the box: contradiction → new key or retire; reword in place; new fact from news only, with a verbatim quote; ideas logged. Each run passes `factdesk.validate` and then `tests/test_facts.py`. Every decision is recorded in `data/facts_auto.jsonl` (`by: "factdesk-auto"`) and Mongo, with an alert, and the bot restarts. Rails: `--dry`, `--no-auto`, and `facts_review.py --undo ID` on the box. New facts carry `added` and go first in `facts.active()` for 2 days, so they reach the reply prompts after the restart (tested end to end). First live run 10:20 UTC: #34 and #37 added, 4 ideas logged, bot restarted |
+| 6a3eeab, fab93e0 | [x] Dashboard Facts: paused facts in red, plus the serious problems (a failed facts test, the desk stalled > 2.5 h). The rest is a collapsed "Recently added facts" list with one revert command each |
+| 6f0fbe2 | [x] Activity: repost rows say what was reposted. Alert colours by kind (deploy failed orange, Blue light blue, suspended bold red, post hidden orange-red, deployed grey; ≥ 5:1 contrast in light and dark). The Bot line shows the portal's accounts ("61 registered · 13 banned · 50 active max"); our own count is collapsed below |
+| 0dcaffa | [x] system-architecture §9 (dated): what is automatic, and why an overlay instead of a push |
