@@ -235,7 +235,7 @@ def swarm_active():
 # ---- experiment arms (swan_bot/experiment.py). The overnight experiments stopped 2026-10-21 (too little data) ----
 PIN = {"reply_mode": "reason_first"}   # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
 # One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).
-SWITCHBACK = []
+SWITCHBACK = []                     # set again in the todo/25 conversion block below
 ARM_WEIGHTS = {}                    # {dim: {arm: weight}}: reweight arms (the bandit, from night 2). Empty = as drawn
 FOLLOWUPS_LOG = LOGS / "swan_followups.jsonl"   # scripts/swan_followup.py: citizens' stance after we replied
 OUTCOMES_LOG = LOGS / "swan_outcomes.jsonl"     # ...and per-post citizen engagement at OUTCOME_AT_S
@@ -297,6 +297,21 @@ DRAFTER_SILENT_S = 30 * 60          # ...or the drafter (one draft may try sever
 # (n=195), GLM-5 0 of 69 (not_specific 36, near_duplicate 28): GLM-5 drafts amplified posts only (AMP_MODELS).
 REPLY_MODELS = ("moonshotai.kimi-k2.5", "gemini-3.5-flash-lite")
 REPLY_NEVER = {"zai.glm-5"}
+
+# ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
+# Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped
+# broadcast and started answering No-leaners. Each arm runs a whole 2 h block (experiment.block), logged as arm_conv
+# on every citizen-facing write, so the portal's hourly lines can be compared block by block:
+#   base         today's behaviour;
+#   old_models   replies and reply-backs drafted on the 20 Oct free chain (CONV_OLD_MODELS) while any of it answers;
+#   no_leaners   a reply whose target reads lean/firm No (regex class, or the light read) is skipped, not answered.
+# To stop the experiment: SWITCHBACK = []. To keep a winner, list only it in CONV_ARMS.
+CONV_ARMS = ["base", "old_models", "no_leaners"]
+CONV_BLOCK_S = 2 * 3600
+CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
+CONV_SKIP_STANCES = {"lean_no", "firm_no"}
+CONV_MODES = {"reply", "reply_back", "second_voice"}
+SWITCHBACK = [("arm_conv", CONV_ARMS, CONV_BLOCK_S)]
 
 # ---- Blue track (todo/07, src/swan_blue): a separate process reports from one booster the bot no longer uses ----
 BLUE_OFF_FILE = ROOT / "BLUE_OFF"       # touch it to stop filing reports (the scan and rulings carry on)

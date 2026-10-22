@@ -382,7 +382,7 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
-        "block_id")
+        "block_id", "arm_conv")
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level")
 
@@ -432,6 +432,9 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     mode = job["mode"]
     meta = job["meta"] = {}
     parts = ()
+    if mode in config.CONV_MODES:                                 # todo/25: the conversion arm of this 2 h block
+        block_id, arm = experiment.block("arm_conv")
+        meta.update(arm_conv=arm or "base", **({"block_id": block_id} if block_id else {}))
     if mode == "reply" and job.get("group") == "off_topic":      # todo/23: on their topic, no read, no theme
         job["style"], job["read"] = "off_topic", False
     elif mode == "reply":                # todo/20: the style arm in turn (the firm-Yes arm concedes first) and the read
@@ -543,6 +546,14 @@ def complete_in_order(gen, system, prompt, models, **kw):
     return None, None
 
 
+def conv_models(gen, models):
+    """todo/25's old_models arm: the 20 Oct free chain (config.CONV_OLD_MODELS) that isn't parked right now, then
+    the usual reply order as the fallback."""
+    parked = getattr(gen, "parked", {})
+    old = [m for m in config.CONV_OLD_MODELS if time.time() >= parked.get(m, 0)]
+    return old + [m for m in models or () if m not in config.CONV_OLD_MODELS]
+
+
 def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=None):
     """Draft and gate (todo/20 G9: a citizen may not be lost to the gate). Each draft goes through gate(): the quality
     check and the code fixes, then the theme check. A draft that still fails goes back to the model with the exact
@@ -555,6 +566,8 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
     meta = job.setdefault("meta", {})
     prompt, repair, backend = user, None, None
     models, ordered = draft_models(job, gen)
+    if meta.get("arm_conv") == "old_models" and mode in config.STRONG_MODES:
+        models = conv_models(gen, models)                       # todo/25: the usual order after the old chain
     failed = {}                                                 # model -> rejected drafts this job
     meta.update(llm_calls=0, repairs=0, fixes=[])
     for _ in range(config.GATE_TRIES.get(mode, 2)):
@@ -578,6 +591,9 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
                             read_doubt=r["doubt"], read_frame=r["frame"], read_skip=r["skip"])
                 if r["frame"]:
                     job["frame"] = r["frame"]
+                if (mode == "reply" and meta.get("arm_conv") == "no_leaners"
+                        and r["stance"] in config.CONV_SKIP_STANCES and not r["skip"]):
+                    r["skip"] = f"arm_conv:{r['stance']}"         # todo/25: No-leaners are left alone this block
             if r["skip"] and prompt is user:
                 job["read_skip"] = r["skip"]
                 return None, backend, None
@@ -1043,11 +1059,16 @@ def main():
                      **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
                 print(f"  rejected [{mode}] ({why}{', after repair' if repaired else ''}): {raw[:160]!r}")
 
-            text, backend, repair = draft_checked(gen, job, system, user, recent_texts[-300:], rejected, ledger)
+            if (mode == "reply" and job["meta"].get("arm_conv") == "no_leaners" and
+                    (job.get("target_class") or target_class(target.get("body") or "")) in config.CONV_SKIP_STANCES):
+                job["read_skip"] = "arm_conv:lean_no"     # todo/25: a regex No-leaner costs no LLM call
+            else:
+                text, backend, repair = draft_checked(gen, job, system, user, recent_texts[-300:], rejected, ledger)
         if job.get("read_skip"):                      # the light read: hostile or not about the vote (final)
             if hasattr(targeter, "skip"):
                 targeter.skip(target, f"light_read:{job['read_skip'][:60]}", job.get("source"))
-            log({"act": "skip", "why": "read", "detail": job["read_skip"][:200], "mode": mode,
+            log({"act": "skip", "why": "arm_conv" if job["read_skip"].startswith("arm_conv:") else "read",
+                 "detail": job["read_skip"][:200], "mode": mode, "block_id": (job.get("meta") or {}).get("block_id"),
                  "target_post": target["post_id"], "target_author": target["author_id"],
                  "target_class": target_class(target.get("body") or ""), "backend": backend,
                  "draft_id": job["draft_id"]})
