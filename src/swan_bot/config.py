@@ -335,7 +335,10 @@ NEWS_THREADS_S = 30 * 60
 #   broadcast    a plain persona post (no amplification) ahead of citizen replies every CONV_POST_GAP_S (20 Oct ran
 #                2-3 posts/h). Marc, 2026-10-22: off the same day if "away" beats "toward" in broadcast blocks.
 # To stop the experiment: SWITCHBACK = []. To keep a winner, list only it in CONV_ARMS.
-CONV_ARMS = ["base", "old_models", "no_leaners", "broadcast"]
+# 2026-10-22 10:30 UTC: old_models and no_leaners killed by the rule "away above base" (block table at 10:14 UTC,
+# portal lines 1 h after: base 2 blocks 0 toward / 0 away; old_models 2 blocks 1 / 5; no_leaners 1 block 0 / 2;
+# broadcast 1 block 0 / 0, kept). old_models was the only arm touching the referendum view, but net away.
+CONV_ARMS = ["base", "broadcast"]
 CONV_BLOCK_S = 2 * 3600
 CONV_POST_GAP_S = 20 * 60
 CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
