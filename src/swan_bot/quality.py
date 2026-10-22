@@ -313,8 +313,26 @@ def strip_tag(t):
     return TAG_AT_END.sub("", t)
 
 
-def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True):
+# todo/24 near-duplicates (22 Oct: the top reject, 183 of the night's reply drafts at 0.25 against all our last 300
+# texts). A draft to one citizen is compared strictly (NEAR_DUP_SAME) to what we sent to that citizen or thread
+# (`same`), and loosely (NEAR_DUP_OTHER) to what we sent to everyone else: repeating ourselves across citizens is a bot
+# tell for Blue reporters, so it isn't dropped. Posts, threads and journalist replies stay strict against everything.
+NEAR_DUP_SAME = 0.25
+NEAR_DUP_OTHER = 0.4
+PERSONAL_KINDS = ("reply", "reply_back", "second_voice")
+
+
+def near_duplicate(body, kind, recent_texts=(), same=()):
+    """True when body is too close to one of our texts (5-word shingles, quality.similar), as above."""
+    other = NEAR_DUP_OTHER if kind in PERSONAL_KINDS else NEAR_DUP_SAME
+    return (any(similar(body, strip_tag(old.strip())) > NEAR_DUP_SAME for old in same) or
+            any(similar(body, strip_tag(old.strip())) > other for old in recent_texts))
+
+
+def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
+          same=()):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
+    same: our texts to this citizen or in this thread (todo/24), held to the strict near-duplicate threshold.
     closing_question=False lets a post end on its verdict instead (a draft told to end without a question).
     specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
     of the vote (VOTE_TALK) unless the citizen's own post has some."""
@@ -391,9 +409,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         phrase = re.sub(r"\s+", " ", m.group(0).lower())
         if any(phrase in old.lower() for old in list(recent_texts)[-6:]):
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
-    for old in recent_texts:
-        if similar(body, strip_tag(old.strip())) > 0.25:
-            return None, "near_duplicate"
+    if near_duplicate(body, kind, recent_texts, same):
+        return None, "near_duplicate"
     return t, None
 
 

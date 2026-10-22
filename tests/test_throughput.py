@@ -98,3 +98,36 @@ def test_steady_state_rate_with_the_swarm():
         t += step
     assert ours / 60 >= 2.6, ours / 60
     assert swarm_ok == swarm_try
+
+
+# ---- 3. near-duplicates: strict to the same citizen or thread, looser across citizens --------------------------------
+OURS = ("The question has no end date and no review built in, so whatever list they write after the vote stays. "
+        "I'm voting No.")
+CLOSE = ("The question has no end date and no review, so the list they write after the ballot is there for good. "
+         "I'm voting No on it.")
+
+
+def test_near_duplicate_thresholds():
+    from swan_bot import quality
+    sim = quality.similar(CLOSE, OURS)
+    assert quality.NEAR_DUP_SAME < sim <= quality.NEAR_DUP_OTHER, sim
+    assert not quality.near_duplicate(CLOSE, "reply", recent_texts=[OURS]), "another citizen: loose"
+    assert quality.near_duplicate(CLOSE, "reply", recent_texts=[OURS], same=[OURS]), "same citizen or thread: strict"
+    assert quality.near_duplicate(CLOSE, "post", recent_texts=[OURS]), "posts stay strict against everything"
+    assert quality.near_duplicate(OURS, "reply", recent_texts=[OURS]), "a copy is caught everywhere"
+
+
+def test_same_target_texts():
+    sent = [[500, 10, "to 500 in thread 10"], [501, 10, "to 501 in thread 10"], [502, 20, "to 502 elsewhere"]]
+    ready = [dict(job=dict(target=dict(post_id=30, author_id=500)), text="waiting, to 500"),
+             dict(job=dict(target=None), text="a post")]
+    got = bot.same_target_texts(sent, ready, dict(post_id=11, root_post_id=10, author_id=500))
+    assert got == ["to 500 in thread 10", "to 501 in thread 10", "waiting, to 500"]
+    assert bot.same_target_texts(sent, [], dict(post_id=21, root_post_id=20, author_id=999)) == ["to 502 elsewhere"]
+
+
+def test_gate_passes_the_same_texts(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(bot.quality, "check", lambda raw, mode, recent, **kw: (seen.update(kw), (raw, None))[1])
+    bot.gate("draft", dict(mode="reply", same_texts=["x"]), "user", [])
+    assert seen["same"] == ["x"]

@@ -309,6 +309,23 @@ def gone_at_send(job, state, t=None):
     return None
 
 
+def thread_root(post):
+    return post.get("root_post_id") or post.get("post_id")
+
+
+def same_target_texts(sent, ready, target):
+    """Our texts to this citizen or in this thread: sent (state["recent_sent"], [author, thread root, text]) and the
+    drafts waiting for the writer. The gate holds a draft to the strict near-duplicate threshold against these and
+    to the loose one against the rest (todo/24, quality.near_duplicate)."""
+    author, root = target.get("author_id"), thread_root(target)
+    out = [text for a, r, text in sent if a == author or r == root]
+    for d in ready:
+        t = d["job"].get("target") or {}
+        if d.get("text") and t and (t.get("author_id") == author or thread_root(t) == root):
+            out.append(d["text"])
+    return out
+
+
 SESSION_MODES = ("reply", "reply_back", "second_voice")     # the writes send() counts in state["contacted"]
 
 
@@ -525,7 +542,7 @@ def gate(raw, job, user, recent_texts, ledger=None):
     mode, meta = job["mode"], job.get("meta") or {}
     kw = dict(prompt_text=user, target_text=(job.get("target") or {}).get("body") or "",
               wants=job.get("wants") or (), closing_question=meta.get("closing_question", True),
-              specific=job.get("group") != "off_topic")
+              specific=job.get("group") != "off_topic", same=job.get("same_texts") or ())
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
@@ -1054,6 +1071,8 @@ def main():
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         if job is None:
             return None, None, WAIT_S["nothing"]
+        if job.get("target") and not drafted:                 # todo/24: the strict near-duplicate comparison
+            job["same_texts"] = same_target_texts(state.get("recent_sent", []), ready, job["target"])
         return job, drafted, None
 
     def draft(job, drafted, pulse_now):
@@ -1213,6 +1232,9 @@ def main():
                 state["journalist_last"][str(target["author_id"])] = time.time()
             if text:
                 state["recent_texts"] = (state["recent_texts"] + [clean])[-300:]
+                if target:                            # todo/24: who it went to (quality.near_duplicate)
+                    state["recent_sent"] = (state.get("recent_sent", []) + [
+                        [target["author_id"], thread_root(target), clean]])[-300:]
                 ledger.record(clean, persona["key"], job.get("theme"), thread or post_id, mode)
             meta = job.get("meta") or {}
             if mode == "post" and meta.get("shape"):
