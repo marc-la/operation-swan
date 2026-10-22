@@ -25,3 +25,6 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "AMP_OFF_FILE", tmp_path / "AMPLIFY_OFF")
     monkeypatch.setattr(config, "ACCOUNTS_FILE", tmp_path / "swan_accounts.json")
     monkeypatch.setattr(config, "SWARM_ACCOUNTS_FILE", tmp_path / "swarm_accounts.json")
+    # the live switchback (todo/25 arm_conv) follows the clock: in a target_order block next_target ranks lean_no
+    # first and test_targeting failed for 2 h at a time (23 Oct). Tests that need an arm set SWITCHBACK themselves.
+    monkeypatch.setattr(config, "SWITCHBACK", [])

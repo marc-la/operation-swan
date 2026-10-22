@@ -50,7 +50,8 @@ _EXEMPT_RUNS = {tuple(re.findall(r"[a-z']+", p.lower())) for p in CATCHPHRASES +
 ARTEFACT_START = re.compile(r"^(sure|here'?s|here is|okay|ok,|certainly|of course|as an?\b|i'?d be happy|"
                             r"post:|reply:|title:|absolutely)", re.I)
 ARTEFACTS = re.compile(r"(as an ai|language model|\*\*|^#|\bpost:|\breply:|<\|?im_|\[inst\]|assistant:|"
-                       r"system prompt|ignore (all|previous)|character count|\(\d+ characters?\)|<<<|>>>)", re.I | re.M)
+                       r"system prompt|ignore (all|previous)|character count|\(\d+ characters?\)|<<<|>>>|"
+                       r"fixed opening|different detail|same point:)", re.I | re.M)
 FORBIDDEN = re.compile(r"(autis|infertil|steril|poison|microchip|toxic|depopulat|genocide|nazi|apartheid|"
                        r"experimental jab|killed by|deaths? from the (vaccine|jab)|side effects? (kill|caus)|"
                        r"https?://|www\.|@\w|castillo|\bkitb\b|tourism board)", re.I)

@@ -63,6 +63,7 @@ def test_reference_posts_pass():
 def test_existing_rejects_unchanged():
     assert bad("") == "empty"
     assert bad("Sure! " + GOOD) == "llm_artefact"
+    assert bad("fixed opening, different detail, different words. Same point: " + GOOD) == "llm_artefact"   # 22 Oct leak
     assert bad(GOOD.replace("Aunty Losa", "Marina Castillo")) == "forbidden_content"
     assert bad(GOOD.replace("Not me.", "Polls open at 8, so vote early.")) == "wrong_logistics"
     assert bad(GOOD.replace("She's had her jab.", "There are no exemptions.")) == "wrong_claim"

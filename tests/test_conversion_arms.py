@@ -53,7 +53,12 @@ def test_no_switchback_means_base(monkeypatch):
     assert job["meta"]["arm_conv"] == "base" and "block_id" not in job["meta"]
 
 
-def test_blocks_rotate_through_every_arm():
+LIVE_SWITCHBACK = list(config.SWITCHBACK)          # read at import: conftest clears it for each test
+
+
+def test_blocks_rotate_through_every_arm(monkeypatch):
+    assert ("arm_conv", config.CONV_ARMS, config.CONV_BLOCK_S) in LIVE_SWITCHBACK
+    monkeypatch.setattr(config, "SWITCHBACK", LIVE_SWITCHBACK)
     seen = {experiment.block("arm_conv", t=h * 3600)[1] for h in range(0, 24, 2)}
     assert seen == set(config.CONV_ARMS)
 
@@ -127,6 +132,7 @@ def test_fresh_facts_arm_offers_news_that_fits_the_citizen(tmp_path, monkeypatch
         assert "New this week in the papers: ferry company has no staff to check passes (Kingstonia Herald)" in user
         assert job["meta"]["fresh"] == ["ferry_queue_checks"] and "fresh" in bot.ARMS
         assert user.index("New this week") < user.index("First read them")         # before the JSON instructions
+        assert "in place of a story about someone you know" in user and "agree first" in user   # Haiku lab 22 Oct
     finally:
         monkeypatch.undo()
         fact_store.refresh(force=True)

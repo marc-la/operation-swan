@@ -907,8 +907,9 @@ def fresh_line(target_text, meta=None):
     if not picked:
         return ""
     rows = "; ".join(f"{note}" + (f" ({paper})" if paper else "") for _, note, paper in picked)
-    return (f"New this week in the papers: {rows}. If one bears on their point, build your reply on it, in your own "
-            f"words, and name the paper; it's news they may not have seen. ")
+    return (f"New this week in the papers: {rows}. Build your reply on the one that bears most on their point, in "
+            f"place of a story about someone you know: agree first with what's fair in their post, then say what the "
+            f"news means for it, in your own words, and name the paper; it's news they may not have seen. ")
 
 
 def worn_line(target_text):

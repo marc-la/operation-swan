@@ -71,3 +71,26 @@ sudo systemctl status swan-lab; journalctl -u swan-lab -n 30
 ## Status
 - **2026-10-22 ~01:00 UTC:** first round ready. 12 cards (2 per class), 11 strategies. CompetitorLLM was unreachable (Cloudflare 1033, the organisers' tunnel down).
 - **2026-10-22 01:36 UTC:** round 1 running on the local stand-in (`qwen2.5:3b-instruct-q4_K_M`), instrument v2, ~55 trials/h. Round 1 (264 trials) is due ~06:00 UTC. Results go here with dates.
+
+## Haiku stand-in, 22 Oct 2026 (Modal gone, swan-lab stopped and disabled)
+
+Approximation: Claude Haiku agents (low effort) played 20 real citizens our bot replied to in the last 1,500 live
+replies (4 each of unsure, unclear, lean_no, conditions, yes_reason). Each rated its lean (−2 Yes … +2 No) from its
+own post, then after each of 5 replies, blind and shuffled: the reply we **sent**, the same with **@handle** in front,
+and three Haiku rewrites built on this week's desk facts (**news_led**, **concede_fact**: agree then one new fact,
+**short_fact**: one or two sentences). Scripts and ratings: the session scratchpad (`hlab/`), not kept.
+
+| variant | mean shift (+ = toward No) | moved toward No | moved toward Yes |
+|---|---|---|---|
+| sent | +0.34 | 12 / 20 | 3 |
+| short_fact | +0.31 | 11 / 20 | 1 |
+| concede_fact | +0.30 | 14 / 20 | 2 |
+| news_led | +0.29 | 12 / 20 | 4 |
+| @handle + sent | +0.14 | 7 / 20 | **6** |
+
+- **@-mentions hurt**: half the shift and twice the backfire of the same reply without one. Agrees with round 1 on
+  qwen (at_address +0.17 below base +0.24). No @ arm; the gate keeps banning `@`.
+- **News is no stronger than what we send, but backfires less** (concede_fact 2, short_fact 1 vs sent 3). The
+  fresh_facts arm now tells the drafter to build on the news in place of the friend story, agreeing first.
+- The stand-in still doesn't explain live: it moves toward No on almost everything, while the portal logged
+  1 towards / 11 away in the same 24 h. Treat it as a filter for what backfires, not a forecast.
