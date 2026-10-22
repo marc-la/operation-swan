@@ -91,6 +91,9 @@ SPREAD = 0.04
 WIDEN_MIN_ACTORS = 4
 WIDEN_LOOKUPS = 8             # ...unknown ones looked up with get_post (its own 300/min route) per Latest pass
 WIDEN_RECHECK_S = 2 * 3600    # a root looked up (a citizen's post, say) isn't looked up again for this long
+# todo/28, co-reporting: the ruling timer halves per extra team reporting, so a post ruled this soon after we filed it
+# was reported by 2+ teams. Its ring's reply authors are checked for hides first (account leads, multi-team boost).
+CO_S = 2 * 3600
 # the platform's answer while we're locked: "reporting is suspended for your team until 2026-10-22T02:00:49Z"
 LOCK_UNTIL_RE = re.compile(r"suspended .*until (\d{4}-\d\d-\d\dT[\d:.]+Z?)", re.I)
 
@@ -604,7 +607,7 @@ class Blue:
         pg = c.get("pg") if c["kind"] == "post" else None
         self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"], label=c["label"],
                                            filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf, pg=pg,
-                                           classes=c["classes"])
+                                           classes=c["classes"], ring=c.get("ring"), age_min=c.get("age_min"))
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
                   "label": c["label"], "classes": c["classes"], "ev": c["ev"], "pg": pg, "n_today": c.get("n_today"),
                   "age_min": c.get("age_min"),
@@ -660,11 +663,26 @@ class Blue:
             except ctn.APIError as e:
                 if e.status == 404:
                     self.ruled(key, r, "hidden", t)
-                    self.s["harvest"].setdefault(str(r["author"]), dict(hidden_post=r["target"], checked=0))
+                    h = self.s["harvest"].setdefault(str(r["author"]), dict(hidden_post=r["target"], checked=0))
+                    if t - r["filed"] < CO_S:         # 2+ teams reported it: its ring's other authors next
+                        h["co"] = True
+                        ring = self.s["posts"].get(str(r.get("ring") or r["target"]))
+                        if ring is not None:
+                            ring["co"] = t
+                        self.s["last"]["harvest"] = 0
                 continue
             if t >= r["filed"] + RULE_S + RULE_GRACE_S:
-                self.ruled(key, r, "genuine", r["filed"] + RULE_S)
+                sl = self.s.get("server_lock") or {}  # the platform's lock names the ruling's time: until - 6 h
+                at = r["filed"] + RULE_S
+                if sl and not sl.get("claimed") and r["filed"] <= sl["until"] - LOCK_S <= t:
+                    at, sl["claimed"] = sl["until"] - LOCK_S, key        # one lock names one ruling
+                self.ruled(key, r, "genuine", at)
                 why = f"#{r['target']} ruled genuine"
+                pg = r.get("pg")
+                self.alert(f"genuine:{key}", f"{why} after {(at - r['filed']) / 3600:.1f} h. Evidence: "
+                           f"{'+'.join(r.get('classes') or ['?'])}, P(genuine) at filing "
+                           f"{'?' if pg is None else f'{pg:.0%}'}, {r.get('age_min', '?')} min old, cluster "
+                           f"{r['label']}. Reporting locks for 6 h from the ruling.", gap_s=0)
                 if (self.s.get("server_lock") or {}).get("at", 0) >= r["filed"] + RULE_S:
                     if self.locked():         # the platform named its lock after this ruling: it already counts it
                         self.s["lock_why"] = why
@@ -677,8 +695,12 @@ class Blue:
 
     def ruled(self, key, r, outcome, at):
         r.update(status=outcome, ruled=at, ruled_day=sydney_day(at))
-        self.log({"act": "ruling", "key": key, "outcome": outcome, "label": r["label"],
-                  "hours": round((at - r["filed"]) / 3600, 1)})
+        rec = {"act": "ruling", "key": key, "outcome": outcome, "label": r["label"],
+               "hours": round((at - r["filed"]) / 3600, 2)}
+        if r["kind"] == "post":                   # todo/28: time to ruling, the evidence class, co-reported or not
+            rec.update(classes=r.get("classes"), pg=r.get("pg"), co=at - r["filed"] < CO_S)
+            r["co"] = rec["co"]
+        self.log(rec)
 
     # ---- account harvest: authors with a moderator-hidden post and 100+ actions ----
     def hide_targets(self):
@@ -699,8 +721,9 @@ class Blue:
                         not 1800 <= age <= MAX_POST_AGE_H * 3600 or \
                         t - self.s["hide_checks"].get(str(post_id), 0) < HIDE_RECHECK_S:
                     continue
-                out.append((self.s["hide_checks"].get(str(post_id), 0), -age, post_id, author, ring))
-        return [x[2:] for x in sorted(out)]           # never checked first, then oldest (likeliest ruled by now)
+                out.append((not p.get("co"), self.s["hide_checks"].get(str(post_id), 0), -age, post_id, author, ring))
+        # co-reported rings first (todo/28), then never checked, then oldest (likeliest ruled by now)
+        return [x[3:] for x in sorted(out)]
 
     def harvest(self):
         t = now()
@@ -763,6 +786,9 @@ class Blue:
                           new=len({c["label"] for c in ranked if counts.get(c["label"], 0) == 0})),
             widen=self.s["widen"],
             next_ruling=iso(pend[0]["filed"] + RULE_S) if pend else None,
+            # todo/28: post rulings today that came under 2 h (2+ teams reported them), of all post rulings today
+            co=dict(fast=sum(bool(r.get("co")) for r in ruled_today if r["kind"] == "post"),
+                    of=sum(r["kind"] == "post" for r in ruled_today)),
             today=dict(filed=len(filed_today), hidden=sum(r["status"] == "hidden" for r in ruled_today),
                        genuine=sum(r["status"] == "genuine" for r in ruled_today),
                        accounts=sum(r["status"] == "ruled" for r in ruled_today),

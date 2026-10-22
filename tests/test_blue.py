@@ -511,3 +511,41 @@ def test_no_post_report_where_our_boosters_acted(tmp_path, monkeypatch):
     b.s["posts"]["200"] = post(200, "cB", 7000)
     b.s["posts"]["200"]["audit"]["ours"] = 2
     assert {c["target"] for c in b.candidates()} == {200}
+
+
+def test_co_reported_ruling_puts_its_ring_first_for_leads(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    t = time.time()
+    for pid, author in ((100, 5000), (300, 5300)):
+        ring = post(pid, "cA", author)
+        ring["post"]["created_at"] = ring["audit"]["created"] = S.iso(t - 3 * 3600)
+        ring["audit"]["reply_posts"] = [dict(post_id=pid + 1, author=author + 1, created=S.iso(t - 3 * 3600))]
+        b.s["posts"][str(pid)] = ring
+    b.s["reports"] = {"p301": dict(kind="post", target=301, author=5301, label="cA", filed=t - 1.4 * 3600,
+                                   status="pending", ring=300, classes=["reply_ring"], pg=0.02)}
+    # a reply of ring #300, hidden 1.4 h after we filed it: 2+ teams reported it
+    b.social = FakeSocial(gone={301})
+    b.rulings()
+    r = b.s["reports"]["p301"]
+    assert r["status"] == "hidden" and r["co"] and b.s["harvest"]["5301"]["co"]
+    assert b.s["posts"]["300"]["co"] and b.s["last"]["harvest"] == 0
+    assert [x[0] for x in b.hide_targets()][:1] == [300]        # its ring checked first (301 is ours to rule)
+
+
+def test_genuine_ruling_alerts_with_its_evidence_class_and_platform_time(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    alerts = []
+    monkeypatch.setattr(b, "alert", lambda kind, msg, gap_s=3600: alerts.append((kind, msg, gap_s)))
+    t = time.time()
+    filed = t - S.RULE_S - S.RULE_GRACE_S - 60
+    ruled_at = filed + 1.5 * 3600                                   # 2 teams: ruled at 1.5 h, the platform says
+    b.s.update(lock_until=ruled_at + S.LOCK_S, lock_src="server",
+               server_lock=dict(at=ruled_at + 600, until=ruled_at + S.LOCK_S))
+    b.s["reports"] = {"p2": dict(kind="post", target=2, author=5001, label="cA", filed=filed, status="pending",
+                                 classes=["like_ring"], pg=0.1, age_min=12)}
+    b.social = FakeSocial()
+    b.rulings()
+    r = b.s["reports"]["p2"]
+    assert r["status"] == "genuine" and abs(r["ruled"] - ruled_at) < 1 and r["co"]
+    (kind, msg, gap), = alerts
+    assert kind == "genuine:p2" and gap == 0 and "like_ring" in msg and "10%" in msg and "1.5 h" in msg
