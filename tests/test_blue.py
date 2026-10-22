@@ -186,7 +186,7 @@ def test_stale_posts_leave_the_last_slots_for_fresh_ones(tmp_path, monkeypatch):
     filed = []
     monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
     b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 6)}
-    ranked = [dict(key=f"s{i}", kind="post", age_min=120, ev=12) for i in range(4)]
+    ranked = [dict(key=f"s{i}", kind="post", age_min=120, ev=12, pg=0.02) for i in range(4)]
     b.fill(ranked, "auto")
     assert filed == ["s0"]                       # 6 free: one stale fills, the last 5 wait for fresh ring posts
 
@@ -274,18 +274,31 @@ def test_p_genuine_by_evidence_class():
     assert ev.post_ev(10, False, pg=0.04) > ev.post_ev(10, False, pg=0.14)
 
 
-def test_many_ready_files_accounts_first_then_only_low_risk_posts(tmp_path, monkeypatch):
+def test_no_lock_mode_files_accounts_then_only_the_lowest_risk_posts(tmp_path, monkeypatch):
     b = blue(tmp_path, monkeypatch)
     b.live = True
     filed = []
     monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
-    risky = [dict(key=f"r{i}", kind="post", ev=20, pg=0.14, age_min=10) for i in range(6)]
-    safe = [dict(key=f"s{i}", kind="post", ev=18, pg=0.04, age_min=10) for i in range(4)]
-    b.fill(risky + safe + [dict(key="a1", kind="account", ev=14, pg=0.0)], "auto")
-    assert filed == ["a1", "s0", "s1", "s2", "s3"]                    # 11 ready: the 14% ones wait
+    monkeypatch.delenv("BLUE_POST_PG_MAX", raising=False)
+    monkeypatch.delenv("BLUE_PG_PER_DAY", raising=False)
+    like = [dict(key=f"l{i}", kind="post", ev=20, pg=0.1, age_min=10) for i in range(3)]       # like ring alone
+    reply = [dict(key=f"r{i}", kind="post", ev=18, pg=0.02, age_min=10) for i in range(8)]     # reply ring
+    cheap = [dict(key="c0", kind="post", ev=2.3, pg=0.02, age_min=10)]                          # a 10%-rate report
+    b.fill(like + reply + cheap + [dict(key="a1", kind="account", ev=14, pg=0.0)], "auto")
+    assert filed == ["a1", "r0", "r1", "r2", "r3", "r4"]      # the bucket holds 0.1: five 2% reports, then accounts
+    assert b.bucket()["level"] < 0.02
     filed.clear()
-    b.fill(risky[:3] + safe[:2], "auto")                              # few ready: every one may file
-    assert filed == ["r0", "r1", "r2", "s0", "s1"]
+    monkeypatch.setattr(S, "now", lambda: time.time() + 6 * 3600)          # a quarter of a day later: full again
+    b.fill(reply[5:] + [dict(key="a2", kind="account", ev=14, pg=0.0)], "auto")
+    assert filed == ["a2", "r5", "r6", "r7"]
+    monkeypatch.setenv("BLUE_POST_PG_MAX", "0.1")                           # a setting in .env on the box
+    mid = [dict(key="m0", kind="post", ev=20, pg=0.05, age_min=10)]
+    filed.clear()
+    b.fill(mid, "auto")
+    assert filed == []                                     # allowed now, but 0.04 left in the bucket: it waits
+    monkeypatch.setattr(S, "now", lambda: time.time() + 12 * 3600)
+    b.fill(like + mid, "auto")
+    assert filed == ["m0"]                                 # a 10% report risks more than its 20 points are worth
 
 
 def test_ranking_puts_new_clusters_first_at_equal_value(tmp_path, monkeypatch):

@@ -1,10 +1,12 @@
 """The Blue loop: scan, rank, fill the pending slots greedily, read rulings back, publish status for the dashboard.
 
 Why greedy on slots (docs/06-strategy/blue-reporting.md): the binding limits are the 30 pending reports and the 6 h
-lock after any "genuine" ruling (about 1 in 10, so a full batch of 30 almost always ends in one). Points come from
-refilling every free slot the moment we may, with the highest expected value first:
-  post report    0.9 x (25 if we are first, else 5) x the team's daily rate (5 full, 5 half, then 10%)
+lock after any "genuine" ruling (about 1 in 10 for a like ring alone). Points come from refilling every free slot
+the moment we may, with the highest expected value first:
+  post report    (1 - P(genuine)) x (25 if we are first, else 5) x the team's daily rate (5 full, 5 half, then 10%)
   account report 15 x that rate, near-certain, no lock risk (the account already has a hidden post and 100+ actions)
+The no-lock mode (todo/28, the default): account reports always first; post reports only at P(genuine) <= 2% (reply
+rings), worth the lock they risk, and within a daily risk budget (policy(), settable in .env on the box).
 Being first pays 25 against 5 (by order, not time; nobody can see others' reports), so we push the odds:
   - ring authors' timelines are polled every 3 min, and a known ring author's new post is audited at 4, 12, 45 min;
     an early ring (most of its likers ran that author's earlier ring) qualifies before the ring is big
@@ -67,10 +69,19 @@ AUDITS_PER_TICK = 15
 HARVEST_CHECKS = 80           # ring posts and ring replies checked for someone else's hide per harvest round
 HIDE_RECHECK_S = 2 * 3600     # a post checked for a hide isn't checked again for this long
 FEED_RESERVE = 4              # leave the bot this many feed calls of the team's 10/min
-# todo/26, lock economics: with this many targets ready, a post report must be under PG_MAX P(genuine) to file (a
-# genuine ruling locks all reporting for 6 h; with plenty ready, the riskier reports aren't worth a lock)
-READY_STRICT = 10
-PG_MAX = 0.06
+# todo/28, the no-lock mode (the default): a genuine ruling locks ALL our reporting for 6 h, and the moderator's error,
+# not our evidence, sets the floor. Account reports always go first (a dismissed one can't lock us). A post report
+# files only when
+#  - its P(genuine) (evidence.p_genuine) is at most BLUE_POST_PG_MAX: 2% lets reply rings through (0 genuine of 28
+#    to 22 Oct) and keeps every like ring out (2 of 19);
+#  - its expected value pays for the lock it risks: ev >= pg x LOCK_COST (a 10%-rate report never does); and
+#  - the risk bucket holds its P(genuine): it refills BLUE_PG_PER_DAY a day (expected genuine rulings a day; 0.4 is
+#    about 3 a week, todo/28's bar) and holds a quarter of that, so post reports spread over the day.
+# BLUE_POST_PG_MAX and BLUE_PG_PER_DAY can be set in .env on the box (blue-reporting §8 has what each costs).
+PG_MAX = 0.02
+PG_PER_DAY = 0.4
+PG_BURST_DAYS = 0.25          # the bucket holds this many days of PG_PER_DAY
+LOCK_COST = 300               # points a 6 h lock costs: a quarter of a ~1,200-point Blue day (§2)
 # todo/26, more teams at full rate: while a cluster is under its 5 full-rate awards today, each award already counted
 # against it lowers its next report's rank by this share, so new clusters go first and fresh ring posts of the busy
 # ones still find a full-rate award later in the day
@@ -462,13 +473,28 @@ class Blue:
     def locked(self):
         return now() < self.s["lock_until"]
 
+    def bucket(self):
+        """The risk bucket (todo/28): expected genuine rulings post reports may still take on now. It refills at
+        BLUE_PG_PER_DAY a day up to PG_BURST_DAYS of it, and starts full."""
+        pol, t = policy(), now()
+        cap = pol["per_day"] * PG_BURST_DAYS
+        b = self.s.setdefault("pg_bucket", dict(level=cap, t=t))
+        b["level"] = round(min(cap, b["level"] + pol["per_day"] * (t - b["t"]) / 86400), 4)
+        b["t"] = t
+        return b
+
+    def spent(self, c):
+        if c["kind"] == "post":
+            self.bucket()["level"] -= c.get("pg", ev.PG_BASE)
+
     def fileable(self, ranked):
         """What fill() may file, in order: account leads first (a dismissed account report pays nothing but can't
-        lock us), then post reports; with READY_STRICT or more ready, only posts under PG_MAX P(genuine)."""
+        lock us), then the post reports the no-lock mode allows (P(genuine) at most BLUE_POST_PG_MAX, worth the
+        lock they risk). The risk bucket is fill()'s to check."""
+        pg_max = policy()["pg_max"]
         accounts = [c for c in ranked if c["kind"] == "account"]
-        posts = [c for c in ranked if c["kind"] == "post"]
-        if len(ranked) >= READY_STRICT:
-            posts = [c for c in posts if c.get("pg", ev.PG_BASE) <= PG_MAX]
+        posts = [c for c in ranked if c["kind"] == "post" and c.get("pg", ev.PG_BASE) <= pg_max
+                 and c.get("ev", 0) >= c.get("pg", ev.PG_BASE) * LOCK_COST]
         return accounts, posts
 
     def fill(self, ranked, mode):
@@ -489,6 +515,8 @@ class Blue:
                 break
             if c["kind"] == "post" and post_room <= 0:
                 continue                      # the last slot is left to account reports
+            if c["kind"] == "post" and self.bucket()["level"] < c.get("pg", ev.PG_BASE):
+                continue                      # the day's lock risk is spent: accounts only until it refills
             if c["kind"] == "post" and c.get("age_min", 0) > FRESH_MIN and free <= FRESH_RESERVE:
                 continue                      # keep the last slots for fresh ring posts, where we can be first
             if mode == "approve" and c["kind"] == "post" and c["key"] not in ok:
@@ -496,6 +524,7 @@ class Blue:
             if confirm:
                 if self.file(c):              # taken: the platform's lock is over, ours was too long
                     free -= 1
+                    self.spent(c)
                     post_room -= c["kind"] == "post"
                     self.unlock("the platform took a report")
                 elif self.s["reports"].get(c["key"], {}).get("status") == "refused":
@@ -504,6 +533,7 @@ class Blue:
                 continue
             if self.file(c):
                 free -= 1
+                self.spent(c)
                 post_room -= c["kind"] == "post"
 
     def unlock(self, why):
@@ -683,14 +713,19 @@ class Blue:
             if mode == "approve" and not self.locked() else []
         accounts, posts = self.fileable(ranked)
         counts = self.counts_today()
+        pol = policy()
         write_json(self.status_file, dict(
             ts=iso(), live=self.live, mode=mode, why=why, reporter=self.reporter_name,
             locked_until=iso(self.s["lock_until"]) if self.locked() else None, lock_why=self.s["lock_why"],
             lock_src=self.s.get("lock_src") if self.locked() else None,
             pending=len(pend), cap=CAP,
-            # todo/26: what would file now (accounts, and posts under the P(genuine) bar when many are ready)
+            # todo/26, todo/28: what would file now (accounts, and posts the no-lock mode allows)
             ready_ok=len(accounts) + len(posts), ready_accounts=len(accounts),
-            pg_max=PG_MAX if len(ranked) >= READY_STRICT else None, pg_check=self.pg_check(),
+            pg_max=pol["pg_max"], pg_check=self.pg_check(), pg_by_class=self.pg_by_class(),
+            # todo/28: the risk bucket: expected genuine rulings post reports may still take on now, its refill a day
+            risk=dict(level=round(self.bucket()["level"], 3), per_day=pol["per_day"],
+                      cap=round(pol["per_day"] * PG_BURST_DAYS, 3),
+                      posts_now=sum(1 for _ in self._affordable(posts))),
             clusters=dict(today=len(counts), full=sum(n < 5 for n in counts.values()),
                           ready=len({c["label"] for c in ranked}),
                           new=len({c["label"] for c in ranked if counts.get(c["label"], 0) == 0})),
@@ -710,6 +745,26 @@ class Blue:
                     for k, r in sorted(self.s["reports"].items(), key=lambda kv: kv[1]["filed"])
                     if r["status"] == "pending" or sydney_day(r["filed"]) == today],
             last_error=self.s["last_error"], last_error_ts=self.s.get("last_error_ts")))
+
+    def _affordable(self, posts):
+        """The post reports the risk bucket would let through now, in order."""
+        level = self.bucket()["level"]
+        for c in posts:
+            if c.get("pg", ev.PG_BASE) <= level:
+                level -= c.get("pg", ev.PG_BASE)
+                yield c
+
+    def pg_by_class(self):
+        """Per evidence class: post rulings, genuine among them, and the P(genuine) we expected (todo/28)."""
+        out = {}
+        for r in self.s["reports"].values():
+            if r["kind"] != "post" or r["status"] not in ("hidden", "genuine") or not r.get("classes"):
+                continue
+            d = out.setdefault(ev.pg_class(r["classes"]), dict(n=0, genuine=0, expected=0.0))
+            d["n"] += 1
+            d["genuine"] += r["status"] == "genuine"
+            d["expected"] = round(d["expected"] + (r.get("pg") or 0), 2)
+        return out
 
     def pg_check(self):
         """P(genuine) at filing against the rulings: post reports ruled so far that carried an estimate."""
@@ -785,6 +840,16 @@ class Blue:
             if once:
                 return ranked
             time.sleep(TICK_S)
+
+
+def policy():
+    """The no-lock mode's settings (todo/28), from .env on the box or the defaults above."""
+    def num(key, default):
+        try:
+            return float(os.environ.get(key, default))
+        except ValueError:
+            return default
+    return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY))
 
 
 def rings(cands):

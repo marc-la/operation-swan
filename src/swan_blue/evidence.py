@@ -169,17 +169,25 @@ def post_ev(age_min, trending, strong=1.0, n=0, scale=1.0, pg=None):
     return (MODERATOR_RIGHT if pg is None else 1 - pg) * (FIRST * pf + LATER * (1 - pf)) * rate(n) * strong
 
 
-# ---- lock economics (todo/26): P(genuine) by evidence class ----
-# Every genuine ruling locks ALL our reporting for 6 h, and with 25 pending, one weak report is enough. On 22 Oct
-# (46 post rulings) both genuine rulings were like-ring-only posts (2 of 19); reply rings (24) and like rings with a
-# second class went 0 for 27. The moderator is "wrong ~1 in 10" overall; these factors move a report around that.
-PG_BASE = 0.10                    # a like ring alone: the scoring page's error rate, and 2 of 19 on 22 Oct
-PG_FACTORS = dict(reply_ring=0.4,     # replies in lockstep: 0 genuine of 24 on 22 Oct
-                  second_class=0.7,   # like ring plus early ring (repeat accounts): 0 of 3
-                  author_hidden=0.6,  # the moderator already hid a post by this author
-                  long_run=0.85,      # >= 10 near-consecutive ids among the accounts acting on it
-                  weak=1.4)           # a small, slow like ring (< 30 likes, no 60-s burst of 8)
-PG_RANGE = (0.01, 0.3)
+# ---- lock economics (todo/26, recalibrated todo/28): P(genuine) by evidence class ----
+# Every genuine ruling locks ALL our reporting for 6 h. Measured over every ruling to 22 Oct 05:00 UTC (50 post
+# rulings, blue-reporting §8): like ring alone 2 genuine of 19 (11%, the scoring page's "1 in 10"); reply rings 0 of
+# 28 (Jeffreys estimate 1.7%, 95% upper bound 11%); like ring + early ring 0 of 3. An id run of 10+ didn't help (2 of
+# 27 with one, 0 of 23 without), so it no longer counts. author_hidden is unmeasured (1 report) and can't take a like
+# ring under the bar on its own.
+PG_BASE = 0.10                    # a like ring alone: 2 of 19
+PG_FACTORS = dict(reply_ring=0.2,     # replies in lockstep: 0 of 28, so about 2%
+                  second_class=0.7,   # like ring plus early ring (repeat accounts): 0 of 3, so unproven
+                  author_hidden=0.6,  # the moderator already hid a post by this author (1 report so far)
+                  weak=1.4)           # a small, slow like ring (< 30 likes, no 60-s burst of 8): #155963, genuine
+PG_RANGE = (0.005, 0.3)
+
+
+def pg_class(cls):
+    """The evidence class a post report's risk is measured under (blue-reporting §8)."""
+    if "reply_ring" in cls:
+        return "reply_ring"
+    return "+".join(sorted(cls)) or "none"
 
 
 def p_genuine(a, cls, author_hidden=False):
@@ -192,8 +200,6 @@ def p_genuine(a, cls, author_hidden=False):
         p *= PG_FACTORS["second_class"]
     if author_hidden:
         p *= PG_FACTORS["author_hidden"]
-    if a.get("run", 0) >= 10:
-        p *= PG_FACTORS["long_run"]
     if "reply_ring" not in cls and a.get("team_likes", 0) < 30 and a.get("burst60", 0) < LIKE_RING["burst60"]:
         p *= PG_FACTORS["weak"]
     return round(min(PG_RANGE[1], max(PG_RANGE[0], p)), 3)
