@@ -106,3 +106,11 @@ A strategy beats Base in the lab **and** live (portal toward > 0, stance moves a
   - Separate template `lab.html.j2`; the main page gets one link.
 - **Model switch:** `config.LAB_MODEL` = "competitor" (default). "local-qwen2.5-3b" (an OpenAI-compatible endpoint, e.g. llama.cpp or ollama) stays off until the organisers answer question #5 (an external LLM for analysis). The simulated NPC and its classifier never use Kimi, Gemini or GLM.
 - **Docs:** `docs/06-strategy/npc-lab.md`: what it is, how to add a strategy, how to read the page, the caveat (a proxy; live results decide).
+
+## More strategies for the lab, then live (Marc, 2026-10-22)
+| Strategy | What it does | Notes |
+|---|---|---|
+| **@-address** | Open with the citizen's @handle and their own words: "@handle, you said …" | A reply already notifies them; this is about salience to a small model |
+| **News link** | One recent in-world article that supports No (from the papers via `ctn.NewsSites`, the pulse and fact desk headlines, e.g. "The Referendum Trap: Why a 'Yes' Vote Must Not Be a Blank Cheque"), linked, plus a one-line hook tied to their concern | The quality gate rejects all links today. Add a **new** check that allows only real `sites.legitreal.com` article URLs (verified against NewsSites) and still rejects every other link. In the lab, give the simulated NPC the card text (headline + summary) |
+| **Confident** | True facts at full certainty with strong cause-and-effect ("the pass will outlive the flu: nothing in the question ends it"); no hedging, no concession | Tests small-model sensitivity to certainty |
+| **Overclaim** | Plausible in-world claims beyond `facts.toml` that contradict nothing the papers or the setting have said | **Allowed by the rules** ("content known to be false or misleading", competition rules; team-conduct checklist). **Never:** false voting logistics (LS.8.2), harassment, or real-world medical instructions (LS.8.1: hidden-post risk). Lab first; live only if the lab shows a gain, and watch "away" closely (−80, ×4 at the end) |
