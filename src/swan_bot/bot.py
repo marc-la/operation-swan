@@ -980,6 +980,12 @@ def main():
             if job["rec"].get("last_write", 0) + REPLY_BACK_GAP_S > t:      # don't double-post from one account
                 queue.insert(0, job)
                 job = None
+        conv_arm = experiment.block("arm_conv")[1]      # todo/25 broadcast arm: a plain persona post ahead of citizens
+        if (job is None and conv_arm == "broadcast" and (not amp or amp.paused())
+                and "post" not in pending and t - state.get("last_post", 0) > config.CONV_POST_GAP_S):
+            rec = accounts.eligible()
+            if rec:
+                job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
         job = pick_job(job, (lambda: None) if desk else
                        (lambda: citizen_reply(targeter, accounts, ids, state["replied_posts"], contacted, engaged)), amp)

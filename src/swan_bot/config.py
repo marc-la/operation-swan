@@ -320,14 +320,29 @@ NEWS_THREADS_S = 30 * 60
 # on every citizen-facing write, so the portal's hourly lines can be compared block by block:
 #   base         today's behaviour;
 #   old_models   replies and reply-backs drafted on the 20 Oct free chain (CONV_OLD_MODELS) while any of it answers;
-#   no_leaners   a reply whose target reads lean/firm No (regex class, or the light read) is skipped, not answered.
+#   no_leaners   a reply whose target reads lean/firm No (regex class, or the light read) is skipped, not answered;
+#   broadcast    a plain persona post (no amplification) ahead of citizen replies every CONV_POST_GAP_S (20 Oct ran
+#                2-3 posts/h). Marc, 2026-10-22: off the same day if "away" beats "toward" in broadcast blocks.
 # To stop the experiment: SWITCHBACK = []. To keep a winner, list only it in CONV_ARMS.
-CONV_ARMS = ["base", "old_models", "no_leaners"]
+CONV_ARMS = ["base", "old_models", "no_leaners", "broadcast"]
 CONV_BLOCK_S = 2 * 3600
+CONV_POST_GAP_S = 20 * 60
 CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
 CONV_SKIP_STANCES = {"lean_no", "firm_no"}
-CONV_MODES = {"reply", "reply_back", "second_voice"}
+CONV_MODES = {"reply", "reply_back", "second_voice", "post"}   # arm_conv is logged on these
 SWITCHBACK = [("arm_conv", CONV_ARMS, CONV_BLOCK_S)]
+# The NPC lab (src/swan_lab, docs/06-strategy/npc-lab.md): a stand-in citizen scores reply strategies offline.
+# The stand-in and its classifier run on LAB_MODEL only: "competitor" is the organisers' qwen2.5-3b (CompetitorLLM).
+# External models may draft the replies under test (content), never play or judge the citizen (CLAUDE.md rule 2).
+# "local-qwen2.5-3b" (LAB_LOCAL_URL, OpenAI-compatible) stays off until organiser question #5 is answered.
+LAB_MODEL = "competitor"
+LAB_LOCAL_URL = ""
+LAB_LLM_PER_MIN = 3                 # CompetitorLLM's team limit: 3/min, 1 at a time (the headers can only lower it)
+LAB_READS_PER_MIN = 30              # the persona builder's read pace (per-endpoint budgets, never the feed budget)
+LAB_SEEDS = 2                       # trials per persona x strategy; a strategy file may ask for more
+LAB_DIR = DATA / "lab"
+LAB_PERSONAS = ROOT / "content" / "lab" / "personas"
+LAB_STRATEGIES = ROOT / "content" / "lab" / "strategies"
 
 # ---- Blue track (todo/07, src/swan_blue): a separate process reports from one booster the bot no longer uses ----
 BLUE_OFF_FILE = ROOT / "BLUE_OFF"       # touch it to stop filing reports (the scan and rulings carry on)

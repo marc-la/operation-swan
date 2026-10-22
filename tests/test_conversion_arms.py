@@ -36,9 +36,13 @@ def test_the_block_sets_arm_conv_on_citizen_facing_writes_only(monkeypatch):
     job = job_for(None)
     bot.build_prompt(job, targeter)
     assert job["meta"]["arm_conv"] == "no_leaners" and job["meta"]["block_id"].startswith("arm_conv:7200:")
-    post = dict(mode="post", rec=dict(persona="lani"), frame="F1_blank_cheque")
+    post = dict(mode="post", rec=dict(persona="lani"), frame="F1_blank_cheque")    # the broadcast arm's posts too
     bot.build_prompt(post, targeter)
-    assert "arm_conv" not in post["meta"]
+    assert post["meta"]["arm_conv"] == "no_leaners"
+    journalist = dict(mode="journalist", rec=dict(persona="lani"), frame="F1_blank_cheque",
+                      target=dict(post_id=9, author_id=3, body="The referendum explained"))
+    bot.build_prompt(journalist, targeter)
+    assert "arm_conv" not in journalist["meta"]
     assert "arm_conv" in bot.ARMS                                   # logged on every write
 
 
