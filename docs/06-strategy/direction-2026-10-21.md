@@ -79,3 +79,18 @@ Drafts are in [A (Q2–Q5)](research-2026-10-21/A-rules.md#c-top-7) and [B](rese
 - The portal counts ~2.5× more likes and replies than our own reads find, so trust the rankings, not the absolute numbers.
 - The two analyses differ on where the leaders' persuasion happens: Trending exposure in Sydney evenings ([A](research-2026-10-21/A-rules.md)) versus the 1:1 reply loop ([D](research-2026-10-21/D-competitors.md)). Both say the points are changes of mind. Our data can only test the reply loop for now.
 - We did not and won't try to work out which accounts belong to which team (rules §5.2.2).
+
+## Morning check, 2026-10-22 ~00:00 UTC (8am Perth), after todo/19–23
+| | Overnight (15:45–24:00 UTC) |
+|---|---|
+| Points | **3,226 in ~8 h (~400/h; was 15–25/h before the fixes)**: ~65% engagement (views, likes, replies, follows), ~35% Blue (49 awards). Rank 23 → **18** (10,882; leader 46,999) |
+| Volume | ~1,120 citizen-facing writes (reply 555, sweep 216, second voice 204, turnout 65, reply-back 65, off-topic 11, older 3, engaged 2); 2.2–2.3 writes/min, steady |
+| Coverage | 22:00 UTC: 168 citizen items seen, 130 answered, 0 lost. 23:00: 166 seen, 93 answered, 54 waiting, as the queue grew at Sydney morning (oldest 29 min) |
+| Gate | First-call 83% overall: Kimi 89% (n=857), flash-lite 86%, **GLM-5 0% (n=69)**. Lost to the gate: 2 |
+| Conversion | **0 toward No**, ~45 "neither, on vaccination". The last toward event was 21 Oct 07:53 UTC |
+| Blue | 52 filed, 44 hidden, 2 genuine (96%). Stopped by a genuine ruling's 6 h lock until 02:01 UTC, not by a cap |
+
+**Next:**
+- [todo/24](../../todo/24-throughput-to-three.md): ~2.9 writes/min, GLM out, no wasted drafts.
+- [todo/25](../../todo/25-conversion-what-moves-them.md): conversion, top priority.
+- [todo/26](../../todo/26-blue-widen.md): fewer locked hours, more teams at full rate.
