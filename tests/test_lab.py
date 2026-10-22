@@ -248,3 +248,12 @@ def test_a_strategys_drafter_takes_every_call_and_versions_the_strategy():
     assert trials.Capture(Gen()).complete("s", "u", models=("x",))[1] == "x"            # no drafter: untouched
     s = dict(name="base", instruction="")
     assert library.version(s) != library.version(dict(s, drafter="deepseek.v3.2"))
+
+
+def test_stealth_scores_resemblance_to_the_hidden_posts():
+    hidden = ["A Yes binds us, and there is no end date or review written in. I'm voting No."]
+    rows = [dict(reply="A Yes binds us, and there is no end date or review written in. I'm voting No."),
+            dict(reply="My cousin runs the ferry kiosk and nobody has told her who checks the passes.")]
+    sim, worn, vote = report.stealth(rows, hidden)
+    assert 0.4 < sim < 0.6 and worn == 0.5 and vote == 0.5
+    assert report.stealth([], hidden) is None

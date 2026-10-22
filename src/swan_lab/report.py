@@ -4,7 +4,9 @@ drift with nothing persuasive to read); per stance class, the best strategy and 
 A proxy: only live results count (portal toward/away by switchback block, the followup's stance moves).
 """
 import collections
+import re
 
+from swan_bot import config
 from swan_bot.analysis import wilson
 
 from . import library
@@ -44,6 +46,33 @@ def shift(rows, control_rows):
     return (None, 0) if not d else (sum(d) / len(d), len(d))
 
 
+VOTE = re.compile(r"voting no|i'?m a no|vote no", re.I)
+
+
+def hidden_corpus(path=None):
+    """The texts of our posts the moderator hid (data/lab/hidden_corpus.jsonl, todo/31), or []."""
+    import json
+    p = path or config.LAB_DIR / "hidden_corpus.jsonl"
+    try:
+        return [json.loads(line)["text"] for line in p.read_text().splitlines() if line.strip()]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+def stealth(rows, corpus):
+    """(hidden-sim, worn %, vote %) for a strategy's replies: the mean similarity to the nearest hidden post (the
+    gate's quality.similar at 3 words), the share with one of content.WORN_PHRASES, the share stating our vote.
+    A strategy that persuades but looks like the hidden posts doesn't ship (todo/31)."""
+    from swan_bot import content, quality
+    texts = [r["reply"] for r in rows if r.get("reply") and r.get("npc_reads", "reply") != "control"]
+    if not texts:
+        return None
+    sim = sum(max((quality.similar(t, h, n=3) for h in corpus), default=0.0) for t in texts) / len(texts)
+    worn = sum(any(p in t.lower() for p in content.WORN_PHRASES) for t in texts) / len(texts)
+    vote = sum(bool(VOTE.search(t)) for t in texts) / len(texts)
+    return sim, worn, vote
+
+
 def current(rows, strats):
     """Trials of the strategies' current versions, with a verdict."""
     from .npc import INSTRUMENT
@@ -72,9 +101,13 @@ def section(allrows, strats):
            "unrelated post. A proxy: live results decide.", "",
            "Paired shift: the strategy's rating after reading minus Control's for the same persona and seed, in rating "
            "points (YES −2 … NO +2; +1 = one step toward No). The main number: verdict counts suffer from ceilings.", "",
-           "| strategy | trials | paired shift vs Control (pairs) | toward No [90%] | same | toward Yes | net No−Yes per 100 "
-           "| vs Control | skipped |",
-           "|---|---|---|---|---|---|---|---|---|"]
+           "Stealth (todo/31): mean 3-word similarity to the nearest post the moderator hid / share with a worn "
+           "phrase / share stating our vote. Lower is safer; a persuasive strategy that looks like the hidden posts "
+           "doesn't ship.", "",
+           "| strategy | trials | paired shift vs Control (pairs) | stealth: hidden-sim / worn / vote | toward No [90%] "
+           "| same | toward Yes | net No−Yes per 100 | vs Control | skipped |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
+    corpus = hidden_corpus()
     skipped = collections.Counter(r["strategy"] for r in allrows if r.get("skip"))
     ctrl_rows = by.get(CONTROL, [])
     ranked = sorted(by, key=lambda s: -(shift(by[s], ctrl_rows)[0] if s != CONTROL and shift(by[s], ctrl_rows)[0]
@@ -84,8 +117,10 @@ def section(allrows, strats):
         d = net(by[s])
         vs = "–" if control is None or s == CONTROL else f"{d - control:+.0f}"
         m, k = shift(by[s], ctrl_rows) if s != CONTROL else (None, 0)
-        out.append(f"| {s} | {n} | {'–' if m is None else f'{m:+.2f} ({k})'} | {_ci(no, n)} | {_p100(same, n)} | "
-                   f"{_p100(yes, n)} | {d:+.0f} | {vs} | {skipped.get(s, 0)} |")
+        st = stealth(by[s], corpus) if s != CONTROL else None
+        st = "–" if st is None else f"{st[0]:.2f} / {100 * st[1]:.0f}% / {100 * st[2]:.0f}%"
+        out.append(f"| {s} | {n} | {'–' if m is None else f'{m:+.2f} ({k})'} | {st} | {_ci(no, n)} | "
+                   f"{_p100(same, n)} | {_p100(yes, n)} | {d:+.0f} | {vs} | {skipped.get(s, 0)} |")
     out += ["", "## Movability by stance class (best strategy per class)", "",
             "| class | trials | toward No per 100 (all strategies) | Control toward No | best strategy | its net per 100 (n) |",
             "|---|---|---|---|---|---|"]
