@@ -18,8 +18,11 @@ Code: [`src/swan_lab/`](../../src/swan_lab/). Service: `swan-lab.service` on swa
 ## One trial
 1. **Draft** the reply the strategy asks for: today's live reply prompt (`bot.build_prompt`, the light read), plus the strategy's instruction, on the live reply models, through the live quality gate and its repairs (unless the strategy says `gate = false`; the safety checks always run). The voice is fixed per citizen and seed, so strategies differ only in what they ask.
 2. **Session** (CompetitorLLM call 1): the persona card (their name, bio, recent posts and likes in their own words, their current view), "hard to persuade…", then "you read: {reply}". It answers with its view after reading, plus one line on vaccination in general.
-3. **Classify** (call 2): their real view before against the stand-in's view after: closer to Yes, closer to No, or the same position. The three answers get letters in a shuffled order per trial, so the small model's letter bias averages out. The same call rates the vaccination line positive / negative / mixed.
-4. **Control** reads an unrelated post instead of a reply. Its drift is the stand-in's noise, and every strategy is ranked against it.
+3. **Rate** (call 2): the same model rates the view after reading as a vote intention: YES / LEAN YES / UNDECIDED / LEAN NO / NO (−2 … +2), at temperature 0, one text at a time.
+4. **Baseline** (once per card, model and seed, cached in `data/lab/baselines.jsonl`): the same session with nothing new read ("Nothing new about the referendum has come up in your feed today"), rated the same way. The verdict is after against baseline: toward No, toward Yes, or the same. Both sides of the comparison are the stand-in's own words, through the same instrument.
+5. **Control** reads an unrelated post instead of a reply. Its drift is the stand-in's noise, and every strategy is ranked against it.
+
+**Instrument history.** v1 (2026-10-22 ~01:20 UTC, 6 trials) asked the model to compare two views and answer A/B/C, with shuffled letters. It answered "B" 5 times in 6, whatever B meant: letter bias on a 3B model, so the verdicts were noise. v2 (above, since 01:36 UTC) rates one text at a time in words. Trials carry `instrument`, and only the current one is reported.
 
 A trial costs 2 stand-in calls, so ~90 trials an hour on CompetitorLLM, and as many as the laptop allows on local. Results go to `data/lab/trials.jsonl`, one line per trial: the reply, the stand-in's answer, the verdict, the segment.
 
@@ -58,9 +61,11 @@ sudo systemctl status swan-lab; journalctl -u swan-lab -n 30
 ```
 
 ## Reading the results
-- **net No−Yes per 100** and **vs Control** rank the strategies. With ~24 trials per strategy, differences under ~20 points are noise; look at the 90% interval on "toward No".
+- **Paired shift vs Control** ranks the strategies: the strategy's rating after reading minus Control's, for the same persona and seed, in rating points (+1 = one step toward No). Stand-ins already at NO can only fall, so verdict counts understate every strategy; the pairing cancels that. Control's own drift at temperature 0.7 is sizeable (seed 0: 5 toward Yes, 3 toward No, 4 same of 12), so with ~24 pairs read only shifts of about ±0.5 or more.
+- **net No−Yes per 100** and **vs Control** are the verdict counts, as a second view.
 - **Movability by class:** which citizens move at all, and the best strategy for each. This feeds the live targeting priorities (todo/25, "Targeting in the lab").
 - **lean_no → toward No:** whether reinforcing a No-leaner registers as a move toward No in the stand-in. If not, lean_no replies are engagement only.
 
 ## Status
-- **2026-10-22 ~01:00 UTC:** first round ready. 12 cards (2 per class), 11 strategies. CompetitorLLM was unreachable at the time (Cloudflare 1033, the organisers' tunnel down), so the service waits and starts when it's back. Results go here with dates.
+- **2026-10-22 ~01:00 UTC:** first round ready. 12 cards (2 per class), 11 strategies. CompetitorLLM was unreachable (Cloudflare 1033, the organisers' tunnel down).
+- **2026-10-22 01:36 UTC:** round 1 running on the local stand-in (`qwen2.5:3b-instruct-q4_K_M`), instrument v2, ~55 trials/h. Round 1 (264 trials) is due ~06:00 UTC. Results go here with dates.
