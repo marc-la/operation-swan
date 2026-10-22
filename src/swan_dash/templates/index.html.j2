@@ -64,8 +64,21 @@ details.pts { margin-top: 6px; }
 details.pts > summary { padding: 8px 10px; }
 details.pts > div { padding: 0 10px 8px; }
 details.run { border: 0; margin: 0; background: none; }
-details.run > summary { padding: 0; }
+details.run > summary { padding: 0; list-style: none; display: flex; }
+details.run > summary::-webkit-details-marker { display: none; }
+table.ledger td { padding: 4px 8px 4px 0; }
+table.ledger td.out, details.run .out { width: 7.2em; min-width: 7.2em; flex: 0 0 7.2em; white-space: nowrap;
+  font-weight: 600; }
+table.ledger td.det, details.run .det { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+table.ledger table.ledger tr:first-child td { border-top: 1px solid var(--line); }
 .pl { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
+.kpis.tiles { margin: 6px 0 4px; }
+.kpis.tiles .val { font-size: 22px; }
+details.note { display: inline-block; border: 0; margin: 0 0 0 6px; background: none; vertical-align: middle; }
+details.note > summary { padding: 0 2px; color: var(--muted); }
+tr.notes { display: none; }
+tr:has(details.note[open]) + tr.notes { display: table-row; }
+tr.notes td { border-top: 0; padding-top: 0; }
 @media (max-width: 480px) {          /* Blue by day: one stacked card per day, no sideways scroll */
   table.days, table.days tbody, table.days tr, table.days td { display: block; }
   table.days tr:first-child { display: none; }
@@ -267,18 +280,10 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     {% if milestone.reached %}<span class="up">✓ reached</span>{% elif milestone.short is not none %}<span class="warn">{{ milestone.short | n }} to go</span>{% else %}needs {{ milestone.need | n }}{% endif %} · {% endif %}
   ×{{ multiplier.now }} now{% if score_lines.rows %} · {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }} since {{ day_start }}{% endif %}</span></summary>
 <div>
-  <h3>Points since {{ day_start }}, by kind</h3>
-  {% for k in score_lines.rows %}
-  <details class="pts" id="pts-{{ k.kind }}"><summary><b>{{ k.name }}</b>
-    <span class="{{ 'up' if k.points > 0 else ('down' if k.points < 0 else '') }}">{{ '≈' if k.mixed }}{{ '+' if k.points >= 0 }}{{ k.points | n }}</span>
-    <span class="sub">· {{ k.events }} portal line{{ 's' if k.events != 1 }}</span></summary>
-    <div>
-      {% if k.counts %}<p class="sub">{% for label, n in k.counts %}{{ n | n }} {{ label }}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
-      {% for l in k.lines %}<p class="pl"><span class="sub">{{ l.time }}</span> <b>{{ '≈' if l.of is not none }}{{ '+' if l.points >= 0 }}{{ l.points | n }}</b>{% if l.of is not none %} <span class="sub">(of {{ '+' if l.of >= 0 }}{{ l.of | n }})</span>{% endif %} {{ l.text }}</p>{% endfor %}
-      {% if k.events > k.lines | length %}<p class="sub">… {{ k.events - k.lines | length }} earlier.</p>{% endif %}
-    </div></details>
-  {% else %}<p class="sub">No points logged since {{ day_start }} yet.</p>{% endfor %}
-  {% if score_lines.rows %}<p class="sub">Total {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }}, from the portal's log. The portal gives one total an hour; where an hour mixes kinds, the split (≈) is ours, by the scoring guide's values.</p>{% endif %}
+  <h3>Points since {{ day_start }}</h3>
+  <div class="kpis tiles">{% for k in score_lines.tiles %}<div class="kpi"><div class="label">{{ k.name }}</div>
+    <div class="val {{ 'up' if k.points > 0 else ('down' if k.points < 0 else '') }}">{{ '≈' if k.mixed }}{{ '+' if k.points > 0 }}{{ k.points | n }}</div></div>{% endfor %}</div>
+  {% if score_lines.rows %}<p class="sub">Total {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }}, from the portal's log. It gives one total an hour; where an hour mixes kinds the split (≈) is ours: Blue by its report counts, the rest by the scoring guide's values.</p>{% endif %}
   {% if milestone %}<p>{{ milestone.name }} ({{ milestone.date }}): leading-side teams with at least {{ milestone.need | n }} points get the award.</p>{% endif %}
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
   {% if board %}
@@ -294,11 +299,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if history %}
   <h3>Our score over time</h3>
   <table>
-    <tr><th>When (Perth)</th><th class="num">Score</th><th class="num">Change</th><th class="num">Rank</th><th>By</th></tr>
+    <tr><th>When (Perth)</th><th class="num">Score</th><th class="num">Change</th><th class="num">Rank</th></tr>
     {% for h in history %}
     <tr><td>{{ h.time }}</td><td class="num">{{ h.score | n }}</td>
       <td class="num {{ 'up' if h.change and h.change > 0 else ('down' if h.change and h.change < 0 else '') }}">{% if h.change is not none %}{{ '+' if h.change >= 0 else '' }}{{ h.change | n }}{% endif %}</td>
-      <td class="num">{{ h.rank | n }}</td><td>{{ h.by }}</td></tr>
+      <td class="num">{{ h.rank | n }}{% if h.notes %}<details class="note" id="score-{{ h.time | replace(' ', '-') | replace(':', '') }}"><summary></summary></details>{% endif %}</td></tr>
+    {% if h.notes %}<tr class="notes"><td colspan="4">{% for x in h.notes %}<p class="pl"><span class="sub">{{ x.time }}</span> <b>{{ '+' if x.points >= 0 }}{{ x.points | n }}</b> {{ x.text }}</p>{% endfor %}</td></tr>{% endif %}
     {% endfor %}
   </table>
   {% endif %}
@@ -324,9 +330,9 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% for d in blue.history %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num" data-l="points">{{ d.points | n }}</td><td class="num {{ '' if d.today else d.level }}" data-l="of target">{{ d.pct }}%</td><td class="num" data-l="filed">{{ d.filed }}</td><td class="num" data-l="hidden">{{ d.hidden }}</td><td class="num" data-l="genuine">{{ d.genuine }}</td><td class="num" data-l="first">{{ d.first }}/{{ d.paid }}</td><td class="num" data-l="full rate">{{ d.full }}/{{ d.awards }}</td><td class="num" data-l="locked">{{ d.locked_h }} h</td></tr>{% endfor %}
   </table></details>{% endif %}
   {% if blue.timeline %}<details id="blue-ledger"><summary>Reports since {{ day_start }}, and any still pending ({{ blue.rows | length }}, times Perth)</summary>
-  <table class="ledger">{% for it in blue.timeline %}{% if it.kind == 'run' %}<tr><td colspan="3"><details class="run" id="{{ it.id }}"><summary class="{{ it.css }}">{{ it.label }}</summary>
-    <table>{% for r in it.rows %}<tr><td>{{ r.what }}</td><td>{{ r.group }}</td><td class="{{ r.css }}">{{ r.word }} {{ r.at }}</td></tr>{% endfor %}</table></details></td></tr>
-  {% else %}<tr><td>{{ it.what }}</td><td>{{ it.group }}</td><td class="{{ it.css }}">{{ it.word }} {{ it.at }}</td></tr>{% endif %}{% endfor %}</table>
+  <table class="ledger">{% for it in blue.timeline %}{% if it.kind == 'run' %}<tr><td colspan="2"><details class="run" id="{{ it.id }}"><summary><span class="out {{ it.css }}">▸ {{ it.out }}</span><span class="det">{{ it.detail }}</span></summary>
+    <table class="ledger">{% for r in it.rows %}<tr><td class="out {{ r.css }}">{{ r.out }}</td><td class="det">{{ r.detail }}</td></tr>{% endfor %}</table></details></td></tr>
+  {% else %}<tr><td class="out {{ it.css }}">{{ it.out }}</td><td class="det">{{ it.detail }}</td></tr>{% endif %}{% endfor %}</table>
   <p class="sub">Groups are accounts acting together, as swan-blue clusters them; not the organisers' team numbers.</p>
   </details>{% endif %}
   {% if blue.error %}<p class="sub warn">{{ blue.error | capitalize }}.</p>{% endif %}

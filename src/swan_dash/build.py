@@ -383,7 +383,10 @@ def score_lines(points, since):
                                        or short(rest or msg, 160)))
     rows = [dict(o, points=round(o["points"]), counts=sorted(o["counts"].items(), key=lambda kv: -kv[1]))
             for o in out.values() if o["events"]]
-    return dict(rows=rows, total=sum(e["points"] for e in points if e["_t"] >= since))
+    have = {r["kind"]: r for r in rows}
+    tiles = [have.get(k) or dict(kind=k, name=name, points=0, mixed=False) for k, name in POINT_KINDS
+             if k != "polls" or k in have]
+    return dict(rows=rows, tiles=tiles, total=sum(e["points"] for e in points if e["_t"] >= since))
 
 
 # ---- the fact desk (todo/16): pauses and open proposals, with the command that settles each ----
@@ -532,8 +535,7 @@ BLUE_MSG = re.compile(r"moderat|inauthentic|suspen", re.I)
 # Reports since 9pm (todo/29, Marc 22 Oct): the chronological timeline, one row per report, where each run of
 # consecutive rows with the same settled outcome collapses in place into one line that opens to those rows. Pending
 # and genuine rows never collapse.
-BLUE_WORDS = {"pending": "pending, rules about", "hidden": "hidden", "genuine": "ruled genuine", "refused": "refused"}
-BLUE_CSS = {"hidden": "up", "genuine": "down", "refused": "down"}
+BLUE_CSS = {"hidden": "up", "pending": "warn", "genuine": "down"}       # one colour per outcome; the rest neutral
 BLUE_ACCOUNT_PTS = 15                          # an upheld account report (scoring cheatsheet), times the line's ×rate
 BATCH_S = 120                                  # portal lines this close together are one hourly scoring run
 UPHELD = re.compile(r"(\d+) upheld account reports?", re.I)
@@ -541,7 +543,7 @@ RATE = re.compile(r"×\s*([\d.]+) points")
 
 
 def account_outcomes(ledger, points):
-    """{report key: (words, css)} for our ruled account reports. The API doesn't show them (a suspended account still
+    """{report key: (outcome, note, css)} for our ruled account reports. The API doesn't show them (a suspended account still
     reads as normal), but the portal's hourly scoring run does: "N upheld account reports". The portal names no
     account, so each ruling is matched to the first scoring run after it, and a run's upheld count is shared over the
     rulings it covers: all suspended, all dismissed, or "k of n" when it's split."""
@@ -561,34 +563,35 @@ def account_outcomes(ledger, points):
         if r.get("kind") != "post" and r.get("status") == "ruled" and t:
             run = next((x for x in runs if x[0] >= t), None)
             if run is None:
-                out[r.get("key")] = ("ruled · outcome not in the portal log yet", "")
+                out[r.get("key")] = ("ruled", "outcome not in the portal log yet", "")
             else:
                 batches.setdefault(id(run), (run, []))[1].append(r.get("key"))
     for run, keys in batches.values():
         k, n = min(run[1], len(keys)), len(keys)
-        word = (f"suspended · +{run[2]:g}" if k == n else "dismissed (no points, no lock)" if k == 0 else
-                f"suspended or dismissed: {k} of these {n} suspended")
+        word = (("suspended", f"+{run[2]:g}", "up") if k == n else ("dismissed", "no points, no lock", "") if k == 0
+                else ("suspended?", f"{k} of these {n} suspended, the portal doesn't say which", ""))
         for key in keys:
-            out[key] = (word, "up" if k == n else "" if k == 0 else "warn")
+            out[key] = word
     return out
 
 
 def blue_timeline(ledger, points):
     """Today's reports in filing order (and any still pending), as rows and runs. A row: what, group (swan-blue's
-    cluster label), word, time, css. A run: two or more consecutive rows with the same settled outcome (hidden,
+    cluster label), out (the outcome word, coloured by css), detail (target · group · time · note). A run: two or more consecutive rows with the same settled outcome (hidden,
     refused, or the same account outcome), shown as one line ("7 hidden, 14:02–15:40") that opens to its rows."""
     outcomes = account_outcomes(ledger, points)
     rows = []
     for r in ledger:
         t = ts(r.get("at"))
         status = r.get("status")
-        row = dict(what=f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}",
-                   group=f"group {r.get('team') or '?'}", at=hm(t) if t else "", t=t, status=status,
-                   word=BLUE_WORDS.get(status, str(status)), css=BLUE_CSS.get(status, ""), key=status)
+        what = f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}"
+        out, note, css = str(status), "", BLUE_CSS.get(status, "")
         if r.get("kind") != "post" and status == "ruled":
-            row["word"], row["css"] = outcomes.get(r.get("key"), ("ruled", ""))
-            row["key"] = f"account {row['word']}"
-        rows.append(row)
+            out, note, css = outcomes.get(r.get("key"), ("ruled", "", ""))
+        when = ("rules " if status == "pending" else "") + (hm(t) if t else "")
+        rows.append(dict(what=what, group=f"group {r.get('team') or '?'}", at=hm(t) if t else "", t=t,
+                         status=status, out=out, note=note, css=css, key=f"{out}|{note}",
+                         detail=" · ".join(x for x in (what, f"group {r.get('team') or '?'}", when, note) if x)))
     items = []
     for row in rows:
         last = items[-1] if items else None
@@ -601,12 +604,12 @@ def blue_timeline(ledger, points):
     for i, it in enumerate(items):
         if it["kind"] == "run":
             first, n = it["rows"][0], len(it["rows"])
-            what = first["word"] if first["key"].startswith("account") else first["word"].split(",")[0]
             times = sorted(r["t"] for r in it["rows"] if r["t"])
             span = "" if not times else hm(times[0]) if hm(times[0]) == hm(times[-1]) else \
                 f"{hm(times[0])}–{hm(times[-1])}"
-            it.update(label=f"{n} {'accounts ' if first['key'].startswith('account') else ''}{what}, {span}",
-                      css=first["css"], id=f"blue-run-{i}-{first['what'].strip('#').replace(' ', '')}")
+            it.update(out=f"{n} {first['out']}", css=first["css"], label=f"{n} {first['out']}, {span}",
+                      detail=" · ".join(x for x in (span, first["note"]) if x),
+                      id=f"blue-run-{i}-{first['what'].strip('#').replace(' ', '')}")
     return items
 
 
@@ -1022,7 +1025,11 @@ def gather(root, now, service):
     board = dict(leader=portal.get("leader"), above=portal.get("above"), below=portal.get("below"),
                  rank=portal.get("rank"), score=portal.get("score")) if portal.get("rank") else None
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
-                    change=x["score"] - entries[i - 1]["score"] if i else None, by=x.get("by", "?"))
+                    change=x["score"] - entries[i - 1]["score"] if i else None, by=x.get("by", "?"),
+                    # the portal's own notes behind this change (Marc: "details in place"), newest first
+                    notes=[dict(time=hm(e["_t"]), points=e["points"], text=short(e.get("message"), 300))
+                           for e in sorted(points, key=lambda e: e["_t"], reverse=True)
+                           if i and ts(entries[i - 1]["ts"]) < e["_t"] <= ts(x["ts"])])
                for i, x in enumerate(entries)][-10:][::-1]
     today = now.astimezone(SYDNEY).date()
     poll = next(((d, name, need) for d, name, need in POLLS if d >= today), None)

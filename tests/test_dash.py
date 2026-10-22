@@ -378,7 +378,15 @@ def test_points_by_kind_under_score_not_in_activity(tmp_path):
     assert kinds["persuasion"]["mixed"] and ("neither side (contribution)", 3) in kinds["persuasion"]["counts"]
     assert kinds["engagement"]["lines"][0]["of"] == 809 and "34 likes" in kinds["engagement"]["lines"][0]["text"]
     assert not any("pts" in r["what"] for r in ctx["activity"] + ctx["older"])
-    assert 'id="pts-blue"' in html and "+3,831 since 9pm" in html
+    assert 'class="kpis tiles"' in html and 'id="pts-' not in html and "+3,831 since 9pm" in html
+    assert [t["kind"] for t in s["tiles"]] == ["persuasion", "engagement", "blue", "polls", "penalties"]
+    # the score-over-time rows open to the portal's own notes behind each change
+    (root / "data" / "score.json").write_text(json.dumps([
+        {"ts": iso(200), "score": 1000, "rank": 9, "by": "portal"}, {"ts": iso(100), "score": 4026, "rank": 8, "by": "portal"},
+        {"ts": iso(10), "score": 4831, "rank": 7, "by": "portal"}]))
+    ctx, html = page(root)
+    notes = [[n["points"] for n in h["notes"]] for h in ctx["history"]]
+    assert notes == [[809, -4], [26, 3000], []] and html.count('<details class="note"') == 2
 
 
 # ---- Blue: pending summarised by group, reports by outcome, account outcomes, own-account check (todo/29) ----
@@ -416,13 +424,16 @@ def test_blue_timeline_collapses_runs_in_place_and_account_outcomes(tmp_path):
         ("run", "2 hidden, " + build.hm(NOW - dt.timedelta(minutes=100)) + "–" + build.hm(NOW - dt.timedelta(minutes=95))),
         ("row", "#4"),                                                           # genuine: never collapsed
         ("row", "account 8"), ("row", "account 9"),
-        ("run", "2 accounts suspended or dismissed: 1 of these 2 suspended, "
-                + build.hm(NOW - dt.timedelta(minutes=70)) + "–" + build.hm(NOW - dt.timedelta(minutes=65))),
+        ("run", "2 suspended?, " + build.hm(NOW - dt.timedelta(minutes=70)) + "–"
+                + build.hm(NOW - dt.timedelta(minutes=65))),
         ("row", "account 4")]
     assert [r["what"] for r in items[3]["rows"]] == ["#3", "#5"]                 # the run opens to the same rows
-    words = {r["what"]: r["word"] for r in ctx["blue"]["rows"]}
-    assert words["account 8"] == "suspended · +7.5" and words["account 9"] == "dismissed (no points, no lock)"
-    assert words["account 4"] == "ruled · outcome not in the portal log yet"
+    out = {r["what"]: (r["out"], r["note"], r["css"]) for r in ctx["blue"]["rows"]}
+    assert out["account 8"] == ("suspended", "+7.5", "up") and out["account 9"] == ("dismissed", "no points, no lock", "")
+    assert out["account 4"] == ("ruled", "outcome not in the portal log yet", "")
+    assert out["#1"][2] == "warn" and out["#4"][2] == "down" and out["#3"][2] == "up"   # pending, genuine, hidden
+    assert '<td class="out warn">pending</td><td class="det">#1 · group c100 · rules ' in html
+    assert '<span class="out up">▸ 2 hidden</span>' in html
     assert html.count('<details class="run"') == 2 and "team 1" not in html and "group c300" in html
     assert "Own accounts reported: not checked" in html                         # no ids published by swan-blue yet
     assert '<details id="blue">' in html and '<details class="reach" id="reach">' in html   # collapsed by default
