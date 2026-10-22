@@ -408,8 +408,6 @@ def _when(v):
 MIN_T = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 AUTO_SHOWN = 15                                # autopilot decisions listed, newest first
 AUTO_UNDO = "ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo {id}'"   # = factdesk.UNDO
-AUTO_WORDS = {"accepted": "applied", "retired": "retired the fact", "logged": "idea logged",
-              "failed": "left for a human", "undone": "undone"}
 
 
 def fact_desk(root, now=None):
@@ -444,28 +442,21 @@ def fact_desk(root, now=None):
             props[r["id"]] = r
     undone = {r.get("id") for r in autolog if r.get("status") == "undone"}
     today = sydney_midnight(now.astimezone(SYDNEY).date())
-    log, ideas = [], []
+    log = []
     for r in reversed(autolog):
         t = ts(r.get("decided_at"))
-        if not t:
-            continue
-        if r.get("status") == "logged":           # ideas change nothing: one line each, collapsed
-            if len(ideas) < AUTO_SHOWN:
-                ideas.append(dict(id=r.get("id"), time=perth(t).strftime("%a %H:%M"),
-                                  text=short(props.get(r.get("id"), {}).get("idea") or r.get("summary"), 200)))
-            continue
-        if len(log) >= AUTO_SHOWN:
-            continue
+        if not t or len(log) >= AUTO_SHOWN or r.get("status") not in ("accepted", "retired"):
+            continue                              # the list is what went live; failures wait for a human
         p = props.get(r.get("id"), {})
+        fact = r.get("fact") or p.get("fact") or p.get("key")
+        text = (r.get("text") or p.get("text")) if r.get("status") == "accepted" else \
+            f"Retired: {table.get(fact, {}).get('text') or fact}"
         log.append(dict(
-            id=r.get("id"), time=perth(t).strftime("%a %H:%M"), status=r.get("status"),
-            word=AUTO_WORDS.get(r.get("status"), r.get("status")), label=KINDS.get(r.get("kind"), r.get("kind")),
-            summary=short(r.get("summary"), 300), quote=short(r.get("quote") or p.get("quote"), 300),
-            text=r.get("text") if r.get("status") == "accepted" else None, by=r.get("by"),
+            id=r.get("id"), date=perth(t).strftime("%-d %b"), status=r.get("status"), text=short(text, 240),
+            paper=(r.get("site") or "").replace("-", " ").title(),
             url=f"https://sites.legitreal.com/{r.get('site')}/articles/{r.get('slug')}" if r.get("site") else None,
-            undo=AUTO_UNDO.format(id=r.get("id")) if r.get("status") in ("accepted", "retired")
-            and r.get("id") not in undone else None))
-    auto = dict(on=bot_config.FACTDESK_AUTO, cap=bot_config.FACTDESK_AUTO_PER_DAY, log=log, ideas=ideas,
+            reverted=r.get("id") in undone, undo=AUTO_UNDO.format(id=r.get("id"))))
+    auto = dict(on=bot_config.FACTDESK_AUTO, cap=bot_config.FACTDESK_AUTO_PER_DAY, log=log,
                 today=sum(1 for r in autolog if r.get("status") in ("accepted", "retired")
                           and (ts(r.get("decided_at")) or MIN_T) >= today))
     items = []
@@ -495,7 +486,8 @@ def fact_desk(root, now=None):
     items.sort(key=lambda i: (not i["paused"], order.index(i["kind"]), -i["id"]))
     rest = [i["id"] for i in items if i["kind"] == "angle"]
     return dict(paused=[dict(fact=k, since=hm(ts(v.get("since"))) if ts(v.get("since")) else "?",
-                             proposal=v.get("proposal")) for k, v in held.items()],
+                             proposal=v.get("proposal"), text=short(table[k].get("text"), 200),
+                             paper=(v.get("site") or "").replace("-", " ").title()) for k, v in held.items()],
                 proposals=items, count=len(items), auto=auto,
                 reject_ideas=f"{REVIEW} --reject {','.join(map(str, rest))}" if len(rest) > 1 else None)
 

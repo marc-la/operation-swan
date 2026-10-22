@@ -348,45 +348,18 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<p class="sub">swan-blue hasn't written a status yet.</p>{% endif %}
 </div></details>
 
-<details id="facts"><summary><b>Facts</b><span class="sub {{ 'warn' if facts and facts.paused else '' }}">
-  {% if facts %}{% if facts.paused %}{{ facts.paused | length }} paused · {% endif %}{% if facts.auto.on %}autopilot: {{ facts.auto.today }} of {{ facts.auto.cap }} changes today{% if facts.count %} · {{ facts.count }} for a human{% endif %}{% else %}{{ facts.count }} to review{% endif %}{% else %}fact desk not set up{% endif %}</span></summary>
+<details id="facts"><summary><b>Facts</b><span class="sub {{ 'down' if facts and facts.paused else '' }}">
+  {% if facts %}{% if facts.paused %}{{ facts.paused | length }} paused · {% endif %}{{ facts.auto.log | rejectattr('reverted') | list | length }} approved automatically{% else %}fact desk not set up{% endif %}</span></summary>
 <div>
   {% if facts %}
-  {% if facts.auto.on %}
-  <p class="sub">The fact desk checks the papers every hour and decides on its own (todo/29): a contradicted fact is paused at once, then replaced by the paper's wording under a new key, or retired if the quote hedges; rewordings go in place; new facts only from a news article, quoted word for word; ideas are only logged. Every change must pass the fact checks, at most {{ facts.auto.cap }} a day. Live on the box at once (the bot restarts to read it); undo any one with its command.</p>
+  {% for p in facts.paused %}<p class="down"><b>Paused: {{ p.fact }}</b> since {{ p.since }}{% if p.paper %} ({{ p.paper }}){% endif %}. {{ p.text }}</p>{% endfor %}
+  <h3>Facts approved automatically</h3>
   {% for d in facts.auto.log %}
-  <div class="fact">
-    <div><span class="sub">{{ d.time }}</span> <b>#{{ d.id }} {{ d.label }}</b> <span class="{{ 'warn' if d.status in ('failed', 'undone') else ('up' if d.status == 'accepted' else '') }}">{{ d.word }}</span> <span class="sub">· {{ d.by }}</span></div>
-    <p>{{ d.summary }}</p>
-    {% if d.text %}<p><span class="k">now</span> {{ d.text }}</p>{% endif %}
-    {% if d.quote %}<p class="q">“{{ d.quote }}”{% if d.url %} <a href="{{ d.url }}" rel="noreferrer noopener" target="_blank">read the article</a>{% endif %}</p>{% endif %}
-    {% if d.undo %}<code class="cmd">{{ d.undo }}</code>{% endif %}
-  </div>
-  {% else %}<p class="sub">No fact changed yet: the desk decides after its next hourly run.</p>{% endfor %}
-  {% if facts.auto.ideas %}<details class="pts" id="facts-ideas"><summary>{{ facts.auto.ideas | length }} idea{{ 's' if facts.auto.ideas | length != 1 }} logged (frames are code: nothing reaches a prompt)</summary><div>
-  {% for i in facts.auto.ideas %}<p class="pl"><span class="sub">{{ i.time }} #{{ i.id }}</span> {{ i.text }}</p>{% endfor %}</div></details>{% endif %}
-  {% endif %}
-  {% if facts.proposals or not facts.auto.on %}
-  <details id="facts-human"{% if not facts.auto.on %} open{% endif %}><summary>{{ facts.count }} left for a human</summary><div>
-  <p class="sub">{% if facts.auto.on %}What the desk left: a check failed, or today's cap was reached. {% else %}A fact a paper contradicts is paused at once (the bot leaves it out); everything else waits for you. {% endif %}Decide here, then run the commands on a laptop with the repo: each prints the commit to push. Several at once: <code>{{ 'python scripts/facts_review.py --accept 9,12 --reject 2,4' }}</code>.</p>
-  {% for f in facts.proposals %}
-  <div class="fact{{ ' paused' if f.paused else '' }}">
-    <div><b>#{{ f.id }} {{ f.label }}</b> {{ f.name }}{% if f.paused %} <span class="down">· paused now</span>{% endif %}
-      <span class="sub">· {{ f.paper }}, {{ f.when }}{% if f.opinion %} (opinion column){% endif %}{% if f.also %} · and {{ f.also }} more paper{{ 's' if f.also > 1 }}{% endif %}</span></div>
-    {% if f.now %}<p><span class="k">now</span> {{ f.now }}</p>{% endif %}
-    {% if f.new %}<p><span class="k">{{ 'idea' if f.kind == 'angle' else 'new' }}</span> {{ f.new }}{% if f.note %} <span class="sub">· note: {{ f.note }}</span>{% endif %}</p>{% endif %}
-    {% if f.left %}<p class="warn">{{ f.left }}</p>{% endif %}
-    {% if f.failed %}<p class="warn">Its suggested wording failed our checks ({{ f.failed }}): write your own with --text and --note.</p>{% endif %}
-    <p class="q">“{{ f.quote }}” <a href="{{ f.url }}" rel="noreferrer noopener" target="_blank">read the article</a></p>
-    {% if f.stated_in %}<p class="sub">Written into: {{ f.stated_in | join(', ') }}</p>{% endif %}
-    {% if f.numbers %}<p class="sub">New figures: {{ f.numbers | join(', ') }}</p>{% endif %}
-    <p class="sub">{{ f.hint }}</p>
-    {% for c in f.commands %}<code class="cmd">{{ c }}</code>{% endfor %}
-  </div>
-  {% else %}<p class="sub">Nothing to review.</p>{% endfor %}
-  {% if facts.reject_ideas %}<p class="sub">Drop every idea above at once: <code>{{ facts.reject_ideas }}</code></p>{% endif %}
-  </div></details>
-  {% endif %}
+  <div class="fact"><p><span class="sub">{{ d.date }}</span> {% if d.reverted %}<s>{{ d.text }}</s> <span class="sub">(reverted)</span>{% else %}{{ d.text }}{% endif %}
+    <span class="sub">· {% if d.url %}<a href="{{ d.url }}" rel="noreferrer noopener" target="_blank">{{ d.paper }}</a>{% else %}{{ d.paper }}{% endif %}</span></p>
+    {% if not d.reverted %}<code class="cmd">{{ d.undo }}</code>{% endif %}</div>
+  {% else %}<p class="sub">None yet: the desk checks the papers every hour.</p>{% endfor %}
+  <p class="sub">Revert one: run its command. {% if facts.count %}{{ facts.count }} still open (the next hourly run, or a human): <code>python scripts/facts_review.py --list</code>.{% endif %}</p>
   {% endif %}
 </div></details>
 

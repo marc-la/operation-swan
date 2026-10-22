@@ -252,8 +252,9 @@ def test_facts_section_lists_pauses_first_and_hides_decided(tmp_path):
     assert [p["fact"] for p in f["paused"]] == ["polls"]                  # nurses was re-checked after its pause
     assert [i["id"] for i in f["proposals"]] == [3, 4, 2, 1] and f["proposals"][0]["paused"]   # 5 is decided
     assert ctx["banner"]["level"] == "amber" and "FACT PAUSED: polls" in ctx["banner"]["text"]
-    assert "python scripts/facts_review.py --accept 3 --same-key" in html and "--reject 1,2" not in html
-    assert "--reject 2,1" in html and "<script>alert(1)" not in html and "&lt;script&gt;" in html
+    assert 'class="down"><b>Paused: polls</b>' in html                   # red, at the top of Facts (Marc, 22 Oct)
+    assert "--accept" not in html and "<script>alert(1)" not in html      # no review queue on the page any more
+    assert "4 still open" in html
 
 
 # ---- Reach (2026-10-22): did we answer every citizen we could, fast, and did it convert? ----
@@ -477,13 +478,13 @@ def test_facts_section_is_the_autopilot_log_with_undo(tmp_path):
     ctx, html = page(root)
     f = ctx["facts"]
     assert f["auto"]["on"] and f["auto"]["today"] == 3 and not f["paused"]          # the overlay settled the pause
-    assert [(d["id"], d["status"]) for d in f["auto"]["log"]] == [(5, "retired"), (4, "undone"), (4, "accepted"),
-                                                                  (3, "failed"), (1, "accepted")]
-    undo = {d["id"]: d["undo"] for d in f["auto"]["log"] if d["undo"]}
-    assert set(undo) == {1, 5} and "facts_review.py --undo 5" in html               # #4 was undone already
-    assert [i["id"] for i in f["auto"]["ideas"]] == [2] and 'id="facts-ideas"' in html
+    assert [(d["id"], d["status"], d["reverted"]) for d in f["auto"]["log"]] == [
+        (5, "retired", False), (4, "accepted", True), (1, "accepted", False)]      # what went live, newest first
+    assert f["auto"]["log"][2]["text"] == "T" and f["auto"]["log"][0]["text"].startswith("Retired: x")
+    assert f["auto"]["log"][0]["paper"] == "Daily Kingstonia"
+    assert "facts_review.py --undo 5" in html and "--undo 1" in html and "--undo 4" not in html   # #4 reverted
     assert [p["id"] for p in f["proposals"]] == [3, 4]                             # failed and undone: for a human
-    assert f["proposals"][0]["left"] == "#3 failed" and "autopilot: 3 of 5 changes today · 2 for a human" in html
+    assert "2 approved automatically" in html and "2 still open" in html and "An idea" not in html
 
 
 def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
