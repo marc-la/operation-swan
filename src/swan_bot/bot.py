@@ -474,6 +474,19 @@ REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "le
                "pulse", "theme", "theme_level")
 
 
+def stage_times(job, target):
+    """Where a reply's time goes, for the dashboard (unix seconds): the citizen's post written (its own created_at),
+    the job chosen (t_pick), its draft checked (t_drafted) and now, the send. Drafts made ahead by the desk were
+    drafted before t_pick, so their drafting stage reads ~0 (drafted_ahead)."""
+    try:
+        made = dt.datetime.fromisoformat(((target or {}).get("created_at") or "").replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        made = None
+    return dict(t_made=made and round(made, 1), t_pick=job.get("t_pick") and round(job["t_pick"], 1),
+                t_drafted=job.get("t_drafted") and round(job["t_drafted"], 1), t_sent=round(time.time(), 1),
+                drafted_ahead=bool(job.get("drafted_ahead")) or None)
+
+
 def experiment_fields(target, cls=None):
     """Run version and the target's stance class (H3), for the experiments report. Target text only: no reads.
     cls: the class targeting read with the thread as context (todo/21), when the job carries one."""
@@ -1261,12 +1274,14 @@ def main():
         when the light read skipped the target or every draft failed (then it is requeued or logged lost, G8)."""
         rec, mode, target = job["rec"], job["mode"], job.get("target")
         job.setdefault("draft_id", secrets.token_hex(4))     # ties this job's rejected drafts to its write
+        job.setdefault("t_pick", time.time())                # reply-time stages (dashboard): chosen, drafted, sent
         persona = persona_of(rec)
         text = backend = user = repair = None
         if mode == "repost":
             text, backend = "", "none"
         elif drafted:
             text, backend = drafted["text"], drafted["backend"]
+            job["drafted_ahead"] = True
         else:
             with mu:                                 # drafts waiting to be sent count as sent (todo/22)
                 recent_texts = state["recent_texts"] + [d["text"] for d in ready if d["text"]]
@@ -1305,6 +1320,7 @@ def main():
                 lose(targeter, queue, job, "no_model" if backend is None else
                      f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
             return None
+        job["t_drafted"] = time.time()
         return dict(job=job, drafted=drafted, text=text, backend=backend, repair=repair, persona=persona)
 
     def send(d):
@@ -1454,6 +1470,7 @@ def main():
              "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
              "net": job.get("net"),                       # todo/23: the arm it counts against (engaged + off_topic)
              "sv_delay": job.get("sv_delay"),
+             **stage_times(job, target),
              "own_like": job.get("own_like"),
              "frame_in": job.get("frame_in"),
              **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame")},

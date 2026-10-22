@@ -793,6 +793,31 @@ def _written_at(pid, clock, max_gap=1800):
     return None
 
 
+STAGES = ("wait", "draft", "hold")
+
+
+def _stages(a):
+    """(wait, draft, hold) minutes of one write from the bot's stage stamps (t_made: the citizen's post, t_pick, t_drafted,
+    t_sent), or None when it has none (older rows) or they are out of order."""
+    try:
+        made, pick, drafted, sent = (float(a[k]) for k in ("t_made", "t_pick", "t_drafted", "t_sent"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not made <= pick <= drafted <= sent:
+        return None
+    return tuple((hi - lo) / 60 for lo, hi in ((made, pick), (pick, drafted), (drafted, sent)))
+
+
+def stage_line(rows):
+    """'wait 1.2 · draft 0.4 · hold 0.8 = 2.4 min (n 7)': the median of each stage; the parts need not add to the
+    total, medians do not."""
+    if not rows:
+        return "no timed writes yet"
+    med = [_median([r[i] for r in rows]) for i in range(3)]
+    return (" · ".join(f"{n} {m:.1f}" for n, m in zip(STAGES, med)) +
+            f" = {_median([sum(r) for r in rows]):.1f} min (n {len(rows)})")
+
+
 def _median(xs):
     xs = sorted(xs)
     return None if not xs else (xs[len(xs) // 2] if len(xs) % 2 else (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2)
@@ -837,9 +862,14 @@ def reach(actions, status, points, now, day_start, notes=None):
     # ---- speed ----
     clock = _id_clock(actions)
     fresh, back = [], []
+    stages = dict(fresh=[], back=[])
     for a in actions:
         if a.get("live") is not True or a["_t"] < hour_ago or a.get("group") not in (None, "None"):
             continue
+        kind = "fresh" if a.get("act") == "reply" and a.get("source") == "latest" else \
+            "back" if a.get("act") == "reply_back" else None
+        if kind and (st := _stages(a)):
+            stages[kind].append(st)
         w = _written_at(a.get("target_post"), clock)
         lag = (a["_t"].timestamp() - w) / 60 if w is not None else None
         if lag is None or lag < 0:
@@ -856,6 +886,10 @@ def reach(actions, status, points, now, day_start, notes=None):
     row("speed", "Reply time, citizens answering us", graded(mb, REACH_BACK_MIN),
         f"{mb:.1f} min" if mb is not None else "none this hour", f"≤ {REACH_BACK_MIN} min",
         "Reply-backs are slow: check Bot.")
+    for kind, name in (("fresh", "1st replies"), ("back", "2nd replies")):
+        row("speed", f"Where the time goes, {name}", "grey", stage_line(stages[kind]), "wait + draft + hold",
+            "Wait: their post to our pick (reading, queue). Draft: LLM calls and repairs. Hold: draft checked to sent "
+            "(pacing, rate limit). Fills in from the first reply written after the deploy.")
     q = status.get("queue") or {}
     waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
     groups_q = sum((g or {}).get("queued") or 0 for g in ((refreshes[-1].get("groups") if refreshes else None) or {}).values())

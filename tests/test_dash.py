@@ -582,3 +582,32 @@ def test_tab_title_is_a_status_word_not_a_colour(tmp_path):
     assert ctx["worst"] == "red" and "<title>Swan · DOWN</title>" in html
     for worst, word in (("green", "RUNNING"), ("amber", "ALERT"), ("red", "DOWN")):
         assert f"<title>Swan · {word}</title>" in build.render(dict(ctx, worst=worst, status_word=build.STATUS_WORD[worst]))
+
+
+def test_reply_time_stages_are_split_for_first_and_second_replies(tmp_path):
+    base = NOW.timestamp()
+
+    def timed(minutes_ago, act, made, pick, drafted, sent, **kw):
+        a = write(minutes_ago, act=act)
+        a.update(source="latest", t_made=base - made * 60, t_pick=base - pick * 60, t_drafted=base - drafted * 60,
+                 t_sent=base - sent * 60, **kw)
+        return a
+    acts = [timed(10, "reply", 14, 12, 11, 10), timed(8, "reply", 12, 10, 9, 8),          # wait 2 / draft 1 / hold 1
+            timed(6, "reply_back", 9, 8, 7, 6),                                           # wait 1 / draft 1 / hold 1
+            write(5, act="reply_back"),                                                   # an old row: no stamps, not timed
+            timed(4, "reply", 8, 6, 5, 6)]                                                # out of order: not timed
+    ctx, html = page(make_root(tmp_path, acts))
+    assert rowof(ctx, "Where the time goes, 1st replies")["now"] == "wait 2.0 · draft 1.0 · hold 1.0 = 4.0 min (n 2)"
+    assert rowof(ctx, "Where the time goes, 2nd replies")["now"] == "wait 1.0 · draft 1.0 · hold 1.0 = 3.0 min (n 1)"
+    ctx, _ = page(make_root(tmp_path / "x", [write(5)]))
+    assert rowof(ctx, "Where the time goes, 1st replies")["now"] == "no timed writes yet"
+
+
+def test_stage_times_logged_on_a_write():
+    from swan_bot import bot
+    got = bot.stage_times(dict(t_pick=100.04, t_drafted=102.0, drafted_ahead=True),
+                          dict(created_at="2026-10-23T00:00:00Z"))
+    assert got["t_made"] == 1792713600.0 and got["t_pick"] == 100.0 and got["t_drafted"] == 102.0
+    assert got["t_sent"] > 1.7e9 and got["drafted_ahead"] is True
+    none = bot.stage_times({}, None)
+    assert none["t_made"] is None and none["t_pick"] is None and none["drafted_ahead"] is None
