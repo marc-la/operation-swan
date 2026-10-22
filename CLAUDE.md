@@ -37,7 +37,7 @@ python scripts/smoke_test.py       # read-only: feed lock, trending posts, news 
 ## Key facts to keep in mind
 - Score ≈ persuasion >> volume: mind-change toward our side = 160 (+share of 80), away = −80; views capped at 500/day; unfollow −20. Red multiplier ×1 → ×2 from 26 Oct → ×4 from 1 Nov (derived; verify). Poll awards (21/25/29 Oct, 6,000 each, 3,000 if too close) need team score ≥1 / ≥7,000 / ≥7,000. Referendum: 20,000 (score ≥7,500 or one persuasion) + share of 100,000 for the winning side only. (Recalibrated 20 Oct.)
 - Citizens are deliberately hard to persuade; echoing what they already believe earns engagement but little persuasion; content that causes movement *away* from our side is penalised even if it argued for us.
-- Blue track: reporting competitor bots as `inauthentic` (detail text required); ruling 3 h after the first report, ≤25 pending, moderator wrong ~1 in 10 (since 20 Oct); a "genuine" ruling suspends our reporting for 6 h. 3 hidden posts = account suspended. Run by `src/swan_blue` on EC2 (`swan-blue.service`): [blue-reporting](docs/06-strategy/blue-reporting.md).
+- Blue track: reporting competitor bots as `inauthentic` (detail text required); ruling 3 h after the first report, ≤30 pending (since 22 Oct), moderator wrong ~1 in 10 (since 20 Oct; more accurate when several teams report the same target); a "genuine" ruling suspends our reporting for 6 h. 3 hidden posts = account suspended. Run by `src/swan_blue` on EC2 (`swan-blue.service`): [blue-reporting](docs/06-strategy/blue-reporting.md).
 - Finalists must hand over **all source code** and attend the Sydney prizegiving; keep tidy, attributable code and our own logs.
 
 ## Working conventions

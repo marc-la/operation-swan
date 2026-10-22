@@ -1,7 +1,7 @@
 """The Blue loop: scan, rank, fill the pending slots greedily, read rulings back, publish status for the dashboard.
 
-Why greedy on slots (docs/06-strategy/blue-reporting.md): the binding limits are the 25 pending reports and the 6 h
-lock after any "genuine" ruling (about 1 in 10, so a full batch of 25 almost always ends in one). Points come from
+Why greedy on slots (docs/06-strategy/blue-reporting.md): the binding limits are the 30 pending reports and the 6 h
+lock after any "genuine" ruling (about 1 in 10, so a full batch of 30 almost always ends in one). Points come from
 refilling every free slot the moment we may, with the highest expected value first:
   post report    0.9 x (25 if we are first, else 5) x the team's daily rate (5 full, 5 half, then 10%)
   account report 15 x that rate, near-certain, no lock risk (the account already has a hidden post and 100+ actions)
@@ -36,7 +36,8 @@ REPORTS_LOG = config.LOGS / "blue_reports.jsonl"
 FEED_LOG = config.LOGS / "feed_reads.jsonl"            # every feed call from this box, any process (todo/21 audit)
 SYDNEY = ZoneInfo("Australia/Sydney")
 
-CAP = 25                      # pending reports per team (Discord, 20 Oct); account reports counted too, to be safe
+CAP = 30                      # pending reports per team (Discord, 22 Oct: "lifted to 30 from 25"); accounts counted too
+ACCOUNT_SLOTS = 1             # posts may hold at most CAP - this: the last slot is an account report's (they can't lock)
 RULE_S = 3 * 3600             # base ruling time after the first report (scoring page, 20 Oct PM)
 LOCK_S = 6 * 3600             # a "genuine" ruling locks new reports for 6 h
 RULE_GRACE_S = 15 * 60        # still visible this long after RULE_S: ruled genuine
@@ -477,13 +478,17 @@ class Blue:
         confirm = self.locked() and self.s.get("lock_src") == "estimate" and self.s.get("lock_confirm")
         if mode == "off" or (self.locked() and not confirm):
             return
-        free = CAP - len(self.pending())
+        pend = self.pending()
+        free = CAP - len(pend)
+        post_room = CAP - ACCOUNT_SLOTS - sum(r["kind"] == "post" for r in pend.values())
         ok = self.approved()
         accounts, posts = self.fileable(ranked)
         ranked = accounts if len(accounts) >= free else accounts + posts   # enough account leads: no lock risk
         for c in ranked:
             if free <= 0 or (self.locked() and not confirm):
                 break
+            if c["kind"] == "post" and post_room <= 0:
+                continue                      # the last slot is left to account reports
             if c["kind"] == "post" and c.get("age_min", 0) > FRESH_MIN and free <= FRESH_RESERVE:
                 continue                      # keep the last slots for fresh ring posts, where we can be first
             if mode == "approve" and c["kind"] == "post" and c["key"] not in ok:
@@ -491,6 +496,7 @@ class Blue:
             if confirm:
                 if self.file(c):              # taken: the platform's lock is over, ours was too long
                     free -= 1
+                    post_room -= c["kind"] == "post"
                     self.unlock("the platform took a report")
                 elif self.s["reports"].get(c["key"], {}).get("status") == "refused":
                     continue                  # refused for that target only (gone, say): the next one asks
@@ -498,6 +504,7 @@ class Blue:
                 continue
             if self.file(c):
                 free -= 1
+                post_room -= c["kind"] == "post"
 
     def unlock(self, why):
         t = now()

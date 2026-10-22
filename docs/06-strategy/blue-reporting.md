@@ -2,14 +2,15 @@
 
 How we turn the Blue rules into points, and why the code (`src/swan_blue`, `swan-blue.service`) works the way it does. Rules: [scoring §3](../03-scoring/scoring-guide.md#3-reporting-inauthentic-posts-and-accounts). Work item and status: todo/07.
 
-## 1. The limits, as they stand on 21 Oct
+## 1. The limits, as they stand on 21 Oct (cap and multi-team boost updated 22 Oct)
 
 | Rule | Value | Source |
 |---|---|---|
 | Ruling time | 3 h after the first report, halved per extra team reporting | scoring page, 20 Oct PM |
+| Several teams reporting | the automod "gets a boost to accuracy if a post or account has been reported by multiple teams" | Discord, 22 Oct |
 | Moderator error | ~1 ruling in 10 is wrong (either way) | scoring page, 20 Oct PM (was 1 in 4) |
 | A "genuine" ruling | no new reports, posts or accounts, for 6 h; pending ones still resolve. Overlapping locks run at the same time (they don't add up) | scoring §3; `#questions` 21 Oct |
-| Pending reports | ≤ 25 per team | Discord, 20 Oct |
+| Pending reports | ≤ **30** per team (25 until 22 Oct). We keep the 30th for an account report | Discord, 22 Oct (was 25, 20 Oct) |
 | Post report | 25 if our team was **first**, 5 if later (first 5 teams only) | scoring §3 |
 | Account report | 15 to **every** team with an open report, if at ruling the account has ≥ 1 moderator-hidden post and ≥ 100 actions. Otherwise dismissed: **no points and no lock** | scoring §3 |
 | Per target team per Sydney day | awards 1–5 full, 6–10 half, 11+ 10% (posts and accounts together) | scoring §3 |
@@ -18,8 +19,8 @@ How we turn the Blue rules into points, and why the code (`src/swan_blue`, `swan
 ## 2. What follows from them
 
 - **Finding targets is easy.** Every account with an id above 2343 was registered after launch, so it belongs to a team. On 21 Oct, every Trending post we scored had 83–100% of its likes from team accounts. 18–23-account reply rings that finish within 15–35 minutes are common.
-- **Locks set the pace, not the reports.** With 25 pending and 1 in 10 rulings wrong, the chance that a batch has no "genuine" ruling is 0.9²⁵ ≈ 7%. So nearly every batch ends in a 6 h lock, and the cycle is about 3 h of rulings plus 6 h locked.
-- **The points come from refilling every slot the moment we may**, around the clock, with the best targets first. A model of that cycle (fill to 25, rule at 3 h, lock 6 h on a genuine ruling) gives about **70 reports and 1,200 points a day**. Being first only half the time drops it to about 870. Spreading over 40 teams instead of 12 adds about 70. So freshness matters most, then refilling at once.
+- **Locks set the pace, not the reports.** With 25 pending and 1 in 10 rulings wrong, the chance that a batch has no "genuine" ruling is 0.9²⁵ ≈ 7% (with 30 pending since 22 Oct, 0.9³⁰ ≈ 4%). So nearly every batch ends in a 6 h lock, and the cycle is about 3 h of rulings plus 6 h locked.
+- **The points come from refilling every slot the moment we may**, around the clock, with the best targets first. A model of that cycle (fill to 25, rule at 3 h, lock 6 h on a genuine ruling) gave about **70 reports and 1,200 points a day** (21 Oct; §7 and §8 for what the rulings since then changed). Being first only half the time drops it to about 870. Spreading over 40 teams instead of 12 adds about 70. So freshness matters most, then refilling at once.
 - **Account reports are free money** whenever an account qualifies: there's no moderator error and no lock risk. The authors of ring posts, including reply-ring replies, are the accounts that can qualify. Like-only ring accounts never post, so they can't be suspended.
 - **First matters for posts only.** It's order, not time: 25 for the first team, 5 for any later one. So we report posts young, under an hour old, and watch the timelines of known ring authors to catch their next post early.
 
@@ -27,7 +28,7 @@ How we turn the Blue rules into points, and why the code (`src/swan_blue`, `swan
 
 ```
 scan (reads only)                    rank                                fill
- Trending every 10 min ─┐            each candidate:                     while not locked and pending < 25:
+ Trending every 10 min ─┐            each candidate:                     while not locked and pending < 30:
  Latest every 3 min ────┼─ team-     EV = 0.9 × (25·P(first)+5·(1−P))     file the best EV first
  ring authors' posts ───┘  account   × team's daily rate × strength       (approve mode: only approved posts;
    every 5 min              posts    account EV = 0.95 × 15 × rate         account reports always)

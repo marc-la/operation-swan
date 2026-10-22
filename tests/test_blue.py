@@ -428,3 +428,19 @@ def test_dashboard_says_locked_until_perth_why_and_ready(tmp_path):
     b = build.blue_panel(tmp_path, now, [], now - dt.timedelta(hours=1))
     assert f"locked until {build.hm(until)} Perth (#155963 ruled genuine)" in b["summary"]
     assert "30 ready" in b["summary"] and b["ready"] == 30 and not b["lock_estimate"]
+
+
+# ---- todo/28: Blue without locks ----
+def test_cap_30_leaves_the_last_slot_to_an_account_report(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.live = True
+    filed = []
+    monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or b.s["reports"].setdefault(
+        c["key"], dict(kind=c["kind"], status="pending", filed=time.time())))
+    assert S.CAP == 30
+    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 2)}
+    ranked = [dict(key=f"s{i}", kind="post", ev=20, pg=0.02, age_min=10) for i in range(3)]
+    b.fill(ranked, "auto")
+    assert filed == ["s0"]                       # 28 posts pending: one more post, the 30th slot waits
+    b.fill(ranked[1:] + [dict(key="a1", kind="account", ev=14, pg=0.0)], "auto")
+    assert filed == ["s0", "a1"]                 # ...for an account report

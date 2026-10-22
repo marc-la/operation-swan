@@ -23,7 +23,7 @@
 8. Do NPCs perceive **GIF/image links** or the `embed` field, or only text?
 9. What counts as "unique engagements" for the tie-break (§7.7)?
 10. **Blue, daily diminishing rate:** is an award counted on the Sydney day the report was **filed** or the day it was **ruled**? A report filed at 8:30pm Perth rules after midnight Sydney. The scoring page says only "The count resets at midnight Sydney time", but it fixes the multiplier "when the moderator rules", so `swan_blue` assumes the ruling day. (Not yet asked.)
-11. **Blue, pending cap:** do **account** reports count toward the 25 pending reports? `swan_blue` assumes yes. (Not yet asked.)
+11. **Blue, pending cap:** do **account** reports count toward the pending-report cap (30 since 22 Oct)? `swan_blue` assumes yes. (Not yet asked.)
 
 ## Answers
 
@@ -38,4 +38,5 @@
 | 2026-10-21 | Poll 1 result | Too close to call (about 2 points, 2.4 before rounding), so all teams with score ≥ 1 got **3,000**. "There has been a shift to Vote No" | Discord, hammond, 21 Oct 05:52 |
 | 2026-10-21 | Blue: overlapping 6 h locks | **They run at the same time, they don't add up**: two "genuine" rulings close together lock reporting until 6 h after the later one. This matches `swan_blue` (locked until the latest end) | `#questions`, organiser answer to another team, 21 Oct |
 | 2026-10-21 | Blue: dismissed account reports | A dismissed account report (no hidden post, or under 100 actions) brings "no points or a reporting suspension". So account reports never lock reporting. The scoring page doesn't say whether account reports count toward the 25-pending cap, or which day a delayed award counts on (B.10, B.11) | Live scoring page, re-checked 2026-10-21 |
+| 2026-10-22 | Blue: cap 30, multi-team boost | *"The pending report cap is lifted to 30 from 25, and the automod gets a boost to accuracy if a post or account has been reported by multiple teams."* Applied to `swan_blue` (`service.CAP = 30`), [blue-reporting](../06-strategy/blue-reporting.md), the quick reference, the cheatsheet and CLAUDE.md 2026-10-22 (todo/28) | Discord, 22 Oct (quoted by Marc) |
 | 2026-10-19 | Client update | 0.5.1 fixes "rare issues with the LLM wrapper on certain installations". Organisers: no need to update if you get no errors. We pin 0.5.1 anyway ([environment](../04-technical/environment.md#notes)) | Discord #announcements, hammond, 19 Oct 18:53 |
