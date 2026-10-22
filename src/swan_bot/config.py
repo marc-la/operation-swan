@@ -385,7 +385,8 @@ STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is 
 # broadcast 1 block 0 / 0, kept). old_models was the only arm touching the referendum view, but net away.
 # 2026-10-22: fresh_facts (Marc): replies offered 1-2 facts the desk added in the last 48 h that fit the citizen's
 # post, "New this week in the papers: ..." (content.fresh_line; logged as `fresh` on the write).
-CONV_ARMS = ["base", "broadcast", "fresh_facts"]
+# 2026-10-22 ~11:00 UTC: broadcast off by Marc's rule (away beat toward: 0 / 3 over 3 blocks, 196 writes).
+CONV_ARMS = ["base", "fresh_facts"]
 CONV_BLOCK_S = 2 * 3600
 CONV_POST_GAP_S = 20 * 60
 CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
