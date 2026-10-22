@@ -60,9 +60,10 @@ li.group, li.group .w { color: var(--muted); font-weight: 400; }
 li details { background: none; border: 0; border-radius: 0; margin: 0; }
 li summary { padding: 0; }
 li details .sub { padding: 2px 0 0 1.2em; }
-li.gain, li.loss { border-left: 4px solid var(--green); background: var(--green-bg); }
-li.loss { border-left-color: var(--red); background: var(--red-bg); }
-li.gain .w { color: var(--green); } li.loss .w { color: var(--red); }
+details.pts { margin-top: 6px; }
+details.pts > summary { padding: 8px 10px; }
+details.pts > div { padding: 0 10px 8px; }
+.pl { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
 li .x { min-width: 0; overflow-wrap: anywhere; }
 li .id { color: var(--muted); font-size: 12px; }
 details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; }
@@ -253,8 +254,20 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 <details id="score"><summary><b>Score &amp; targets</b><span class="sub">
   {% if milestone %}{{ milestone.name }} {{ 'today' if milestone.today else milestone.date }}:
     {% if milestone.reached %}<span class="up">✓ reached</span>{% elif milestone.short is not none %}<span class="warn">{{ milestone.short | n }} to go</span>{% else %}needs {{ milestone.need | n }}{% endif %} · {% endif %}
-  ×{{ multiplier.now }} now</span></summary>
+  ×{{ multiplier.now }} now{% if score_lines.rows %} · {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }} since {{ day_start }}{% endif %}</span></summary>
 <div>
+  <h3>Points since {{ day_start }}, by kind</h3>
+  {% for k in score_lines.rows %}
+  <details class="pts" id="pts-{{ k.kind }}"><summary><b>{{ k.name }}</b>
+    <span class="{{ 'up' if k.points > 0 else ('down' if k.points < 0 else '') }}">{{ '≈' if k.mixed }}{{ '+' if k.points >= 0 }}{{ k.points | n }}</span>
+    <span class="sub">· {{ k.events }} portal line{{ 's' if k.events != 1 }}</span></summary>
+    <div>
+      {% if k.counts %}<p class="sub">{% for label, n in k.counts %}{{ n | n }} {{ label }}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+      {% for l in k.lines %}<p class="pl"><span class="sub">{{ l.time }}</span> <b>{{ '≈' if l.of is not none }}{{ '+' if l.points >= 0 }}{{ l.points | n }}</b>{% if l.of is not none %} <span class="sub">(of {{ '+' if l.of >= 0 }}{{ l.of | n }})</span>{% endif %} {{ l.text }}</p>{% endfor %}
+      {% if k.events > k.lines | length %}<p class="sub">… {{ k.events - k.lines | length }} earlier.</p>{% endif %}
+    </div></details>
+  {% else %}<p class="sub">No points logged since {{ day_start }} yet.</p>{% endfor %}
+  {% if score_lines.rows %}<p class="sub">Total {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }}, from the portal's log. The portal gives one total an hour; where an hour mixes kinds, the split (≈) is ours, by the scoring guide's values.</p>{% endif %}
   {% if milestone %}<p>{{ milestone.name }} ({{ milestone.date }}): leading-side teams with at least {{ milestone.need | n }} points get the award.</p>{% endif %}
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
   {% if board %}

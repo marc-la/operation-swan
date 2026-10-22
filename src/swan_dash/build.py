@@ -299,6 +299,86 @@ def conversations(actions):
     return rows
 
 
+# ---- Score & targets: the portal's points log, split by kind (todo/29) ----
+# The portal logs one total an hour for a mix of things ("34 likes, 36 replies, 1 first inauthentic report ..."). Each
+# part is weighed by the scoring guide's base value (docs/03-scoring/scoring-cheatsheet.md; a pool share as a small
+# value) and the hour's real total is shared out in proportion: the totals are the portal's, a mixed hour's split is
+# ours (shown with ≈).
+POINT_KINDS = [("persuasion", "Persuasion"), ("engagement", "Views & engagement"), ("blue", "Blue awards"),
+               ("polls", "Polls"), ("penalties", "Penalties")]
+POINT_LINES = 4                                # the last few portal lines shown under each kind
+PART = re.compile(r"(\d+) (.*)")
+MIND_SIDES = {"toward No": (160, 8), "away from No": (-80, -2), "neither side": (20, 1), "other view": (20, 1)}
+
+
+def _part(what):
+    """(kind, label, base points a unit) for one part of a portal message, e.g. 'likes' or 'contributions to
+    changes of mind on vaccination towards neither side'."""
+    w = what.lower()
+    if "mind" in w:
+        share = "contribution" in w and "primary" not in w
+        side = ("toward No" if "towards your side" in w else "away from No" if "away from your side" in w
+                else "neither side" if "neither side" in w else "other view")
+        return ("penalties" if side == "away from No" else "persuasion",
+                f"{side} ({'contribution' if share else 'primary'})", MIND_SIDES[side][1 if share else 0])
+    if "report" in w:
+        label, base = (("first reporter", 25) if "first" in w else ("account upheld", 15) if "account" in w
+                       else ("later reporter", 5))
+        return "blue", label, base
+    if "unfollow" in w:
+        return "penalties", "unfollows", -20
+    for stem, label, base in (("view", "views", 1), ("like", "likes", 5), ("repost", "reposts", 10),
+                              ("repl", "replies", 15), ("follow", "follows", 20)):
+        if stem in w:
+            return "engagement", label, base
+    return "engagement", short(w, 40), 1
+
+
+def score_lines(points, since):
+    """Points since `since` by kind, each with the counts behind it and its last portal lines (newest first). Kinds
+    with nothing are left out."""
+    out = {k: dict(kind=k, name=name, points=0.0, counts={}, lines=[], events=0, mixed=False)
+           for k, name in POINT_KINDS}
+    for e in sorted((e for e in points if e["_t"] >= since), key=lambda e: e["_t"], reverse=True):
+        msg = e.get("message") or ""
+        head, _, rest = msg.partition(": ")
+        est, counts = {}, {}
+        if head.startswith("Narrative"):           # a poll award: "Narrative: the poll was too close to call ..."
+            est["polls"] = e["points"]
+        else:
+            for part in re.split(r",| and ", rest):
+                m = PART.match(part.strip())
+                if m:
+                    kind, label, base = _part(m.group(2))
+                    est[kind] = est.get(kind, 0) + int(m.group(1)) * base
+                    counts.setdefault(kind, {})[label] = counts.get(kind, {}).get(label, 0) + int(m.group(1))
+        if not est:
+            est["penalties" if e["points"] < 0 else "engagement"] = e["points"]
+        total = sum(est.values())
+        if len(est) == 1:
+            share = {k: e["points"] for k in est}
+        elif total and e["points"] / total > 0:
+            share = {k: v * e["points"] / total for k, v in est.items()}
+        else:                                      # signs disagree: our weights, the rest on the largest kind
+            share = dict(est)
+            big = max(est, key=lambda k: abs(est[k]))
+            share[big] += e["points"] - total
+        for k, v in share.items():
+            o = out[k]
+            o["points"] += v
+            o["events"] += 1
+            o["mixed"] |= len(est) > 1
+            for label, n in counts.get(k, {}).items():
+                o["counts"][label] = o["counts"].get(label, 0) + n
+            if len(o["lines"]) < POINT_LINES:        # this kind's part of the hour only, not the whole message
+                o["lines"].append(dict(time=hm(e["_t"]), points=round(v), of=e["points"] if len(est) > 1 else None,
+                                       text=" · ".join(f"{n:,} {label}" for label, n in counts.get(k, {}).items())
+                                       or short(rest or msg, 160)))
+    rows = [dict(o, points=round(o["points"]), counts=sorted(o["counts"].items(), key=lambda kv: -kv[1]))
+            for o in out.values() if o["events"]]
+    return dict(rows=rows, total=sum(e["points"] for e in points if e["_t"] >= since))
+
+
 # ---- the fact desk (todo/16): pauses and open proposals, with the command that settles each ----
 REVIEW = "python scripts/facts_review.py"
 KINDS = {"contradiction": "contradicts", "reword": "rewording", "new_fact": "new fact", "angle": "idea"}
@@ -803,7 +883,7 @@ def gather(root, now, service):
     multiplier = dict(now=mult_now, next=nxt and nxt[1], date=nxt and nxt[0].strftime("%a %-d %b"),
                       left=nxt and until(sydney_midnight(nxt[0]) - now))
 
-    # ---- activity: our writes, account events, long LLM parks, deploys and alerts ----
+    # ---- activity: our writes, account events, long LLM parks, deploys and alerts (points: under Score) ----
     rows = conversations(actions)
     for a in actions:
         act = a.get("act")
@@ -818,9 +898,6 @@ def gather(root, now, service):
                 rows.append(dict(t=a["_t"], who="", what="LLM parked", kind="event", family="ops",
                                  model=a.get("model"), why=a.get("why"), until=hm(u),
                                  text=f"{a.get('model')}: {a.get('why')} until {hm(u)}"))
-    for e in points:                           # the outcome, interleaved with what we did
-        rows.append(dict(t=e["_t"], who="", what=f"{e['points']:+,} pts", text=short(e.get("message"), 160),
-                         kind="gain" if e["points"] >= 0 else "loss"))
     for line in tail_lines(logs / "alerts.log"):
         t, _, msg = line.partition(" ")
         if ts(t):
@@ -853,7 +930,7 @@ def gather(root, now, service):
 
     return dict(
         now=hm(now), banner=banner, score=score, history=history, board=board, milestone=milestone,
-        multiplier=multiplier, portal_accounts=portal.get("accounts"),
+        multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),
         portal_checked=ago(now - portal_t) if portal_t else None,
         day_start=perth(day_start).strftime("%-I%p").lower(),
         writes=dict(hour=writes_hour, planned=round(per_min * 60) if per_min else None, cap=TEAM_CAP_PER_MIN * 60),

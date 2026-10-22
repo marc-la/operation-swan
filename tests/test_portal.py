@@ -93,7 +93,7 @@ def test_dashboard_shows_points_rows_and_portal_numbers(tmp_path):
     portal.run(root, NOW, get=fake(PAGES), pause=0)
     ctx = build.gather(root, NOW, "active")
     html = build.render(ctx)
-    gains = [r for r in ctx["activity"] if r["kind"] in ("gain", "loss")]
-    assert [r["what"] for r in gains] == ["-2 pts", "+220 pts", "+100 pts"]
+    assert not [r for r in ctx["activity"] if "pts" in r["what"]]        # points sit under Score & targets (todo/29)
+    assert ctx["score_lines"]["total"] == 218 and sum(r["points"] for r in ctx["score_lines"]["rows"]) == 218
     assert ctx["score"]["delta"] == 218 and ctx["score"]["last_hour"] == 218  # the +100 was before today's 9pm
-    assert "7,712 behind #2" in html and 'class="gain"' in html and CODE not in html
+    assert "7,712 behind #2" in html and "+218 since 9pm" in html and CODE not in html

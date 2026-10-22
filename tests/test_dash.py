@@ -351,3 +351,30 @@ def test_reach_other_view_change_is_not_counted_as_neither():
     pts = [{"_t": NOW, "message": "NPC engagement: 1 contribution to a change of mind, 2 contributions to changes of "
             "mind on vaccination towards neither side"}]
     assert build._minds(pts, NOW - dt.timedelta(hours=1))["neither"] == 2
+
+
+# ---- Score & targets: the portal's points by kind, out of Activity (todo/29) ----
+def test_points_by_kind_under_score_not_in_activity(tmp_path):
+    ev = [{"ts": iso(30), "type": "SCORE_NARRATIVE", "points": 809, "message": "NPC engagement and moderation: 34 likes, "
+           "4 reposts, 36 replies, 1 follow, 3 contributions to changes of mind on vaccination towards neither side, "
+           "1 first inauthentic report and 2 inauthentic reports"},
+          {"ts": iso(90), "type": "SCORE_NARRATIVE", "points": -4,
+           "message": "NPC engagement: 2 contributions to changes of mind away from your side"},
+          {"ts": iso(120), "type": "SCORE_NARRATIVE", "points": 26,
+           "message": "Moderation (×0.5 points): 2 first inauthentic reports"},
+          {"ts": iso(150), "type": "SCORE_NARRATIVE", "points": 3000,
+           "message": "Narrative: the poll was too close to call (52–48), so both sides share it"},
+          {"ts": "2026-10-21T10:00:00+00:00", "type": "SCORE_NARRATIVE", "points": 99, "message": "NPC engagement: 9 likes"}]
+    root = make_root(tmp_path, [write(3)])
+    (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "events": ev}))
+    ctx, html = page(root)
+    s = ctx["score_lines"]
+    kinds = {r["kind"]: r for r in s["rows"]}
+    assert s["total"] == 809 - 4 + 26 + 3000                  # since 9pm Perth only; the 21 Oct line is the day before
+    assert sum(r["points"] for r in s["rows"]) == s["total"]  # the split adds up to the portal's totals
+    assert kinds["polls"]["points"] == 3000 and kinds["penalties"]["points"] == -4 and not kinds["penalties"]["mixed"]
+    assert kinds["blue"]["counts"] == [("first reporter", 3), ("later reporter", 2)] and kinds["blue"]["events"] == 2
+    assert kinds["persuasion"]["mixed"] and ("neither side (contribution)", 3) in kinds["persuasion"]["counts"]
+    assert kinds["engagement"]["lines"][0]["of"] == 809 and "34 likes" in kinds["engagement"]["lines"][0]["text"]
+    assert not any("pts" in r["what"] for r in ctx["activity"] + ctx["older"])
+    assert 'id="pts-blue"' in html and "+3,831 since 9pm" in html
