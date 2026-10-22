@@ -131,3 +131,68 @@ def test_gate_passes_the_same_texts(monkeypatch):
     monkeypatch.setattr(bot.quality, "check", lambda raw, mode, recent, **kw: (seen.update(kw), (raw, None))[1])
     bot.gate("draft", dict(mode="reply", same_texts=["x"]), "user", [])
     assert seen["same"] == ["x"]
+
+
+# ---- 5. no Latest band dropped at peak ------------------------------------------------------------------------------
+def test_peak_bands_are_kept_and_read_back(monkeypatch, tmp_path):
+    """21 Oct 23:40-23:52 UTC: one page a refresh (feed budget at the spare), > 100 new posts each time, 6 bands in
+    12 min and 3 dropped. Now an hour of that keeps every band, and off-peak reads them all back, each post once."""
+    from swan_bot import feeds
+    from test_targeting import _Feed
+    monkeypatch.setattr(feeds, "FEED_LOG", tmp_path / "feed_reads.jsonl")
+    lost = []
+    feed = _Feed(newest=10_000)
+    t = targeting.Targeter(feed, log=lambda r: lost.append(r) if r.get("act") == "lost" else None)
+    seen = [p["post_id"] for p in t._latest()["posts"]]
+    feed.rate_limit.remaining = config.FEED_READS_SPARE           # peak: one page, then the spare is reached
+    for _ in range(30):                                            # an hour of 2-min refreshes at 130 posts each
+        feed.newest += 130
+        seen += [p["post_id"] for p in t._latest()["posts"]]
+    assert len(t.bands) == 30 and not lost
+    feed.rate_limit.remaining = 10                                 # off-peak
+    for _ in range(40):
+        seen += [p["post_id"] for p in t._latest()["posts"]]
+        if not t.bands:
+            break
+    assert not t.bands and not lost
+    assert sorted(seen) == list(range(9_901, feed.newest + 1)), "every post read once"
+
+
+# ---- 6. lighter refresh: news threads every 30 min, the papers' headlines every refresh -----------------------------
+def test_news_threads_every_30_min(monkeypatch, tmp_path):
+    from swan_bot import feeds
+    from test_targeting import _Page
+    monkeypatch.setattr(feeds, "FEED_LOG", tmp_path / "feed_reads.jsonl")
+    calls = []
+
+    class Social:
+        rate_limit = None
+
+        def account_posts(self, aid, limit=50, cursor=None):
+            calls.append(("account_posts", aid))
+            if aid not in config.NEWS_IDS:
+                return _Page([], None)
+            return _Page([dict(post_id=aid * 100, author_id=aid, created_at=ago(30), kind="post",
+                               body="Referendum: what the vaccination pass question means for venues")], None)
+
+        def replies(self, post_id, limit=50, cursor=None):
+            calls.append(("replies", post_id))
+            return _Page([], None)
+
+        def __getattr__(self, name):
+            return lambda *a, **kw: _Page([], None)
+
+    logged = []
+    t = targeting.Targeter(Social(), log=logged.append)
+    clock = [1_000_000.0]
+    monkeypatch.setattr(targeting.time, "time", lambda: clock[0])
+    for _ in range(16):                                            # 32 min of 2-min refreshes
+        t.refresh(force=True)
+        clock[0] += config.REFRESH_S
+    news_replies = [c for c in calls if c[0] == "replies" and c[1] in (100, 200)]
+    papers = [c for c in calls if c[0] == "account_posts" and c[1] in config.NEWS_IDS]
+    assert len(papers) == 16 * len(config.NEWS_IDS), "the headlines every refresh (pulse, persona posts)"
+    assert len(news_replies) == 2 * len(config.NEWS_IDS), "the threads at 0 and 30 min"
+    assert t.headline.startswith("Referendum")
+    refreshes = [r for r in logged if r.get("act") == "refresh"]
+    assert [r["news_threads_read"] for r in refreshes].count(True) == 2

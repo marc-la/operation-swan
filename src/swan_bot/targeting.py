@@ -289,6 +289,7 @@ class Targeter:
         self.trending_at = None      # ...and when it was read
         self.headlines = []          # the papers' article titles of the last 24 h, newest first (pulse.py)
         self.next_refresh = 0.0
+        self.news_next = 0.0         # when the news threads are read next (NEWS_THREADS_S, todo/24)
         self.refreshes = 0
         self.latest_seen = 0         # newest Latest post id read so far: each refresh pages back to it
         self.bands = []              # [[cursor, stop_id]]: Latest stretches not read yet, newest first (G2)
@@ -576,7 +577,11 @@ class Targeter:
         self.refreshes += 1
         before = len(self.candidates)
         fresh_citizen, newest, heads, papers_read = 0, None, [], False
-        # 1) news threads: citizens reply under the papers' article posts
+        # 1) news threads: citizens reply under the papers' article posts. The papers' posts (headlines, for the pulse
+        # and persona posts) every refresh; the replies under them every NEWS_THREADS_S (todo/24)
+        threads_due = time.time() >= self.news_next
+        if threads_due:
+            self.news_next = time.time() + config.NEWS_THREADS_S
         for aid in config.NEWS_IDS:
             try:
                 articles = [p for p in self.social.account_posts(aid, limit=12)
@@ -591,6 +596,8 @@ class Targeter:
                 if not REFERENDUM.search(art.get("body") or "") or age_h(art) > 72:
                     continue
                 newest = newest or title              # account_posts is newest first
+                if not threads_due:
+                    continue
                 try:
                     for r in self.social.replies(art["post_id"], limit=100):
                         self._consider(r, "news", context=title, parent=art)
@@ -645,7 +652,8 @@ class Targeter:
         self._expire()
         cit = [p for p in latest["posts"] if config.is_citizen(p["author_id"]) and p.get("kind") != "repost"]
         self.log({"act": "refresh", "candidates": len(self.candidates), "new": len(self.candidates) - before,
-                  "journalist_posts": len(self.journalist), "citizen_news_replies_last_hour": fresh_citizen,
+                  "journalist_posts": len(self.journalist), "citizen_news_replies_last_hour": fresh_citizen if threads_due else None,
+                  "news_threads_read": threads_due,
                   # citizen hours (todo/19): what citizens wrote in Latest since the last refresh, and whether we
                   # read all of it (gap: stretches left for the next refresh, G2)
                   "latest_read": len(latest["posts"]), "latest_pages": latest["pages"], "latest_gap": latest["gap"],

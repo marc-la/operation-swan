@@ -70,7 +70,11 @@ TRENDING_EVERY = 3
 # alerts on a run of ids that looks seeded; a person confirms it (ideally against a Discord announcement) and adds it
 # here. Never automatic: a wrong range sends our replies to team bots and pollutes every metric.
 EXTRA_CITIZEN_RANGES = []
-LATEST_MAX_BANDS = 6                # unread Latest stretches kept for later refreshes (G2); beyond it, logged as lost
+# Unread Latest stretches kept for later refreshes (G2); beyond it, the oldest is logged as lost. 2026-10-22 (todo/24):
+# 6 -> 60. At Sydney peak the feed budget (10/min, and the server's own buckets: X-RateLimit-Remaining 0-3 though
+# our processes read ~1/min) allows one page a refresh, so each refresh at > 100 new posts leaves a band; 6 filled in
+# 12 min on 21 Oct and 3 were dropped. A band is two numbers; they're read back once the budget allows (off-peak).
+LATEST_MAX_BANDS = 60
 # Per post and per session, not per author (was 72 h per author: a citizen answered on Monday who posted again on
 # Wednesday was skipped, while other teams answer every post). One thread per citizen post (replied_posts), and at most
 # SESSION_VOICES of our voices per citizen per session (~30 min: citizens are online 1-5 min every ~2 days).
@@ -305,6 +309,10 @@ REPLY_NEVER = {"zai.glm-5"}
 MAX_PER_MIN = 3.0
 WRITE_MARGIN = 1
 WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1.0)
+# Lighter refresh (approved 22 Oct): the replies under the papers' article posts are read every 30 min, not every
+# refresh (2 min): 0 citizen replies under the post-launch paper posts. The papers' own posts (headlines for the pulse
+# and persona posts) are still read every refresh.
+NEWS_THREADS_S = 30 * 60
 
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped
