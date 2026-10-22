@@ -508,10 +508,11 @@ BLUE_PER_AWARD = 20                            # under this per paid award: the 
 BLUE_MSG = re.compile(r"moderat|inauthentic|suspen", re.I)
 
 
-# Reports since 9pm, grouped by outcome (todo/29): genuine first and open (each one locks reporting), then the account
-# reports with their outcome from the portal log, then hidden and refused, collapsed.
-BLUE_GROUPS = (("genuine", "Ruled genuine", "down"), ("account", "Account reports ruled", ""),
-               ("hidden", "Hidden (inauthentic)", "up"), ("refused", "Refused", "down"))
+# Reports since 9pm (todo/29, Marc 22 Oct): the chronological timeline, one row per report, where each run of
+# consecutive rows with the same settled outcome collapses in place into one line that opens to those rows. Pending
+# and genuine rows never collapse.
+BLUE_WORDS = {"pending": "pending, rules about", "hidden": "hidden", "genuine": "ruled genuine", "refused": "refused"}
+BLUE_CSS = {"hidden": "up", "genuine": "down", "refused": "down"}
 BLUE_ACCOUNT_PTS = 15                          # an upheld account report (scoring cheatsheet), times the line's ×rate
 BATCH_S = 120                                  # portal lines this close together are one hourly scoring run
 UPHELD = re.compile(r"(\d+) upheld account reports?", re.I)
@@ -551,35 +552,41 @@ def account_outcomes(ledger, points):
     return out
 
 
-def blue_ledger(ledger, points):
-    """(pending, groups). pending: the reports waiting for a ruling, by group of accounts (swan-blue's cluster
-    label), with the earliest ruling time. groups: the rest by outcome, BLUE_GROUPS order, empty ones left out."""
+def blue_timeline(ledger, points):
+    """Today's reports in filing order (and any still pending), as rows and runs. A row: what, group (swan-blue's
+    cluster label), word, time, css. A run: two or more consecutive rows with the same settled outcome (hidden,
+    refused, or the same account outcome), shown as one line ("7 hidden, 14:02–15:40") that opens to its rows."""
     outcomes = account_outcomes(ledger, points)
-    pend, groups = {}, {k: [] for k, _, _ in BLUE_GROUPS}
+    rows = []
     for r in ledger:
         t = ts(r.get("at"))
-        what = f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}"
-        row = dict(what=what, group=f"group {r.get('team') or '?'}", at=hm(t) if t else "", t=t, word="", css="")
         status = r.get("status")
-        if status == "pending":
-            pend.setdefault(row["group"], []).append(row)
-        elif r.get("kind") != "post" and status == "ruled":
+        row = dict(what=f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}",
+                   group=f"group {r.get('team') or '?'}", at=hm(t) if t else "", t=t, status=status,
+                   word=BLUE_WORDS.get(status, str(status)), css=BLUE_CSS.get(status, ""), key=status)
+        if r.get("kind") != "post" and status == "ruled":
             row["word"], row["css"] = outcomes.get(r.get("key"), ("ruled", ""))
-            groups["account"].append(row)
-        elif status in groups:
-            groups[status].append(row)
-        else:                                  # a status we don't group: shown with the account outcomes' neighbours
-            row["word"] = str(status)
-            groups["refused" if status == "refused" else "account"].append(row)
-    rows = [r for g in pend.values() for r in g]
-    times = [r["t"] for r in rows if r["t"]]
-    pending = dict(n=len(rows), oldest=hm(min(times)) if times else None,
-                   accounts=sum(r["what"].startswith("account") for r in rows),
-                   groups=sorted(([g, sorted(v, key=lambda r: r["at"])] for g, v in pend.items()),
-                                 key=lambda gv: (-len(gv[1]), gv[0])))
-    out = [dict(key=k, name=name, css=css, rows=sorted(groups[k], key=lambda r: r["at"], reverse=True))
-           for k, name, css in BLUE_GROUPS if groups[k]]
-    return pending, out
+            row["key"] = f"account {row['word']}"
+        rows.append(row)
+    items = []
+    for row in rows:
+        last = items[-1] if items else None
+        if row["status"] not in ("pending", "genuine") and last and last["key"] == row["key"]:
+            if last["kind"] != "run":
+                last = items[-1] = dict(kind="run", key=row["key"], rows=[last])
+            last["rows"].append(row)
+        else:
+            items.append(dict(row, kind="row"))
+    for i, it in enumerate(items):
+        if it["kind"] == "run":
+            first, n = it["rows"][0], len(it["rows"])
+            what = first["word"] if first["key"].startswith("account") else first["word"].split(",")[0]
+            times = sorted(r["t"] for r in it["rows"] if r["t"])
+            span = "" if not times else hm(times[0]) if hm(times[0]) == hm(times[-1]) else \
+                f"{hm(times[0])}–{hm(times[-1])}"
+            it.update(label=f"{n} {'accounts ' if first['key'].startswith('account') else ''}{what}, {span}",
+                      css=first["css"], id=f"blue-run-{i}-{first['what'].strip('#').replace(' ', '')}")
+    return items
 
 
 def own_reported(ids, logs):
@@ -657,17 +664,17 @@ def blue_panel(data, now, points, day_start, logs=None):
     rings = [dict(post=r.get("post"), why=short(r.get("why"), 160), reports=r.get("reports"))
              for r in s.get("rings") or []]
     waiting = len(s.get("waiting") or [])
-    pending, groups = blue_ledger(s.get("ledger") or [], points)
+    timeline = blue_timeline(s.get("ledger") or [], points)
     own = own_reported(s.get("own_ids"), logs or data.parent / "logs")
     history = blue_days(s.get("days") or {}, points, now)
     last = next((r for r in history if not r["today"]), None)       # the last finished day decides the verdict
     ready = s.get("ready_ok", s.get("ready")) or 0
     lock_why = short(s.get("lock_why") or "reason not recorded", 60)
     bits = ([f"OUR OWN ACCOUNTS REPORTED: {own['hits']}"] if own and own["hits"] else []) + \
-        ([f"last day {last['pct']}% of target"] if last else []) + \
         ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked until {hm(locked)} Perth ({lock_why})", f"{ready} ready"] if locked else []) + \
-        ([f"{s['pending']}/{s['cap']} pending"] if s.get("pending") else []) + \
+        ([f"{s['pending']}/{s['cap']} pending" + (f", next ruling {hm(nxt)}" if nxt and not locked else "")]
+         if s.get("pending") else []) + \
         ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
         ([f"{pts:+,} pts since 9pm"] if pts else [])
     return dict(
@@ -681,14 +688,8 @@ def blue_panel(data, now, points, day_start, logs=None):
         teams=len({r.get("team") for r in s.get("rings") or []}),
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,
         today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
-        queued=s.get("queued") or 0, first={"first": 0, "later": 0, **(s.get("first") or {})}, queue=pending, groups=groups, own=own,
-        rows=[r for _, rows in pending["groups"] for r in rows] + [r for g in groups for r in g["rows"]],
-        # todo/28's fields: the genuine-risk bucket, risk per evidence class, co-reported rulings, account detectors
-        risk=s.get("risk") and {"level": 0, "cap": 0, "per_day": 0, "posts_now": 0, **s["risk"]},
-        co=s.get("co") if (s.get("co") or {}).get("of") else None,
-        pg_by_class=sorted(((plain(k), {"n": 0, "genuine": 0, "expected": 0, **v})
-                            for k, v in (s.get("pg_by_class") or {}).items()), key=lambda kv: -kv[1]["n"]),
-        detect=s.get("detect") and {"posts_seen": 0, "groups": 0, "by": {}, **s["detect"]},
+        queued=s.get("queued") or 0, first={"first": 0, "later": 0, **(s.get("first") or {})}, own=own,
+        timeline=timeline, rows=[r for it in timeline for r in (it["rows"] if it["kind"] == "run" else [it])],
         rate=prec.get("rate"), ruled=prec.get("n"), history=history, last=last, target=BLUE_TARGET_DAY,
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 

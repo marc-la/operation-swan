@@ -389,6 +389,7 @@ def blue_root(tmp_path, own_ids=None, reports=()):
               dict(key="p2", target=2, kind="post", team="c100", status="pending", at=at(-10)),
               dict(key="a7", target=7, kind="account", team="c200", status="pending", at=at(-50)),
               dict(key="p3", target=3, kind="post", team="c100", status="hidden", at=at(100)),
+              dict(key="p5", target=5, kind="post", team="c300", status="hidden", at=at(95)),
               dict(key="p4", target=4, kind="post", team="c200", status="genuine", at=at(90)),
               dict(key="a8", target=8, kind="account", team="c200", status="ruled", at=at(200)),     # run at 180: upheld
               dict(key="a9", target=9, kind="account", team="c300", status="ruled", at=at(130)),     # run at 120: none
@@ -407,22 +408,25 @@ def blue_root(tmp_path, own_ids=None, reports=()):
     return root
 
 
-def test_blue_pending_summary_outcome_groups_and_account_outcomes(tmp_path):
+def test_blue_timeline_collapses_runs_in_place_and_account_outcomes(tmp_path):
     ctx, html = page(blue_root(tmp_path))
-    b = ctx["blue"]
-    q = b["queue"]
-    assert q["n"] == 3 and q["accounts"] == 1 and q["oldest"] == build.hm(NOW + dt.timedelta(minutes=10))
-    assert [g for g, _ in q["groups"]] == ["group c100", "group c200"]          # biggest group first
-    assert "3 pending · oldest rules" in html and "not the organisers' team numbers" in html and "team 1" not in html
-    groups = {g["key"]: g for g in b["groups"]}
-    assert list(groups) == ["genuine", "account", "hidden"] and 'id="blue-g-genuine" open' in html
-    words = {r["what"]: r["word"] for r in groups["account"]["rows"]}
-    assert words["account 8"] == "suspended · +7.5"
-    assert words["account 9"] == "dismissed (no points, no lock)"
-    assert words["account 5"] == words["account 6"] == "suspended or dismissed: 1 of these 2 suspended"
+    items = ctx["blue"]["timeline"]
+    assert [(i["kind"], i.get("what") or i["label"]) for i in items] == [
+        ("row", "#1"), ("row", "#2"), ("row", "account 7"),                    # pending: never collapsed
+        ("run", "2 hidden, " + build.hm(NOW - dt.timedelta(minutes=100)) + "–" + build.hm(NOW - dt.timedelta(minutes=95))),
+        ("row", "#4"),                                                           # genuine: never collapsed
+        ("row", "account 8"), ("row", "account 9"),
+        ("run", "2 accounts suspended or dismissed: 1 of these 2 suspended, "
+                + build.hm(NOW - dt.timedelta(minutes=70)) + "–" + build.hm(NOW - dt.timedelta(minutes=65))),
+        ("row", "account 4")]
+    assert [r["what"] for r in items[3]["rows"]] == ["#3", "#5"]                 # the run opens to the same rows
+    words = {r["what"]: r["word"] for r in ctx["blue"]["rows"]}
+    assert words["account 8"] == "suspended · +7.5" and words["account 9"] == "dismissed (no points, no lock)"
     assert words["account 4"] == "ruled · outcome not in the portal log yet"
-    assert "outcome in the portal log)" not in html
+    assert html.count('<details class="run"') == 2 and "team 1" not in html and "group c300" in html
     assert "Own accounts reported: not checked" in html                         # no ids published by swan-blue yet
+    assert '<details id="blue">' in html and '<details class="reach" id="reach">' in html   # collapsed by default
+    assert 'id="blue-risk"' not in html and "Since 9pm:" not in html            # Marc: less on the page
 
 
 def test_blue_own_account_check(tmp_path):
@@ -432,28 +436,9 @@ def test_blue_own_account_check(tmp_path):
     ctx, html = page(blue_root(tmp_path, own_ids=[1, 2, 3], reports=reps))
     assert ctx["blue"]["own"] == {"lines": 2, "hits": 0, "accounts": 3} and "Own accounts reported: <b>0</b>" in html
     ctx, html = page(blue_root(tmp_path / "b", own_ids=[41, 42], reports=reps))
-    assert ctx["blue"]["own"]["hits"] == 2 and 'class="sub down">Own accounts reported' in html
+    assert ctx["blue"]["own"]["hits"] == 2 and '<p class="down">Own accounts reported' in html
     assert ctx["banner"]["level"] == "amber" and "against our own accounts" in ctx["banner"]["text"]
     assert "OUR OWN ACCOUNTS REPORTED: 2" in ctx["blue"]["summary"]
-
-
-def test_blue_risk_classes_co_reporting_and_detectors(tmp_path):
-    root = blue_root(tmp_path, own_ids=[1])
-    st = json.loads((root / "data" / "blue_status.json").read_text())
-    st.update(risk={"level": 0.1, "per_day": 0.4, "cap": 0.1, "posts_now": 3}, co={"fast": 2, "of": 59},
-              pg_by_class={"reply_ring": {"n": 10, "genuine": 0, "expected": 0.4},
-                           "early_ring+like_ring": {"n": 3, "genuine": 1, "expected": 0.16}},
-              detect={"posts_seen": 120, "sequences": 900, "groups": 1,
-                      "by": {"fingerprint": {"watched": 5, "hidden": 1, "reported": 0}}})
-    (root / "data" / "blue_status.json").write_text(json.dumps(st))
-    ctx, html = page(root)
-    b = ctx["blue"]
-    assert [k for k, _ in b["pg_by_class"]] == ["reply ring", "early ring+like ring"]
-    assert "3 post reports affordable now · 2 of 59 rulings co-reported" in html
-    assert "fingerprint 5 watched, 1 with a hidden post, 0 reported" in html
-    st.pop("detect"), st.pop("risk")                          # an older status: the section still renders
-    (root / "data" / "blue_status.json").write_text(json.dumps(st))
-    assert 'id="blue-risk"' in page(root)[1]
 
 
 def test_facts_section_is_the_autopilot_log_with_undo(tmp_path):

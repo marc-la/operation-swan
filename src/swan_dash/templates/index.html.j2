@@ -63,6 +63,8 @@ li details .sub { padding: 2px 0 0 1.2em; }
 details.pts { margin-top: 6px; }
 details.pts > summary { padding: 8px 10px; }
 details.pts > div { padding: 0 10px 8px; }
+details.run { border: 0; margin: 0; background: none; }
+details.run > summary { padding: 0; }
 .pl { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 480px) {          /* Blue by day: one stacked card per day, no sideways scroll */
   table.days, table.days tbody, table.days tr, table.days td { display: block; }
@@ -210,7 +212,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     {% else %}<div class="val">—</div><div class="sub">{{ writes.hour }} posts last hour</div>{% endif %}</div>
 </div>
 
-<details class="reach" id="reach"{% if reach.open %} open{% endif %}>
+<details class="reach" id="reach">
   <summary><span class="pill {{ reach.light }}">Reach: {{ reach.verdict }}</span> <span class="sub">{{ reach.summary }}</span></summary>
   <table>
   {% for r in reach.rows %}
@@ -303,12 +305,10 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <p class="sub">Read from the portal every 15 minutes{% if portal_checked %} (last check {{ portal_checked }}){% endif %}. By hand if needed: <code>ssh swan-ec2 'ctn/scripts/score.sh &lt;score&gt; &lt;rank&gt; &lt;teams&gt; &lt;name&gt;'</code></p>
 </div></details>
 
-<details id="blue"{% if blue and blue.waiting %} open{% endif %}><summary><b>Blue</b><span class="sub {{ 'warn' if blue and (blue.stale or blue.waiting) else '' }}">
+<details id="blue"><summary><b>Blue</b><span class="sub {{ 'warn' if blue and (blue.stale or blue.waiting) else '' }}">
   {% if blue %}{{ blue.summary }}{% else %}not running{% endif %}</span></summary>
 <div>
   {% if blue %}
-  {% if blue.last %}<p class="{{ blue.last.level }}"><b>{{ blue.last.day }}: {{ blue.last.points | n }} Blue points, {{ blue.last.pct }}% of the {{ blue.target | n }} target.</b>{% if blue.last.lever %} Weakest lever: {{ blue.last.lever }}.{% elif blue.last.level == 'up' %} On track.{% endif %}</p>
-  {% elif blue.history %}<p class="sub">First full competition day not finished yet (it ends at 9pm Perth); target {{ blue.target | n }} Blue points a day.</p>{% endif %}
   {% if blue.waiting %}
   <p><b>{{ blue.waiting }} reports ready</b> from {{ blue.rings | length }} ring{{ 's' if blue.rings | length > 1 }} ({{ blue.teams }} team{{ 's' if blue.teams > 1 }}), expected to earn about {{ blue.ev | n }} points. Every one is a post by a team account (registered after launch, not ours) inside a ring:</p>
   <table>
@@ -317,33 +317,18 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   </table>
   <code class="cmd">{{ blue.approve }}</code>
   {% endif %}
-  <p class="sub">{% if blue.locked %}Reporting locked until {% if blue.lock_estimate %}at most {% endif %}{{ blue.locked }} Perth ({{ blue.lock_why }}){% if blue.lock_estimate %}; the platform gives the exact end on the next try{% endif %}. {{ blue.ready }} target{{ 's' if blue.ready != 1 }} ready to file when it lifts{% if blue.ready_accounts %} ({{ blue.ready_accounts }} account{{ 's' if blue.ready_accounts != 1 }}){% endif %}: a stop, not a fault. {% elif blue.next_ruling %}{{ blue.pending }} pending, next ruling about {{ blue.next_ruling }}. {% endif %}{{ blue.why | capitalize }}.</p>
-  <p class="sub">Since {{ day_start }}: {{ blue.today.filed | n }} filed{% if blue.queued %} · {{ blue.queued }} approved, waiting to file{% endif %} · {{ blue.pending | n }} pending · {{ blue.today.hidden | n }} hidden · {{ blue.today.genuine | n }} genuine{% if blue.today.refused %} · {{ blue.today.refused }} refused{% endif %}{% if blue.today.accounts %} · {{ blue.today.accounts }} account rulings{% endif %}{% if blue.ruled %} · {{ (blue.rate * 100) | round | int }}% of {{ blue.ruled }} rulings inauthentic{% endif %}{% if blue.first.first or blue.first.later %} · paid as first {{ blue.first.first }} of {{ blue.first.first + blue.first.later }}{% endif %}{% if blue.clusters.today %} · {{ blue.clusters.today }} clusters (teams) today, {{ blue.clusters.full }} still at full rate{% endif %}.</p>
-  {% if blue.pg_max or blue.pg_check.n %}<p class="sub">Lock risk: {% if blue.pg_max %}with this many ready, only posts under {{ (blue.pg_max * 100) | round | int }}% P(genuine) file{% else %}every ready post may file{% endif %}{% if blue.pg_check.n %} · of {{ blue.pg_check.n }} rulings since we estimated it, {{ blue.pg_check.genuine }} genuine against {{ blue.pg_check.expected }} expected{% endif %}.</p>{% endif %}
-  {% if blue.own %}<p class="sub {{ 'down' if blue.own.hits else '' }}">Own accounts reported: <b>{{ blue.own.hits }}</b> ({{ blue.own.lines | n }} report lines checked against our {{ blue.own.accounts }} accounts).</p>
-  {% else %}<p class="sub warn">Own accounts reported: not checked (swan-blue doesn't publish our account ids yet; the dashboard never reads secrets/).</p>{% endif %}
-  {% if blue.queue.n %}<details id="blue-pending"><summary>{{ blue.queue.n }} pending{% if blue.queue.oldest %} · oldest rules {{ blue.queue.oldest }}{% endif %}{% if blue.queue.accounts %} · {{ blue.queue.accounts }} account{{ 's' if blue.queue.accounts != 1 }}{% endif %} · {{ blue.queue.groups | length }} group{{ 's' if blue.queue.groups | length != 1 }}</summary>
-  <div>{% for g, rows in blue.queue.groups %}<p class="pl"><b>{{ g }}</b> <span class="sub">({{ rows | length }})</span> {% for r in rows %}{{ r.what }} <span class="sub">{{ r.at }}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endfor %}
-  <p class="sub">Times are when each should be ruled (Perth). Groups are accounts acting together, as swan-blue clusters them; not the organisers' team numbers.</p></div></details>{% endif %}
-  {% if blue.risk or blue.pg_by_class or blue.detect %}<details id="blue-risk"><summary>Lock risk and detectors{% if blue.risk %} · {{ blue.risk.posts_now }} post report{{ 's' if blue.risk.posts_now != 1 }} affordable now{% endif %}{% if blue.co %} · {{ blue.co.fast }} of {{ blue.co.of }} rulings co-reported{% endif %}</summary>
-  <div>
-    {% if blue.risk %}<p class="sub">Genuine-risk budget: {{ blue.risk.level }} expected genuine rulings left of {{ blue.risk.cap }} (refills {{ blue.risk.per_day }} a day); post reports file only while it lasts.</p>{% endif %}
-    {% if blue.co %}<p class="sub">{{ blue.co.fast }} of today's {{ blue.co.of }} post rulings came under 2 h: two or more teams reported them.</p>{% endif %}
-    {% if blue.pg_by_class %}<table><tr><th>Evidence</th><th class="num">Ruled</th><th class="num">Genuine</th><th class="num">Expected</th></tr>
-    {% for k, v in blue.pg_by_class %}<tr><td>{{ k }}</td><td class="num">{{ v.n }}</td><td class="num {{ 'down' if v.genuine else '' }}">{{ v.genuine }}</td><td class="num">{{ v.expected }}</td></tr>{% endfor %}</table>{% endif %}
-    {% if blue.detect %}<p class="sub">Account-lead detectors ({{ blue.detect.posts_seen | n }} posts seen, {{ blue.detect.groups }} fingerprint group{{ 's' if blue.detect.groups != 1 }}):
-      {% for k, v in (blue.detect.by or {}).items() %}{{ k }} {{ v.watched }} watched, {{ v.hidden }} with a hidden post, {{ v.reported }} reported{{ ' · ' if not loop.last }}{% else %}nothing watched yet{% endfor %}.</p>{% endif %}
-  </div></details>{% endif %}
+  {% if blue.own %}<p class="{{ 'down' if blue.own.hits else 'sub' }}">Own accounts reported: <b>{{ blue.own.hits }}</b></p>
+  {% else %}<p class="sub warn">Own accounts reported: not checked yet</p>{% endif %}
   {% if blue.history %}<details id="blue-days"><summary>By competition day (each runs 9pm–9pm Perth)</summary>
   <table class="days"><tr><th>Day</th><th class="num">Points</th><th class="num">Target</th><th class="num">Filed</th><th class="num">Hidden</th><th class="num">Genuine</th><th class="num">First</th><th class="num">Full rate</th><th class="num">Locked</th></tr>
   {% for d in blue.history %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num" data-l="points">{{ d.points | n }}</td><td class="num {{ '' if d.today else d.level }}" data-l="of target">{{ d.pct }}%</td><td class="num" data-l="filed">{{ d.filed }}</td><td class="num" data-l="hidden">{{ d.hidden }}</td><td class="num" data-l="genuine">{{ d.genuine }}</td><td class="num" data-l="first">{{ d.first }}/{{ d.paid }}</td><td class="num" data-l="full rate">{{ d.full }}/{{ d.awards }}</td><td class="num" data-l="locked">{{ d.locked_h }} h</td></tr>{% endfor %}
   </table></details>{% endif %}
-  {% if blue.groups %}<details id="blue-ledger"><summary>Reports since {{ day_start }} by outcome: {% for g in blue.groups %}{{ g.rows | length }} {{ g.name | lower }}{{ ' · ' if not loop.last }}{% endfor %}</summary>
-  <div><p class="sub">Times Perth. Groups are accounts acting together, as swan-blue clusters them; not the organisers' team numbers.</p>
-  {% for g in blue.groups %}<details class="pts" id="blue-g-{{ g.key }}"{% if g.key == 'genuine' %} open{% endif %}><summary><b class="{{ g.css }}">{{ g.name }}</b> {{ g.rows | length }}</summary>
-  <div><table>{% for r in g.rows %}<tr><td>{{ r.what }}</td><td>{{ r.group }}</td><td class="{{ r.css }}">{% if r.word %}{{ r.word }}{% if r.at %} <span class="sub">· {{ r.at }}</span>{% endif %}{% else %}{{ r.at }}{% endif %}</td></tr>{% endfor %}</table>
-  {% if g.key == 'account' %}<p class="sub">From the portal's points log (the API doesn't show these): each ruling is matched to the next hourly scoring run. The portal names no account, so when a run upholds only some of the reports it covers, it can't say which.</p>{% endif %}</div></details>{% endfor %}
-  </div></details>{% endif %}
+  {% if blue.timeline %}<details id="blue-ledger"><summary>Reports since {{ day_start }}, and any still pending ({{ blue.rows | length }}, times Perth)</summary>
+  <table class="ledger">{% for it in blue.timeline %}{% if it.kind == 'run' %}<tr><td colspan="3"><details class="run" id="{{ it.id }}"><summary class="{{ it.css }}">{{ it.label }}</summary>
+    <table>{% for r in it.rows %}<tr><td>{{ r.what }}</td><td>{{ r.group }}</td><td class="{{ r.css }}">{{ r.word }} {{ r.at }}</td></tr>{% endfor %}</table></details></td></tr>
+  {% else %}<tr><td>{{ it.what }}</td><td>{{ it.group }}</td><td class="{{ it.css }}">{{ it.word }} {{ it.at }}</td></tr>{% endif %}{% endfor %}</table>
+  <p class="sub">Groups are accounts acting together, as swan-blue clusters them; not the organisers' team numbers.</p>
+  </details>{% endif %}
   {% if blue.error %}<p class="sub warn">{{ blue.error | capitalize }}.</p>{% endif %}
   {% else %}<p class="sub">swan-blue hasn't written a status yet.</p>{% endif %}
 </div></details>
