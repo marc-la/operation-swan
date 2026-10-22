@@ -93,3 +93,16 @@ Data: the box's `logs/swan_actions.jsonl` (every write carries `git_sha`), `swan
 
 ## Done when
 A strategy beats Base in the lab **and** live (portal toward > 0, stance moves above Base) and is the default. Or the lab's top strategies fail live, with numbers, and the next hypotheses are written down.
+
+## The lab is a team tool, not a script (Marc, 2026-10-22)
+- **Package and service:** `src/swan_lab/` running on swan-ec2 as `swan-lab.service`:
+  - a queue runner with the rate limit built in (CompetitorLLM 3/min, 1 concurrent, backing off on 429);
+  - state and results in `data/lab/` (jsonl), synced to the team MongoDB by `swan_sync_mongo` (`lab_trials`, `lab_personas`).
+- **Personas library:** `content/lab/personas/*.toml`, built by a script from real citizens' post histories (read-only, ≤ 30 reads/min). Each card holds occupation, place, family, values, concerns, and the referendum and vaccination views in their own words, plus the stance class. Rebuild weekly or on demand.
+- **Strategies library:** `content/lab/strategies/*.toml`, one per strategy: name, author, the instruction added to the reply prompt, and which stance classes it targets. **Any teammate adds a strategy with one file and a push.** The service queues trials for new strategies automatically (personas × seeds).
+- **Lab page on the dashboard** (`/lab.html`, behind the same password), rebuilt every minute by swan_dash from `data/lab/`:
+  - one row per strategy: trials, toward No / neither / toward Yes per 100, by stance class, and its rank against Base;
+  - click through to example drafts plus the simulated citizen's reaction.
+  - Separate template `lab.html.j2`; the main page gets one link.
+- **Model switch:** `config.LAB_MODEL` = "competitor" (default). "local-qwen2.5-3b" (an OpenAI-compatible endpoint, e.g. llama.cpp or ollama) stays off until the organisers answer question #5 (an external LLM for analysis). The simulated NPC and its classifier never use Kimi, Gemini or GLM.
+- **Docs:** `docs/06-strategy/npc-lab.md`: what it is, how to add a strategy, how to read the page, the caveat (a proxy; live results decide).
