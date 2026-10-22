@@ -29,8 +29,9 @@ SYDNEY = ZoneInfo("Australia/Sydney")          # competition days roll over at m
 QUOTA_DAY = ZoneInfo("America/Los_Angeles")    # data/llm_usage.json days (swan_bot/llm.py): free quotas reset there
 TEAM_CAP_PER_MIN = 3                           # posts + replies + reposts, team-wide (rules)
 LIVE_CAP, TOTAL_CAP = 50, 200                  # accounts alive at once / ever
-WRITES = {"post": "post", "reply": "reply", "second_voice": "2nd voice", "reply_back": "reply-back",
+WRITES = {"post": "post", "reply": "1st reply", "second_voice": "2nd voice", "reply_back": "2nd reply",
           "journalist": "journalist", "thread": "own thread", "thread_answer": "thread answer", "repost": "repost"}
+STATUS_WORD = {"green": "RUNNING", "amber": "ALERT", "red": "DOWN"}   # browser tab title (a colour word clashes with the Red track)
 # poll awards and Red multiplier changes, as Sydney calendar dates (docs/01-competition/schedule.md)
 POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2", 7000),   # 7,000 since 20 Oct
          (dt.date(2026, 10, 29), "Poll 3", 7000)]
@@ -893,8 +894,9 @@ def reach(actions, status, points, now, day_start, notes=None):
         "Each rejection costs a repair call. The content session tunes the prompts.")
     cit = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("group") in (None, "None")]
     grp = [a for a in hour_writes if a.get("group") not in (None, "None")]
+    r1, r2 = (sum(a.get("act") == k for a in cit) for k in ("reply", "reply_back"))
     row("volume", "Writes, last hour", "grey",
-        f"{len(cit)} citizens · {len(grp)} groups · {len(hour_writes) - len(cit) - len(grp)} other · "
+        f"{len(cit)} citizens ({r1} 1st reply · {r2} 2nd reply) · {len(grp)} groups · {len(hour_writes) - len(cit) - len(grp)} other · "
         f"{max(TEAM_CAP_PER_MIN * 60 - len(hour_writes), 0)} spare", f"of {TEAM_CAP_PER_MIN * 60}")
 
     # ---- conversion ----
@@ -1065,7 +1067,10 @@ def gather(root, now, service):
             score["last_hour_at"] = hm(newest)
     board = dict(leader=portal.get("leader"), above=portal.get("above"), below=portal.get("below"),
                  rank=portal.get("rank"), score=portal.get("score")) if portal.get("rank") else None
+    def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
+        return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
+                    replies=replies_between(ts(entries[i - 1]["ts"]), ts(x["ts"])) if i else None,
                     change=x["score"] - entries[i - 1]["score"] if i else None, by=x.get("by", "?"),
                     # the portal's own notes behind this change (Marc: "details in place"), newest first
                     notes=[dict(time=hm(e["_t"]), points=e["points"], text=short(e.get("message"), 300))
@@ -1156,7 +1161,8 @@ def gather(root, now, service):
     levels = (banner["level"], blue_banner["level"], rc["light"])
     return dict(
         now=hm(now), banner=banner, blue_banner=blue_banner, acct_days=acct_days, banned_list=banned_list,
-        worst="red" if "red" in levels else "amber" if "amber" in levels else "green", score=score, history=history, board=board, milestone=milestone,
+        worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
+        status_word=STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], score=score, history=history, board=board, milestone=milestone,
         multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),
         portal_checked=ago(now - portal_t) if portal_t else None,
         day_start=perth(day_start).strftime("%-I%p").lower(),

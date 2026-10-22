@@ -6,7 +6,7 @@
 <noscript><meta http-equiv="refresh" content="60"></noscript>
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<title>Swan · {{ worst | upper }}</title>
+<title>Swan · {{ status_word }}</title>
 <script src="app.js" defer></script>
 <style>
 :root {
@@ -311,7 +311,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% for x in banned_list %}<p class="pl"><span class="sub">{{ x.time }}</span> @{{ x.username }} <span class="sub">#{{ x.id }} · {{ x.why }}</span></p>{% endfor %}
   {% else %}<p class="sub">No history yet: it fills at the next portal read (every 15 min).</p>{% endif %}
   <h3>Last hour</h3>
-  <p>{{ writes.hour }} posts{% if writes.planned %} (bot's pace {{ writes.planned }}, team cap {{ writes.cap }}){% endif %} ·
+  <p>{{ writes.hour }} writes{% if writes.planned %} (bot's pace {{ writes.planned }}, team cap {{ writes.cap }}){% endif %} ·
     {{ errors.rate_limited | n }} rate-limited · {{ errors.rejects }} drafts rejected by our quality check</p>
 </div></details>
 
@@ -339,12 +339,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if history %}
   <h3>Our score over time</h3>
   <table>
-    <tr><th>When (Perth)</th><th class="num">Score</th><th class="num">Change</th><th class="num">Rank</th></tr>
+    <tr><th>When (Perth)</th><th class="num">Score</th><th class="num">Change</th><th class="num">1st / 2nd replies</th><th class="num">Rank</th></tr>
     {% for h in history %}
     <tr><td>{{ h.time }}{% if h.notes %}<details class="note" id="score-{{ h.time | replace(' ', '-') | replace(':', '') }}"><summary></summary></details>{% endif %}</td><td class="num">{{ h.score | n }}</td>
       <td class="num {{ 'up' if h.change and h.change > 0 else ('down' if h.change and h.change < 0 else '') }}">{% if h.change is not none %}{{ '+' if h.change >= 0 else '' }}{{ h.change | n }}{% endif %}</td>
-      <td class="num">{{ h.rank | n }}</td></tr>
-    {% if h.notes %}<tr class="notes"><td colspan="4">{% for x in h.notes %}<p class="pl"><span class="sub">{{ x.time }}</span> <b>{{ '+' if x.points >= 0 }}{{ x.points | n }}</b> {{ x.text }}</p>{% endfor %}</td></tr>{% endif %}
+      <td class="num">{% if h.replies %}{{ h.replies[0] }} / {{ h.replies[1] }}{% endif %}</td><td class="num">{{ h.rank | n }}</td></tr>
+    {% if h.notes %}<tr class="notes"><td colspan="5">{% for x in h.notes %}<p class="pl"><span class="sub">{{ x.time }}</span> <b>{{ '+' if x.points >= 0 }}{{ x.points | n }}</b> {{ x.text }}</p>{% endfor %}</td></tr>{% endif %}
     {% endfor %}
   </table>
   {% endif %}

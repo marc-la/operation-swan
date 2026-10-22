@@ -172,7 +172,7 @@ def test_back_to_back_parks_and_deploys_are_bundled(tmp_path):
         f"{iso(3)[:19]}Z [swan-ec2] @lani: post #9 hidden by the moderator (1 hidden)\n")
     ctx, html = page(root)
     kinds = [(r["kind"], r["what"]) for r in ctx["activity"]]
-    assert kinds == [("hidden", "post hidden"), ("group", "ops ×5"), ("write", "reply"), ("group", "LLM parked ×2")]
+    assert kinds == [("hidden", "post hidden"), ("group", "ops ×5"), ("write", "1st reply"), ("group", "LLM parked ×2")]
     assert ctx["activity"][1]["text"] == ("2 deploys (latest def5678 two) · "
                                           "gemini-c, gemini-b, gemini-a: daily quota until 17:00")
     assert html.count("<details class=\"x\" id=\"g-") == 2
@@ -562,3 +562,23 @@ def test_stealth_light_counts_new_bans_today(tmp_path):
     st = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
     assert st["head"] == "3 bans" and st["light"] == "amber" and "3 posts hidden ×1" in rowof(ctx, "New bans")["now"]
     assert "@a_b" in html
+
+
+def test_first_and_second_replies_are_split_not_lumped(tmp_path):
+    score = [{"ts": iso(60), "score": 100, "rank": 9, "teams": 50, "by": "kim"},
+             {"ts": iso(0), "score": 140, "rank": 8, "teams": 50, "by": "kim"}]
+    acts = [write(50), write(40), write(30, act="reply_back"), write(20, act="second_voice"), write(10, act="reply_back"),
+            write(90, act="reply_back")]                                    # the last one is before the window
+    ctx, html = page(make_root(tmp_path, acts, score=score))
+    assert build.WRITES["reply"] == "1st reply" and build.WRITES["reply_back"] == "2nd reply"
+    assert ctx["history"][0]["replies"] == (2, 2) and ctx["history"][1]["replies"] is None
+    assert "2 1st reply · 2 2nd reply" in rowof(ctx, "Writes, last hour")["now"]
+    assert "1st / 2nd replies" in html and "2 / 2" in html
+
+
+def test_tab_title_is_a_status_word_not_a_colour(tmp_path):
+    assert build.STATUS_WORD == {"green": "RUNNING", "amber": "ALERT", "red": "DOWN"}
+    ctx, html = page(make_root(tmp_path, [write(3)]), service="inactive")
+    assert ctx["worst"] == "red" and "<title>Swan · DOWN</title>" in html
+    for worst, word in (("green", "RUNNING"), ("amber", "ALERT"), ("red", "DOWN")):
+        assert f"<title>Swan · {word}</title>" in build.render(dict(ctx, worst=worst, status_word=build.STATUS_WORD[worst]))
