@@ -329,10 +329,101 @@ def near_duplicate(body, kind, recent_texts=(), same=()):
             any(similar(body, strip_tag(old.strip())) > other for old in recent_texts))
 
 
+# ---- todo/27 phrase budgets. 22 Oct 00-05 UTC: "voting no" in 64% of our 606 citizen-facing writes, "end date" 24%,
+# "sunset" 21%, "venue list" 18%, "no review" 16%, and the moderator hid replies sharing that one skeleton ("...a Yes
+# binds us... no end date or review... I'm voting No.") on other teams' Blue reports. Over our last PHRASE_WINDOW
+# citizen-facing texts (replies, reply-backs, second voices to citizens), each phrase may be in at most its share; a
+# draft that would go over is rejected with phrase_<keys> (repair_note names the phrase; fix() cuts a sentence or
+# clause that only states the vote, drop_vote). Posts must still say No (no_vote_statement) and are not budgeted.
+PHRASE_WINDOW = 100
+PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
+    "vote": (VOTES_NO, 0.15),
+    "binds_us": (re.compile(r"\bbind(s|ing)? (us|you|everyone|kingstonia)\b", re.I), 0.10),
+    "no_review": (re.compile(r"\bno\b[^.?!]{0,25}\breview\b", re.I), 0.10),      # "no end date or review" too
+    "end_date": (re.compile(r"\bend dates?\b", re.I), 0.10),
+    "venue_list": (re.compile(r"\bvenue lists?\b", re.I), 0.10),
+    "sunset": (re.compile(r"\bsunset\b", re.I), 0.10),
+    "after_the_vote": (re.compile(r"\bafter the vote\b", re.I), 0.10),
+}
+PHRASE_PREFIX = "phrase_"
+
+
+def phrases_in(text):
+    """The PHRASE_BUDGETS keys whose phrase text says."""
+    return [k for k, (rx, _) in PHRASE_BUDGETS.items() if rx.search(text or "")]
+
+
+def phrase_shares(texts):
+    """{key: share of texts saying it} over texts (the measurement for todo/27)."""
+    texts = list(texts)
+    return {k: (sum(bool(rx.search(t or "")) for t in texts) / len(texts) if texts else 0.0)
+            for k, (rx, _) in PHRASE_BUDGETS.items()}
+
+
+def over_budget(text, window):
+    """The PHRASE_BUDGETS keys text would push over budget, given window (our latest citizen-facing texts, oldest
+    first): with the draft as the newest of PHRASE_WINDOW texts, more than share * PHRASE_WINDOW would say it. A short
+    window counts as full, so a fresh start isn't stricter than the budget."""
+    last = list(window)[-(PHRASE_WINDOW - 1):]
+    out = []
+    for k in phrases_in(text):
+        rx, share = PHRASE_BUDGETS[k]
+        if sum(bool(rx.search(t or "")) for t in last) + 1 > share * PHRASE_WINDOW:
+            out.append(k)
+    return out
+
+
+_VOTE_FILLER = set("that's thats that this it it's its why so which is and but then well yes yeah i i'm im i am will "
+                   "i'll be still just here now on one for me too also as written definitely firmly simply all the a "
+                   "referendum question ballot".split())
+
+
+def only_states_vote(sentence):
+    """True when the sentence says how we vote and next to nothing else ("That's why I'm voting No.")."""
+    m = VOTES_NO.search(sentence or "")
+    if not m:
+        return False
+    rest = re.findall(r"[a-z']+", (sentence[:m.start()] + " " + sentence[m.end():]).lower())
+    return sum(w not in _VOTE_FILLER for w in rest) <= 1
+
+
+_VOTE_WORDS = r"(?:i'?m |i am |i'?ll be |i will be |i )?(?:still )?(?:vot(?:e|ing)|mark(?:ing)?|tick(?:ing)?) no"
+# "..., so I'm voting No." / "...; I'm voting No on this one." -> "..."
+_VOTE_TAIL = re.compile(r"\s*(?:[,;:]|\s-)\s*(?:and |so |which is why |that'?s why |and that'?s why )?" + _VOTE_WORDS +
+                        r"(?: on this(?: one)?| here| for (?:that|this))?\s*([.!]?)$", re.I)
+# "I'm voting No because the rule..." / "Still voting No: one traveller..." -> "The rule..." / "One traveller..."
+_VOTE_HEAD = re.compile(r"^(?:so |and |still )?" + _VOTE_WORDS + r"(?:\s*[:,]\s*(?:and |because )?|\s+-\s+|\s+because\s+)",
+                        re.I)
+
+
+def drop_vote(text, kind):
+    """text without its statements of the vote (todo/27, a code fix for phrase_vote), or None: a sentence that only
+    states it goes ("That's why I'm voting No."), a closing clause ("..., so I'm voting No.") or an opening one ("I'm
+    voting No because the rule...") is cut. None when the vote is still there or what's left is under the kind's
+    floor."""
+    parts = sentences(TRAILING_TAGS.sub("", normalise(text)) if kind != "post" else text)
+    if not any(VOTES_NO.search(s) for s in parts):
+        return None
+    kept = [s for s in parts if not only_states_vote(s)]
+    out = []
+    for s in kept:
+        if VOTES_NO.search(s):
+            cut = _VOTE_TAIL.sub(lambda m: m.group(1) or ".", s)
+            if cut == s:
+                cut = _VOTE_HEAD.sub("", s)
+                cut = cut[:1].upper() + cut[1:]
+            s = cut
+        out.append(s)
+    out = " ".join(s for s in out if s.strip())
+    return out if out and len(out) >= LENGTHS[kind][0] and not VOTES_NO.search(out) else None
+
+
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
-          same=()):
+          same=(), phrase_texts=None):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
     same: our texts to this citizen or in this thread (todo/24), held to the strict near-duplicate threshold.
+    phrase_texts: our latest citizen-facing texts (todo/27): a citizen-facing draft is held to PHRASE_BUDGETS over
+    them. None: no budget (posts, threads, journalists, and callers that don't track them).
     closing_question=False lets a post end on its verdict instead (a draft told to end without a question).
     specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
     of the vote (VOTE_TALK) unless the citizen's own post has some."""
@@ -411,6 +502,9 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     if near_duplicate(body, kind, recent_texts, same):
         return None, "near_duplicate"
+    over = over_budget(t, phrase_texts) if phrase_texts is not None and kind in PERSONAL_KINDS else []
+    if over:
+        return None, PHRASE_PREFIX + "+".join(over)
     return t, None
 
 
@@ -481,6 +575,8 @@ def fix(text, why, kind):
         parts = [s for s in sentences(text) if not content.advocacy(s)]
         out = " ".join(parts)
         return out if parts and len(out) >= min(LENGTHS[kind][0], SHORT_OK) else None
+    if why.startswith(PHRASE_PREFIX) and "vote" in why[len(PHRASE_PREFIX):].split("+"):    # todo/27
+        return drop_vote(text, kind)
     return None
 
 
@@ -562,6 +658,13 @@ def repair_note(why, raw, kind, tag=None, recent=()):
         return f"Cut {quoted} and say your own point straight out; change nothing else."
     if why == "no_vote_statement":
         return "Say plainly that you're voting No."
+    if why.startswith(PHRASE_PREFIX):              # todo/27: name each worn phrase as the draft has it
+        keys = why[len(PHRASE_PREFIX):].split("+")
+        said = [m.group(0) for k in keys if k in PHRASE_BUDGETS
+                for m in [PHRASE_BUDGETS[k][0].search(normalise(raw))] if m]
+        quoted = " or ".join(f"«{p}»" for p in said) or "our usual phrases"
+        return (f"We've said {quoted} too often lately: make the point without {"them" if len(said) > 1 else "it"}, in words of your own. Don't state "
+                f"your vote at the end: end on your reason. Change nothing else.")
     if why == "spelled_number":
         return "Write every number as digits, and only the numbers you were given."
     return None

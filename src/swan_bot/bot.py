@@ -309,6 +309,14 @@ def gone_at_send(job, state, t=None):
     return None
 
 
+def citizen_texts(sent, ready=()):
+    """Our latest citizen-facing texts, oldest first (todo/27 phrase budgets, quality.over_budget): what we sent to a
+    citizen (state["recent_sent"]) and the drafts to citizens waiting for the writer, the last PHRASE_WINDOW."""
+    out = [text for a, _, text in sent if config.is_citizen(a)]
+    out += [d["text"] for d in ready if d.get("text") and config.is_citizen((d["job"].get("target") or {}).get("author_id"))]
+    return out[-quality.PHRASE_WINDOW:]
+
+
 def thread_root(post):
     return post.get("root_post_id") or post.get("post_id")
 
@@ -542,7 +550,8 @@ def gate(raw, job, user, recent_texts, ledger=None):
     mode, meta = job["mode"], job.get("meta") or {}
     kw = dict(prompt_text=user, target_text=(job.get("target") or {}).get("body") or "",
               wants=job.get("wants") or (), closing_question=meta.get("closing_question", True),
-              specific=job.get("group") != "off_topic", same=job.get("same_texts") or ())
+              specific=job.get("group") != "off_topic", same=job.get("same_texts") or (),
+              phrase_texts=job.get("phrase_texts"))
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
@@ -1098,6 +1107,8 @@ def main():
                 recent_shapes = state["recent_shapes"] + [d["job"]["meta"]["shape"] for d in ready
                                                           if (d["job"].get("meta") or {}).get("shape")]
                 persona, system, user = build_prompt(job, targeter, recent_shapes, pulse_now, recent_texts=recent_texts)
+                if mode in quality.PERSONAL_KINDS and target and config.is_citizen(target.get("author_id")):
+                    job["phrase_texts"] = citizen_texts(state.get("recent_sent", []), ready)     # todo/27
 
             def rejected(why, raw, backend, repaired):
                 with mu:
