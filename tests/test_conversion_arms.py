@@ -130,3 +130,26 @@ def test_fresh_facts_arm_offers_news_that_fits_the_citizen(tmp_path, monkeypatch
     finally:
         monkeypatch.undo()
         fact_store.refresh(force=True)
+
+
+def test_target_order_arm_puts_the_movable_classes_first(monkeypatch):
+    import datetime as dt
+    from swan_bot import targeting
+
+    def post(pid):
+        return dict(post_id=pid, author_id=1000 + pid, body="the referendum",
+                    created_at=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=30)).isoformat())
+
+    def order(arm):
+        monkeypatch.setattr(config, "SWITCHBACK", [("arm_conv", [arm], 7200)])
+        monkeypatch.setattr(config, "TURNOUT_ARM", False)
+        t = targeting.Targeter(None, log=lambda r: None)
+        for pid, cls in ((1, "yes_reason"), (2, "lean_no"), (3, "conditions"), (4, "unsure"), (5, "firm_yes")):
+            t._queue(post(pid), "latest", None, None, 0, cls)
+        out = []
+        while (c := t.next_target(set(), set(), {})) is not None:
+            out.append(c["target_class"])
+        return out
+    assert order("target_order")[:4] == ["unsure", "lean_no", "conditions", "yes_reason"]
+    base = order("base")
+    assert base.index("lean_no") > base.index("conditions") and base.index("lean_no") > base.index("unsure")

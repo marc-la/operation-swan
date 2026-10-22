@@ -391,7 +391,11 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
 # 2026-10-22: fresh_facts (Marc): replies offered 1-2 facts the desk added in the last 48 h that fit the citizen's
 # post, "New this week in the papers: ..." (content.fresh_line; logged as `fresh` on the write).
 # 2026-10-22 ~11:00 UTC: broadcast off by Marc's rule (away beat toward: 0 / 3 over 3 blocks, 196 writes).
-CONV_ARMS = ["base", "fresh_facts"]
+# 2026-10-22: target_order (lab round 1: toward-No per 100 vs Control: lean_no 45/25, unsure 37/21, yes_but 21/8,
+# firm_yes 20/25, yes_reason 9/0): in its blocks candidates go by TARGET_ORDER first, the todo/21 score within a class.
+# The writes' target_class and read_stance split the portal's toward/away by stance in the read-out.
+CONV_ARMS = ["base", "fresh_facts", "target_order"]
+TARGET_ORDER = ("unsure", "unclear", "lean_no", "conditions")      # then the rest (yes_reason, firm_yes last)
 CONV_BLOCK_S = 2 * 3600
 CONV_POST_GAP_S = 20 * 60
 CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")

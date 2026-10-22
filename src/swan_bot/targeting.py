@@ -27,7 +27,7 @@ import zoneinfo
 
 import capturethenarrative as ctn
 
-from . import config, content, feeds
+from . import config, content, experiment, feeds
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption|"
@@ -933,7 +933,15 @@ class Targeter:
             net = self._net(c)
             return config.GROUP_ORDER.index(net) + 1 if net in config.GROUP_ORDER else 0
 
-        for pid, c in sorted(self.candidates.items(), key=lambda kv: (tier(kv[1]), -priority(kv[1]))):
+        # todo/25's target_order arm: in its blocks the lab's movability order goes first (config.TARGET_ORDER), the
+        # score only within a class; base blocks keep the todo/21 weights
+        order = experiment.block("arm_conv")[1] == "target_order"
+
+        def rank(c):
+            cls = c.get("target_class")
+            return config.TARGET_ORDER.index(cls) if order and cls in config.TARGET_ORDER else len(config.TARGET_ORDER)
+
+        for pid, c in sorted(self.candidates.items(), key=lambda kv: (tier(kv[1]), rank(kv[1]), -priority(kv[1]))):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
             post, author, source = c["post"], c["post"]["author_id"], c.get("source")
