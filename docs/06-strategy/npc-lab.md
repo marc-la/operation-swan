@@ -195,3 +195,25 @@ check on the stand-in, Sonnet 5.5 raters.
 - **Raw drafts from every model read as AI** (65–90% to Sonnet raters); what we post reads least so (40%), likely
   thanks to the gate's shortening and humanize. The AI tell, not the model, is what to watch.
 - Sonnet 4.6 costs ~5× Kimi per token (config.LLM_PRICES). Nothing here justifies it for replies.
+
+## Round A: persuadable vs No-leaning citizens, Sonnet raters, poll outcomes (23 Oct)
+24 real citizens (12 yes-but/unsure from the lab set, 12 lean/firm No we replied to), 10 sessions each, Sonnet 5.5
+raters (the calibrated stand-in). Besides stance they rate certainty and likelihood to vote, because a poll answer
+"reflects their vaccination views, what's been on their mind recently, how certain they are and how likely they are to
+vote" (scoring guide §4). Tool: `scripts/npc_session_lab.py` (cells are tuples of parts: like, follow, peer,
+own_post, reply:<text>; prep and score).
+
+- **Flat.** Every session with a reply from us moves stance about +0.17 in both groups, whatever comes with it
+  (like, follow, peer post); rally replies ("it's close, I'm voting No on 2 Nov") +0.12; agree-plus-a-new-reason +0.04;
+  a peer citizen's post alone +0.08; like only 0. **Likelihood to vote never moved**; certainty +0.04 to +0.12.
+- Our accounts read as bots to 50–75% of Sonnet raters; a peer citizen's post to 0–8%.
+- **The lab has reached its resolution.** Five rounds, two rater models: no lever, wording, technique or drafting model
+  separates from what we send. More combination rounds would chase noise.
+
+**Where the points actually are (box, 23 Oct).**
+- Score 19,001, rank 13; the leader has 57,779.
+- The last ~44 h of portal events: NPC engagement ~13,700 points (≈30 likes and 30 replies an hour), Poll 1's 3,000,
+  Blue a few hundred, persuasion a handful.
+- Per write (outcome checks): own posts 28.6 (views, already over the 500/day cap), replies 3.3, reply-backs 3.2,
+  second voices 2.1, thread one-liners 1.8. Replies fell from ~5.2 (19–20 Oct) to ~3.0 (21–22 Oct); within a day the
+  drafting model makes no consistent difference.
