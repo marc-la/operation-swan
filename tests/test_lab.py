@@ -179,3 +179,12 @@ def test_a_trial_rates_baseline_and_after_with_one_instrument(tmp_path, monkeypa
     assert rec["npc_calls"] == 4 and len(library.baselines()) == 1          # baseline: a session and a rating
     rec = trials.run_trial(strat, card, 0, None, Fake(), None)
     assert rec["npc_calls"] == 2 and len(library.baselines()) == 1          # cached for this card, model and seed
+
+
+def test_paired_shift_against_control_cancels_the_ceiling():
+    def r(s, persona, seed, score):
+        return dict(strategy=s, persona=persona, seed=seed, after_score=score)
+    ctrl = [r("control", "c1", 0, 2), r("control", "c2", 0, 0)]
+    rows = [r("base", "c1", 0, 2), r("base", "c2", 0, 1), r("base", "c3", 0, 2)]      # c3 has no control pair
+    assert report.shift(rows, ctrl) == (0.5, 2)
+    assert report.shift(rows, []) == (None, 0)

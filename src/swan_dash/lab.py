@@ -29,8 +29,9 @@ def _per100(k, n):
     return None if not n else round(100 * k / n)
 
 
-def strategy_row(name, rows, control_net, meta):
+def strategy_row(name, rows, control_net, meta, control_rows=()):
     n, no, same, yes = report._rates(rows)
+    paired, pairs = report.shift(rows, control_rows) if name != report.CONTROL else (None, 0)
     d = report.net(rows)
     by_class = {}
     for cls in CLASSES:
@@ -41,6 +42,7 @@ def strategy_row(name, rows, control_net, meta):
                      verdict=r.get("verdict") or "", voice=r.get("voice") or "")
                 for r in rows[-EXAMPLES:]][::-1]
     return dict(name=name, author=meta.get("author") or "", notes=(meta.get("notes") or "")[:300], n=n,
+                shift=None if paired is None else round(paired, 2), pairs=pairs,
                 no=_per100(no, n), same=_per100(same, n), yes=_per100(yes, n),
                 net=None if d is None else round(d),
                 vs=None if d is None or control_net is None or name == report.CONTROL else round(d - control_net),
@@ -66,8 +68,8 @@ def gather_lab(root):
         for r in rows:
             by[r["strategy"]].append(r)
         control = report.net(by.get(report.CONTROL, []))
-        table = [strategy_row(s, by[s], control, meta.get(s, {})) for s in by]
-        table.sort(key=lambda t: -(t["net"] if t["net"] is not None else -999))
+        table = [strategy_row(s, by[s], control, meta.get(s, {}), by.get(report.CONTROL, [])) for s in by]
+        table.sort(key=lambda t: -(t["shift"] if t["shift"] is not None else -9))
         models.append(dict(model=model, trials=len(rows), control=None if control is None else round(control),
                            table=table))
     skipped = collections.Counter(r["strategy"] for r in allrows if r.get("skip"))

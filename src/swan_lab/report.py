@@ -33,6 +33,17 @@ def net(rows):
     return None if not n else 100 * (no - yes) / n
 
 
+def shift(rows, control_rows):
+    """(mean, n): the paired shift against Control, in rating points (YES -2 .. NO +2): this strategy's rating after
+    reading minus Control's, for the same persona and seed (both start from the same cached baseline, so a stand-in
+    already at NO, which can only fall, counts the same in both). None when no pair exists."""
+    key = lambda r: (r.get("persona"), r.get("seed"))                                    # noqa: E731
+    ctrl = {key(r): r.get("after_score") for r in control_rows}
+    d = [r["after_score"] - ctrl[key(r)] for r in rows
+         if r.get("after_score") is not None and ctrl.get(key(r)) is not None]
+    return (None, 0) if not d else (sum(d) / len(d), len(d))
+
+
 def current(rows, strats):
     """Trials of the strategies' current versions, with a verdict."""
     from .npc import INSTRUMENT
@@ -59,16 +70,22 @@ def section(allrows, strats):
            f"Stand-in: {', '.join(sorted({r.get('lab_model') or '?' for r in rows})) or '–'}. "
            f"{len(rows)} classified trials of current strategy versions; Control is the stand-in's drift after an "
            "unrelated post. A proxy: live results decide.", "",
-           "| strategy | trials | toward No [90%] | same | toward Yes | net No−Yes per 100 | vs Control | skipped |",
-           "|---|---|---|---|---|---|---|---|"]
+           "Paired shift: the strategy's rating after reading minus Control's for the same persona and seed, in rating "
+           "points (YES −2 … NO +2; +1 = one step toward No). The main number: verdict counts suffer from ceilings.", "",
+           "| strategy | trials | paired shift vs Control (pairs) | toward No [90%] | same | toward Yes | net No−Yes per 100 "
+           "| vs Control | skipped |",
+           "|---|---|---|---|---|---|---|---|---|"]
     skipped = collections.Counter(r["strategy"] for r in allrows if r.get("skip"))
-    ranked = sorted(by, key=lambda s: -(net(by[s]) or -999))
+    ctrl_rows = by.get(CONTROL, [])
+    ranked = sorted(by, key=lambda s: -(shift(by[s], ctrl_rows)[0] if s != CONTROL and shift(by[s], ctrl_rows)[0]
+                                        is not None else -9))
     for s in ranked:
         n, no, same, yes = _rates(by[s])
         d = net(by[s])
         vs = "–" if control is None or s == CONTROL else f"{d - control:+.0f}"
-        out.append(f"| {s} | {n} | {_ci(no, n)} | {_p100(same, n)} | {_p100(yes, n)} | {d:+.0f} | {vs} | "
-                   f"{skipped.get(s, 0)} |")
+        m, k = shift(by[s], ctrl_rows) if s != CONTROL else (None, 0)
+        out.append(f"| {s} | {n} | {'–' if m is None else f'{m:+.2f} ({k})'} | {_ci(no, n)} | {_p100(same, n)} | "
+                   f"{_p100(yes, n)} | {d:+.0f} | {vs} | {skipped.get(s, 0)} |")
     out += ["", "## Movability by stance class (best strategy per class)", "",
             "| class | trials | toward No per 100 (all strategies) | Control toward No | best strategy | its net per 100 (n) |",
             "|---|---|---|---|---|---|"]

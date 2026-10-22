@@ -58,16 +58,18 @@ summary { padding: 8px 12px; cursor: pointer; }
 {% for m in models %}
 <h2>Stand-in {{ m.model }} · {{ m.trials }} trials · Control net {{ m.control if m.control is not none else "—" }}</h2>
 <div class="wrap"><table>
-<tr><th>strategy</th><th>trials</th><th>toward No</th><th>same</th><th>toward Yes</th><th>net No−Yes</th><th>vs Control</th>
+<tr><th>strategy</th><th>trials</th><th>shift vs Control</th><th>toward No</th><th>same</th><th>toward Yes</th><th>net No−Yes</th><th>vs Control</th>
 {% for c in classes %}<th>{{ c }}</th>{% endfor %}</tr>
 {% for t in m.table %}
-<tr><td>{{ t.name }}</td><td>{{ t.n }}</td><td>{{ t.no }}</td><td>{{ t.same }}</td><td>{{ t.yes }}</td>
+<tr><td>{{ t.name }}</td><td>{{ t.n }}</td>
+<td class="{{ 'up' if (t.shift or 0) > 0 else 'down' if (t.shift or 0) < 0 else '' }}">{{ "%+.2f" % t.shift if t.shift is not none else "—" }}{% if t.pairs %} <span class="sub">({{ t.pairs }})</span>{% endif %}</td>
+<td>{{ t.no }}</td><td>{{ t.same }}</td><td>{{ t.yes }}</td>
 <td class="{{ 'up' if (t.net or 0) > 0 else 'down' if (t.net or 0) < 0 else '' }}">{{ t.net if t.net is not none else "—" }}</td>
 <td class="{{ 'up' if (t.vs or 0) > 0 else 'down' if (t.vs or 0) < 0 else '' }}">{{ "%+d" % t.vs if t.vs is not none else "—" }}</td>
 {% for c in classes %}<td>{{ t.by_class[c] if t.by_class[c] is not none else "" }}</td>{% endfor %}</tr>
 {% endfor %}
 </table></div>
-<div class="sub">Per 100 trials. Class columns: net toward No minus toward Yes for that stance class. With ~2 trials per cell, read the totals first.</div>
+<div class="sub">Shift vs Control: the strategy's vote rating after reading minus Control's, same persona and seed, in rating points (YES −2 … NO +2). It's the main number, because a stand-in already at NO can only fall. The other columns are per 100 trials. Class columns: net toward No minus toward Yes for that stance class. With ~2 trials per cell, read the totals first.</div>
 
 {% for t in m.table %}
 <details><summary><b>{{ t.name }}</b> · {{ t.author }} · {{ t.notes }}</summary>
