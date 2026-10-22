@@ -92,7 +92,7 @@ Drafts are in [A (Q2–Q5)](research-2026-10-21/A-rules.md#c-top-7) and [B](rese
 
 **Next:**
 - todo/24: ~2.9 writes/min, GLM out, no wasted drafts.
-- [todo/25](../../todo/25-conversion-what-moves-them.md): conversion, top priority.
+- todo/25 (conversion): closed 2026-10-23, results in [npc-lab](npc-lab.md); followed by [todo/33](../../todo/33-engagement-per-write.md).
 - todo/26: fewer locked hours, more teams at full rate.
 
 ## 24 h read-out, 2026-10-22 15:04 UTC (todo/20, todo/23, todo/25)

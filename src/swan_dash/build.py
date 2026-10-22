@@ -21,7 +21,6 @@ import jinja2
 
 from swan_blue.evidence import awards_by_rate, first_later
 from swan_bot import config as bot_config  # constants only (FACTDESK_AUTO): it reads no .env on import
-from swan_dash.lab import gather_lab
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
@@ -1237,11 +1236,7 @@ def main():
     html = render(gather(args.root, now, service_state()))
     args.out.mkdir(parents=True, exist_ok=True)
     write_atomic(args.out / "index.html", html)
-    try:                                       # the NPC lab's page (todo/25): its failure never stops the main page
-        lab = dict(gather_lab(args.root), built=perth(now).strftime("%H:%M:%S"))
-        write_atomic(args.out / "lab.html", render(lab, "lab.html.j2"))
-    except Exception as e:                     # noqa: BLE001
-        print(f"lab page: {type(e).__name__}: {e}")
+    (args.out / "lab.html").unlink(missing_ok=True)      # the NPC lab page, retired 2026-10-23 (todo/33)
     write_atomic(args.out / "robots.txt", "User-agent: *\nDisallow: /\n")
     write_atomic(args.out / "app.js", (pathlib.Path(__file__).parent / "templates" / "app.js").read_text())
 
