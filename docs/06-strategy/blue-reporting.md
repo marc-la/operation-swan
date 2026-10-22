@@ -47,7 +47,7 @@ harvest every 30 min: leads (and ring posts someone else got hidden) with ≥ 10
   - *Measure, then tune.* P(first) starts as a prior: 0.9 under 1 h old, 0.6 under 3 h, 0.3 older, ×0.7 on Trending (more teams see it). Every 15 min the service counts "first inauthentic report" against plain "inauthentic report" awards in the portal log. After 8 paid awards, the ratio of that share to what we predicted at filing scales every estimate (0.4–1.3×). The dashboard shows "paid as first X of Y". Posts over 12 h old aren't reported.
   - The first batch (21 Oct, before this) was filed 23–170 min after posting, median ~50 min, mostly because it waited for approval.
 - **Modes.** *auto* from the start (since 21 Oct evening; the first batch of 25 was approved by hand). It switches to *approve* and alerts once 10+ post rulings show under 70% inauthentic. If our targets are all bots we expect ~90%: observed rate = 0.1 + 0.8 × (share of our targets that are bots). *off* when `~/ctn/BLUE_OFF` exists. Account reports file in both approve and auto: they're rule-based and can't lock us.
-- **Refused reports.** 400/404/409 drop that one target. 401 logs in again. Anything else (most likely the 6 h lock or the pending cap) waits 30 min and alerts once. A refused report still costs budget, so we never retry in a loop.
+- **Refused reports.** 400/404/409 drop that one target. 401 logs in again. A 403 that says "suspended ... until <time>" (the 6 h lock) waits until that time (since 22 Oct, §7). Anything else (the pending cap, say) waits 30 min and alerts once. A refused report still costs budget, so we never retry in a loop.
 - **The reporter** is one booster: the lowest-id active one (`config.blue_reporter`, `salote_sails` on 21 Oct). The bot stops using it. It would register a replacement booster, but on 21 Oct it was already at its cap of 49 live accounts (15 voices, 33 boosters, the reporter), so the like pool is one smaller (33).
 
 ## 4. What it costs Red (kept small)
@@ -71,3 +71,42 @@ harvest every 30 min: leads (and ring posts someone else got hidden) with ≥ 10
 2. The daily rate counts on the **ruling** day (open question B.10).
 3. A ruled-inauthentic post answers 404, as our own hidden posts do. A post its author deleted also answers 404, and we count that as hidden. The portal points log is the ground truth.
 4. ~~Tune `evidence.p_first` from the portal~~ Automatic since 21 Oct evening (`service.calibrate`). Check the portal's wording matches "N first inauthentic report(s)" once the first awards land; if not, fix `evidence.FIRST_RE`.
+
+## 7. Fewer locked hours, more teams at full rate (todo/26, 2026-10-22)
+
+[todo/26](../../todo/26-blue-widen.md). The first full day showed the cycle model of §2 was right about locks: Blue stopped on a lock, not a cap, with 43 targets ready.
+
+### Before: Sydney day 22 Oct up to 00:15 UTC (8:15am Perth)
+
+| Measure | Value | Source |
+|---|---|---|
+| Filed | 52 (46 posts, 6 accounts) | `data/blue_state.json` |
+| Post rulings | 44 hidden, 2 genuine (96%) | same |
+| Genuine by class | like ring only: 2 of 19. Reply ring (24) and like ring + early ring (3): 0 | `logs/blue_reports.jsonl` |
+| Blue awards paid | 49: 42 at full rate (86%), 7 at ×0.5 | portal points log |
+| Paid as first | 43 of 44 post awards | portal |
+| Clusters (teams) reported | 7, five of them already at 5–10 awards for the day | `blue_status.json` |
+| Locked | 18:31→02:00 UTC, **7.5 h** (the platform's own times). Our ledger saw only 6 h: `#155963` was ruled genuine at 18:31, 1.5 h after filing (another team reported it too), and we only notice a genuine ruling at 3 h 15 min | the 403 answers in the log |
+| Refused while locked | 4 retries, 30 min apart, all 403 | log |
+
+### What changed
+
+- **P(genuine) per post report** (`evidence.p_genuine`): 10% for a like ring alone (the scoring page's error rate), ×0.4 with a reply ring, ×0.7 with a second class, ×0.6 if the moderator already hid a post by the author, ×0.85 with an id run of 10+, ×1.4 for a small, slow like ring (< 30 likes, no 60-s burst of 8, like `#155963`). Expected value counts it: `(1 − P(genuine)) × (25 or 5) × rate`. It's logged on each report (`pg`) and the dashboard shows "genuine against expected" over the rulings.
+- **A bar when plenty is ready:** with 10+ targets ready, a post report must be under **6%** P(genuine) to file. In practice reply rings, and like rings with a second class plus an id run or an author already hidden; a like ring alone by an author with nothing hidden yet waits. On 22 Oct's ready list that keeps 26 of 40. With 25 pending, the chance a batch ends with no genuine ruling goes from about 0.9²⁵ ≈ 7% to about 30% (that list's first 25), if the factors hold.
+- **The lock's exact end:** the platform's 403 says "reporting is suspended for your team until …". We now take that time as the lock (no more 30-min retries) and cut the recorded locked hours to it. When we detect a genuine ruling ourselves, our lock is an upper bound (ruling ≤ 3 h after the first report), so one report goes out at once: the answer gives the exact end, often earlier than our estimate. Cost: one refused request per genuine ruling.
+- **More teams at full rate:** account leads file first (no lock risk). In the ranking, each award already counted against a cluster today lowers its next report by 4% while it's still at full rate, so new clusters go first. On 22 Oct's list: the 3 new clusters (c6628, c2576, c8601) come before c6831's 5th report.
+- **Wider discovery, with no extra feed read:** Latest as the bot already read it (`data/latest_snapshot.json`, replies and reposts included). A post that collects 4+ team replies or reposts in that window is a ring forming: a known post whose audits found nothing gets one more audit; an unknown one (older than the snapshot) is looked up with `get_post` (8 per pass at most, its own 300/min route) and noted if a team wrote it. Citizens' posts are skipped: on 22 Oct their replies came from many teams, 1–3 each, which is no ring. The targeter's own thread reads aren't saved anywhere swan-blue can read; using them would need a `swan_bot` change.
+- **Account leads from other teams' hides:** every 30 min, up to 80 ring posts **and reply-ring replies** we didn't report are checked for a 404 (each at most every 2 h, never-checked first). A hidden one makes its author a lead, the reply authors included; before, only ring roots were checked, and always the same first 40.
+- **Our own accounts:** the swarm's accounts (`secrets/swarm_accounts.json`) now count as ours, so they're never counted, labelled or reported. Citizens added mid-game (`config.EXTRA_CITIZEN_RANGES`) are never team accounts.
+- **Dashboard:** the Blue line reads "locked until HH:MM Perth (why) · N ready" ("at most" while it's our estimate). The days table has a "Full rate" column (awards at full rate out of all, from the portal log). The counts line gives clusters today and how many are still at full rate.
+
+### After: to fill in on 23 Oct (from the dashboard's days table and `logs/blue_reports.jsonl`)
+
+| Measure | 22 Oct (before) | 23 Oct |
+|---|---|---|
+| Hours locked | 7.5 h by 10am Perth (6 h in our ledger) | |
+| Genuine rulings / post rulings | 2 / 46 | |
+| P(genuine) check: genuine vs expected | n/a | |
+| Awards at full rate | 42 / 49 (86%) | |
+| Clusters paid | 7 | |
+| Rings found by widening (`"act": "widen"`) and leads from others' hides (`"act": "lead"`) | n/a | |
