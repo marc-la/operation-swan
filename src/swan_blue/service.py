@@ -30,6 +30,7 @@ import capturethenarrative as ctn
 from swan_bot import config
 from . import detect
 from . import evidence as ev
+from .side import side as side_of
 
 STATE_FILE = config.DATA / "blue_state.json"
 STATUS_FILE = config.DATA / "blue_status.json"        # the dashboard reads this (field by field)
@@ -37,6 +38,14 @@ APPROVALS = config.DATA / "blue_approved.jsonl"        # scripts/blue.sh appends
 SESSION_FILE = config.SECRETS / "blue_session.json"   # the reporter's token (never logged)
 REPORTS_LOG = config.LOGS / "blue_reports.jsonl"
 DETECT_FILE = config.DATA / "blue_detect.json"        # todo/28 step 5: the account-lead detectors' memory
+# todo/28, the cap probe (Marc, 22 Oct): does an account report count toward the 30 pending? Answered once, from
+# behaviour: with 30 pending and an account lead ready, one extra account report goes out. Taken: they don't count.
+# Refused with a 4xx naming the cap: they do. The answer is kept here and never asked again.
+CAP_PROBE_FILE = config.DATA / "blue_cap_probe.json"
+CAP_PROBE_TRIES = 3           # refusals that don't name the cap (a gone account, say) before we give up asking
+CAP_WORDS = re.compile(r"pending|cap\b|limit|too many|maximum", re.I)
+# todo/28, prefer Yes-side targets (Marc, 22 Oct): ranking only, never eligibility and never the detail text
+BLUE_SIDE_BIAS = {"yes": 1.3, "unclear": 1.0, "no": 0.7}
 FEED_LOG = config.LOGS / "feed_reads.jsonl"            # every feed call from this box, any process (todo/21 audit)
 SYDNEY = ZoneInfo("Australia/Sydney")
 
@@ -148,6 +157,8 @@ class Blue:
         self.feed_hold = 0
         self.detect_file = DETECT_FILE if live else DETECT_FILE.with_suffix(".dry.json")
         self.det = read_json(self.detect_file, None) or detect.empty()
+        self.probe_file = CAP_PROBE_FILE if live else CAP_PROBE_FILE.with_suffix(".dry.json")
+        self.probing, self.probe_refusal = False, None
 
     # ---- plumbing ----
     def log(self, rec):
@@ -416,10 +427,11 @@ class Blue:
                 continue
             strong = 1.0 if len(cls) >= 2 else 0.95
             ring_why = ev.brief(a)
+            side = side_of(p["post"].get("body"))          # a ring reply stands with its ring's root
             if f"p{pid}" not in reported:
                 out.append(dict(key=f"p{pid}", kind="post", target=int(pid), author=a["author"], label=p["label"],
                                 age_min=round(age_min), trending=p["trending"], classes=cls,
-                                detail=ev.post_detail(a), ring=int(pid), ring_why=ring_why,
+                                detail=ev.post_detail(a), ring=int(pid), ring_why=ring_why, side=side,
                                 pg=ev.p_genuine(a, cls, str(a["author"]) in self.s["harvest"]),
                                 base=(age_min, p["trending"], strong)))
             if "reply_ring" in cls:
@@ -431,7 +443,7 @@ class Blue:
                     r_age = (t - ev.ts(r["created"])) / 60
                     out.append(dict(key=f"p{r['post_id']}", kind="post", target=r["post_id"], author=r["author"],
                                     label=p["label"], age_min=round(r_age), trending=False, classes=["reply_ring"],
-                                    detail=ev.reply_detail(r, a), ring=int(pid), ring_why=ring_why,
+                                    detail=ev.reply_detail(r, a), ring=int(pid), ring_why=ring_why, side=side,
                                     pg=ev.p_genuine(a, ["reply_ring"], str(r["author"]) in self.s["harvest"]),
                                     base=(r_age, False, 0.95)))
                     if len(seen) >= 3:
@@ -440,6 +452,7 @@ class Blue:
             if h.get("ready") and f"a{aid}" not in reported:
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), classes=["hidden_post"],
+                                side=self.lead_side(h),
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"],
                                                          self.watch_evidence(aid, h)),
                                 pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
@@ -449,6 +462,14 @@ class Blue:
         """The detectors' measured numbers for an account lead (todo/28), or None for a ring-only lead."""
         w = self.det["watch"].get(aid)
         return detect.evidence_text(w["kinds"]) if w else None
+
+    def lead_side(self, h):
+        """An account lead's side: its hidden post's, or its ring's, when we read that post's text."""
+        for pid in (h.get("hidden_post"), h.get("ring")):
+            p = self.s["posts"].get(str(pid))
+            if p and p["post"].get("body"):
+                return side_of(p["post"]["body"])
+        return "unclear"
 
     def ranked(self):
         """Greedy order: the best expected value first, the team's count updated after every pick. Expected value
@@ -461,7 +482,7 @@ class Blue:
                 c["n_today"] = n
                 c["ev"] = round(ev.account_ev(n) if c["kind"] == "account" else
                                 ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"], pg=c["pg"]), 1)
-                c["rank"] = c["ev"] * (1 - SPREAD * n if n < 5 else 1)
+                c["rank"] = c["ev"] * (1 - SPREAD * n if n < 5 else 1) * BLUE_SIDE_BIAS.get(c.get("side"), 1.0)
             best = max(cands, key=lambda c: c["rank"])
             if best["ev"] < MIN_EV:
                 break
@@ -522,14 +543,21 @@ class Blue:
         if mode == "off" or (self.locked() and not confirm):
             return
         pend = self.pending()
-        free = CAP - len(pend)
-        post_room = CAP - ACCOUNT_SLOTS - sum(r["kind"] == "post" for r in pend.values())
+        pend_posts = sum(r["kind"] == "post" for r in pend.values())
+        counted = self.accounts_count()
+        free = CAP - (len(pend) if counted else pend_posts)
+        post_room = CAP - (ACCOUNT_SLOTS if counted else 0) - pend_posts
         ok = self.approved()
         accounts, posts = self.fileable(ranked)
+        if free <= 0 and accounts and not confirm and self.probe_due():
+            self.cap_probe(accounts[0])
+            return
         ranked = accounts if len(accounts) >= free else accounts + posts   # enough account leads: no lock risk
         for c in ranked:
-            if free <= 0 or (self.locked() and not confirm):
+            if self.locked() and not confirm:
                 break
+            if free <= 0 and (counted or c["kind"] == "post"):
+                continue                      # full (account reports go beyond it once the probe says they may)
             if c["kind"] == "post" and post_room <= 0:
                 continue                      # the last slot is left to account reports
             if c["kind"] == "post" and self.bucket()["level"] < c.get("pg", ev.PG_BASE):
@@ -549,9 +577,43 @@ class Blue:
                 self.s["lock_confirm"] = confirm = False
                 continue
             if self.file(c):
-                free -= 1
+                free -= counted or c["kind"] == "post"
                 self.spent(c)
                 post_room -= c["kind"] == "post"
+
+    # ---- the cap probe (todo/28): do account reports count toward the pending cap? ----
+    def accounts_count(self):
+        return (read_json(self.probe_file, None) or {}).get("result") != "accounts_dont_count"
+
+    def probe_due(self):
+        d = read_json(self.probe_file, None) or {}
+        return self.live and not d.get("result") and d.get("tries", 0) < CAP_PROBE_TRIES
+
+    def cap_probe(self, c):
+        """One account report beyond the cap. Taken: accounts don't count. Refused naming the cap: they do. Anything
+        else (a gone account, the 6 h lock) answers nothing; a few non-answers and we stop asking."""
+        d = read_json(self.probe_file, None) or {}
+        self.probing, self.probe_refusal = True, None
+        try:
+            taken = self.file(c)
+        finally:
+            self.probing = False
+        d.update(tries=d.get("tries", 0) + 1, last=iso(), key=c["key"], pending=len(self.pending()) - taken)
+        if taken:
+            d.update(result="accounts_dont_count", why=f"{c['key']} taken with {d['pending']} pending")
+        elif self.probe_refusal:
+            status, msg = self.probe_refusal
+            d.update(result="accounts_count", why=f"{c['key']} refused: {status} {msg[:200]}")
+        elif self.s["reports"].get(c["key"], {}).get("status") != "refused":
+            d["tries"] -= 1                           # the 6 h lock, a rate limit, a read error: no answer, no try
+        write_json(self.probe_file, d)
+        self.log({"act": "cap_probe", **d})
+        if d.get("result"):
+            answer = ("account reports do NOT count toward the 30 pending: accounts now file beyond it"
+                      if d["result"] == "accounts_dont_count" else
+                      "account reports DO count toward the 30 pending: the last slot stays an account's")
+            self.alert("cap_probe", f"cap probe answered (observed, not confirmed by organisers): {answer}. "
+                       f"{d['why']}", gap_s=0)
 
     def unlock(self, why):
         t = now()
@@ -620,10 +682,11 @@ class Blue:
         pg = c.get("pg") if c["kind"] == "post" else None
         self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"], label=c["label"],
                                            filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf, pg=pg,
-                                           classes=c["classes"], ring=c.get("ring"), age_min=c.get("age_min"))
+                                           classes=c["classes"], ring=c.get("ring"), age_min=c.get("age_min"),
+                                           side=c.get("side"))
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
                   "label": c["label"], "classes": c["classes"], "ev": c["ev"], "pg": pg, "n_today": c.get("n_today"),
-                  "age_min": c.get("age_min"),
+                  "age_min": c.get("age_min"), "side": c.get("side"),
                   "detail": c["detail"], "reporter": self.reporter_name, "owner": config.operator(),
                   "response": resp if isinstance(resp, dict) else None})
         self.save()
@@ -637,6 +700,9 @@ class Blue:
         self.log({"act": "refused", "key": c["key"], "status": e.status, "message": msg})
         self.error(f"report refused: {e.status} {msg[:120]}")
         low = msg.lower()
+        if self.probing and 400 <= e.status < 500 and CAP_WORDS.search(msg) and "suspended" not in low:
+            self.probe_refusal = (e.status, msg)      # the cap probe's answer: no lock, no 30-min wait
+            return False
         if e.status in (400, 404, 409):              # bad detail, gone, already reported: drop this one only
             self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"],
                                                label=c["label"], filed=now(), status="refused", detail=c["detail"])
@@ -862,7 +928,11 @@ class Blue:
                        genuine=sum(r["status"] == "genuine" for r in ruled_today),
                        accounts=sum(r["status"] == "ruled" for r in ruled_today),
                        refused=sum(r["status"] == "refused" and sydney_day(r["filed"]) == today for r in reps),
-                       teams=len({r["label"] for r in filed_today})),
+                       teams=len({r["label"] for r in filed_today}),
+                       # todo/28: reports filed today by the side of their target (ranking only, never the detail)
+                       sides={k: sum(r.get("side", "unclear") == k for r in filed_today) for k in ("yes", "unclear",
+                                                                                                    "no")}),
+            cap_probe=read_json(self.probe_file, None),
             precision=self.precision(), ready=len(ranked), first=self.s["first"], pf_scale=self.s["pf_scale"],
             days=self.days(),
             waiting=[c["key"] for c in waiting], rings=rings(waiting),

@@ -23,7 +23,7 @@
 8. Do NPCs perceive **GIF/image links** or the `embed` field, or only text?
 9. What counts as "unique engagements" for the tie-break (§7.7)?
 10. **Blue, daily diminishing rate:** is an award counted on the Sydney day the report was **filed** or the day it was **ruled**? A report filed at 8:30pm Perth rules after midnight Sydney. The scoring page says only "The count resets at midnight Sydney time", but it fixes the multiplier "when the moderator rules", so `swan_blue` assumes the ruling day. (Not yet asked.)
-11. **Blue, pending cap:** do **account** reports count toward the pending-report cap (30 since 22 Oct)? `swan_blue` assumes yes. (Not yet asked.)
+11. **Blue, pending cap:** do **account** reports count toward the pending-report cap (30 since 22 Oct)? *Being probed from behaviour since 22 Oct ~10:50 UTC (todo/28): one extra account report the first time 30 are pending; the answer goes in the answers log below as observed, not confirmed by organisers.* `swan_blue` assumes yes. (Not yet asked.)
 
 ## Answers
 
