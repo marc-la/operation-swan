@@ -643,6 +643,12 @@ def blue_panel(data, now, points, day_start, logs=None):
         today={k: today.get(k) or 0 for k in ("filed", "hidden", "genuine", "refused", "accounts")},
         queued=s.get("queued") or 0, first={"first": 0, "later": 0, **(s.get("first") or {})}, queue=pending, groups=groups, own=own,
         rows=[r for _, rows in pending["groups"] for r in rows] + [r for g in groups for r in g["rows"]],
+        # todo/28's fields: the genuine-risk bucket, risk per evidence class, co-reported rulings, account detectors
+        risk=s.get("risk") and {"level": 0, "cap": 0, "per_day": 0, "posts_now": 0, **s["risk"]},
+        co=s.get("co") if (s.get("co") or {}).get("of") else None,
+        pg_by_class=sorted(((plain(k), {"n": 0, "genuine": 0, "expected": 0, **v})
+                            for k, v in (s.get("pg_by_class") or {}).items()), key=lambda kv: -kv[1]["n"]),
+        detect=s.get("detect") and {"posts_seen": 0, "groups": 0, "by": {}, **s["detect"]},
         rate=prec.get("rate"), ruled=prec.get("n"), history=history, last=last, target=BLUE_TARGET_DAY,
         error=s.get("last_error") if err_t and (now - err_t).total_seconds() < BLUE_ERROR_S else None)
 

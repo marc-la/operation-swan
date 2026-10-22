@@ -436,6 +436,25 @@ def test_blue_own_account_check(tmp_path):
     assert "OUR OWN ACCOUNTS REPORTED: 2" in ctx["blue"]["summary"]
 
 
+def test_blue_risk_classes_co_reporting_and_detectors(tmp_path):
+    root = blue_root(tmp_path, own_ids=[1])
+    st = json.loads((root / "data" / "blue_status.json").read_text())
+    st.update(risk={"level": 0.1, "per_day": 0.4, "cap": 0.1, "posts_now": 3}, co={"fast": 2, "of": 59},
+              pg_by_class={"reply_ring": {"n": 10, "genuine": 0, "expected": 0.4},
+                           "early_ring+like_ring": {"n": 3, "genuine": 1, "expected": 0.16}},
+              detect={"posts_seen": 120, "sequences": 900, "groups": 1,
+                      "by": {"fingerprint": {"watched": 5, "hidden": 1, "reported": 0}}})
+    (root / "data" / "blue_status.json").write_text(json.dumps(st))
+    ctx, html = page(root)
+    b = ctx["blue"]
+    assert [k for k, _ in b["pg_by_class"]] == ["reply ring", "early ring+like ring"]
+    assert "3 post reports affordable now · 2 of 59 rulings co-reported" in html
+    assert "fingerprint 5 watched, 1 with a hidden post, 0 reported" in html
+    st.pop("detect"), st.pop("risk")                          # an older status: the section still renders
+    (root / "data" / "blue_status.json").write_text(json.dumps(st))
+    assert 'id="blue-risk"' in page(root)[1]
+
+
 def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
     p = {"ts": iso(20), "act": "pulse", "id": 77, "hooks": [{"text": "ferry cuts"}, {"text": "nurses"}],
          "no_shapes": ["a"], "yes_lines": ["b", "c"], "avoid": []}
