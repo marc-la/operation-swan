@@ -135,10 +135,15 @@ def test_score_rate_history_and_llm_chain(tmp_path):
              {"ts": iso(0), "score": 3140, "rank": 14, "teams": 145, "by": "kim"}]
     fallback = {"llm": [{"model": "flash-lite", "parked_until": 3600, "why": "daily quota"},
                         {"model": "gpt-oss", "parked_until": None, "why": None}]}
-    ctx, html = page(make_root(tmp_path, [write(m) for m in range(40, 0, -1)], fallback, score=score))
+    root = make_root(tmp_path, [write(m) for m in range(40, 0, -1)], fallback, score=score)
+    (root / "data" / "llm_usage.json").write_text(json.dumps({"2026-10-21": {"flash-lite": 500, "gpt-oss": 12},
+                                                              "2026-10-20": {"gpt-oss": 999}}))  # 21 Oct Pacific
+    ctx, html = page(root)
     assert ctx["score"]["per_hour"] == round(640 / 17)            # 13:00 UTC roll-over to 06:00 UTC = 17 h
     assert [h["change"] for h in ctx["history"]] == [280, 360, None]
-    assert [m["state"] for m in ctx["llm"]["chain"]] == ["daily quota until 15:00", "in use"]
+    assert [m["state"] for m in ctx["llm"]["chain"]] == ["daily quota until 15:00", "ready"]
+    assert [m["calls"] for m in ctx["llm"]["chain"]] == [500, 12]
+    assert "flash-lite (500 calls today)" in html
     assert len(ctx["activity"]) == build.ACTIVITY_TOP and len(ctx["older"]) == 40 - build.ACTIVITY_TOP
     assert '<details id="bot">' in html and "#14" in html
 

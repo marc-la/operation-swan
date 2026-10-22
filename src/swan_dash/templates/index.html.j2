@@ -230,14 +230,14 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 
 {% set bot_warn = llm.rank != '1st' or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
-  {{ llm.model or 'no LLM' }}{% if llm.rank %} ({{ llm.rank }} of {{ llm.of }}){% endif %} ·
+  {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
   {{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% if accounts.suspended %} · {{ accounts.suspended }} suspended{% endif %}
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>
   <table>
   {% for m in llm.chain %}
-    <tr><td>{{ loop.index }}. {{ m.model }}</td><td class="{{ 'warn' if m.out else ('up' if m.state == 'in use' else '') }}">{{ m.state }}</td></tr>
+    <tr><td>{{ loop.index }}. {{ m.model }}</td><td>{{ m.calls | n }} today</td><td class="{{ 'warn' if m.out else '' }}">{{ m.state }}</td></tr>
   {% else %}<tr><td class="sub">No status from the bot yet.</td></tr>{% endfor %}
   </table>
   <h3>Accounts</h3>

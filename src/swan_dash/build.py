@@ -24,6 +24,7 @@ from swan_blue.evidence import awards_by_rate, first_later
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
 SYDNEY = ZoneInfo("Australia/Sydney")          # competition days roll over at midnight Sydney (9pm Perth)
+QUOTA_DAY = ZoneInfo("America/Los_Angeles")    # data/llm_usage.json days (swan_bot/llm.py): free quotas reset there
 TEAM_CAP_PER_MIN = 3                           # posts + replies + reposts, team-wide (rules)
 LIVE_CAP, TOTAL_CAP = 50, 200                  # accounts alive at once / ever
 WRITES = {"post": "post", "reply": "reply", "second_voice": "2nd voice", "reply_back": "reply-back",
@@ -696,10 +697,14 @@ def gather(root, now, service):
     parked = [dict(model=m["model"], why=m.get("why") or "parked",
                    until=hm(dt.datetime.fromtimestamp(m["parked_until"], dt.timezone.utc)))
               for m in chain if m.get("parked_until")]
-    states = [dict(model=m["model"], state="in use" if i == current else
-                   f"{m.get('why') or 'parked'} until {hm(dt.datetime.fromtimestamp(m['parked_until'], dt.timezone.utc))}"
+    # Each kind of draft tries the models in its own order (config.REPLY_MODELS, AMP_MODELS), so the first ready model
+    # in the chain is not necessarily the one doing the work: show what each model actually answered today.
+    calls = (read_json(data / "llm_usage.json") or {}).get(now.astimezone(QUOTA_DAY).date().isoformat(), {})
+    states = [dict(model=m["model"], calls=calls.get(m["model"], 0),
+                   state=f"{m.get('why') or 'parked'} until {hm(dt.datetime.fromtimestamp(m['parked_until'], dt.timezone.utc))}"
                    if m.get("parked_until") else "ready", out=bool(m.get("parked_until")))
-              for i, m in enumerate(chain)]
+              for m in chain]
+    busiest = max(states, key=lambda s: s["calls"], default=None)
     acc = status.get("accounts") or {}
     per_min = status.get("per_min")
 
@@ -844,7 +849,7 @@ def gather(root, now, service):
                       suspended=acc.get("suspended"), voices=acc.get("voices"), boosters=acc.get("boosters")),
         llm=dict(model=chain[current]["model"] if current is not None else None,
                  rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked,
-                 chain=states),
+                 chain=states, busiest=busiest if busiest and busiest["calls"] else None),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
         activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
         blue=blue, reach=reach(actions, status, points, now, day_start, read_json(data / "reach_notes.json") or {}),
