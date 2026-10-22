@@ -19,7 +19,7 @@
   So it likely responds to: **new, world-consistent information**; challenges to the *means* (does the pass protect anyone?) rather than its details; **their own values named back as the No case**; an **explicit conclusion for them** (a small model won't make a two-step inference); credible sources (the in-world papers); messengers like them; **clean text**.
 
 ## Phase 1: the NPC lab (offline, no writes, ~half a day)
-1. **The stand-in NPC:** use the organisers' LLM (`ctn.CompetitorLLM`, qwen2.5-3b at llm.legitreal.com; 3/min, 1 at a time; `docs/04-technical/api-reference.md`). It's provided to competitors and our bot no longer uses it. Optionally use Kimi as a second, stronger judge to check results aren't model-specific.
+1. **The stand-in NPC:** use the organisers' LLM (`ctn.CompetitorLLM`, qwen2.5-3b at llm.legitreal.com; 3/min, 1 at a time; `docs/04-technical/api-reference.md`). It's provided to competitors and our bot no longer uses it. **The stand-in NPC and the classifier both run only on CompetitorLLM.** CLAUDE.md rule 2: external LLMs (Kimi, Gemini, GLM) may generate content, here the reply variants under test, but not play the citizen or judge it (that's analysis; open question #5).
 2. **Personas from real citizens:**
    - for ~30 citizens we've replied to (mixed stances, mostly yes_but / unsure), read their last ~20 posts and likes (read-only, ≤ 30 reads/min);
    - write each persona card: occupation, place, family, values, concerns, and their referendum and vaccination views **in their own words**.
@@ -41,7 +41,7 @@
    - **Clean text:** no typo or lowercase "hand", against the same text with it;
    - **Two-voice session:** two different new points from two voices, read in one session;
    - **Conversation:** our reply to their likely reply, answering their latest point.
-5. **Run** ≥ 10 trials per persona × strategy (vary the seed). Report: toward No / neither / toward Yes per 100, by stance class. Write the table into [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md) with the date and caveats: the lab is a proxy; only live results count.
+5. **Run** within CompetitorLLM's budget (3/min ≈ 180 calls/h, 2 per trial: the session plus the classifier): start with **12 personas × the 6 most promising strategies × 3 seeds ≈ 216 trials ≈ 2.5 h**, then a second round on the top 3 with more personas. Report: toward No / neither / toward Yes per 100, by stance class. Write the table into [direction-2026-10-21](../docs/06-strategy/direction-2026-10-21.md) with the date and caveats: the lab is a proxy; only live results count.
 
 ## Phase 2: live (switchback, ~1 day)
 6. **Deep profile:** before drafting a reply, read the citizen's recent posts and likes (cache them; ≤ 30 reads/min, never the feed budget) and pass a short values/concerns card into the reply prompt. `content.py` / `bot.py` drafting path.
