@@ -526,7 +526,10 @@ def _minds(points, since):
             if not m or "mind" not in m.group(2):
                 continue
             n, what = int(m.group(1)), m.group(2)
-            side = "toward" if "towards your side" in what else "away" if "away from your side" in what else "neither"
+            side = ("toward" if "towards your side" in what else "away" if "away from your side" in what else
+                    "neither" if "neither side" in what else None)       # no side named: an "other view" change
+            if side is None:
+                continue
             out[side] += n
             if side == "toward" and "contribution" not in what:
                 out["primary_toward"] += n

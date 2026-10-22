@@ -324,3 +324,9 @@ def test_reach_outcome_first_queue_split_and_notes(tmp_path):
     assert r["rows"][0]["name"].startswith("Changes of mind") and r["summary"].startswith("today 0 toward No")
     assert "10 citizens waiting · 20 extra-group posts queued" in rowof(ctx, "Longest wait")["now"]
     assert "In hand: prompt fix live 15:20, recheck 16:30" in html
+
+
+def test_reach_other_view_change_is_not_counted_as_neither():
+    pts = [{"_t": NOW, "message": "NPC engagement: 1 contribution to a change of mind, 2 contributions to changes of "
+            "mind on vaccination towards neither side"}]
+    assert build._minds(pts, NOW - dt.timedelta(hours=1))["neither"] == 2
