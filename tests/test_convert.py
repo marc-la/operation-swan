@@ -69,8 +69,10 @@ class Gen:
         self.drafts, self.calls = list(drafts), []
 
     def complete(self, system, user, models=None, **kw):
-        self.calls.append((models, user))
         allowed = [m for _, m in self.chain if not models or m in models]
+        if not allowed:                     # like llm.Generator: none of these models is in the chain
+            return None, None
+        self.calls.append((models, user))
         return self.drafts.pop(0), allowed[0]
 
 
@@ -82,8 +84,9 @@ def test_reply_gets_three_repairs_and_switches_model(monkeypatch):
     job = dict(mode="reply", target=dict(body="only if there is an end date"))
     rejects = []
     text, backend, repair = bot.draft_checked(gen, job, "sys", "user", [], on_reject=lambda *a: rejects.append(a))
-    assert text and backend == "zai.glm-5" and len(gen.calls) == 4 and len(rejects) == 3
+    assert text and backend == "gemini-3.8-flash" and len(gen.calls) == 4 and len(rejects) == 3
     assert "moonshotai.kimi-k2.5" not in gen.calls[2][0]               # Kimi failed twice: left out after that
+    assert not any("zai.glm-5" in models for models, _ in gen.calls)    # todo/24: GLM-5 drafts no replies
     assert "Cut «I hear you»" in gen.calls[1][1]                          # the repair names the exact problem
     assert job["meta"]["llm_calls"] == 4 and job["meta"]["repairs"] == 3
 
