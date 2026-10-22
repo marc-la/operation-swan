@@ -176,6 +176,17 @@ def stance(text):
     return "unsure" if SOFT.search(text) else "unclear"
 
 
+AGREE_OPENING = re.compile(r"^\W*(exactly|that'?s the (problem|thing)|true|fair point|agreed|yeah|right)\b", re.I)
+
+
+def agrees(text):
+    """todo/32: a citizen's answer to us agrees with our side: it leans or stands No (stance), or opens with an
+    agreeing word and makes no Yes statement. The keyword rules only: a reply-back whose answer fails this gets the
+    light read (bot.build_prompt) to catch what they miss."""
+    s = stance(text)
+    return s == "no" or (s != "yes" and bool(AGREE_OPENING.search(text or "")))
+
+
 def target_class(text, context=None):
     """The experiment's target class (H3), and since todo/21 the candidate's priority (READ_PRIORITY): yes_reason
     (they voice the fear behind a Yes), conditions (the conditions they want), unsure / unclear, lean_no, firm_yes,

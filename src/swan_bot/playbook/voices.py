@@ -108,4 +108,5 @@ VOICES = {
 
 VOICE_OF = {"lani": "warm", "ana": "warm", "mere": "warm", "grace": "warm", "ruth": "warm", "sione": "warm",
             "dan": "warm", "josh": "fed_up", "ben": "fed_up", "tomasi": "fed_up", "priya": "plain", "isla": "plain",
-            "esther": "warm", "paulo": "warm", "wally": "warm", "ngaire": "fed_up", "kai": "plain"}
+            "esther": "warm", "paulo": "warm", "wally": "warm", "ngaire": "fed_up", "kai": "plain",
+            "kiri": "warm", "rafa": "plain", "leo": "fed_up"}

@@ -9,6 +9,7 @@
 # --per-min 2.9 (todo/27, 22 Oct 05:00 UTC; was 2.9): fewer writes while other teams' Blue reports get our replies
 # hidden (6 hides/h). Back to 2.9 once hides stay under 1/h for 6 h (config.py, todo/27 block).
 # --boosters 24 (22 Oct; was 34): 10 boosters became voices (scripts/convert_boosters.py) after 13 of 17 voices were
-# suspended; at 34 the drip registration would replace them.
+# suspended; at 34 the drip registration would replace them. 23 Oct: 22, after 7 more became voices (kiri, rafa, leo
+# and 4 re-styled).
 cd "$(dirname "$0")/.."
-exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 2.9 --amplify --boosters 24 --hours 100000
+exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 2.9 --amplify --boosters 22 --hours 100000

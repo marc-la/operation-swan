@@ -36,8 +36,9 @@ import capturethenarrative as ctn
 from . import batch, config, content, experiment, feeds, humanize, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
-from .targeting import YES_REASON, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
+from .targeting import YES_REASON, agrees, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
 
+AGREE_STANCES = ("lean_no", "firm_no")      # todo/32: a light read that says they lean or stand No agrees with us
 REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3)
 REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's last write (not the 4-min gap)
 WAIT_S = dict(no_voice=30, nothing=45, priority=15)   # a loop with nothing to do waits this long (s)
@@ -468,7 +469,7 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
-        "block_id", "arm_conv", "fresh")
+        "block_id", "arm_conv", "fresh", "agree")
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level")
 
@@ -570,6 +571,15 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     else:
         user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"))
         meta["style"] = job.get("style")
+        if meta.get("arm_conv") == "agree_close":                 # todo/32: close on our vote when they agree
+            meta["agree"] = agrees(body)
+            closing = content.reply_back_prompt(job["our_text"], body, style=job.get("style"), agree_close=True)
+            job["gate_policy"] = {quality.PHRASE_PREFIX: dict(fix=False, redraft=user)}   # over budget: the base prompt
+            if meta["agree"]:
+                meta["agree_by"], user = "keywords", closing
+            else:                                                 # the light read: their stance, in the same call
+                job["read"], job["on_read"] = True, dict(stances=AGREE_STANCES, redraft=closing, base=user)
+                user += content.reply_back_read_block()
         if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
             user = f"{user} {content.fresh_line(body, meta)}".rstrip()
     return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
@@ -591,6 +601,13 @@ def repair_prompt(user, raw, note):
 THEME_REASONS = {"unplanned_slogan", "slogan_missing", "theme_without_reason", "theme_echo_repeat"}   # themes.draft_problem
 
 
+def gate_rule(job, why):
+    """The job's gate_policy for a reject reason: {prefix of the reason: {fix: False to skip the code fix, redraft: the
+    prompt to draft again on}}. Policies are per job, so one kind of reply can keep a fix that would strip another's
+    point (todo/32: the closing vote line is what the cut-the-vote fix removes); {} when the job has none for it."""
+    return next((r for k, r in (job.get("gate_policy") or {}).items() if why.startswith(k)), {})
+
+
 def gate(raw, job, user, recent_texts, ledger=None):
     """(text, why, fixes): quality.check, the code fixes for what it rejects (quality.fix, at most 3, no LLM call),
     then the theme check. text is None when the draft still fails; fixes names the fixes that were applied."""
@@ -602,6 +619,8 @@ def gate(raw, job, user, recent_texts, ledger=None):
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
+        if not gate_rule(job, why).get("fix", True):
+            break                           # a job's gate_policy can leave a reject to draft_checked (todo/32)
         fixed = quality.fix(draft, why, mode)
         if not fixed or fixed == draft:
             break
@@ -687,10 +706,16 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
                 if (mode == "reply" and meta.get("arm_conv") == "no_leaners"
                         and r["stance"] in config.CONV_SKIP_STANCES and not r["skip"]):
                     r["skip"] = f"arm_conv:{r['stance']}"         # todo/25: No-leaners are left alone this block
-            if r["skip"] and prompt is user:
+            if r["skip"] and prompt is user and not job.get("on_read"):    # a citizen who answered us is never skipped
                 job["read_skip"] = r["skip"]
                 return None, backend, None
             draft = r["reply"] or ""
+            on_read = job.get("on_read")
+            if on_read and prompt is user and r["stance"] in on_read["stances"]:    # todo/32: they agree: close on our vote
+                job["read"] = False                   # the closing prompt answers in plain text
+                meta.update(agree=True, agree_by="read")
+                user = prompt = on_read["redraft"]
+                continue
         text, why, fixes = gate(draft, job, user, recent_texts, ledger)
         if text:
             meta["fixes"] = fixes
@@ -699,6 +724,11 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
         meta["last_reject"] = why
         if on_reject:
             on_reject(why, raw, backend, repair)
+        redraft = gate_rule(job, why).get("redraft")
+        if redraft and user != redraft:                         # todo/32: a fresh draft on the job's other prompt
+            user = prompt = redraft
+            repair, meta["redrafted"] = None, why
+            continue
         note = (themes.repair_note(why, job.get("theme")) if why in THEME_REASONS else
                 quality.repair_note(why, raw, mode, meta.get("tag"), recent=recent_texts))
         if note and job.get("read"):

@@ -74,7 +74,7 @@ def test_merge_personas_have_register_and_character_fields():
 
 def test_candidates_stay_out_of_personas():
     keys = {p["key"] for p in content.PERSONAS}
-    assert len(keys) == 17 == len(content.PERSONA_BY_KEY)
+    assert len(keys) == 20 == len(content.PERSONA_BY_KEY)
     for c in getattr(real_characters, "CANDIDATES", []):
         assert c["key"] not in keys
 

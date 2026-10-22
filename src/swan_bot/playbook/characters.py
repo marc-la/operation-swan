@@ -749,24 +749,9 @@ CHARACTERS = {
              ("Read that the first vaccine shipment had arrived for health workers and people at high risk; he'll have"
               " his when his turn comes.")],
     ),
-}
-
-# Proposed new characters: NOT in content.PERSONAS, never registered until the team approves them.
-CANDIDATES = [
     # Gap: no persona is a parent of a 12-year-old (Grace teaches them, Mere is a grandmother), and playbook §7 routes
     # 'as a parent' posts to an in-group messenger; also New Haven has only Ben.
-    dict(
-        key="kiri",
-        name="Kiri Matagi",
-        handle="kiri_spicefarm",
-        role="spice and vanilla grower outside New Haven, mum of twins who turned 12 this year",
-        place="New Haven",
-        voice="warm, busy, practical, a mum first",
-        details=["sells vanilla and nutmeg at the New Haven Saturday market",
-                 "her twins catch the school bus in from the farm road",
-                 "already planning her stall for the Mango & Spice Festival"],
-        frames=["F13_age12", "F14_no_yes_but", "F12_open_island"],
-        register="warm",
+    "kiri": dict(
         age=41,
         people=["Tama, her son, twelve, who wants to play in the under-thirteens rugby side in town",
                 "Noa, her daughter and Tama's twin, who sings in the school choir and hates being late",
@@ -793,23 +778,11 @@ CANDIDATES = [
               " tie them back up."),
              ("The note from Mrs Adeyemi came home in both school bags, asking parents to keep the referendum off "
               "the school gate."),
-             ("Drew up plans for a bigger spice stall at the summer festival in New Haven, then wondered if she'd be"
-              " checking papers at it.")],
+             "Counted how many vanilla pods she would need to pick before the twins' school concert."],
     ),
     # Gap: no tourism or hospitality worker besides Lani's cafe, though tourism is KITB's base and foreign visitors
     # are covered by the rule; adds a second plain-facts voice outside Kingstonia City.
-    dict(
-        key="rafa",
-        name="Rafael Domingo",
-        handle="rafa_reefdives",
-        role="dive instructor who runs reef trips out of Crown Harbour",
-        place="Crown Harbour",
-        voice="matter-of-fact, numbers first, a diver's calm",
-        details=["takes six divers a boat out to the barrier reef",
-                 "most of his customers fly in from Australia and New Zealand",
-                 "booked solid for Regatta Week"],
-        frames=["F7_livelihoods", "F1_blank_cheque", "F5_not_here_yet"],
-        register="plain",
+    "rafa": dict(
         age=36,
         people=[("Kenji Watanabe-Reid, his business partner, who does the bookings and the books and worries about "
                  "both"),
@@ -847,18 +820,7 @@ CANDIDATES = [
     ),
     # Gap: no young COVID-weary voter in the fed-up register (Isla is young but plain); playbook §6 lists the COVID-
     # weary young among the liberty-leaning audience the fed-up voice is for.
-    dict(
-        key="leo",
-        name="Leo Fonoti",
-        handle="leo_fonoti_mech",
-        role="apprentice mechanic in New Haven whose last school years were lost to closures",
-        place="New Haven",
-        voice="young, blunt, a bit sarcastic, short sentences",
-        details=["fixes utes and outboard motors at a workshop on the ring road",
-                 "plays club rugby on Saturdays",
-                 "missed his last two school years in the classroom"],
-        frames=["F2_no_end", "F9_parliament", "F1_blank_cheque"],
-        register="fed_up",
+    "leo": dict(
         age=22,
         people=["Mr Brierley, his boss at the ring-road workshop, who took him on when nobody else was hiring",
                 ("Jonah, his younger brother, sixteen, who keeps asking whether his footy trip to Kingstonia City "
@@ -890,4 +852,7 @@ CANDIDATES = [
              ("Caught the bus to Crown Harbour for his trade course and counted how many of the passengers would "
               "need papers to be on it.")],
     ),
-]
+}
+
+# Candidate characters not yet in content.PERSONAS (todo/17: all promoted 2026-10-23).
+CANDIDATES = []

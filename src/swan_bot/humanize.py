@@ -54,6 +54,12 @@ HANDS = {
                    dots=0.0,  two_space=False, slip=0.08, careful=0.5),
     "kai":    dict(device="laptop", lower=0.0,  lower_start=0.0,  small_i=0.0,  apos=0.0,  comma=0.15, amp=0.15,
                    dots=0.0,  two_space=False, slip=0.07, careful=0.35),
+    "kiri":   dict(device="phone",  lower=0.0,  lower_start=0.0,  small_i=0.0,  apos=0.20, comma=0.15, amp=0.0,
+                   dots=0.05, two_space=False, slip=0.10, careful=0.3),
+    "rafa":   dict(device="phone",  lower=0.0,  lower_start=0.0,  small_i=0.0,  apos=0.0,  comma=0.05, amp=0.0,
+                   dots=0.0,  two_space=False, slip=0.08, careful=0.35),
+    "leo":    dict(device="phone",  lower=0.0,  lower_start=0.4,  small_i=0.0,  apos=0.20, comma=0.15, amp=0.0,
+                   dots=0.10, two_space=False, slip=0.15, careful=0.2),
 }
 
 # Hands for the todo/17 candidates (characters.CANDIDATES): moved into HANDS when a candidate joins content.PERSONAS.

@@ -394,7 +394,9 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
 # 2026-10-22: target_order (lab round 1: toward-No per 100 vs Control: lean_no 45/25, unsure 37/21, yes_but 21/8,
 # firm_yes 20/25, yes_reason 9/0): in its blocks candidates go by TARGET_ORDER first, the todo/21 score within a class.
 # The writes' target_class and read_stance split the portal's toward/away by stance in the read-out.
-CONV_ARMS = ["base", "fresh_facts", "target_order"]
+# 2026-10-23 (todo/32): agree_close: a reply-back to a citizen whose answer agrees with us is under 25 words, one gap
+# from what they said, and ends on our own vote (the one thread that converted on 22 Oct); logged as `agree`.
+CONV_ARMS = ["base", "fresh_facts", "target_order", "agree_close"]
 TARGET_ORDER = ("unsure", "unclear", "lean_no", "conditions")      # then the rest (yes_reason, firm_yes last)
 CONV_BLOCK_S = 2 * 3600
 CONV_POST_GAP_S = 20 * 60

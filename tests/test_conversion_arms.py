@@ -159,3 +159,115 @@ def test_target_order_arm_puts_the_movable_classes_first(monkeypatch):
     assert order("target_order")[:4] == ["unsure", "lean_no", "conditions", "yes_reason"]
     base = order("base")
     assert base.index("lean_no") > base.index("conditions") and base.index("lean_no") > base.index("unsure")
+
+
+# ---- todo/32: agree_close ----
+AGREES = "Exactly, it'll get dumped on whoever's at the counter. If they want rules, publish the venue list first."
+DISAGREES = "I think the vaccine rules are fair and I'm voting yes on the referendum."
+CLOSE = "the venue list isn't out until after the vote, so we buy in blind. that's why i'm voting no."
+
+
+def reply_back_job(body):
+    return dict(mode="reply_back", rec=dict(persona="lani"), frame=None, our_text="Nursing shortage, exactly.",
+                target=dict(post_id=6, author_id=528, body=body))
+
+
+def prompt_for(arm, body, monkeypatch):
+    monkeypatch.setattr(config, "SWITCHBACK", [("arm_conv", [arm], 7200)])
+    job = reply_back_job(body)
+    _, _, user = bot.build_prompt(job, types.SimpleNamespace(headline=None))
+    return job, user
+
+
+def test_agree_close_is_in_the_rotation():
+    assert "agree_close" in config.CONV_ARMS and "agree" in bot.ARMS
+
+
+def test_agree_close_block_gives_an_agreeing_answer_the_closing_prompt(monkeypatch):
+    from swan_bot import content
+    job, user = prompt_for("agree_close", AGREES, monkeypatch)
+    assert job["meta"]["agree"] is True and job["meta"]["arm_conv"] == "agree_close"
+    assert "25 words" in user and content.NO_VERDICT_RULE not in user
+    assert job["meta"]["agree_by"] == "keywords" and not job.get("read")           # keywords agree: no read needed
+    assert job["gate_policy"]["phrase_"] == dict(fix=False, redraft=content.reply_back_prompt("Nursing shortage, exactly.", AGREES))
+
+
+def test_agree_close_block_leaves_the_other_answers_on_the_base_prompts(monkeypatch):
+    from swan_bot import content
+    job, user = prompt_for("agree_close", DISAGREES, monkeypatch)
+    base = content.reply_back_prompt("Nursing shortage, exactly.", DISAGREES)
+    assert job["meta"]["agree"] is False and job["read"] and user == base + content.reply_back_read_block()   # the light read
+    assert content.NO_VERDICT_RULE in user and "25 words" not in user
+    job = dict(job_for(None, body=AGREES), mode="reply")                          # a plain reply: untouched
+    _, _, user = bot.build_prompt(job, types.SimpleNamespace(headline=None))
+    assert "agree" not in job["meta"] and "25 words" not in user
+    for arm in ("base", "fresh_facts", "target_order"):                           # and the other arms' reply-backs
+        job, user = prompt_for(arm, AGREES, monkeypatch)
+        assert "agree" not in job["meta"] and "25 words" not in user and content.NO_VERDICT_RULE in user
+
+
+def test_agrees_reads_the_answer(monkeypatch):
+    from swan_bot import targeting
+    assert targeting.agrees("Exactly. You can't fix a bad question with a yes.")
+    assert targeting.agrees("Fair point, nobody has said who checks.")
+    assert targeting.agrees("couldve at least put a draft out. voting no on this isnt the same as against the vaccine")
+    assert not targeting.agrees(DISAGREES)
+    assert not targeting.agrees("Right, so I'm voting yes on the referendum then.")      # agreeing word, a Yes statement
+    assert not targeting.agrees("Thanks, I'll think about it.")
+
+
+def test_agree_close_draft_passes_the_gate_and_the_vote_budget_falls_back_to_the_base_prompt(monkeypatch):
+    job, user = prompt_for("agree_close", AGREES, monkeypatch)
+    job["meta"].update(llm_calls=0)
+    # the vote phrase is in more than 15% of our last 100 citizen-facing texts: the closing draft is rejected
+    job["phrase_texts"] = ["fine so i'm voting no."] * 20 + ["a different reply about the ferry."] * 80
+    rejected = []
+    gen = Gen([CLOSE, "Cheers, and the wharf gate has nobody rostered to check passes."])
+    text, _, _ = bot.draft_checked(gen, job, "sys", user, ["x"],
+                                   on_reject=lambda why, raw, backend, repair: rejected.append(why))
+    assert rejected == ["phrase_vote"] and text and "voting no" not in text
+    assert gen.calls[1][1] == job["gate_policy"]["phrase_"]["redraft"] and job["meta"]["redrafted"] == "phrase_vote"
+    job, user = prompt_for("agree_close", AGREES, monkeypatch)                      # under budget: the closing draft stands
+    job["phrase_texts"] = ["a different reply about the ferry."] * 100
+    text, _, _ = bot.draft_checked(Gen([CLOSE]), job, "sys", user, ["x"])
+    assert text == CLOSE and "redrafted" not in job["meta"]
+
+
+QUIET_AGREE = "Nobody has said who pays for the door checks at the wharf."     # no agreeing word, no vote talk
+
+
+def test_light_read_catches_an_agreement_the_keywords_miss(monkeypatch):
+    job, user = prompt_for("agree_close", QUIET_AGREE, monkeypatch)
+    assert job["meta"]["agree"] is False
+    read = '{"stance": "lean_no", "reply": "Cheers, noted."}'
+    gen = Gen([read, CLOSE])
+    text, _, _ = bot.draft_checked(gen, job, "sys", user, ["x"])
+    assert text == CLOSE and len(gen.calls) == 2                                   # the closing prompt redrafts it
+    assert "25 words" in gen.calls[1][1] and "25 words" not in gen.calls[0][1]
+    assert job["meta"]["agree"] is True and job["meta"]["agree_by"] == "read" and job["meta"]["read_stance"] == "lean_no"
+    assert not job["read"]
+
+
+def test_light_read_leaves_the_rest_on_the_base_reply(monkeypatch):
+    job, user = prompt_for("agree_close", QUIET_AGREE, monkeypatch)
+    read = '{"stance": "unsure", "reply": "Cheers, the wharf gate has nobody rostered to check passes."}'
+    gen = Gen([read])
+    text, _, _ = bot.draft_checked(gen, job, "sys", user, ["x"])
+    assert text and len(gen.calls) == 1 and job["meta"]["agree"] is False and job["meta"]["read_stance"] == "unsure"
+    # a skip from the model is not honoured: a citizen who answered us is always answered
+    job, user = prompt_for("agree_close", QUIET_AGREE, monkeypatch)
+    text, _, _ = bot.draft_checked(Gen(['{"skip": "off topic"}', "Cheers, the wharf gate has nobody rostered to check passes."]),
+                                   job, "sys", user, ["x"])
+    assert "read_skip" not in job
+
+
+def test_gate_policy_is_per_job(monkeypatch):
+    drop = "the venue list isn't out until after the vote. that's why i'm voting no."
+    job = reply_back_job(AGREES)
+    job["meta"] = {}
+    job["phrase_texts"] = ["fine so i'm voting no."] * 20 + ["a different reply about the ferry."] * 80
+    text, why, fixes = bot.gate(drop, job, "user", ["x"])                          # no policy: the vote cut applies
+    assert text and "voting no" not in text and fixes == ["phrase_vote"]
+    job["gate_policy"] = {"phrase_": dict(fix=False)}
+    text, why, fixes = bot.gate(drop, job, "user", ["x"])                          # this job's policy keeps it for redraft
+    assert text is None and why == "phrase_vote" and fixes == []

@@ -260,6 +260,28 @@ PERSONAS = [
                   "studied computer science at Crown Harbour Institute of Technology",
                   "rides the bus to an office of twelve near the Kingstonia City waterfront"],
          frames=["F8_powers", "F2_no_end", "F1_blank_cheque"]),
+    # todo/17, promoted 2026-10-23 (profiles in playbook/characters.py)
+    dict(key="kiri", name="Kiri Matagi", handle="kiri_spicefarm",
+         role="spice and vanilla grower outside New Haven, mum of twins who turned 12 this year",
+         place="New Haven", voice="warm, busy, practical, a mum first",
+         details=["sells vanilla and nutmeg at the New Haven Saturday market",
+                  "her twins catch the school bus in from the farm road",
+                  "ties up the young vanilla vines after every squall"],
+         frames=["F13_age12", "F14_no_yes_but", "F12_open_island"]),
+    dict(key="rafa", name="Rafael Domingo", handle="rafa_reefdives",
+         role="dive instructor who runs reef trips out of Crown Harbour",
+         place="Crown Harbour", voice="matter-of-fact, numbers first, a diver's calm",
+         details=["takes six divers a boat out to the barrier reef",
+                  "most of his customers fly in from Australia and New Zealand",
+                  "booked solid for Regatta Week"],
+         frames=["F7_livelihoods", "F1_blank_cheque", "F5_not_here_yet"]),
+    dict(key="leo", name="Leo Fonoti", handle="leo_fonoti_mech",
+         role="apprentice mechanic in New Haven whose last school years were lost to closures",
+         place="New Haven", voice="young, blunt, a bit sarcastic, short sentences",
+         details=["fixes utes and outboard motors at a workshop on the ring road",
+                  "plays club rugby on Saturdays",
+                  "missed his last two school years in the classroom"],
+         frames=["F2_no_end", "F9_parliament", "F1_blank_cheque"]),
 ]
 PERSONA_BY_KEY = {p["key"]: p for p in PERSONAS}
 
@@ -981,6 +1003,15 @@ def read_block(hint=None, rng=random):
         f"Angles (the point your reply makes):\n{menu}\n{hint}")
 
 
+def reply_back_read_block():
+    """todo/32's light read for a reply-back: their stance and the reply, as JSON. No skip and no frame: a citizen who
+    answered us is always answered, and the angle is already set by the thread."""
+    return (f"\n\nFirst read them, then write. Output one JSON object and nothing else (this replaces 'output only the "
+            f"text'): {{\"stance\": one of {'|'.join(READ_STANCES)}, \"reply\": your reply}}. Stances: firm_yes = set on "
+            f"Yes; yes_but = Yes with conditions or worries; unsure = undecided; unclear = on the vote but no stance; "
+            f"lean_no / firm_no = leaning or set on No.")
+
+
 def _unescape(v):
     try:
         return json.loads(f'"{v}"')
@@ -1134,11 +1165,20 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
     )
 
 
-def reply_back_prompt(our_text, their_text, style=None):
+AGREE_CLOSE = ("They agree with you. Reply in at most 25 words, all lowercase and casual, with no greeting and no thanks: "
+               "pick up one concrete gap in what they just said (the list that only comes after the vote, no end date, "
+               "who does the checking...) in a few words, then end on your own vote as the conclusion, worded a "
+               "different way each time (\"that's why i'm voting no\", \"so no from me\", \"which is why i'm a no\", "
+               "\"so i'm ticking no\"). No question, no list of facts, no story about someone you know.")
+
+
+def reply_back_prompt(our_text, their_text, style=None, agree_close=False):
     """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7). style: the
     style of our reply they answered; a mirror_concede conversation goes on in that style (todo/20 step 3)."""
     said = (f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
             if our_text else f"A neighbour mentioned you in this post:\n<<<{their_text[:500]}>>>\n")
+    if agree_close:                                   # todo/32: replaces NO_VERDICT_RULE here only
+        return f"{said}{AGREE_CLOSE} {worn_line(their_text)}No hashtags."
     if style == "mirror_concede":
         return (
             f"{said}Reply to them in 1 or 2 sentences, between 60 and 220 characters: pick up one thing they actually "

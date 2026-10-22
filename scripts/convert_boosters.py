@@ -24,14 +24,16 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from swan_bot import config, content  # noqa: E402
 
+# 23 Oct (Marc): 7 more, the 3 todo/17 candidates first (kiri, rafa, leo), then the 4 left from the 22 Oct plan
+# (re-styled: their old style cards had become active voices). Styles are never a card that is active when the
+# account converts, so the order matters. The earlier note:
 # (booster, persona card, style card) in the order they are converted, booster names matched to the card. Cards whose
 # voice was suspended by an account report on one hidden post come first (wally, dan, priya); mere, paulo and ben, whose
 # posts were hidden 3-5 times, are left out as cards and lend only a style. The style card (voice, register, typing
 # hand) is never the card's own: bot.persona_of.
-PLAN = [("owen_bakes", "wally", "mere"), ("malakai_r94", "dan", "ben"), ("ivy76", "priya", "paulo"),
-        ("jess_f77", "grace", "priya"), ("ellaleota", "isla", "lani"), ("marcotaufa", "josh", "tomasi"),
-        ("vika_i92", "ruth", "grace"), ("rua90", "tomasi", "josh"), ("lucy.pulu", "lani", "isla"),
-        ("rwalker84", "sione", "dan")]
+PLAN = [("aroha_t26", "kiri", "lani"), ("liam_f70", "rafa", "sione"), ("sam_t18", "leo", "tomasi"),
+        ("jess_f77", "grace", "mere"), ("rua90", "tomasi", "ben"), ("lucy.pulu", "lani", "ana"),
+        ("rwalker84", "sione", "paulo")]
 
 
 def plan(records, n, pairs=PLAN):

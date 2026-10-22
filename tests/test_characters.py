@@ -38,7 +38,7 @@ def _shingles(text, n=7):
 
 
 def test_one_profile_per_persona():
-    assert set(CHARACTERS) == PERSONA_KEYS and len(CHARACTERS) == 17
+    assert set(CHARACTERS) == PERSONA_KEYS and len(CHARACTERS) == 20
 
 
 def test_profile_fields_and_counts():
@@ -88,11 +88,10 @@ def test_lines_not_copied_from_facts_or_angles():
 
 
 def test_candidates_are_new_and_valid():
-    assert len(CANDIDATES) == 3
     handles = {p["handle"] for p in content.PERSONAS}
     names = {p["name"] for p in content.PERSONAS}
     keys = [c["key"] for c in CANDIDATES]
-    assert len(set(keys)) == 3 and not set(keys) & PERSONA_KEYS
+    assert len(set(keys)) == len(keys) and not set(keys) & PERSONA_KEYS
     for c in CANDIDATES:
         assert re.fullmatch(r"[a-z0-9_]{3,20}", c["handle"]) and c["handle"] not in handles, c["handle"]
         assert c["name"] not in names
@@ -101,7 +100,7 @@ def test_candidates_are_new_and_valid():
         assert c["details"] and all(isinstance(d, str) for d in c["details"])
         assert c["frames"] and set(c["frames"]) <= set(content.FRAMES), c["frames"]
         assert c["register"] in REGISTERS
-    assert len({c["handle"] for c in CANDIDATES}) == 3
+    assert len({c["handle"] for c in CANDIDATES}) == len(CANDIDATES)
 
 
 def test_data_module_stays_pure():

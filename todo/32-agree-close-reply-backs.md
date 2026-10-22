@@ -2,6 +2,19 @@
 
 **Written 2026-10-23 by Claude (todo/25 session) at Marc's request. Owner: whoever picks it up. Priority: high.**
 
+**Status 2026-10-23: built, not deployed.** `CONV_ARMS` has `agree_close` (config.py); `content.AGREE_CLOSE` /
+`reply_back_prompt(agree_close=True)`; tests in `tests/test_conversion_arms.py`. How it decides and what it falls back to
+(Marc, 23 Oct: reply-backs get a light read like replies, and quality fixes are per-job policy, not one rule for all):
+- **Agreement, two ways.** `targeting.agrees` (keywords: `stance == "no"`, or an agreeing opening word with
+  `stance != "yes"`) goes straight to the closing prompt, no read (`agree_by: keywords`). Otherwise the base reply-back
+  carries a stance-only light read (`content.reply_back_read_block`, JSON `{stance, reply}`, no skip, a citizen who
+  answered us is never skipped); a `lean_no`/`firm_no` read redrafts on the closing prompt (`agree_by: read`, one extra
+  LLM call for those only). `meta["agree"]`, `agree_by` and `read_stance` are logged.
+- **Gate policy.** `job["gate_policy"]` maps a reject-reason prefix to `{fix: False, redraft: prompt}` (`bot.gate_rule`).
+  Here `phrase_`: the over-budget vote line is not cut by `quality.fix` (drop_vote would remove the point of the reply);
+  the job redrafts on the base reply-back prompt (`redrafted: phrase_vote` in meta). Other jobs have no policy and keep
+  every fix. Use the same hook for any other check that should bend for one kind of reply.
+
 ## Why (evidence, not theory)
 
 The only change of mind toward No on 22 Oct traces to one conversation (citizen 528, our voice `isla_park_ku29`;
