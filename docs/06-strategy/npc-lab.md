@@ -174,3 +174,24 @@ citizen sees on opening the app: notifications plus two neutral Home posts. Peer
   session (+0.12, 0 worse, 0 flagged), or our post reaching them through Home because they follow us (+0.14). Neither
   has been tried live: we don't amplify citizens' No posts, and reposts/own posts stopped on 21 Oct (todo/25 §3).
 - Same caveat as every round: the stand-in overstates by about +0.34 and only live results count.
+
+## Does the drafting model change the story? Kimi K2.5 vs Claude Haiku 4.5 vs Sonnet 4.6 (23 Oct)
+The live reply prompt (`content.reply_prompt`, light read, same persona, frame and arms per citizen) for the same 20
+citizens, drafted once on each model through Bedrock (box, read-only, ~$0.5). First drafts, no repair or humanize;
+"sent" is what the bot actually posted (gated, repaired, humanized). Rated blind twice: Haiku 5.5 raters and, as a
+check on the stand-in, Sonnet 5.5 raters.
+
+| draft | chars | gate ok 1st try | shift (Haiku raters) | AI? (Haiku) | shift (Sonnet raters) | AI? (Sonnet) |
+|---|---|---|---|---|---|---|
+| sent (live) | 198 | live | +0.55 | 20% | +0.17 | 40% |
+| Kimi K2.5 | 273 | 10 / 20 | +0.72 | 25% | +0.12 | **90%** |
+| Haiku 4.5 | 354 | 2 / 20 (too long) | +0.70 | 40% | +0.25 | 65% |
+| Sonnet 4.6 | 240 | 11 / 20 | +0.68 | **60%** | +0.12 | 80% |
+
+- **No model wins.** The order flips between rater models, every gap is inside the noise, and the two rater models
+  pick the same best draft for only 10 of 20 citizens. A better drafter doesn't move a stand-in citizen.
+- **Sonnet raters are the better stand-in:** +0.12 to +0.25, against +0.22 for real citizens' answers (Haiku raters
+  overstate by ~+0.34). Use them for future rounds; they cost little more at low effort.
+- **Raw drafts from every model read as AI** (65–90% to Sonnet raters); what we post reads least so (40%), likely
+  thanks to the gate's shortening and humanize. The AI tell, not the model, is what to watch.
+- Sonnet 4.6 costs ~5× Kimi per token (config.LLM_PRICES). Nothing here justifies it for replies.
