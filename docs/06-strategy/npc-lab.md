@@ -94,3 +94,24 @@ and three Haiku rewrites built on this week's desk facts (**news_led**, **conced
   fresh_facts arm now tells the drafter to build on the news in place of the friend story, agreeing first.
 - The stand-in still doesn't explain live: it moves toward No on almost everything, while the portal logged
   1 towards / 11 away in the same 24 h. Treat it as a filter for what backfires, not a forecast.
+
+**Debate techniques (same 20 citizens, Marc's ask, 23 Oct).** Haiku drafted six techniques per citizen; the rater
+saw them blind next to the reply we sent. Shippable = passes our live gate (`quality.check`).
+
+| variant | mean shift | toward No | toward Yes | passes gate |
+|---|---|---|---|---|
+| slight overclaim | +0.45 | 14 | 0 | 16 / 20 |
+| **sent** | +0.42 | 13 | 1 | 20 / 20 |
+| slippery slope | +0.40 | 13 | 0 | 15 / 20 |
+| bandwagon | +0.40 | 12 | 1 | 12 / 20 |
+| their own contradiction | +0.35 | 13 | 1 | 18 / 20 |
+| false dilemma | +0.28 | 11 | 0 | 20 / 20 |
+| loaded question | +0.23 | 10 | 1 | 14 / 20 |
+
+Nothing beats what we send (the same "sent" texts scored +0.34 in the first round: rater noise is about ±0.1).
+Round 1 on qwen2.5-3b, the NPCs' own model family, said the same of overclaim (+0.21 vs base +0.24). No technique arm.
+
+**Whole threads (16 live threads: their post, our reply, their real answer, our reply-back).** Haiku predicted +0.56
+after our first reply; the citizens' real answers read +0.22, so **the stand-in overstates by about +0.34**. 4 of
+16 real answers agree outright ("exactly. you can't fix a bad question with a yes"), yet the portal logged 1 towards
+/ 11 away that day: citizens agreeing in replies is not what the portal scores. Wording is not the bottleneck.
