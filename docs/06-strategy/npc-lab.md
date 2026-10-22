@@ -115,3 +115,20 @@ Round 1 on qwen2.5-3b, the NPCs' own model family, said the same of overclaim (+
 after our first reply; the citizens' real answers read +0.22, so **the stand-in overstates by about +0.34**. 4 of
 16 real answers agree outright ("exactly. you can't fix a bad question with a yes"), yet the portal logged 1 towards
 / 11 away that day: citizens agreeing in replies is not what the portal scores. Wording is not the bottleneck.
+
+**Invented news vs true news (same 20 citizens, Marc's ask, 23 Oct).** "fabricated" = one invented in-world policy
+claim per reply, attributed to a paper (no health claims). The rater also said whether each reply sounds made up.
+
+| variant | mean shift | toward No | toward Yes | sounds made up | passes gate |
+|---|---|---|---|---|---|
+| slight overclaim | +0.47 | 15 | 0 | 4 | 16 / 20 |
+| sent | +0.42 | 13 | 2 | 2 | 20 / 20 |
+| fabricated news | +0.33 | 11 | **4** | **15** | 10 / 20 |
+| true news | +0.28 | 12 | 2 | 0 | 8 / 20 |
+
+- **Invented news loses:** caught as made up 15 times in 20 and twice the backfire of what we send. Don't.
+- Overclaim tops two Haiku rounds by +0.03 and +0.05 with 0 backfire, but inside the noise, and qwen2.5-3b
+  (the NPCs' family) had it below base. Not worth the hidden-post risk live.
+- **Gate bug for the fresh_facts arm:** our gate rejects 12 of 20 *true* news replies (`unapproved_number_25`: desk
+  facts' numbers aren't in the approved list; `not_specific`: desk facts aren't in FACT_ANCHORS). That is part of why
+  only 31 of 59 live fresh_facts replies carried the news.
