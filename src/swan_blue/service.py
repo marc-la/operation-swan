@@ -535,13 +535,15 @@ class Blue:
     def queue_siblings(self, aid, t):
         """When one account of a live fleet has a vanished or hidden post, its fleet's other accounts are likelier to
         have one too (neighbouring ids share a fate): queue them, those the bot's Latest snapshot saw lately first,
-        to be read before the scan's own todo list. Once per fleet per 6 h; BLUE_SIBLINGS=0 turns it off."""
+        to be read before the scan's own todo list. Once per fleet per 6 h; BLUE_SIBLINGS=0 turns it off. False when
+        there is no fleet to look in (yet)."""
         fleet = self.fleet_map.get(int(aid))
         sc = self.sc
         pol = policy()
-        if fleet is None or not pol.get("siblings", 1) or pol.get("scan_every", SCAN_EVERY_S) <= 0 or \
-                t - sc["sib_done"].get(fleet, 0) < 6 * 3600:
-            return
+        if fleet is None or not pol.get("siblings", 1) or pol.get("scan_every", SCAN_EVERY_S) <= 0:
+            return False                      # no account list yet (or switched off): the caller may ask again later
+        if t - sc["sib_done"].get(fleet, 0) < 6 * 3600:
+            return True
         mates = [i for i, k in self.fleet_map.items() if k == fleet and i != int(aid) and i not in self.ours
                  and str(i) not in self.s["harvest"] and str(i) not in sc["sib"]]
         mates.sort(key=lambda i: (str(i) not in self.det["posts"], -i))
@@ -550,6 +552,7 @@ class Blue:
         if mates:
             sc["sib"] += [str(i) for i in mates]
             self.log({"act": "siblings", "fleet": fleet, "of": int(aid), "queued": len(mates)})
+        return True
 
     def sibling_step(self, t):
         """Read up to SIB_PER_TICK queued siblings' newest pages (one read each, inside the read budget). A post the
@@ -743,10 +746,11 @@ class Blue:
         for _, _, aid in sorted(due)[:LIVE_REFRESH_PER_TICK]:
             if not self.read_ok():
                 break
-            h = self.s["harvest"][aid]
-            if self.read_live(aid, h) and self.live_state(h)[0] == "live" and not h.get("sib"):
-                h["sib"] = t                      # todo/43 item 5: a live lead's fleet mates are looked at too
-                self.queue_siblings(int(aid), t)
+            self.read_live(aid, self.s["harvest"][aid])
+        for aid, h in self.s["harvest"].items():  # todo/43 item 5: a live lead's fleet mates are looked at too
+            if h.get("ready") and not h.get("sib") and int(aid) not in self.ours and self.live_state(h)[0] == "live" \
+                    and self.queue_siblings(int(aid), t):
+                h["sib"] = t
 
     def live_summary(self):
         """The ready account leads by liveness, for the dashboard: how many a report could go out on now."""
