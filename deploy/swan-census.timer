@@ -1,0 +1,9 @@
+[Unit]
+Description=Rival census snapshot every 6 hours (first run 3 h after install)
+
+[Timer]
+OnActiveSec=3h
+OnUnitActiveSec=6h
+
+[Install]
+WantedBy=timers.target

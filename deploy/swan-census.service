@@ -1,0 +1,12 @@
+[Unit]
+Description=Rival census snapshot (scripts/rival_snapshot.py): read-only, paced, first page of every live account (todo/44)
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+ExecStart=/usr/bin/flock -n /tmp/swan-census.lock /home/ec2-user/ctn/.venv/bin/python scripts/rival_snapshot.py
+Nice=19
+MemoryMax=600M
+# ~1,000-1,500 accounts at 60 reads a minute is 20-30 min; the cap is only a backstop
+TimeoutStartSec=3h

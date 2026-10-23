@@ -7,13 +7,13 @@ install -m 644 swan-bot.service swan-alert@.service swan-update.service swan-upd
   swan-health.service swan-health.timer swan-sync.service swan-sync.timer \
   swan-followup.service swan-followup.timer swan-watch.service swan-watch.timer \
   swan-factdesk.service swan-factdesk.timer swan-blue.service swan-swarm.service swan-swarm.timer \
-  swan-audit.service swan-audit.timer \
+  swan-audit.service swan-audit.timer swan-census.service swan-census.timer \
   /etc/systemd/system/
 # dashboard units only once deploy/dash_setup.sh has made the web root (todo/09)
 if [ -d /var/www/swan ]; then install -m 644 swan-dash.service swan-dash.timer swan-certbot.service swan-certbot.timer swan-portal.service swan-portal.timer /etc/systemd/system/; fi
 systemctl daemon-reload
 systemctl enable --now swan-update.timer swan-health.timer swan-sync.timer swan-followup.timer swan-watch.timer \
-  swan-factdesk.timer swan-swarm.timer swan-audit.timer
+  swan-factdesk.timer swan-swarm.timer swan-audit.timer swan-census.timer
 systemctl enable --now swan-blue   # the Blue track (todo/07): a second process, report routes only
 # swan-lab retired 23 Oct (todo/33): not installed or enabled; unit file kept in deploy/ for reference
 [ "${1:-}" = "--units-only" ] && exit 0
