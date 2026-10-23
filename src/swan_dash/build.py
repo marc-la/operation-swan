@@ -800,6 +800,7 @@ def blue_panel(data, now, points, day_start, logs=None):
 # ---- reach: did we answer every citizen we could, fast, and did it convert? (Marc, 2026-10-22) ----
 CITIZEN_WRITES = {"reply", "reply_back", "second_voice", "journalist"}
 REACH_SPEED_MIN, REACH_SPEED_RED = 3, 5   # a new citizen post answered within MIN (median) is green, up to RED amber, over red (Marc, 23 Oct: reach the bots within 5 min)
+BACKLOG_MIN = 60               # a first reply to a post older than this when we sent it is backlog drain, not speed (Marc, 24 Oct: 2,000 waiting, 551 min median)
 REACH_BACK_MIN = 1             # a citizen answering us gets our reply within this (median)
 VOLUME_WINDOW_MIN = 30         # posting rate is measured over this long, so a stall or a recovery shows within minutes
 VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minute: green at or above, red below AMBER
@@ -828,12 +829,15 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
           f"New citizen posts: green up to {REACH_SPEED_MIN} min · amber {REACH_SPEED_MIN}-{REACH_SPEED_RED} · red over {REACH_SPEED_RED}.\n"
           f"Citizens answering us: green up to {REACH_BACK_MIN} min · amber {REACH_BACK_MIN}-{3 * REACH_BACK_MIN} · red over {3 * REACH_BACK_MIN}.\n"
           f"The time splits into wait (their post until we pick it up), draft (writing the reply) and hold (waiting to send).\n"
+          f"Only replies to posts under {BACKLOG_MIN} min old when we answered are timed; replies that drain the queue behind them are\n"
+          f"counted on their own grey row (Backlog drained), so a long queue no longer turns Speed red.\n"
           f"Replies to posts from an outage backlog are left out; the row says how many.",
     volume=f"Volume: how much we post. The team limit is {TEAM_CAP_PER_MIN} a minute.\n"
            f"Posting rate, last {VOLUME_WINDOW_MIN} min: green {VOLUME_GREEN * TEAM_CAP_PER_MIN:g}+ a minute · amber "
            f"{VOLUME_AMBER * TEAM_CAP_PER_MIN:g}-{VOLUME_GREEN * TEAM_CAP_PER_MIN:g} · red under {VOLUME_AMBER * TEAM_CAP_PER_MIN:g}.\n"
            f"Voices writing: amber if under {VOICES_MIN}.\n"
-           f"Citizens lost in the last full hour: red if any.",
+           f"Citizens lost in the last full hour: red if any.\n"
+           f"Drafts passing first time is shown, not graded.",
     conversion="Conversion: are our replies moving people toward No? Net = changes of mind toward us minus away, today.\n"
                "Green: net above 0 · amber: net 0 · red: net below 0.",
     stealth=f"Stealth: accounts banned today (since 9pm Perth).\n"
@@ -842,8 +846,7 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
             f"Hide rate (hidden text posts / text writes, last {HIDE_WINDOW_H} h, writes at least {HIDE_CENSOR_H:g} h old, 95% interval): "
             f"green when the interval is under {HIDE_TARGET:.1%}, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.\n"
             f"Writes per ban, runway and the bans-against-plan line are grey: the forecast is under Bot > Accounts by day.\n"
-            f"Pattern score (once scripts/pattern_audit.py has run): how much our writes read like a rota, 0-100. Green 70+ · amber 45-69 · red under 45.\n"
-            f"Its worst metrics and voices are listed under the tile. It goes grey when the audit is over {AUDIT_STALE_S // 3600} h old.")
+            f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. Shown under the tile, not counted in its colour (Marc, 24 Oct).")
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
@@ -997,6 +1000,7 @@ def reach(actions, status, points, now, day_start, notes=None):
     starved = lambda made: (first_bucket <= int(made // CATCHUP_BUCKET_S) and per_bucket[int(made // CATCHUP_BUCKET_S)]
                             < VOLUME_AMBER * budget_now * CATCHUP_BUCKET_S / 60)
     catchup = dict(fresh=0, back=0)
+    backlog = []
     for a in actions:
         if a.get("live") is not True or a["_t"] < hour_ago or a.get("group") not in (None, "None"):
             continue
@@ -1015,6 +1019,9 @@ def reach(actions, status, points, now, day_start, notes=None):
             bar, bucket, into = REACH_BACK_MIN, back, "back"
         else:
             continue
+        if into == "fresh" and lag > BACKLOG_MIN:
+            backlog.append(lag)                 # the queue behind the new posts: its own row, never the light
+            continue
         if lag > bar and starved(a["_t"].timestamp() - lag * 60):
             catchup[into] += 1                  # made while we were not posting: a backlog, not slowness
         else:
@@ -1023,11 +1030,14 @@ def reach(actions, status, points, now, day_start, notes=None):
     graded = lambda v, bar, red=None: ("grey" if v is None else "green" if v <= bar else "amber" if v <= (red or 3 * bar) else "red")
     left_out = lambda k: f" · {catchup[k]} catch-up left out" if catchup[k] else ""
     row("speed", "Reply time, new citizen posts", graded(mf, REACH_SPEED_MIN, REACH_SPEED_RED),
-        (f"{mf:.1f} min" if mf is not None else "none this hour") + left_out("fresh"), f"≤ {REACH_SPEED_MIN} green · ≤ {REACH_SPEED_RED} amber · over red (min)",
+        (f"{mf:.1f} min (n {len(fresh)})" if mf is not None else "no new post answered this hour") + left_out("fresh"), f"≤ {REACH_SPEED_MIN} green · ≤ {REACH_SPEED_RED} amber · over red (min)",
         "Behind the citizen's session: check the LLM line under Bot.")
     row("speed", "Reply time, citizens answering us", graded(mb, REACH_BACK_MIN),
         (f"{mb:.1f} min" if mb is not None else "none this hour") + left_out("back"), f"≤ {REACH_BACK_MIN} min",
         "Reply-backs are slow: check Bot.")
+    row("speed", "Backlog drained, last hour", "grey",
+        f"{len(backlog)} replies to posts over {BACKLOG_MIN} min old (median {_median(backlog) / 60:.1f} h old)" if backlog else "none",
+        f"not graded: posts older than {BACKLOG_MIN} min when we answered", "")
     for kind, name in (("fresh", "1st replies"), ("back", "2nd replies")):
         row("speed", f"Where the time goes, {name}", "grey", stage_line(stages[kind]), "wait + draft + hold",
             "Wait: their post to our pick (reading, queue). Draft: LLM calls and repairs. Hold: draft checked to sent "
@@ -1036,7 +1046,8 @@ def reach(actions, status, points, now, day_start, notes=None):
     waiting = q.get("candidates", refreshes[-1].get("candidates") if refreshes else None)
     groups_q = sum((g or {}).get("queued") or 0 for g in ((refreshes[-1].get("groups") if refreshes else None) or {}).values())
     if waiting is not None:
-        row("speed", "Citizens waiting now", "grey", f"{max(waiting - groups_q, 0)}")
+        n_wait, per_h = max(waiting - groups_q, 0), len(fresh) + len(backlog) + catchup["fresh"]
+        row("speed", "Citizens waiting now", "grey", f"{n_wait}" + (f" · about {n_wait / per_h:.0f} h to clear at {per_h} first replies an hour" if per_h else ""))
 
     # ---- volume ----
     live = [a for a in actions if a.get("live") is True and a.get("act") in WRITES]
@@ -1065,8 +1076,8 @@ def reach(actions, status, points, now, day_start, notes=None):
     acc = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("llm_calls") not in (None, "None")]
     first = sum(str(a.get("llm_calls")) == "1" for a in acc)
     share1 = first / len(acc) if acc else None
-    row("volume", "Drafts passing first time", "grey" if share1 is None else "amber" if share1 < REACH_SHARE else "green",
-        f"{share1:.0%}" if share1 is not None else "—", f"≥ {REACH_SHARE:.0%}",
+    row("volume", "Drafts passing first time", "grey",
+        f"{share1:.0%}" if share1 is not None else "—", f"shown only (aim ≥ {REACH_SHARE:.0%}): a cost, not volume",
         "Each rejection costs a repair call. The content session tunes the prompts.")
     cit = [a for a in hour_writes if a.get("act") in CITIZEN_WRITES and a.get("group") in (None, "None")]
     grp = [a for a in hour_writes if a.get("group") not in (None, "None")]
@@ -1735,11 +1746,17 @@ def gather(root, now, service):
     srows += extra_rows
     pattern = audit_rows(read_json(data / "pattern_audit.json"), now)      # todo/38: how much our writes read like a rota; [] until the audit has run
     srows += pattern
-    pattern_sub = f" · pattern {pattern[0]['now'].split('/')[0]}" if pattern and pattern[0]["light"] != "grey" else ""
+    for r in pattern:      # shown, never graded (Marc, 24 Oct: bans, hide rate and writes per ban are the stealth numbers)
+        r["target"] = (r["target"] + " · " if r.get("target") else "") + f"graded {r['light']}, not counted in the tile"
+        r["light"] = "grey"
+    first = lambda name: next((r["now"].split(" · ")[0].split(" [")[0] for r in extra_rows if r["name"] == name), None)
+    hide_txt, wpb_txt = first("Hide rate, last 24 h"), first("Writes per ban")
+    sub = "today" + (f" · {hidden_today} hidden" if hidden_today else "") + (f" · hide rate {hide_txt}" if hide_txt and "%" in hide_txt else "") \
+        + (f" · {wpb_txt.removesuffix(' text writes')} writes a ban" if wpb_txt and wpb_txt[0].isdigit() else "")
     rc["rows"] += srows
     rc["fixes"] += [r for r in srows if r["light"] in ("amber", "red")]
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
-    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts" + pattern_sub,
+    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub=sub,
                              light=max((r["light"] for r in srows), key=order.get)))
     for i in rc["lights"]:      # the hover: the rule, then the amber and red rows with their figure and any note (Marc, 23 Oct)
         bad = [f"{r['light'].upper()} {r['name']}: {r['now']}" + (f" (in hand: {r['note']})" if r.get("note") else "")

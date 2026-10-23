@@ -320,10 +320,10 @@ def test_reach_speed_from_reply_times(tmp_path):
             dict(write(1), act="reply", source="latest", target_post=150, post_id=300)]
     ctx, _ = page(make_root(tmp_path, acts))
     r = rowof(ctx, "Reply time, new")
-    assert r["now"] == "24.0 min" and r["light"] == "red" and light(ctx, "speed") == "red"
+    assert r["now"].startswith("24.0 min") and r["light"] == "red" and light(ctx, "speed") == "red"
     acts[2] = dict(acts[2], ts=iso(18), target_post=190)                   # post 190 dates to 21 min ago: answered in 3
     ctx, _ = page(make_root(tmp_path / "b", acts))
-    assert rowof(ctx, "Reply time, new")["now"] == "3.0 min" and light(ctx, "speed") == "green"
+    assert rowof(ctx, "Reply time, new")["now"].startswith("3.0 min") and light(ctx, "speed") == "green"
 
 
 def test_reach_does_not_date_a_post_across_a_long_gap():
@@ -353,12 +353,12 @@ def test_reach_conversion_queue_and_notes(tmp_path):
     rf = dict(refresh(1, f, candidates=30), groups={"sweep": {"queued": 20}, "older": {"queued": 0}})
     acc = [dict(write(5), llm_calls=2), dict(write(6), llm_calls=1)]
     root = make_root(tmp_path, [rf] + acc)
-    (root / "data" / "reach_notes.json").write_text(json.dumps({"Drafts passing": "prompt fix live 15:20, recheck 16:30"}))
+    (root / "data" / "reach_notes.json").write_text(json.dumps({"Citizens waiting": "queue drain in hand, recheck 16:30"}))
     ctx, html = page(root)
     r = ctx["reach"]
     assert rowof(ctx, "Changes of mind")["now"].startswith("net 0: 0 toward No") and light(ctx, "conversion") == "amber"
     assert rowof(ctx, "Citizens waiting")["now"] == "10" and "20 extra-group posts queued" in r["extra"]
-    assert "2 off topic" in r["extra"][0] and "In hand: prompt fix live 15:20, recheck 16:30" in html
+    assert "2 off topic" in r["extra"][0] and rowof(ctx, "Drafts passing")["light"] == "grey"      # shown, never graded (Marc, 24 Oct)
 
 
 def test_reach_other_view_change_is_not_counted_as_neither():
@@ -719,13 +719,29 @@ def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):
         sent = NOW.timestamp() - ago * 60
         return dict(write(ago), act="reply", source="latest", t_made=sent - wait_min * 60, t_pick=sent - 30,
                     t_drafted=sent - 20, t_sent=sent, **kw)
-    acts = busy + stall + [timed(30, 2), timed(25, 75), timed(20, 2)]                       # 75 min wait: made ~100 min ago, in the stall
+    acts = busy + stall + [timed(30, 2), timed(45, 55), timed(20, 2)]                       # 55 min wait: made ~100 min ago, in the stall
     ctx, _ = page(make_root(tmp_path, acts))
     r = rowof(ctx, "Reply time, new")
     assert "1 catch-up left out" in r["now"] and r["now"].startswith("2.") and r["light"] == "green", r
-    acts[-2] = timed(25, 140)                                                              # 140 min wait, made in a busy bucket: counts
+    acts[-2] = timed(85, 55)                                                               # 55 min wait, made ~140 min ago in a busy bucket: counts
     ctx, _ = page(make_root(tmp_path / "b", acts))
     assert "catch-up" not in rowof(ctx, "Reply time, new")["now"]
+
+
+def test_old_posts_drained_from_the_queue_do_not_turn_speed_red(tmp_path):
+    """24 Oct: 2,000 citizens waiting, 99 first replies an hour at a 551 min median. The queue is its own grey row."""
+    def timed(ago, wait_min):
+        sent = NOW.timestamp() - ago * 60
+        return dict(write(ago), act="reply", source="latest", t_made=sent - wait_min * 60, t_pick=sent - 30,
+                    t_drafted=sent - 20, t_sent=sent)
+    acts = [timed(40, 500), timed(30, 600), timed(20, 700), timed(10, 2), timed(5, 3)]
+    ctx, _ = page(make_root(tmp_path, acts))
+    r = rowof(ctx, "Reply time, new")
+    assert r["now"].startswith("2.5 min (n 2)") and r["light"] == "green" and light(ctx, "speed") == "green"
+    b = rowof(ctx, "Backlog drained")
+    assert b["light"] == "grey" and b["now"].startswith("3 replies") and "10.0 h" in b["now"]
+    ctx, _ = page(make_root(tmp_path / "b", acts[:3]))                                     # only backlog: nothing to grade, never green
+    assert rowof(ctx, "Reply time, new")["light"] == "grey" and light(ctx, "speed") == "grey"
 
 
 def test_new_post_reply_time_bars_3_green_5_amber_over_red(tmp_path):
@@ -832,21 +848,21 @@ def test_pattern_audit_rows_on_the_stealth_tile(tmp_path):
     (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report("red", 31, worst=("gap_cv", "modal_gap"), voices=(("ana_t", 12), ("bo_k", 20)))))
     ctx, html = page(root)
     st = stealth_of(ctx)
-    assert st["light"] == "red" and st["head"] == "0 bans" and st["sub"] == "today · 0 hidden posts · pattern 31"
-    assert rowof(ctx, "Pattern score")["now"] == "31/100" and rowof(ctx, "Pattern score")["light"] == "red"
-    assert rowof(ctx, "Pattern: Gap variation")["target"] == "≥ 0.5 green · ≥ 0.25 amber"
-    assert rowof(ctx, "Pattern: Gaps within")["light"] == "amber" and rowof(ctx, "Pattern: Gaps within")["target"].startswith("≤ 0.25")
+    assert st["light"] == "green" and st["head"] == "0 bans" and "pattern" not in st["sub"]       # shown, never graded (Marc, 24 Oct)
+    assert rowof(ctx, "Pattern score")["now"] == "31/100" and rowof(ctx, "Pattern score")["light"] == "grey"
+    assert rowof(ctx, "Pattern: Gap variation")["target"].startswith("≥ 0.5 green · ≥ 0.25 amber")
+    assert rowof(ctx, "Pattern: Gaps within")["light"] == "grey" and rowof(ctx, "Pattern: Gaps within")["target"].startswith("≤ 0.25")
     assert rowof(ctx, "Worst voices")["now"] == "ana_t (12), bo_k (20)" and rowof(ctx, "Worst voices")["light"] == "grey"
-    assert "RED Pattern score: 31/100" in st["tip"] and ctx["worst"] == "red" and html.count('class="light ') == 4
-    assert any(r["name"] == "Pattern score" for r in ctx["reach"]["fixes"])
+    assert "Nothing amber or red." in st["tip"] and ctx["worst"] != "red" and html.count('class="light ') == 4
+    assert not any(r["name"] == "Pattern score" for r in ctx["reach"]["fixes"])
 
 
 def test_pattern_audit_green_amber_and_stale(tmp_path):
-    for grade, score, want in (("green", 88, "green"), ("amber", 60, "amber")):
+    for grade, score in (("green", 88), ("amber", 60), ("red", 20)):
         root = make_root(tmp_path / grade, FULL)
         (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report(grade, score, worst=())))
         ctx, _ = page(root)
-        assert stealth_of(ctx)["light"] == want and rowof(ctx, "Pattern score")["light"] == want
+        assert stealth_of(ctx)["light"] == "green" and rowof(ctx, "Pattern score")["light"] == "grey"      # never colours the tile
     root = make_root(tmp_path / "stale", FULL)
     (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report("red", 20, ago_min=5 * 60)))      # 5 h old
     ctx, _ = page(root)
@@ -862,7 +878,7 @@ def test_pattern_audit_garbage_is_ignored(tmp_path):
         assert stealth_of(ctx)["light"] in ("green", "grey") and "Swan" in html
 
 
-def test_real_audit_of_the_two_simulated_pools_colours_the_tile(tmp_path):
+def test_real_audit_of_the_two_simulated_pools_is_shown_not_graded_on_the_tile(tmp_path):
     from swan_bot import pattern_audit as pa
     for sched, want in (("old", "red"), ("mixed", "green")):
         rows, accounts, end = pa.simulate_pool(30, 48, 2, sched)
@@ -871,4 +887,5 @@ def test_real_audit_of_the_two_simulated_pools_colours_the_tile(tmp_path):
         root = make_root(tmp_path / sched, FULL)
         (root / "data" / "pattern_audit.json").write_text(json.dumps(rep))
         ctx, _ = page(root)
-        assert stealth_of(ctx)["light"] == want, sched
+        assert rowof(ctx, "Pattern score")["target"].startswith("green 70+") and f"graded {want}" in rowof(ctx, "Pattern score")["target"], sched
+        assert rowof(ctx, "Pattern score")["light"] == "grey" and stealth_of(ctx)["light"] == "green", sched

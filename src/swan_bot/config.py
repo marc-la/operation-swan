@@ -570,6 +570,11 @@ BUDGET_ALERT_GAP_S = 6 * 3600       # the same alert is not sent again within th
 # 2026-10-23 (todo/32): agree_close: a reply-back to a citizen whose answer agrees with us is under 25 words, one gap
 # from what they said, and ends on our own vote (the one thread that converted on 22 Oct); logged as `agree`.
 CONV_ARMS = ["base", "fresh_facts", "target_order", "agree_close"]
+# 2026-10-24 (Marc): the queue is split in two, unsure citizens first; inside each half the order is what it was (todo/21 score
+# plus FRESH_BONUS). The undecided are the only ones who can move toward No, and the queue is ~2,000 deep. Not a tested lever (todo/25 found
+# none); it costs nothing, so it is on. Off: UNSURE_FIRST = False. In a target_order block that arm's own order rules.
+UNSURE_FIRST = True
+UNSURE_FIRST_CLASSES = ("unsure",)
 TARGET_ORDER = ("unsure", "unclear", "lean_no", "conditions")      # then the rest (yes_reason, firm_yes last)
 CONV_BLOCK_S = 2 * 3600
 CONV_POST_GAP_S = 20 * 60

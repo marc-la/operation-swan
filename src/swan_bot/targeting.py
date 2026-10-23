@@ -948,8 +948,12 @@ class Targeter:
         # score only within a class; base blocks keep the todo/21 weights
         order = experiment.block("arm_conv")[1] == "target_order"
 
+        unsure_first = config.UNSURE_FIRST and not order      # Marc, 24 Oct: split the queue in two, the unsure first; the order inside each half is unchanged
+
         def rank(c):
             cls = c.get("target_class")
+            if unsure_first:
+                return 0 if cls in config.UNSURE_FIRST_CLASSES else 1
             return config.TARGET_ORDER.index(cls) if order and cls in config.TARGET_ORDER else len(config.TARGET_ORDER)
 
         # todo/33's engagers_first arm: in its blocks the citizens most likely to engage go first (see engage_rank)
