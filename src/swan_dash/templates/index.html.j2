@@ -38,6 +38,10 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .alerts details { margin: 3px 0; padding: 5px 10px; border-radius: 8px; font-size: 13px; }
 .alerts details div { margin-top: 4px; }
 .ver { margin: 8px 0; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
+table.board tr.cut td { border-bottom: 2px solid var(--ink); }
+table.board tr.near td { background: var(--green-bg); color: var(--green); }
+table.board tr.us td { font-weight: 700; color: var(--green); }
+table.board tr.gap td { color: var(--muted); padding-top: 0; padding-bottom: 0; }
 td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .green { background: var(--green-bg); color: var(--green); }
 .amber { background: var(--amber-bg); color: var(--amber); }
@@ -335,11 +339,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
   {% if board %}
   <h3>Leaderboard</h3>
-  <table>
-    {% for r in [board.leader, board.above, {'rank': board.rank, 'team': 'Operation Swan (us)', 'score': board.score}, board.below] if r %}
-    {% if loop.index0 == 0 or r.rank != board.leader.rank %}
-    <tr{% if r.rank == board.rank %} class="up"{% endif %}><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
-    {% endif %}
+  <p class="sub">The top four fly to Sydney to present{% if board.cutoff is not none %} · we are {{ board.cutoff | n }} behind #4{% elif board.rank <= 4 %} · <span class="up">we are in the top four</span>{% endif %}</p>
+  <table class="board">
+    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% endfor %}
+    {% if board.gap %}<tr class="gap"><td class="rk">⋮</td><td></td><td></td></tr>{% endif %}
+    {% for r in board.near %}<tr class="near{{ ' us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}
   </table>
   {% endif %}

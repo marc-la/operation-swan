@@ -115,3 +115,29 @@ def test_account_log_counts_and_suspensions_by_competition_day():
     days, listed = build.account_days(log, dt.datetime(2026, 10, 22, 15, tzinfo=dt.timezone.utc))
     assert [(d["banned"], d["new"]) for d in days] == [(12, 0), (12, 12), (0, 0), (0, 0)]   # Oct 23 (so far) back to 20
     assert days[1]["why"] == "reported as a bot ×1 · 3 posts hidden ×1" and listed[0]["username"] == "ana_fifita_rn27"
+
+
+def test_standing_keeps_the_four_finalist_places(tmp_path):
+    r = portal.run(make_root(tmp_path), NOW, get=fake(PAGES), pause=0)
+    assert [t["rank"] for t in r["top"]] == [1, 2, 3, 4]
+
+
+def team(rank, score=1000):
+    return dict(rank=rank, team=f"T{rank}", score=score - rank)
+
+
+def test_leaderboard_rows_midfield_shows_top_four_then_us_between_neighbours():
+    top = [team(i, 9000) for i in (1, 2, 3, 4)]
+    rows = build.leaderboard_rows(dict(top=top, rank=12, score=500, above=team(11), below=team(13)))
+    assert [r["rank"] for r in rows["finalists"]] == [1, 2, 3, 4]
+    assert [r["rank"] for r in rows["near"]] == [11, 12, 13] and rows["near"][1]["us"]
+    assert rows["gap"] and rows["cutoff"] == 9000 - 4 - 500
+
+
+def test_leaderboard_rows_do_not_repeat_finalists_near_the_line():
+    top = [team(i, 9000) for i in (1, 2, 3, 4)]
+    fifth = build.leaderboard_rows(dict(top=top, rank=5, score=8000, above=team(4), below=team(6)))
+    assert [r["rank"] for r in fifth["near"]] == [5, 6] and not fifth["gap"]
+    third = build.leaderboard_rows(dict(top=top, rank=3, score=9000, above=team(2), below=team(4)))
+    assert third["near"] == [] and third["cutoff"] is None
+    assert [r["us"] for r in third["finalists"]] == [False, False, True, False]
