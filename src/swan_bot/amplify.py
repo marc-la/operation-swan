@@ -276,6 +276,7 @@ class Amplifier:
             if th["kind"] == "answer":
                 rec = self.accounts.by_persona(th["author"])
                 if (not rec or rec.get("last_write", 0) + config.REPOST_MIN_GAP_S > t
+                        or rec["persona"] in getattr(self.accounts, "reserved", ())    # another drafter has this voice
                         or self.accounts.rest(rec, t, citizen=False)):        # todo/31: asleep or capped
                     continue
             else:
@@ -311,6 +312,15 @@ class Amplifier:
                        rec=rec, target=target, frame=th.get("frame_for") or th.get("frame") or
                        content.PERSONA_BY_KEY[rec["persona"]]["frames"][0], style=th.get("style"),
                        amp_post=th["post_id"], our_text=meta.get("text") or "")
+
+            def undo(th=th, persona=rec["persona"], used={"thread": done, "repost": reposted}.get(th["kind"])):
+                """No model could draft this job (bot.defer): hand back what the pick consumed, the thread entry and
+                the voice's turn on it, so the next pick finds it as it was."""
+                if used is not None and persona in used:
+                    used.remove(persona)
+                if th not in self.state["amp_threads"]:
+                    self.state["amp_threads"].append(th)
+            job["defer"] = undo
             return job
         return None
 

@@ -935,13 +935,22 @@ def fresh_line(target_text, meta=None):
             f"news means for it, in your own words, and name the paper; it's news they may not have seen. ")
 
 
-def worn_line(target_text):
+def worn_line(target_text, spent=()):
     """Keep off our worn phrases, except those the citizen used first (then they're their words, not our template)
-    and those that say a paused fact (the prompt never brings that fact up, and must not name it)."""
+    and those that say a paused fact (the prompt never brings that fact up, and must not name it).
+    spent (2026-10-23, quality.spent_phrases: [(key, label)]): the phrases the gate would reject right now because the
+    last hundred texts already hold as many as the budget allows, even when the citizen wrote the word: those are
+    named as used up, so the first draft leaves them out instead of being rejected for them."""
     theirs = (target_text or "").lower()
-    worn = [p for p in WORN_PHRASES if p not in theirs and not fact_store.paused_in(p)]
-    return (f"Build your sentences your own way, and keep off these worn phrases: "
-            f"{', '.join(repr(p) for p in worn)}. " if worn else "")
+    gone = [label for _, label in spent if not fact_store.paused_in(label)]
+    worn = [p for p in WORN_PHRASES if (p not in theirs or p in gone) and not fact_store.paused_in(p)]
+    out = (f"Build your sentences your own way, and keep off these worn phrases: "
+           f"{', '.join(repr(p) for p in worn)}. " if worn else "")
+    if gone:
+        out += (f"We have used up {', '.join(repr(p) for p in gone)} for now: leave "
+                f"{'it' if len(gone) == 1 else 'them'} out entirely, even if they used "
+                f"{'that word' if len(gone) == 1 else 'those words'}; say it another way. ")
+    return out
 
 
 FIRST_CALL_RULES = ("Name one concrete detail from their post. Put any fact in your own words, never the wording of "
@@ -1075,14 +1084,14 @@ def off_topic_prompt(target_text, context=None, persona=None):
 
 
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,
-                 style="current", read=False, hint=None, recent=()):
+                 style="current", read=False, hint=None, recent=(), spent=()):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A
     `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life.
     todo/20: style "mirror_concede" is the other arm (mirror_prompt). read=True asks for the light read: the reply
     comes back inside JSON with the citizen's stance, doubt and the frame the model picked (parse_read); `hint` is
     the frame a keyword match picked."""
     if style == "mirror_concede":
-        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent)
+        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent, spent)
     ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
     arms = {}
     # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
@@ -1118,12 +1127,12 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
         f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}"
         f"{REPLY_ASK_NONE if ask_kind == 'none' else experiment.ASK_KINDS[ask_kind]} "
-        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text)}"
+        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text, spent)}"
         f"{REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
-def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=()):
+def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=(), spent=()):
     """todo/20 step 4, the mirror_concede arm: what citizens answered in another team's replies (research D §8):
     mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact) to end on
     (since 2026-10-22 no closing "I'm voting No": NO_VERDICT_RULE); 150-280 characters and no question. No lever, theme
@@ -1143,11 +1152,12 @@ def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=F
         f"in 8 words or fewer (if they lean No, agree with their reason instead). Then one anchor that carries the "
         f"point: a detail from your own life or one of your facts; the point: {point}. End on that anchor. No question "
         f"anywhere, and no closing question. {FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} "
-        f"{worn_line(target_text)}{REPLY_RULES}" + (read_block(hint) if read else "")
+        f"{worn_line(target_text, spent)}{REPLY_RULES}" + (read_block(hint) if read else "")
     )
 
 
-def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, recent=()):
+def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, recent=(),
+                        spent=()):
     ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
@@ -1161,7 +1171,7 @@ def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None
         f"sentence{'' if sentences == '1' else 's'}, between {lo} and {hi} words ({CHAR_CAP['second_voice']} "
         f"characters at most): {FRAMES[frame_key]['gist']}. "
         f"{opener} Make it land through this: {LEVERS[lever]} Don't mention the other reply or repeat its argument. "
-        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text)}"
+        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text, spent)}"
         f"{REPLY_RULES}"
     )
 
@@ -1173,25 +1183,25 @@ AGREE_CLOSE = ("They agree with you. Reply in at most 25 words, all lowercase an
                "\"so i'm ticking no\"). No question, no list of facts, no story about someone you know.")
 
 
-def reply_back_prompt(our_text, their_text, style=None, agree_close=False):
+def reply_back_prompt(our_text, their_text, style=None, agree_close=False, spent=()):
     """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7). style: the
     style of our reply they answered; a mirror_concede conversation goes on in that style (todo/20 step 3)."""
     said = (f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
             if our_text else f"A neighbour mentioned you in this post:\n<<<{their_text[:500]}>>>\n")
     if agree_close:                                   # todo/32: replaces NO_VERDICT_RULE here only
-        return f"{said}{AGREE_CLOSE} {worn_line(their_text)}No hashtags."
+        return f"{said}{AGREE_CLOSE} {worn_line(their_text, spent)}No hashtags."
     if style == "mirror_concede":
         return (
             f"{said}Reply to them in 1 or 2 sentences, between 60 and 220 characters: pick up one thing they actually "
             f"said, grant what is fair in it in a few words, then stay with your No with one detail from your own life "
             f"or one fact. If they asked a question, answer it with one fact; otherwise no question. Never start with "
-            f"Spot on, Exactly or Too right. {NO_VERDICT_RULE} {worn_line(their_text)}No hashtags.")
+            f"Spot on, Exactly or Too right. {NO_VERDICT_RULE} {worn_line(their_text, spent)}No hashtags.")
     return (
         f"{said}"
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "
         f"and specifically, and stay with your view. If they agreed, start with a short thanks (Cheers, Thanks, "
         f"Ta) or go straight to one small new thing; never start with Spot on, Exactly or Too right. "
-        f"If they asked a question, answer it with one fact. {NO_VERDICT_RULE} {worn_line(their_text)}No hashtags."
+        f"If they asked a question, answer it with one fact. {NO_VERDICT_RULE} {worn_line(their_text, spent)}No hashtags."
     )
 
 

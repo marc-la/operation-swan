@@ -8,8 +8,8 @@ Free tiers cap requests per model per day, so a 429 that says the daily quota is
 retry time, a per-minute 429 parks it for a minute, and the next model in the chain is tried. Every model's calls
 are counted per day in data/llm_usage.json so we learn the real quotas.
 Paid models (config.LLM_PRICES) are charged per call from the tokens the API reports, into data/llm_spend.json by
-Sydney day. When today's allowance (llm.allowance: the budget shared out by the Red multiplier, unspent days carried
-forward) is spent, they are parked until Sydney midnight and the free models carry on.
+Sydney day. When today's allowance (llm.allowance: the budget shared out by the Red multiplier but never under
+config.LLM_DAILY_FLOOR_USD a day, unspent days carried forward) is spent, they are parked until Sydney midnight and the free models carry on.
 The provided qwen 3B model is only used with allow_qwen=True (off in production: too weak, too slow).
 """
 import datetime as dt
@@ -84,13 +84,15 @@ def allowance(day, spent):
     days = budget_days()
     total = sum(w for _, w in days) or 1
     share = config.LLM_BUDGET_USD * sum(w for d, w in days if d <= day) / total
+    share = max(share, config.LLM_DAILY_FLOOR_USD * sum(1 for d, _ in days if d <= day))     # the daily floor
     return max(0.0, min(share, config.LLM_BUDGET_USD) - sum(v for d, v in spent.items() if d <= day))
 
 
 def day_share(day):
     """The budget's share for one Sydney day before carry-over (the priority reserve is a part of it)."""
     days = budget_days()
-    return config.LLM_BUDGET_USD * sum(w for d, w in days if d == day) / (sum(w for _, w in days) or 1)
+    share = config.LLM_BUDGET_USD * sum(w for d, w in days if d == day) / (sum(w for _, w in days) or 1)
+    return min(max(share, config.LLM_DAILY_FLOOR_USD), config.LLM_BUDGET_USD) if any(d == day for d, _ in days) else share
 
 
 def cost(model, prompt_tokens, completion_tokens):
@@ -122,8 +124,23 @@ class Unavailable(Exception):
         self.why, self.seconds, self.detail = why, seconds, detail
 
 
+class Saturated(Exception):
+    """_pace(): this model's next free slot is further off than the caller's pace_cap. Nothing was booked or sent and
+    the model is not parked: complete() reports it through last_saturated and the caller may use another model."""
+
+    def __init__(self, model, wait):
+        super().__init__(f"{model} busy for {wait:.1f}s")
+        self.model, self.wait = model, wait
+
+
 def _to_utc_midnight():
     now = dt.datetime.now(dt.timezone.utc)
+    return ((now + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0) - now).total_seconds()
+
+
+def _to_budget_midnight():
+    """Seconds to the next Sydney midnight: the competition day rolls over and the LLM allowance steps up."""
+    now = dt.datetime.now(BUDGET_DAY)
     return ((now + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0) - now).total_seconds()
 
 
@@ -178,6 +195,7 @@ class Generator:
         self._local = threading.local()
         self.min_gap = 60.0 / max(0.1, float(os.environ.get("LLM_RPM") or DEFAULT_RPM))
         self.last_call = {}                   # model -> time of the last request sent (pacing, not just 429s)
+        self.overflow_in = {}                 # model -> drafts it took over from a busy preferred model this run
 
     def describe(self):
         names = [m for _, m in self.chain] + (["qwen"] if self.allow_qwen else [])
@@ -203,14 +221,17 @@ class Generator:
             pass
 
     def complete(self, system, user, max_tokens=None, json_mode=False, models=None, schema=None, reasoning=None,
-                 temperature=0.9, priority=False):
+                 temperature=0.9, priority=False, pace_cap=None):
         """Return (text, model) or (None, None) when no model is available right now.
 
         json_mode asks for a JSON object (batches), schema for that exact shape where the model supports it;
         reasoning sets reasoning_effort (e.g. "low"); models restricts the chain (for comparisons).
         max_tokens caps the answer (None: 4096, 8192 in JSON mode); a cut-off answer sets last_finish "length".
         priority (amplified posts) may spend the reserve, config.LLM_AMP_RESERVE_SHARE of today's share; other calls
-        skip the paid models once only the reserve is left."""
+        skip the paid models once only the reserve is left.
+        pace_cap (seconds): a model whose next free pacing slot is further off than this is skipped without being
+        booked or parked, and last_saturated says so (complete_in_order uses it to spread load across models)."""
+        self._local.saturated = False
         for prov, model in self.chain:
             if models and model not in models:
                 continue
@@ -228,8 +249,11 @@ class Generator:
                 if not priority and left <= config.LLM_AMP_RESERVE_SHARE * day_share(today):
                     continue                                 # the rest of today is kept for amplified posts
             try:
+                self._local.pace_cap = pace_cap
                 return self._call(prov, model, system, user, json_mode, schema, reasoning, max_tokens,
                                   temperature), model
+            except Saturated:
+                self._local.saturated = True
             except Unavailable as e:
                 self._park(model, e.seconds, e.why)
                 print(f"{prov} {model}: {e.why}, parked {e.seconds / 60:.0f} min:", e.detail[:160])
@@ -254,6 +278,8 @@ class Generator:
             except openai.APIError as e:
                 print(f"{prov} {model} error:", type(e).__name__, str(e)[:120])
                 self._park(model, 300, type(e).__name__)
+            finally:
+                self._local.pace_cap = None
         if not self.allow_qwen or models:
             return None, None
         wait = self.qwen_last + QWEN_GAP_S - time.time()
@@ -303,15 +329,75 @@ class Generator:
         """The chain in order, with each model's park time and reason (for data/status.json; no keys)."""
         now = time.time()
         return [dict(model=m, parked_until=self.parked[m] if self.parked.get(m, 0) > now else None,
-                     why=self.park_why.get(m) if self.parked.get(m, 0) > now else None) for _, m in self.chain]
+                     why=self.park_why.get(m) if self.parked.get(m, 0) > now else None,
+                     overflow_in=getattr(self, "overflow_in", {}).get(m, 0)) for _, m in self.chain]
+
+    def _gap(self, model):
+        """Seconds between two requests to one model: config.LLM_MODEL_RPM for it, else LLM_RPM / DEFAULT_RPM."""
+        rpm = config.LLM_MODEL_RPM.get(model)
+        return 60.0 / max(0.1, float(rpm)) if rpm else self.min_gap
 
     def _pace(self, model):
-        """Space requests to one model at least min_gap apart (a dry run would otherwise burst past the cap)."""
+        """Space requests to one model at least its gap apart (a dry run would otherwise burst past the cap). The
+        first pace of a complete(pace_cap=N) call raises Saturated, booking nothing, when the slot is further off than
+        N. A wait is never longer than config.LLM_MAX_WAIT_S (past it the spacing gives, 429 parking still protects)."""
+        local = getattr(self, "_local", None)
+        cap = getattr(local, "pace_cap", None)
+        if local is not None:
+            local.pace_cap = None                       # only the first request of a call: its retries just wait
         with self._lock:
-            wait = self.last_call.get(model, 0) + self.min_gap - time.time()
-            self.last_call[model] = time.time() + max(0.0, wait)
+            now = time.time()
+            wait = self.last_call.get(model, 0) + self._gap(model) - now
+            if cap is not None and wait > cap:
+                raise Saturated(model, wait)
+            wait = min(wait, config.LLM_MAX_WAIT_S)
+            self.last_call[model] = now + max(0.0, wait)
         if wait > 0:
             time.sleep(wait)
+
+    @property
+    def last_saturated(self):
+        """True when this thread's last complete() skipped a model because its pace_cap was exceeded."""
+        return bool(getattr(self._local, "saturated", False))
+
+    @property
+    def overflowed_from(self):
+        """The preferred model this thread's last complete_in_order() moved off because it was busy, else None."""
+        return getattr(self._local, "overflowed_from", None)
+
+    def complete_in_order(self, system, user, models, **kw):
+        """(text, model) from the first of `models` (best first) that answers, spreading load: a model whose next
+        pacing slot is more than config.LLM_OVERFLOW_AT_S away is passed over for a model in
+        config.LLM_OVERFLOW_MODELS that is free now (still in `models` order, never a model the caller left out), so
+        three drafters on one reply model don't queue behind its cap. When every candidate is busy the best one is
+        waited for (at most config.LLM_MAX_WAIT_S). A parked or over-budget model returns at once, as before. A model
+        that fails (quota, 429, format) falls through to the next without losing the draft."""
+        self._local.overflowed_from = None
+        order = [m for m in dict.fromkeys(models or ()) if m not in config.REPLY_NEVER]
+        spread = set(config.LLM_OVERFLOW_MODELS)
+        cap = config.LLM_OVERFLOW_AT_S if spread and config.LLM_OVERFLOW_AT_S > 0 else None      # None: strict order
+        busy, held_back = [], []                    # models passed over as busy / left for later, in order
+        for m in order:
+            if busy and m not in spread:
+                held_back.append(m)                 # a busy lead is not replaced by a model outside the overflow set
+                continue
+            raw, backend = self.complete(system, user, models=(m,), pace_cap=cap, **kw)
+            if raw is not None:
+                if busy:
+                    self._local.overflowed_from = busy[0]
+                    self.overflow_in[m] = self.overflow_in.get(m, 0) + 1
+                return raw, backend
+            if self.last_saturated:
+                busy.append(m)
+        for m in busy:                              # all candidates busy: wait for the best (bounded in _pace)
+            raw, backend = self.complete(system, user, models=(m,), **kw)
+            if raw is not None:
+                return raw, backend
+        for m in held_back:                         # nothing in the overflow set answered: the rest of the order
+            raw, backend = self.complete(system, user, models=(m,), **kw)
+            if raw is not None:
+                return raw, backend
+        return None, None
 
     def _call(self, prov, model, system, user, json_mode, schema=None, reasoning=None, max_tokens=None,
               temperature=0.9):
@@ -410,8 +496,38 @@ class Generator:
         """finish_reason of this thread's last answer ("length" = cut off)."""
         return getattr(self._local, "finish", None)
 
-    def next_available_in(self):
-        """Seconds until some model in the chain may be tried again."""
+    def no_model_wait(self, priority=False, models=None):
+        """Seconds until some model eligible for this call could answer; 0.0 when one can be tried now. 23 Oct: a
+        priced model that complete() skips for the budget, the daily floor or the amplified-post reserve is not
+        parked, so a park-time-only check said "available" for 8 h while nothing could answer. A model counts as
+        eligible when it is not parked and, if priced, today's allowance (llm.allowance, floor included) is not spent
+        and, for priority=False, more than the reserve (config.LLM_AMP_RESERVE_SHARE of today's share) is left.
+        A priced model the budget holds back is off until Sydney midnight, when the allowance next steps up; a parked
+        one until its park time (the later of the two). priority=True: the call may spend the reserve (amplified
+        posts, and every draft once nothing else answered: bot.draft_checked). models restricts the chain, as in
+        complete(). With allow_qwen and no restriction the provided qwen answers, so 0.0. Pacing is not counted: a
+        model that is only busy still answers."""
         if not self.chain:
-            return 3600
-        return max(0.0, min(self.parked.get(m, 0) for _, m in self.chain) - time.time())
+            return 3600.0
+        if self.allow_qwen and not models:
+            return 0.0
+        now = time.time()
+        left = reserve = None
+        waits = []
+        for _, model in self.chain:
+            if models and model not in models:
+                continue
+            wait = max(0.0, self.parked.get(model, 0) - now)
+            if model in config.LLM_PRICES:
+                if left is None:
+                    left = self.budget_left()
+                    reserve = config.LLM_AMP_RESERVE_SHARE * day_share(dt.datetime.now(BUDGET_DAY).date().isoformat())
+                if left <= 0 or (not priority and left <= reserve):
+                    wait = max(wait, _to_budget_midnight())
+            waits.append(wait)
+        return min(waits) if waits else 3600.0
+
+    def next_available_in(self, priority=True, models=None):
+        """Seconds until some model in the chain may be tried again (no_model_wait). The default is priority=True:
+        draft_checked asks again with the reserve when nothing answered, so for a draft the reserve is available."""
+        return self.no_model_wait(priority=priority, models=models)

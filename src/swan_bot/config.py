@@ -167,7 +167,12 @@ AMP_PRIORITY_S = 5 * 60
 # 2026-10-21: Kimi K2.5 and GLM-5 on Bedrock lead (best drafts in llm_compare, paid from the AWS credits); then the
 # free Gemini Flash models. (qwen-plus-character, the Alibaba free quota, was last here until 23 Oct: quota spent, out.)
 # Order comes from deploy/llm_chain.txt, not from this tuple.
-AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3.6-flash")
+# 2026-10-23: Sonnet 4.6 is not here or in the chain (Marc: not even as a last resort; npc-lab 23 Oct: no drafting model
+# moves the raters, and it costs ~5x Kimi). Its price stays in LLM_PRICES so PREMIUM_MODELS can switch it on.
+# 2026-10-23 (Marc): GLM-5 is out of AMP_MODELS and deploy/llm_chain.txt: no draft from it in the 24 h to 23 Oct (last
+# calls 21 Oct), and replies never used it. Its price and REPLY_NEVER stay, so putting it back in the chain by mistake
+# still cannot draft a reply.
+AMP_MODELS = ("moonshotai.kimi-k2.5", "gemini-3.8-flash", "gemini-3.6-flash")
 # Where persuasion happens, drafts get strong models too: replies to citizens (a change of mind is 160 points), on
 # REPLY_MODELS since 2026-10-22 (todo/24: Kimi then flash-lite, never GLM-5). Thread one-liners and author answers try
 # the free models first and reach the paid ones only when those are out.
@@ -179,16 +184,27 @@ CHEAP_MODES = {"thread", "thread_answer"}
 # $99.67 credits = this + EC2 to ~5 Nov (t3.micro ~$0.32/day, public IPv4 $0.12/day, 8 GB disk ~$0.03/day: ~$7.50;
 # load 0.00, so no unlimited-CPU surcharge) + ~$7 tolerance (Bedrock calls made off the box with the same key aren't
 # counted here; the bill lags by hours). With LLM_PRICES padded ~25%, the real spend should come in under this.
-# 2026-10-23: 85 -> 170 with the credit at $200 (EC2 ~$7.50 and ~$22 tolerance for the lag and for calls made off the box).
-# At 85 the allowance through 23 Oct ($10.20) was spent by ~23:20 UTC: only the amplified-post reserve was left, the
-# paid models were skipped and, with every free model parked, drafts found no model (see NO_MODEL_PAUSE_S in bot.py).
+# 2026-10-23: 85 -> 170 with the credit at $200 (EC2 ~$7.50 and ~$22 tolerance for the lag and for calls made off the box)
 LLM_BUDGET_USD = 170.0              # all priced models together, 21 Oct to 2 Nov
 # USD per million tokens (input, output). us-west-2 list prices padded ~25% (Kimi $0.60/$3.00, GLM-5 $1.00/$3.20 from
 # third-party listings, 2026-10-21; eu-west-2 runs ~20% over us-west-2). Replace with the console's Sydney prices.
-LLM_PRICES = {"moonshotai.kimi-k2.5": (0.75, 3.75), "zai.glm-5": (1.25, 4.00)}
+# 2026-10-23: Claude on Bedrock (Converse, global. profiles), list prices padded 25%: Haiku 4.5 $1/$5, Sonnet 4.6 $3/$15
+# (from memory; check the console's Sydney prices).
+HAIKU = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+SONNET = "global.anthropic.claude-sonnet-4-6"
+# 2026-10-23: DeepSeek V3.2 and Mistral Large 3 (the NPC lab's LAB_DRAFTERS) run on Bedrock with the same BEDROCK_API_KEY and
+# are billed from the credit, not free: billed $0.64/$1.91 and $0.515/$1.545 per 1M tokens (Cost Explorer), padded 25%.
+LLM_PRICES = {"moonshotai.kimi-k2.5": (0.75, 3.75), "zai.glm-5": (1.25, 4.00),
+              HAIKU: (1.25, 6.25), SONNET: (3.75, 18.75),
+              "deepseek.v3.2": (0.80, 2.40), "mistral.mistral-large-3-675b-instruct": (0.65, 1.95)}
 # Daily shares follow the Red multiplier (x1 to 25 Oct, x2 26-31 Oct, x4 1-2 Nov; Sydney days): a draft is worth up to
 # 4x more on the last days. A day's unspent share carries forward; the total never passes LLM_BUDGET_USD.
 LLM_BUDGET_DAYS = [("2026-10-21", "2026-10-25", 1), ("2026-10-26", "2026-10-31", 2), ("2026-11-01", "2026-11-02", 4)]
+# Daily floor (2026-10-23): the allowance through any budget day is never below this much per day so far, and day_share is
+# never below it. The bot spends ~$6-7 a day (ledger dollars) at 2.2-2.4 writes/min and about $8-9 at 2.9, so the weighted
+# share of $6.80 (21-25 Oct) left no margin: on 23 Oct the allowance ran out by ~06:30 Sydney and 7 h of drafts found no
+# model. LLM_BUDGET_USD still caps the total. Billed dollars are ~0.82 of ledger dollars (scripts/aws_cost.py).
+LLM_DAILY_FLOOR_USD = 12.0
 # Priority lane: this share of each day's share stays for amplified posts. Other drafts use the paid models only
 # while more than it is left, then the free ones.
 LLM_AMP_RESERVE_SHARE = 0.25
@@ -314,16 +330,41 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # ---- todo/22 reader/writer split (bot.py; docs/04-technical/swan-bot-runbook.md) ----
 SPLIT_LOOP = True                   # reader, drafter, writer threads. False + a restart: the serial loop (rollback)
-DRAFT_AHEAD = 2                     # drafts waiting for the writer, at most (more would go stale)
+DRAFTERS = 3                        # drafter threads (23 Oct: one drafter, 15-30 s a draft, 35% rejected, held writes to ~2/min
+                                    # against the 2.9/min the limit allows). They never share a voice or a citizen. 1 = as before
+DRAFT_AHEAD = 4                     # drafts chosen and not sent: waiting for the writer PLUS being drafted (more would go stale).
+                                    # With DRAFTERS=3 that is 3 drafting + 1 waiting, or 1 drafting + 3 waiting (~1 min of writes)
 READER_SILENT_S = 20 * 60           # the watchdog stops the bot when the reader goes this long without a round
 DRAFTER_SILENT_S = 30 * 60          # ...or the drafter (one draft may try several models with 90 s timeouts)
+PULSE_SILENT_S = 30 * 60            # the pulse thread (23 Oct) is not vital: silent this long, the watchdog only alerts (drafts use the last pulse)
 
 # ---- todo/24 throughput (todo/24-throughput-to-three.md; docs/04-technical/swan-bot-runbook.md) ----
 # Replies to citizens (STRONG_MODES) are drafted on these models, tried in THIS order (not the chain's), then the rest
 # of deploy/llm_chain.txt without REPLY_NEVER. 2026-10-22 overnight first-call pass: Kimi 89% (n=857), flash-lite 86%
 # (n=195), GLM-5 0 of 69 (not_specific 36, near_duplicate 28): GLM-5 drafts amplified posts only (AMP_MODELS).
-REPLY_MODELS = ("moonshotai.kimi-k2.5", "gemini-3.5-flash-lite")
+REPLY_MODELS = ("moonshotai.kimi-k2.5", "global.anthropic.claude-haiku-4-5-20251001-v1:0", "gemini-3.5-flash-lite")
+# High-value drafts (bot.high_value) try these first, then their usual order: amplified posts (AMP_MODELS leads with
+# Sonnet), journalist replies, replies to a citizen of a movable class (todo/25's lab order: the ones who can change
+# their mind) and to one who answered us before, and reply-backs. Sonnet beat Haiku only at the top end (model-test
+# 2026-10-19), so it goes where a change of mind is worth 160 points; Haiku covers bulk replies.
+# 2026-10-23: empty (off). The blind-rated round of 23 Oct found no model ahead (within noise, flipping with the rater),
+# so Sonnet is out until a test shows it pays. To use it again, put SONNET here AND add it to deploy/llm_chain.txt.
+PREMIUM_MODELS = ()
+PREMIUM_CLASSES = {"unsure", "unclear", "conditions", "yes_reason"}
 REPLY_NEVER = {"zai.glm-5"}
+# 2026-10-23 load spreading (llm.Generator.complete_in_order). Pacing is OUR cap per model (llm.DEFAULT_RPM = 10 a
+# minute, LLM_RPM in .env), not a provider limit: no document in this repo gives Bedrock's real quota for Kimi K2.5 or
+# Haiku 4.5, so none is assumed. With several drafters the reply model's slots fill; a call whose preferred model is
+# busy for more than LLM_OVERFLOW_AT_S goes to the next of LLM_OVERFLOW_MODELS that is free now (the order of
+# REPLY_MODELS, which is quality-first: Kimi 63% of drafts sent live, flash-lite 49%, Haiku not measured live yet).
+# Only these models take overflow, only if they are also in the draft's own model list, so REPLY_NEVER (GLM-5) and
+# Sonnet (not in the chain) can never be reached this way. If every candidate is busy the best is waited for, never
+# longer than LLM_MAX_WAIT_S. LLM_MODEL_RPM {model: calls a minute} sets a model's own cap where its quota is known
+# (unset: LLM_RPM / 10). LLM_OVERFLOW_AT_S = 0 or LLM_OVERFLOW_MODELS = () turns overflow off (strict order, waits).
+LLM_OVERFLOW_AT_S = 2.5
+LLM_OVERFLOW_MODELS = REPLY_MODELS
+LLM_MAX_WAIT_S = 20.0
+LLM_MODEL_RPM = {}
 # Pacing. 22 Oct overnight: 2.2-2.3 writes/min (per_min 2.5 clamped, jitter 0.7-1.5) and the queue grew at Sydney peak.
 # The writer now aims at the team limit (deploy/run.sh --per-min 2.9): the next write waits for the larger of the pace
 # gap and the headers' gap (bot.write_gap): X-RateLimit-Remaining must be back to WRITE_MARGIN + 1, so each of our

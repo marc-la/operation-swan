@@ -18,9 +18,12 @@ gemini:gemini-3.5-flash-lite
 # DeepSeek V3.2 3/6 at 64 s. Kimi and GLM lead the amplified post (config.AMP_MODELS) and take over from flash-lite
 # when its free 500/day is spent. Needs BEDROCK_API_KEY in .env.
 bedrock:moonshotai.kimi-k2.5
-# 2026-10-22 (todo/24): GLM-5 passed first time on 0 of 69 reply drafts. Replies no longer use it (config.REPLY_MODELS:
-# Kimi, then flash-lite, then this chain without GLM-5); it stays here for amplified posts and other drafts.
-bedrock:zai.glm-5
+# 2026-10-23 (Marc): GLM-5 (bedrock:zai.glm-5) removed from the chain: it passed first time on 0 of 69 reply drafts
+# (todo/24), replies never used it, and nothing else called it after 21 Oct. config.REPLY_NEVER still bars it for replies.
+# 2026-10-23: the plan upgrade lifted the Claude limit (one-token calls to Haiku 4.5, Sonnet 4.5/4.6 and Opus 4.6 passed).
+# Haiku 4.5 is the second reply model (config.REPLY_MODELS); priced in config.LLM_PRICES, so it counts against the budget.
+# Sonnet 4.6 is deliberately NOT in the chain (Marc, 2026-10-23: not even as a last resort).
+bedrock-converse:global.anthropic.claude-haiku-4-5-20251001-v1:0
 gemini:gemini-3.8-flash
 gemini:gemini-3.6-flash
 groq:openai/gpt-oss-120b
@@ -35,4 +38,3 @@ openrouter:nvidia/nemotron-3-ultra-550b-a55b:free
 # ids need the inference-profile prefix). Not in the chain yet: add a price to config.LLM_PRICES first so its spend
 # counts against the budget. Claude needs AWS to lift our daily token limit first.
 # bedrock-converse:global.moonshotai.kimi-k3
-# bedrock-converse:global.anthropic.claude-sonnet-4-6

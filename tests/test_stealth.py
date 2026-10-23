@@ -397,6 +397,7 @@ def test_load_env_applies_the_overrides(monkeypatch, tmp_path):
 
 
 # ---- end to end: bot.main() on the fake world with every rule on ----------------------------------------------------------
+@pytest.mark.slow
 @pytest.mark.parametrize("split", [True, False], ids=["split", "serial"])
 def test_main_keeps_a_human_day(split, tmp_path, monkeypatch):
     import test_bot_split as e2e

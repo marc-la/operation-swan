@@ -189,6 +189,7 @@ def _prompts(persona, frame, seed):
     return [p.replace(TARGET, "").replace(NEUTRAL, "") for p in out]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("key", list(fact_store.TABLE))
 def test_a_paused_fact_reaches_no_prompt(pause, key):
     """Every persona x every live frame, several draws: neither the fact nor its wording is in any prompt."""

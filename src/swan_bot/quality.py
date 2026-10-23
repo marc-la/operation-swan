@@ -62,7 +62,7 @@ WRONG_LOGISTICS = re.compile(r"\b(vot\w*|ballot|tick\w* the box|referendum)\s+(n
                              r"election day|polling (day|place|booth|station)|early voting|polls (open|close)|"
                              r"\b\d{1,2}(st|nd|rd|th)? (of )?(oct|nov)|\b(oct|nov)(ober|ember)? \d{1,2}\b|"
                              r"\b(vot\w*|ballot|referendum|polls?)\b[^.?!]{0,25}\b(on|by|before) the (1st|2nd|28th)\b|"
-                             r"pa'?anga|tala|\b(?<!K)\$\d", re.I)
+                             r"pa'?anga|\b\d[\d,.]*\s*tala\b|\b(?<!K)\$\d", re.I)   # a sum of tala, not a girl called Tala
 # claims that contradict the setting: exemptions exist; the certificate is separate from the ID card
 WRONG_CLAIMS = re.compile(r"no (medical )?exemptions|without (any )?exemptions|exemptions? (aren'?t|are not|isn'?t)|"
                           r"on (your|the|our) (new )?id card|(linked|tied) to (your|the|our) id|"
@@ -177,6 +177,47 @@ FACT_ANCHORS = re.compile(r"ballot|question|regulation|list|designated|end date|
                           r"\bjab|vaccinat|vaxx|papers at|finish date|stop date|expiry|temporary|permanent|"
                           r"stages|120,000|40 empty|nurs|ferry|K\$|age 12|12 and over|school gate|free|voluntary|"
                           r"ID card|biometric|Assembly|community spread|visitors|in writing|written down", re.I)
+# 2026-10-23: the same facts in the words drafts use now. content.WORN_PHRASES (and the phrase budgets) tell the model to
+# keep off "end date", "venue list", "list of places", "sunset", "after the vote" and "blank cheque", the very words
+# FACT_ANCHORS looked for, so 316 of 721 rejects in 24 h were not_specific on replies that did state the fact ("they
+# won't say which doors until you've said yes", "nobody wrote a switch-off", "the IHO's data is still coming in");
+# only 19% of those jobs ever got a reply out. Each branch below is one fact in other words, never a bare topic word
+# like "pass" or "papers" (those are on every reply, so they prove nothing).
+FACT_PARAPHRASES = re.compile(
+    r"\b(?:won't|wont|haven't|hasn't|can't|couldn't|don't|doesn't|never|not|nobody|nobody's|no one|no one's)\s+(?:\w+\s+){0,2}?(?:say|said|tell|told|"
+    r"name|named|publish|show|list|know|decided?)\s+(?:\w+\s+)?(?:which|what|where|whether)\b|"
+    r"\b(?:places|doors|venues|spaces|locations|sites|rooms)\b[^.?!]{0,50}\b(?:after (?:we|the|they|you|it)|until|later|chosen|picked|"
+    r"decided?|named|haven't|hasn't|won't|aren't|isn't)\b|"
+    r"\b(?:after|until|before) (?:we|you|the|they|i) (?:vote|voted|result|count|referendum)|until after\b|"
+    r"switch[- ]?off|finish(?:ing)? line|no (?:end|expiry|stop|exit)\b|never (?:ends?|stops?|switches)|"
+    r"where does (?:it|this) (?:ever )?(?:stop|end|switch)|time[- ]?limit|"
+    r"roll-?out|staged|phased?\b|doses|booster|late october|Daily Kingstonia|Herald\b|IHO\b|Medical Officers|MOUK|"
+    r"\bbill\b|President|one (?:confirmed |isolated )?case|traveller|isolation|transmission|"
+    r"blank (?:cheque|check)|under-12|12-year|aged? 12|binds? us|locks? (?:it |us )?in|locked in|"
+    r"skeleton|empty (?:posts|beds)|unfilled|nursing", re.I)
+# The other way to be specific: take up a word of theirs (the prompts say "Name one concrete detail from their post")
+# and bring the rule to it. Only with a policy word, so a reply that merely echoes them still fails.
+POLICY_WORDS = re.compile(r"\b(?:papers?|pass(?:es)?|proof|checks?|checking|checked|checker|gate|doors?|cert(?:ificate)?s?|"
+                          r"card|app|reader|scanner|enforce\w*|polic(?:e|ing|eman)|staff|jabs?|scan\w*)\b", re.I)
+_ECHO_STOP = set("""about above after again against also always another because been before being below between both
+could doesn don during each even ever every from have having here into just like made make many more most much must
+never only other over really same should since some still such than that their them then there these they thing things
+think this those through under until very want wants were what when where which while will with without would your
+people vote voting voted rule rules pass passes papers paper shop shops door doors check checks kingstonia
+referendum government exactly right agree worry worries worried concern need needs good great fair real true sure hear
+understand know knows said says tell told going well come comes year years week weeks time today covid""".split())
+
+
+def _stems(text):
+    text = POLICY_WORDS.sub(" ", re.sub(r"https?://\S+", " ", text or ""))     # the policy word itself is not an echo
+    return {w.rstrip("s")[:6] for w in re.findall(r"[a-z]{4,}", text.lower())} - {w.rstrip("s")[:6] for w in _ECHO_STOP}
+
+
+def touches_target(text, target_text):
+    """True when text takes up a distinctive word of the citizen's post and brings the rule to it (POLICY_WORDS)."""
+    return bool(target_text and POLICY_WORDS.search(text) and _stems(text) & _stems(target_text))
+
+
 LOCAL = re.compile(r"Crown Harbour|New Haven|Kingstonia City|outer island|wharf|ferry|market|harbour|reef|beach|"
                    r"regatta|lagoon|ward|clinic|bus|loop|campus|KU\b|counter|shop|cafe|boat|tuna|school|K\$|"
                    r"grandkids?|grandson|granddaughter|residents|Year 8|sailing|stall|bakery|netball|footy|church|"
@@ -384,19 +425,66 @@ def phrase_shares(texts):
             for k, (rx, _) in PHRASE_BUDGETS.items()}
 
 
-def over_budget(text, window, exempt=()):
+# 2026-10-23: echoing a citizen's own word is not a template. 114 of the 118 phrase_sunset rejects in 24 h answered a
+# citizen who had written "sunset" themselves (28% of the citizens we answer do: the Yes-buts ask for one), and the
+# drafting prompt (content.worn_line) already lets a worn phrase through when they used it first, so the gate rejected
+# what the prompt allowed. A draft may now say a budgeted word its citizen wrote, up to ECHO_CEILING times the budget
+# (sunset: 10 of the last 100 texts for our own use, 15 in all). The ceiling keeps the global frequency of every phrase
+# bounded, whoever wrote it first; the tells (share 0) and the vote line are never echo-exempt.
+ECHO_CEILING = 1.5
+ECHO_MAX_STACK = 2                  # a text with more worn phrases than this gets no echo allowance
+ECHO_PATTERNS = {                   # the citizen's wording that makes our use of the key an echo (default: its own pattern)
+    "sunset": re.compile(r"\bsunsets?\b", re.I),
+    "end_date": re.compile(r"\bend[- ]dates?\b", re.I),
+    "venue_list": re.compile(r"\bvenues? lists?\b|\blist of (?:venues|places)\b", re.I),
+}
+ECHO_KEYS = tuple(k for k, (_, share) in PHRASE_BUDGETS.items() if share > 0 and k != "vote")
+
+
+def echoed(target_text):
+    """The ECHO_KEYS the citizen's own post says: our draft may repeat those words (up to ECHO_CEILING)."""
+    return tuple(k for k in ECHO_KEYS
+                 if (ECHO_PATTERNS.get(k) or PHRASE_BUDGETS[k][0]).search(target_text or ""))
+
+
+def _used(k, last):
+    rx = PHRASE_BUDGETS[k][0]
+    return sum(bool(rx.search(t or "")) for t in last)
+
+
+def over_budget(text, window, exempt=(), echo=()):
     """The PHRASE_BUDGETS keys text would push over budget, given window (our latest citizen-facing texts, oldest
     first): with the draft as the newest of PHRASE_WINDOW texts, more than share * PHRASE_WINDOW would say it. A short
-    window counts as full, so a fresh start isn't stricter than the budget. exempt: keys this draft may say anyway."""
+    window counts as full, so a fresh start isn't stricter than the budget. exempt: keys this draft may say anyway.
+    echo: keys the citizen said first (echoed()): their budget is ECHO_CEILING times as big."""
     last = list(window)[-(PHRASE_WINDOW - 1):]
     out = []
-    for k in phrases_in(text):
+    said = phrases_in(text)
+    if sum(k in ECHO_KEYS for k in said) > ECHO_MAX_STACK:
+        echo = ()                  # three worn phrases in one text is the hidden template itself: no echo allowance
+    for k in said:
         if k in exempt:
             continue
-        rx, share = PHRASE_BUDGETS[k]
-        if sum(bool(rx.search(t or "")) for t in last) + 1 > share * PHRASE_WINDOW:
+        share = PHRASE_BUDGETS[k][1] * (ECHO_CEILING if k in echo and k in ECHO_KEYS else 1)
+        if _used(k, last) + 1 > share * PHRASE_WINDOW:
             out.append(k)
     return out
+
+
+def spent_phrases(window, target_text=""):
+    """The budgeted words a draft to this citizen can't use right now (the window already holds as many as its budget
+    allows, ECHO_CEILING times as many for a word the citizen wrote): [(key, label)], for the drafting prompt to keep
+    off on the first draft instead of being rejected for them. Tells (share 0) are the prompts' own rules."""
+    if window is None:
+        return []
+    last = list(window)[-(PHRASE_WINDOW - 1):]
+    echo = echoed(target_text)
+    return [(k, PHRASE_LABELS[k]) for k in ECHO_KEYS if k in PHRASE_LABELS
+            and _used(k, last) + 1 > PHRASE_BUDGETS[k][1] * PHRASE_WINDOW * (ECHO_CEILING if k in echo else 1)]
+
+
+PHRASE_LABELS = {"binds_us": "binds us", "no_review": "no review", "end_date": "end date",
+                 "venue_list": "venue list", "sunset": "sunset", "after_the_vote": "after the vote"}
 
 
 _VOTE_FILLER = set("that's thats that this it it's its why so which is and but then well yes yeah i i'm im i am will "
@@ -504,7 +592,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     if num:
         return None, f"unapproved_number_{num}"
     if kind in ("reply", "journalist") and specific:   # second voices carry a set angle; off-topic replies (todo/23) none
-        if not (FACT_ANCHORS.search(t) or any(w.lower() in t.lower() for w in wants)):
+        if not (FACT_ANCHORS.search(t) or FACT_PARAPHRASES.search(t) or any(w.lower() in t.lower() for w in wants)
+                or touches_target(t, target_text)):
             return None, "not_specific"
     if kind == "post" and not (LOCAL.search(t) or (LOCAL_NAME and LOCAL_NAME.search(t))):
         return None, "no_local_detail"
@@ -528,7 +617,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     if near_duplicate(body, kind, recent_texts, same):
         return None, "near_duplicate"
-    over = over_budget(t, phrase_texts, phrase_exempt) if phrase_texts is not None and kind in PERSONAL_KINDS else []
+    over = (over_budget(t, phrase_texts, phrase_exempt, echoed(target_text))
+            if phrase_texts is not None and kind in PERSONAL_KINDS else [])
     if over:
         return None, PHRASE_PREFIX + "+".join(over)
     return t, None
@@ -581,10 +671,85 @@ def drop_first_clause(text):
     return rest[:1].upper() + rest[1:] if len(rest) >= SHORT_OK else None
 
 
-def fix(text, why, kind):
+_FILLER_OPEN = re.compile(r"^(?:sure|okay|ok|certainly|of course|absolutely)\b[,.!]?\s+", re.I)
+_CONJ_OPEN = re.compile(r"^(?:and|but|so|or|well|then)\b[,]?\s+", re.I)
+
+
+def _cap(text):
+    text = _CONJ_OPEN.sub("", text.strip())
+    return text[:1].upper() + text[1:]
+
+
+def strip_filler(text):
+    """text without a leading "Sure," / "Okay," (ARTEFACT_START reads it as the model talking to us; as a reply's first
+    word it is only a casual opener), or None when there is none."""
+    t = normalise(text)
+    out = _cap(_FILLER_OPEN.sub("", t, count=1))
+    return out if _FILLER_OPEN.match(t) and out else None
+
+
+FIX_KEEPS = 0.55          # a sentence-dropping fix keeps at least this share of the characters, or the reply is gutted
+_BACKREF = re.compile(r"^(?:that|this|those|these|it|which|so|such|then|there)\b", re.I)
+
+
+def _without(parts, drop, kind):
+    """The sentences `parts` without the indexes in `drop`, joined, or None when that would gut the reply: nothing to
+    drop, under two sentences or FIX_KEEPS of the characters left, an opening shorter than 20 characters, a sentence
+    left leaning on the one before it ("That's why..."), or under the kind's floor. For the fixes that drop sentences."""
+    kept = [(i, s) for i, s in enumerate(parts) if i not in drop]
+    if not drop or len(kept) < 2:
+        return None
+    if any(i - 1 in drop and _BACKREF.match(s) for i, s in kept) or (kept[0][0] > 0 and len(kept[0][1]) < 20):
+        return None
+    out = _cap(" ".join(s for _, s in kept))
+    if len(out) < FIX_KEEPS * len(" ".join(parts)) or len(out) < LENGTHS[kind][0]:
+        return None
+    return out
+
+
+def drop_phrase_sentences(text, keys, kind):
+    """text without the sentences that say one of the budgeted phrases `keys` (0.0-share conceding openers only count
+    in the first sentence, as the pattern does), or None when no sentence says one on its own or what's left is under
+    the kind's floor. A code fix for phrase_<keys> (2026-10-23): the gate checks what's left again."""
+    parts = sentences(TRAILING_TAGS.sub("", normalise(text)))
+    drop = {i for i, s in enumerate(parts)
+            if any(PHRASE_BUDGETS[k][0].search(s) and (k != "concede_open" or i == 0)
+                   for k in keys if k in PHRASE_BUDGETS)}
+    return _without(parts, drop, kind)
+
+
+def drop_clash(text, kind, recent=(), same=()):
+    """text without the sentences that repeat our earlier wording (5-word runs shared with recent / same, the
+    near_duplicate measure), the most-shared sentence first, until it no longer counts as a near duplicate; or None
+    when that can't be done above the kind's floor. A code fix for near_duplicate (2026-10-23)."""
+    parts = sentences(TRAILING_TAGS.sub("", normalise(text)) if kind != "post" else text)
+    old = set()
+    for o in list(recent)[-300:] + list(same):
+        old |= _shingles(strip_tag(o.strip()))
+    drop = set()
+    while len(drop) < len(parts) - 1:
+        left = " ".join(s for i, s in enumerate(parts) if i not in drop)
+        if not near_duplicate(strip_tag(left), kind, recent, same):
+            break
+        score = {i: len(_shingles(s) & old) for i, s in enumerate(parts) if i not in drop}
+        worst = max(score, key=lambda i: (score[i], -i))
+        if not score[worst]:
+            return None
+        drop.add(worst)
+    out = _without(parts, drop, kind)
+    return out if out and not near_duplicate(strip_tag(out), kind, recent, same) else None
+
+
+def fix(text, why, kind, recent=(), same=()):
     """A code fix for a rejected draft (no LLM call), or None when this reason has none or nothing usable is left.
-    Too long -> trim; same opening -> drop the first clause; an unapproved number -> drop its sentence."""
+    Too long -> trim; same opening -> drop the first clause; an unapproved number -> drop its sentence; 2026-10-23: a
+    leading "Sure," goes; a budgeted phrase (or a conceding opener) -> drop the sentences saying it; near_duplicate ->
+    drop the sentences that repeat our earlier wording (recent / same: our texts, as for check)."""
     why = why or ""
+    if why == "llm_artefact":
+        return strip_filler(text)
+    if why == "near_duplicate" and kind in PERSONAL_KINDS:
+        return drop_clash(text, kind, recent, same)
     if why.startswith("length_") and int(why.split("_")[1]) > LENGTHS[kind][1]:
         return trim(text, kind)
     if why == "off_topic_vote":                    # todo/23: their topic only; the sentences about the vote go
@@ -601,8 +766,12 @@ def fix(text, why, kind):
         parts = [s for s in sentences(text) if not content.advocacy(s)]
         out = " ".join(parts)
         return out if parts and len(out) >= min(LENGTHS[kind][0], SHORT_OK) else None
-    if why.startswith(PHRASE_PREFIX) and "vote" in why[len(PHRASE_PREFIX):].split("+"):    # todo/27
-        return drop_vote(text, kind)
+    if why.startswith(PHRASE_PREFIX):
+        keys = why[len(PHRASE_PREFIX):].split("+")
+        if "vote" in keys:                                                                  # todo/27
+            return drop_vote(text, kind)
+        if kind in PERSONAL_KINDS:
+            return drop_phrase_sentences(text, keys, kind)
     return None
 
 
@@ -620,21 +789,79 @@ def _close_to(raw, recent):
     return best if best and similar(body, strip_tag(best.strip())) > 0.25 else None
 
 
-def repair_note(why, raw, kind, tag=None, recent=()):
+def shared_wording(raw, olds, n=5, limit=2):
+    """The longest runs of words the draft shares with the texts `olds` (n-word runs merged), at most `limit`, longest
+    first: what a near_duplicate repair has to say differently. [] when they share none."""
+    words = re.findall(r"[a-z']+", strip_tag(normalise(raw)).lower())
+    old = set()
+    for o in olds:
+        old |= _shingles(strip_tag(o.strip()), n)
+    covered = [" ".join(words[i:i + n]) in old for i in range(len(words) - n + 1)]
+    mask = [False] * len(words)
+    for i, c in enumerate(covered):
+        if c:
+            mask[i:i + n] = [True] * n
+    runs, cur = [], []
+    for w, c in zip(words + [""], mask + [False]):
+        if c:
+            cur.append(w)
+        elif cur:
+            runs.append(" ".join(cur))
+            cur = []
+    return sorted(runs, key=lambda r: -len(r))[:limit]
+
+
+def their_words(target_text, k=2):
+    """Up to k distinctive words of the citizen's post, in their spelling, longest first: what a not_specific repair
+    tells the model to pick up (the same stems touches_target compares)."""
+    text = re.sub(r"https?://\S+", " ", target_text or "")
+    skip = {w.rstrip("s")[:6] for w in _ECHO_STOP}
+    seen, out = set(), []
+    for w in re.findall(r"[A-Za-z']{5,}", text):
+        stem = w.lower().rstrip("s")[:6]
+        if stem in skip or stem in seen or stem.startswith("exempt") or POLICY_WORDS.fullmatch(w) or any(
+                rx.search(w) for rx, _ in PHRASE_BUDGETS.values()):
+            continue
+        seen.add(stem)
+        out.append(w)
+    return sorted(out, key=lambda w: -len(w))[:k]
+
+
+_THINKING = re.compile(r"^\W*(?:the user|let me|i need to|okay, so|first,? i|looking at|analy[sz]e)", re.I)
+
+
+def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), same=(), phrase_texts=None):
     """What to tell the model to fix in a rejected draft, or None (then the retry is a fresh draft). todo/20 G9: every
-    reason a draft fails on in practice has a note, so a retry gets the exact problem, not a fresh roll."""
+    reason a draft fails on in practice has a note, so a retry gets the exact problem, not a fresh roll.
+    2026-10-23: the note is targeted. target_text / wants: the citizen's post and what they asked for (not_specific
+    names their words, a phrase repair says whose word it was); recent / same: our texts (near_duplicate quotes the
+    wording that repeats); phrase_texts: the phrase window, so a note doesn't send the model to a word that is spent."""
     why = why or ""
     if why == "near_duplicate":
-        old = _close_to(raw, recent)
+        olds = list(same) + list(recent)
+        old = _close_to(raw, olds)
+        runs = shared_wording(raw, olds)
+        opening = " ".join(re.findall(r"[a-z']+", normalise(raw).lower())[:4])
+        same_open = [o for o in olds[-30:] if " ".join(re.findall(r"[a-z']+", o.lower())[:4]) == opening]
         return ("This is too close to something we already posted" + (f", which went: «{old[:200]}»" if old else "") +
-                ". Make the same point with a different opening, a different detail and different words.")
+                (f". The repeated wording is {' and '.join(f'«{r}»' for r in runs)}: say that point another way, or "
+                 f"leave it out" if runs else "") +
+                (f". Don't open with «{opening}» again" if same_open else "") +
+                ". Use a different opening, a different detail from your own life and different words.")
     if why == "same_opening":
         return "Start with different words: the first four words are the same as something we already posted."
     if why.startswith("unapproved_number_"):
         return (f"Remove the number {why[len('unapproved_number_'):].rstrip(',.')}: use no number except the ones you "
                 f"were given, as digits.")
     if why == "not_specific":
-        return "Name the exact thing they raised, in a few of their own words, or one of your facts."
+        spent = {k for k, _ in spent_phrases(phrase_texts, target_text)}
+        ask = [w for w in wants if w and not any(PHRASE_BUDGETS[k][0].search(w) for k in spent)][:2]
+        mine = their_words(target_text)
+        theirs = (f"Use their own word {' or '.join(f'«{w}»' for w in (ask or mine))}, and " if (ask or mine) else
+                  "Use a word or two of theirs, and ")
+        return (theirs + "say which part of the rule bears on it (who has to check at the door, which places the "
+                "question doesn't name, how long it lasts, who would staff it, or what the news says) in plain words. "
+                "Keep the rest.")
     if why == "parrots_target":
         return "Don't repeat their words back to them: say it in your own words."
     if why == "rhetorical_question":
@@ -658,6 +885,8 @@ def repair_note(why, raw, kind, tag=None, recent=()):
         return (f"Too long ({n} characters): 1 or 2 short sentences, under 35 words." if n > OFF_TOPIC_LEN[1] else
                 None)
     if why == "llm_artefact":
+        if _THINKING.match(raw or "") or (raw or "").lstrip().startswith("{"):
+            return None       # the model's notes to itself (or a JSON shell), not a draft: a fresh draft does better
         return "Output only the reply itself: no label, no preface, no notes."
     if why.startswith("length_") and kind in REPAIR_LENGTH:
         n = int(why.split("_")[1])
@@ -693,8 +922,15 @@ def repair_note(why, raw, kind, tag=None, recent=()):
             return (f"Cut {quoted}. Don't open by granting their point, don't ask whether they know anyone who has "
                     f"moved from Yes to No, and don't tell of anyone who was Yes and switched. Start from your own "
                     f"point and end on your reason. Change nothing else.")
-        return (f"We've said {quoted} too often lately: make the point without {"them" if len(said) > 1 else "it"}, in words of your own. Don't state "
-                f"your vote at the end: end on your reason. Change nothing else.")
+        theirs = [k for k in keys if k in echoed(target_text)]
+        them = "them" if len(said) > 1 else "it"
+        note = (f"We've said {quoted} too often lately: make the point without {them}, in words of your own"
+                + (" (\"time limit\" works)" if "sunset" in keys else "")
+                + (f". They wrote that word themselves, so answer what they asked for without repeating {them}"
+                   if theirs else "") + ".")
+        if "vote" in keys:
+            note += " Don't state your vote at the end: end on your reason."
+        return note + " Change nothing else."
     if why == "spelled_number":
         return "Write every number as digits, and only the numbers you were given."
     return None

@@ -20,8 +20,10 @@ class Gen:
         self.drafts, self.calls, self.parked = list(drafts), [], dict(parked or {})
 
     def complete(self, system, user, models=None, **kw):
-        self.calls.append((models, user))
         allowed = [m for _, m in self.chain if not models or m in models]
+        if not allowed:
+            return None, None                      # like the real one: a model outside the chain is no call
+        self.calls.append((models, user))
         return self.drafts.pop(0), allowed[0]
 
 

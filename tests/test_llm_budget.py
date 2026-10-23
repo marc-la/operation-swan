@@ -12,7 +12,8 @@ from swan_bot import bot, config, llm  # noqa: E402
 KIMI = "moonshotai.kimi-k2.5"
 
 
-def test_allowance_follows_the_multiplier_and_carries_forward():
+def test_allowance_follows_the_multiplier_and_carries_forward(monkeypatch):
+    monkeypatch.setattr(config, "LLM_DAILY_FLOOR_USD", 0.0)         # the weighted schedule on its own
     days = llm.budget_days()
     assert days[0] == ("2026-10-21", 1) and days[-1] == ("2026-11-02", 4) and len(days) == 13
     unit = config.LLM_BUDGET_USD / sum(w for _, w in days)
@@ -100,10 +101,15 @@ class OrderGen(StubGen):
 
 
 def test_tiering(monkeypatch):
-    assert models_for(dict(mode="post", amp=True), monkeypatch) == config.AMP_MODELS
+    assert models_for(dict(mode="post", amp=True), monkeypatch) == (KIMI,), "Kimi leads amp posts; Sonnet is a fallback"
+    assert not config.PREMIUM_MODELS, "premium routing is off until a test shows it pays (23 Oct)"
+    assert config.SONNET not in config.AMP_MODELS and config.SONNET not in config.REPLY_MODELS
+    live = [l.split("#")[0].strip() for l in llm.CHAIN_FILE.read_text().splitlines()]
+    assert not any("sonnet" in l for l in live), "Sonnet is not in the chain, not even as a last resort (Marc, 23 Oct)"
+    assert models_for(dict(mode="reply", target_class="unsure"), monkeypatch) == (KIMI,)
     assert models_for(dict(mode="reply"), monkeypatch) == (KIMI,), "replies try Kimi first (todo/24)"
     assert models_for(dict(mode="reply_back"), monkeypatch) == (KIMI,)
-    assert models_for(dict(mode="thread"), monkeypatch) == ["gemini-3.5-flash-lite", "openai/gpt-oss-120b"]
+    assert models_for(dict(mode="thread"), monkeypatch) == ("gemini-3.5-flash-lite",), "one-liners try the free models first"
     assert models_for(dict(mode="post"), monkeypatch) is None
 
 
@@ -118,8 +124,11 @@ def test_replies_kimi_then_flash_lite_never_glm(monkeypatch):
     gen = OrderGen({"zai.glm-5"})
     assert bot.draft_checked(gen, dict(mode="reply", meta={}), "sys", "user", [])[0] is None
     gen = OrderGen({"zai.glm-5"})
-    assert bot.draft_checked(gen, dict(mode="post", amp=True, meta={}), "sys", "user", [])[1] == "zai.glm-5", \
-        "amplified posts keep GLM-5"
+    assert bot.draft_checked(gen, dict(mode="post", amp=True, meta={}), "sys", "user", [])[0] is None, \
+        "GLM-5 no longer drafts amplified posts either (removed 2026-10-23)"
+    assert "zai.glm-5" not in config.AMP_MODELS
+    live = [l.split("#")[0].strip() for l in llm.CHAIN_FILE.read_text().splitlines()]
+    assert not any("glm" in l for l in live), "GLM-5 is not in the live chain"
 
 
 def test_reply_backs_only_in_amplified_threads():
@@ -180,3 +189,23 @@ def test_priority_window_holds_other_writes(tmp_path, monkeypatch):
     for m in amp.state["amp_posts"].values():
         m["t"] = time.time() - config.AMP_PRIORITY_S - 1
     assert not amp.priority_window(), "after the window, other writes go again"
+
+
+def test_premium_routing_when_switched_on(monkeypatch):
+    monkeypatch.setattr(config, "PREMIUM_MODELS", (config.SONNET,))
+    assert bot.high_value(dict(mode="reply", target_class="unsure")) and bot.high_value(dict(mode="journalist"))
+    assert bot.high_value(dict(mode="reply", target_class="firm_yes", engaged=True))
+    assert not bot.high_value(dict(mode="reply", target_class="firm_yes")) and not bot.high_value(dict(mode="thread"))
+    assert models_for(dict(mode="reply", target_class="unsure"), monkeypatch) == (config.SONNET,)
+    assert models_for(dict(mode="reply", target_class="firm_yes"), monkeypatch) == (KIMI,), "bulk replies: Kimi"
+    assert models_for(dict(mode="reply_back"), monkeypatch) == (config.SONNET,)
+
+
+def test_thread_one_liners_reach_kimi_only_when_the_free_models_are_out(monkeypatch):
+    monkeypatch.setattr(bot.quality, "check", lambda raw, *a, **kw: (raw, None))
+    models = bot.draft_models(dict(mode="thread"), OrderGen(up=()))
+    assert models == (["gemini-3.5-flash-lite", "openai/gpt-oss-120b", KIMI], True)
+    assert config.SONNET not in models[0] and "zai.glm-5" not in models[0]
+    assert bot.complete_in_order(OrderGen(up={KIMI}), "s", "u", models[0]) == ("draft", KIMI), "free quotas gone: Kimi answers"
+    assert bot.complete_in_order(OrderGen(up={KIMI, "gemini-3.5-flash-lite"}), "s", "u", models[0])[1] == \
+        "gemini-3.5-flash-lite", "while a free model is up it answers, so no spend"

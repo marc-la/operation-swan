@@ -906,12 +906,12 @@ class Targeter:
     @locked
     def requeue(self, cand, why):
         """Put a handed-out candidate back, pending for `why` (G8): "no_voice" is tried again at the next slot, and so
-        is "held" (a draft that waited when the bot stopped, todo/22); anything else (a failed draft, no model
-        answering) after a backoff of 2, 4, 8... up to 30 min, until it ages out (then it is lost as expired:<why>).
+        is "held" (a draft that waited when the bot stopped, todo/22) and "no_model" (no model could answer; the
+        drafter's own pause spaces the next try, 23 Oct); anything else (a failed draft) after a backoff of 2, 4, 8... up to 30 min, until it ages out (then it is lost as expired:<why>).
         A "no_voice" or "held" hand-out doesn't count against its group's cap. todo/31's VOICE_WAITS are no_voice
         with the reason (the voice is asleep, capped, or the citizen's voice of the day is busy): no try counted, and
         the caller's not_before (until that voice is free) is kept."""
-        free = why in ("no_voice", "held") + VOICE_WAITS
+        free = why in ("no_voice", "held", "no_model") + VOICE_WAITS      # no_model: our side's fault, no try counted
         if free and cand.get("out_at") in self.group_out.get(cand.get("net"), []):
             self.group_out[cand["net"]].remove(cand["out_at"])
         if not free:

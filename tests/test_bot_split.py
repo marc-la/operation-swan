@@ -13,7 +13,9 @@ replies; each state file has one writer and is replaced atomically. Then the wat
 """
 import collections
 import datetime as dt
+import itertools
 import json
+import math
 import os
 import pathlib
 import signal
@@ -23,6 +25,8 @@ import threading
 import time
 
 import pytest
+
+pytestmark = pytest.mark.slow  # runs bot.main() on the fake world, ~12 s per variant
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
@@ -38,6 +42,7 @@ REPLY_BACK_GAP = 0.4      # bot.REPLY_BACK_GAP_S
 RETRY_AFTER = 1           # the one 429 the world answers (on the first journalist reply)
 RUN_S = 12                # a run's --hours, in seconds
 VOICES = 6                # seeded voices; the last is parked (HIDDEN_STOP hidden posts)
+DRAFTER_NAMES = {f"drafter-{i}" for i in range(1, config.DRAFTERS + 1)}
 JOB_TYPES = {"reply", "reply_back", "second_voice", "journalist", "post", "repost"}
 STEALTH_RULES = ("VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN")
 
@@ -200,8 +205,18 @@ class FakeGen:
     def next_available_in(self):
         return 0.0
 
+    def no_model_wait(self, priority=False, models=None):
+        return 0.0
+
     def complete(self, system, user, **kw):
         return "{}", "fake"
+
+
+FAKE_TEXTS = itertools.count()
+FAKE_OPENERS = ["Honestly I'm voting No on this one", "Look, my partner runs a cafe and this pass would sink her",
+                "Three weeks of queues at the clinic taught me plenty", "Fair question, and my answer stays No",
+                "Everyone at our footy club says the same thing", "My nan can't use a phone, so how does she get in",
+                "Rules without an end date worry me far more", "Speaking as a nurse, venue checks fix nothing"]
 
 
 def fake_draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=None):
@@ -219,7 +234,10 @@ def fake_draft_checked(gen, job, system, user, recent_texts, on_reject=None, led
         return None, "fake", None
     if job.get("read"):
         meta.update(read_ok=True, read_stance="unsure", read_doubt="exemptions", read_frame=None, read_skip=None)
-    return f"Honestly I'm voting No on this one ({job['mode']} {job['draft_id']}).", "fake", None
+    # a different opening and wording each time, as the real gate demands of the drafts waiting (same_opening,
+    # near_duplicate): bot.clashes_with_ready drops a concurrent draft that repeats one waiting for the writer
+    n = next(FAKE_TEXTS) % len(FAKE_OPENERS)
+    return f"{FAKE_OPENERS[n]} ({job['mode']} {job['draft_id']}).", "fake", None
 
 
 class Spy:
@@ -384,8 +402,11 @@ def test_every_background_duty_fires(run):
     status = json.loads((tmp / "data" / "status.json").read_text())
     assert status["accounts"]["voices"] >= VOICES
     if run["split"]:                        # written at the start of the run (every 30 s): the writer is there first
-        assert "writer" in status["threads"] and set(status["threads"]) <= {"reader", "drafter", "writer"}
-        assert set(status["queue"]) == {"reply_backs", "candidates", "drafts_ready"} and {"oldest_waiting_s", "oldest_queued_s"} <= set(status)
+        assert "writer" in status["threads"] and set(status["threads"]) <= {"reader", "writer", "pulse", *DRAFTER_NAMES}
+        assert DRAFTER_NAMES <= set(status["threads"]), "every drafter has its own heartbeat"
+        assert s["pulse"].threads == {"pulse"}, f"pulse.update only runs in the pulse thread: {s['pulse'].threads}"
+        assert set(status["queue"]) == {"reply_backs", "candidates", "drafts_ready", "drafts_inflight"}
+        assert {"oldest_waiting_s", "oldest_queued_s"} <= set(status)
     state = json.loads((tmp / "data" / "swan_state.json").read_text())
     assert state["targeter"]["items"] and state["replied_posts"], "save_state with the targeter's queue and funnel"
     assert (tmp / "data" / "latest_snapshot.json").exists(), "the Latest snapshot for swan-blue (todo/21 G1)"
@@ -532,7 +553,7 @@ def test_watchdog_stops_the_bot_when_a_thread_dies(thread, tmp_path, monkeypatch
     assert e.value.code == 1
     assert spies["alerts"] and thread in spies["alerts"][0] and "THREAD DIED" in spies["alerts"][0]
     died = [a for a in actions(tmp_path) if a["act"] == "thread_died"]
-    assert died and died[0]["thread"] == thread and "injected" in died[0]["why"]
+    assert died and died[0]["thread"].startswith(thread) and "injected" in died[0]["why"]
     state = json.loads((tmp_path / "data" / "swan_state.json").read_text())
     assert "targeter" in state, "the state is saved before the exit"
 
@@ -561,14 +582,31 @@ def test_dropped_connection_on_a_send_costs_one_round(split, tmp_path, monkeypat
 
 def test_no_model_pauses_the_drafter(tmp_path, monkeypatch, no_network):
     """23 Oct: with no model answering, the drafter lost 27,858 jobs in 3 h because nothing made it wait. One failed
-    draft now pauses drafting for NO_MODEL_PAUSE_S."""
+    draft now pauses drafting for NO_MODEL_PAUSE_S: each drafter tries at most once per pause window, nothing is lost
+    or requeued per attempt, and the log holds one episode, not a row per attempt."""
     world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
-    monkeypatch.setattr(bot, "draft_checked",
-                        lambda gen, job, system, user, *a, **kw: (job.setdefault("meta", {}), (None, None, None))[1])
+    attempts, lock = [], threading.Lock()
+
+    def stub(gen, job, system, user, *a, **kw):
+        with lock:
+            attempts.append((time.time(), threading.current_thread().name, job["mode"]))
+        job.setdefault("meta", {})
+        return None, None, None
+
+    monkeypatch.setattr(bot, "draft_checked", stub)
     monkeypatch.setattr(bot, "NO_MODEL_PAUSE_S", 5)
     run_main(monkeypatch, seconds=12)
-    dropped = [a for a in actions(tmp_path) if a["act"] in ("lost", "requeue") and a.get("why") == "no_model"]
-    assert 1 <= len(dropped) <= 6, f"{len(dropped)} no_model drops in 12 s: the drafter kept spinning"
+    acts = actions(tmp_path)
+    waves = math.ceil(12 / 5)       # 12 s of 5 s pauses: each of the drafters may try once per wave
+    assert 1 <= len(attempts) <= config.DRAFTERS * waves, \
+        f"{len(attempts)} attempts in 12 s with {config.DRAFTERS} drafters: the drafter kept spinning"
+    per_thread = collections.defaultdict(list)
+    for t, name, _ in attempts:
+        per_thread[name].append(t)
+    assert all(b - a >= 5 - 0.2 for ts in per_thread.values() for a, b in zip(ts, ts[1:])), per_thread
+    assert not [a for a in acts if a["act"] in ("lost", "requeue") and str(a.get("why")).endswith("no_model")]
+    rows = [a for a in acts if a["act"] == "no_model"]
+    assert 1 <= len(rows) <= 3 and rows[0]["phase"] == "start" and rows[0]["n"] >= 1, rows
 
 
 def test_no_model_for_minutes_alerts_once(tmp_path, monkeypatch, no_network):
@@ -581,6 +619,99 @@ def test_no_model_for_minutes_alerts_once(tmp_path, monkeypatch, no_network):
     run_main(monkeypatch, seconds=12)
     said = [m for m in spies["alerts"] if "NO MODEL" in m]
     assert len(said) == 1 and not any("recovered" in m for m in spies["alerts"]), spies["alerts"]
+    rows = [a for a in actions(tmp_path) if a["act"] == "no_model"]
+    assert 1 <= len(rows) <= 12 / bot.NO_MODEL_LOG_EVERY_S + 3, f"{len(rows)} rows: one per attempt, not per episode"
+    assert not [a for a in actions(tmp_path) if a["act"] == "lost" and a.get("why") == "no_model"]
+
+
+@pytest.mark.parametrize("mode", ["reply", "reply_back", "journalist", "post", "second_voice"])
+def test_no_model_defers_every_mode_and_drafting_resumes(mode, tmp_path, monkeypatch, no_network):
+    """23 Oct: a journalist, post or second-voice draft that found no model was dropped (and re-picked ~200 times a
+    second). Now every mode is put back untouched: at most one attempt per pause window per drafter, no lost row, and
+    once a model answers again the very job that was held back is drafted and written."""
+    world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
+    pause, window = 1.0, 3.0
+    monkeypatch.setattr(bot, "NO_MODEL_PAUSE_S", pause)
+    monkeypatch.setattr(bot, "NO_MODEL_RECOVER_S", 0.2)
+    failed, first, lock = [], [], threading.Lock()
+
+    def no_model_for_mode(gen, job, system, user, recent, on_reject=None, ledger=None):
+        body = (job.get("target") or {}).get("body") or ""
+        if job["mode"] == mode and "LOSE-ME" not in body and "SKIP-ME" not in body:
+            with lock:
+                now = time.time()
+                first.append(now) if not first else None
+                if now - first[0] < window:          # the window opens at this mode's first draft, then a model answers
+                    failed.append(dict(t=now, thread=threading.current_thread().name,
+                                       target=(job.get("target") or {}).get("post_id")))
+                    job.setdefault("meta", {})
+                    return None, None, None
+        return fake_draft_checked(gen, job, system, user, recent, on_reject, ledger)
+
+    monkeypatch.setattr(bot, "draft_checked", no_model_for_mode)
+    run_main(monkeypatch, seconds=18)
+    acts = actions(tmp_path)
+    assert failed, f"{mode} was never drafted: the test did not reach it"
+    per_thread = collections.defaultdict(list)
+    for f in failed:
+        per_thread[f["thread"]].append(f["t"])
+    assert all(b - a >= pause - 0.15 for ts in per_thread.values() for a, b in zip(ts, ts[1:])), per_thread
+    assert len(failed) <= config.DRAFTERS * (math.ceil(window / pause) + 1), f"{len(failed)} attempts: a spin"
+    assert not [a for a in acts if a["act"] in ("lost", "requeue") and str(a.get("why")).endswith("no_model")]
+    rows = [a for a in acts if a["act"] == "no_model"]
+    assert 1 <= len(rows) <= 6 and rows[0]["phase"] == "start" and mode in rows[0]["modes"], rows
+    done = [a for a in acts if a["act"] == mode and a.get("post_id")]
+    assert done, f"{mode} never completed after the model came back"
+    if mode in ("reply", "journalist"):      # (a second voice may rightly be skipped later: the citizen answered us)
+        assert failed[0]["target"] in {a["target_post"] for a in done}, "the job held back was not the one written"
+    said = [m for m in spies["alerts"] if "NO MODEL" in m]
+    assert len(said) <= 1 and bool(said) == any("recovered" in m for m in spies["alerts"]), spies["alerts"]
+    ends = [r for r in rows if r["phase"] == "end"]     # (other modes answer meanwhile here, so there may be two episodes)
+    assert rows[-1]["phase"] == "end" and sum(r["n"] for r in ends) == len(failed) and ends[-1]["duration_s"] >= 0, rows
+
+
+@pytest.mark.parametrize("wait_says_zero", [False, True], ids=["precheck", "old_bug"])
+def test_spent_allowance_and_parked_free_models_do_not_spin(wait_says_zero, tmp_path, monkeypatch, no_network):
+    """The 22 Oct 19:13Z incident: today's allowance spent, the free models parked, nothing can answer. With the real
+    llm.Generator: the loop sees it before drafting (one episode row, no attempts, no model called). With the wait
+    forced to 0, as the old next_available_in said, drafts are tried but at most one wave per pause window, and no job
+    is lost."""
+    from swan_bot import llm
+    real_draft_checked = bot.draft_checked
+    world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
+    day = dt.datetime.now(llm.BUDGET_DAY).date().isoformat()
+    monkeypatch.setattr(llm, "SPEND_FILE", tmp_path / "spend.json")
+    monkeypatch.setattr(llm, "USAGE_FILE", tmp_path / "usage.json")
+    (tmp_path / "spend.json").write_text(json.dumps({day: 10.0}))
+    for attr, val in (("LLM_BUDGET_DAYS", [(day, day, 1)]), ("LLM_BUDGET_USD", 10.0), ("LLM_DAILY_FLOOR_USD", 0.0)):
+        monkeypatch.setattr(config, attr, val)
+    gen = llm.Generator("unused")
+    gen.chain = [("bedrock", "moonshotai.kimi-k2.5"), ("groq", "free-a"), ("groq", "free-b")]
+    gen.parked = {"free-a": time.time() + 3600, "free-b": time.time() + 3600}
+
+    def no_call(*a, **kw):
+        raise AssertionError("a model was called with the allowance spent and the free models parked")
+
+    gen._call = no_call
+    assert gen.budget_left() == 0.0 and gen.no_model_wait(priority=True) > 0
+    if wait_says_zero:
+        gen.no_model_wait = lambda priority=False, models=None: 0.0
+        gen.next_available_in = lambda *a, **kw: 0.0
+    monkeypatch.setattr(bot, "Generator", lambda *a, **kw: gen)
+    attempts = []
+    monkeypatch.setattr(bot, "draft_checked", lambda *a, **kw: (attempts.append(time.time()),
+                                                                 real_draft_checked(*a, **kw))[1])
+    monkeypatch.setattr(bot, "NO_MODEL_PAUSE_S", 1.0)
+    run_main(monkeypatch, seconds=8)
+    acts = actions(tmp_path)
+    assert not [a for a in acts if a["act"] in ("lost", "requeue") and str(a.get("why")).endswith("no_model")]
+    rows = [a for a in acts if a["act"] == "no_model"]
+    assert 1 <= len(rows) <= 3, f"{len(rows)} episode rows in 8 s"
+    assert not [a for a in acts if a["act"] in JOB_TYPES and a.get("post_id")], "nothing could be written"
+    if wait_says_zero:
+        assert 1 <= len(attempts) <= config.DRAFTERS * (math.ceil(8 / 1.0) + 1), f"{len(attempts)} attempts: a spin"
+    else:
+        assert not attempts and rows[0]["modes"] == {"any": rows[0]["n"]} and rows[0]["wait_s"] > 0, (attempts, rows)
 
 
 def test_sigterm_stops_cleanly_with_nothing_half_sent(tmp_path, monkeypatch, no_network):

@@ -47,12 +47,31 @@ REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3
 REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's last write (not the 4-min gap)
 WAIT_S = dict(no_voice=30, nothing=45, priority=15)   # a loop with nothing to do waits this long (s)
 IDLE_S = 1.0                  # split loop: the writer looks for a ready draft this often (s)
+PULSE_POLL_S = 30.0           # split loop: the pulse thread looks whether a refresh is due at least this often (s)
 JOIN_S = 10.0                 # split loop: on a stop, how long the writer waits for the other threads (s)
 # No model answered a draft (every free model parked, the paid ones kept back for amplified posts or over budget): the
 # drafter pauses this long before choosing again. 2026-10-23: without it, 27,858 jobs were lost as no_model in 3 h
-# (10,782 in one 10-minute window): next_available_in() is 0 while a paid model is skipped but not parked.
+# (10,782 in one 10-minute window): next_available_in() was 0 while a paid model was skipped but not parked (fixed the
+# same day: llm.no_model_wait counts the budget and the reserve; runbook "No model").
 NO_MODEL_PAUSE_S = 60
 NO_MODEL_ALERT_N, NO_MODEL_ALERT_S = 5, 600           # this many no-model drafts within 10 min: alert once, then "recovered"
+# 2026-10-23 (later): the pause alone left the job dropped (journalist, post, second voice, thread) and the log at a row
+# per attempt (580,780 rows in 8 h). Now a no-model draft is deferred, not lost (bot.defer), and the attempts are one
+# episode in the log (act "no_model": a start row, one row per NO_MODEL_LOG_EVERY_S with the count, an end row).
+NO_MODEL_PAUSE_MAX_S = 600    # a pause set from what the LLM chain knows (llm.no_model_wait) is at most this long
+NO_MODEL_TRIES = 10           # attempts in one episode before the pause stretches to NO_MODEL_LONG_PAUSE_S (logged once)
+NO_MODEL_LONG_PAUSE_S = 180
+NO_MODEL_LOG_EVERY_S = 30     # at most one "no_model" row per this many seconds (plus the start and end rows)
+NO_MODEL_RECOVER_S = 30       # a model has answered this long without a new miss: the episode is over (no flapping rows)
+NO_MODEL_ALERT_AGE_S = 300    # or an episode this old: alert once even if few drafts were tried (long waits between them)
+
+
+def model_wait(gen):
+    """Seconds until some model could answer a draft (0: one can now). A draft may spend the amplified-post reserve
+    (draft_checked asks again with priority), so priority=True. A gen without no_model_wait (a test fake) answers
+    through next_available_in."""
+    fn = getattr(gen, "no_model_wait", None)
+    return fn(priority=True) if fn else gen.next_available_in()
 
 
 def now_iso():
@@ -313,9 +332,11 @@ class Worker(threading.Thread):
     exception ends it and is kept for the writer's watchdog, which stops the bot (problem()). A transient network
     error (TRANSIENT_NET) only costs the round: it is logged, the thread waits NET_RETRY_S and goes on."""
 
-    def __init__(self, name, step, stop, beats, silent_s):
+    def __init__(self, name, step, stop, beats, silent_s, critical=True):
         super().__init__(name=name, daemon=True)
         self.step, self.stop, self.beats, self.silent_s = step, stop, beats, silent_s
+        self.critical = critical             # False: the watchdog alerts once when it fails, but the bot runs on without it
+        self.reported = False
         self.error = None
         self.net_errors = 0
 
@@ -416,6 +437,18 @@ def contacted_now(contacted, pending=(), t=None):
         if j["mode"] in SESSION_MODES and j.get("target"):
             out.setdefault(str(j["target"]["author_id"]), set()).add(j["rec"]["persona"])
     return out
+
+
+def clashes_with_ready(text, mode, ready):
+    """Several drafters (23 Oct): does a fresh draft repeat one that finished while it was under way? The gate compared it
+    with the texts known when it started; this is the same near-duplicate and same-opening test against `ready`."""
+    if not text or mode == "repost":
+        return False
+    others = [d["text"] for d in ready if d.get("text")]
+    if quality.near_duplicate(quality.strip_tag(text), mode, others):
+        return True
+    opening = lambda t: " ".join(re.findall(r"[a-z']+", t.lower())[:4])
+    return bool(opening(text)) and any(opening(o) == opening(text) for o in others[-30:])
 
 
 def thread_depth(social, post, cap):
@@ -562,6 +595,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     mode = job["mode"]
     meta = job["meta"] = {}
     parts = ()
+    spent = quality.spent_phrases(job.get("phrase_texts"), body)     # budgeted words the gate would reject right now
     if mode in config.CONV_MODES:                                 # todo/25: the conversion arm of this 2 h block
         block_id, arm = experiment.block("arm_conv")
         meta.update(arm_conv=arm or "base", **({"block_id": block_id} if block_id else {}))
@@ -600,7 +634,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
                                     theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"],
-                                    recent=recent_texts)
+                                    recent=recent_texts, spent=spent)
         if meta.get("arm_conv") == "fresh_facts" and job["style"] != "off_topic":     # todo/25: news first
             fresh = content.fresh_line(body, meta)
             user = user.replace("\n\nFirst read them", f" {fresh}\n\nFirst read them", 1) \
@@ -610,11 +644,11 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
                 if job["read"] else f"{user} {content.group_style(job)}"
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
-                                           persona=persona, recent=recent_texts)
+                                           persona=persona, recent=recent_texts, spent=spent)
     elif mode == "journalist":
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
-        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"))
+        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"), spent=spent)
         meta["style"] = job.get("style")
         if meta.get("arm_conv") == "agree_close":                 # todo/32: close on our vote when they agree
             meta["agree"] = agrees(body)
@@ -667,36 +701,54 @@ def gate(raw, job, user, recent_texts, ledger=None):
     while why and len(fixes) < 3:
         if not gate_rule(job, why).get("fix", True):
             break                           # a job's gate_policy can leave a reject to draft_checked (todo/32)
-        fixed = quality.fix(draft, why, mode)
+        fixed = quality.fix(draft, why, mode, recent=recent_texts, same=job.get("same_texts") or ())
         if not fixed or fixed == draft:
             break
         fixes.append(why.split("_")[0] if why.startswith(("length_", "unapproved_")) else why)
         draft = fixed
         text, why = quality.check(draft, mode, recent_texts, **kw)
+    job["gate_draft"] = draft               # what the last check judged: a repair goes from this text and this reason
     theme_why = text and themes.draft_problem(text, job.get("theme"), mode, ledger)
     if theme_why:
         return None, theme_why, fixes
     return text, why, fixes
 
 
+def high_value(job):
+    """A draft worth the premium model (config.PREMIUM_MODELS): an amplified post, a journalist, a reply-back, or a
+    reply to a citizen who can still move (config.PREMIUM_CLASSES) or who has answered us before."""
+    if job.get("amp") or job["mode"] in ("journalist", "reply_back"):
+        return True
+    return job["mode"] == "reply" and (job.get("target_class") in config.PREMIUM_CLASSES or bool(job.get("engaged")))
+
+
 def draft_models(job, gen):
     """(models, ordered) for a draft. Amplified posts: AMP_MODELS (chain order). Replies to citizens (STRONG_MODES,
     todo/24): REPLY_MODELS in that order, then the rest of the chain, never REPLY_NEVER (ordered). Thread one-liners:
-    the free models. Anything else: None, the whole chain."""
+    the free models, then the paid REPLY_MODELS as the last resort (ordered). Anything else: None, the whole chain."""
     chain = [m for _, m in getattr(gen, "chain", ())]
-    if job.get("amp"):                                          # our best content
-        return config.AMP_MODELS, False
+    if job.get("amp"):                                          # our best content: Sonnet leads (AMP_MODELS order)
+        return config.AMP_MODELS, True
+    if job["mode"] == "journalist":
+        order = list(config.PREMIUM_MODELS) + list(config.REPLY_MODELS) + chain
+        return [m for m in dict.fromkeys(order) if m not in config.REPLY_NEVER and (m in chain)], True
     if job["mode"] in config.STRONG_MODES:                      # where minds change
-        order = list(config.REPLY_MODELS) + [m for m in chain if m not in config.REPLY_MODELS]
-        return [m for m in order if m not in config.REPLY_NEVER], True
+        lead = list(config.PREMIUM_MODELS) if high_value(job) else []
+        order = lead + list(config.REPLY_MODELS) + [m for m in chain if m not in config.REPLY_MODELS]
+        return [m for m in dict.fromkeys(order) if m not in config.REPLY_NEVER], True
     if job["mode"] in config.CHEAP_MODES:                       # one-liners: free models first, paid ones as backup
-        return [m for m in chain if m not in config.LLM_PRICES], False
+        free = [m for m in chain if m not in config.LLM_PRICES]  # 23 Oct: the free quotas are gone by ~14:30 Sydney and
+        paid = [m for m in config.REPLY_MODELS if m in config.LLM_PRICES and m in chain and m not in config.REPLY_NEVER]
+        return free + paid, True                                # these drafts then found no model; Kimi, then Haiku (never Sonnet)
     return None, False
 
 
 def complete_in_order(gen, system, prompt, models, **kw):
     """gen.complete on each model in turn (the chain's own order would put flash-lite before Kimi): the first answer,
-    or (None, None). A parked or over-budget model returns at once, so this costs no extra time."""
+    or (None, None). A parked or over-budget model returns at once, so this costs no extra time. The real Generator
+    spreads load when the lead model is busy (llm.Generator.complete_in_order, 23 Oct)."""
+    if hasattr(gen, "complete_in_order"):
+        return gen.complete_in_order(system, prompt, models, **kw)
     for m in models:
         raw, backend = gen.complete(system, prompt, models=(m,), **kw)
         if raw is not None:
@@ -736,6 +788,8 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
         def ask():
             if ordered:                                         # replies: the whole order is already the fallback
                 raw, backend = complete_in_order(gen, system, prompt, use or models, **kw)
+                if raw is not None and getattr(gen, "overflowed_from", None):
+                    meta["overflowed_from"] = gen.overflowed_from   # the lead model was busy: who took the call (audit)
             else:
                 raw, backend = gen.complete(system, prompt, models=use or models, **kw)
             if raw is None and use and not ordered:             # out of quota: the usual chain
@@ -782,8 +836,12 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
             user = prompt = redraft
             repair, meta["redrafted"] = None, why
             continue
+        draft = job.pop("gate_draft", draft)                    # the draft after the code fixes, the one `why` is about
         note = (themes.repair_note(why, job.get("theme")) if why in THEME_REASONS else
-                quality.repair_note(why, raw, mode, meta.get("tag"), recent=recent_texts))
+                quality.repair_note(why, draft, mode, meta.get("tag"), recent=recent_texts,
+                                    target_text=(job.get("target") or {}).get("body") or "",
+                                    wants=job.get("wants") or (), same=job.get("same_texts") or (),
+                                    phrase_texts=job.get("phrase_texts")))
         if note and job.get("read"):
             note += " Output only the fixed reply text, not JSON."
         prompt, repair = (repair_prompt(user, draft, note), why) if note else (user, None)
@@ -794,11 +852,36 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
 REPLY_BACK_TRIES = 3          # a citizen who answered us is drafted for this many slots before they're lost (G8)
 
 
+def defer(targeter, queue, job):
+    """No model could draft this job (23 Oct): put it back as it was, the same for every mode, so it is neither
+    dropped nor counted as a try; the drafter's no-model pause spaces the next attempt. A reply goes back to the
+    targeter (no try counted, see Targeter.requeue); a reply-back to the front of the queue; a second voice or a thread
+    job through job["defer"] (set where it was picked: it hands back what the pick consumed); a post or journalist
+    reply consumed nothing (their selection state changes only after a send). True when put back."""
+    mode = job["mode"]
+    if mode == "reply":
+        if job.get("cand") and hasattr(targeter, "requeue"):
+            targeter.requeue(job["cand"], "no_model")
+            return True
+        return False
+    if mode == "reply_back":
+        queue.insert(0, job)
+        return True
+    undo = job.get("defer")
+    if callable(undo):
+        undo()
+        return True
+    return mode in ("post", "journalist")
+
+
 def lose(targeter, queue, job, why):
-    """A job whose draft failed (G8/G12). A reply to a citizen goes back to the targeter (its requeue backs off and
-    logs the expiry); a reply-back goes to the back of the queue, REPLY_BACK_TRIES times; everything else, and
-    anything that can't be put back, is logged as lost with the reason."""
+    """A job whose draft failed (G8/G12). why "no_model" (nothing could answer: not the job's fault) puts the job back
+    for every mode (defer) and logs nothing here: the drafter's episode row counts it. Otherwise a reply to a citizen
+    goes back to the targeter (its requeue backs off and logs the expiry); a reply-back goes to the back of the queue,
+    REPLY_BACK_TRIES times; everything else, and anything that can't be put back, is logged as lost with the reason."""
     mode, target = job["mode"], job.get("target") or {}
+    if why == "no_model" and defer(targeter, queue, job):
+        return "deferred"
     if mode == "reply" and job.get("cand") and hasattr(targeter, "requeue"):
         targeter.requeue(job["cand"], why)
         log({"act": "requeue", "why": why, "mode": mode, "target_post": target.get("post_id"),
@@ -849,18 +932,6 @@ def own_likes(state, accounts, live, now=None):
         log(entry)
 
 
-CAND_INTERNAL = ("post", "score", "tries", "not_before")   # the targeter's own bookkeeping, not copied to the job
-
-
-def reply_job(cand, rec):
-    """A reply job from a targeter candidate. Every field the candidate carries reaches the job (frame, wants, context,
-    source, identity, target_class, priority, arm, engaged, and todo/23's group and prefer), so a new field needs no
-    change here. cand rides along: the drafting path requeues it on failure (G8)."""
-    return dict({k: v for k, v in cand.items() if k not in CAND_INTERNAL}, mode="reply", rec=rec, target=cand["post"],
-                cand=cand)
-
-
-_REST_LOGGED = {}             # todo/31: why -> [time last logged, times seen since]
 ENG_PER_TICK = 3              # follows and likes sent in one writer tick: the writer must not stall on them
 _ROUTE_RL = {}                # "follow" / "like" -> the X-RateLimit-* its last answer reported (engage.budget_wait)
 
@@ -949,6 +1020,18 @@ def engage_actions(state, accounts, live, now=None):
         log(entry)
 
 
+CAND_INTERNAL = ("post", "score", "tries", "not_before")   # the targeter's own bookkeeping, not copied to the job
+
+
+def reply_job(cand, rec):
+    """A reply job from a targeter candidate. Every field the candidate carries reaches the job (frame, wants, context,
+    source, identity, target_class, priority, arm, engaged, and todo/23's group and prefer), so a new field needs no
+    change here. cand rides along: the drafting path requeues it on failure (G8)."""
+    return dict({k: v for k, v in cand.items() if k not in CAND_INTERNAL}, mode="reply", rec=rec, target=cand["post"],
+                cand=cand)
+
+
+_REST_LOGGED = {}             # todo/31: why -> [time last logged, times seen since]
 
 
 def log_rest(why, **fields):
@@ -1119,11 +1202,93 @@ def main():
     stop = threading.Event()             # SIGTERM/SIGINT (split loop), the watchdog, or the end of --hours/--samples
     woken = threading.Event()            # the reader found something new: the drafter stops waiting
     save_due = threading.Event()         # the reader asks the writer to save the state
-    ready = []                           # drafts waiting for the writer, in the order chosen (at most DRAFT_AHEAD)
-    inflight = [None]                    # the job the drafter is drafting now
+    ready = []                           # drafts waiting for the writer, in the order chosen (ready + inflight <= DRAFT_AHEAD)
+    inflight = []                        # the jobs the drafters are drafting now (config.DRAFTERS of them at most); guarded by mu
     no_model_until = [0.0]               # no draft before this time: the last one found no model (NO_MODEL_PAUSE_S)
     no_model_times, no_model_alerted = [], [0.0]      # when drafts found no model lately; when we said so (0: not now)
-    beats = {}                           # thread name -> time its loop last went round (status.json, the watchdog)
+    nm_episode = {}                      # the open no-model episode (since, n, logged, modes, win, last_log, ok_at); guarded by mu
+
+    def nm_close(now_t):
+        """The open episode is over: its closing row. The caller holds mu. Returns the "recovered" alert text, if the
+        episode was alerted, for the caller to send once it has released mu."""
+        ep = dict(nm_episode)
+        nm_episode.clear()
+        end = ep.get("ok_at") or now_t
+        log({"act": "no_model", "phase": "end", "n": ep["n"], "new": ep["n"] - ep["logged"], "modes": ep["win"],
+             "modes_total": ep["modes"], "since": dt.datetime.fromtimestamp(ep["since"], dt.timezone.utc).isoformat(),
+             "duration_s": round(end - ep["since"]), "alerted": bool(no_model_alerted[0])})
+        since, no_model_alerted[0] = no_model_alerted[0], 0.0
+        no_model_times[:] = []
+        return f"recovered: drafts find a model again (after {(end - since) / 60:.0f} min)" if since else None
+
+    def no_model_ok(answered=True):
+        """A model answered a draft (answered=False: just look, the drafter does so every round). The episode ends once
+        that has held NO_MODEL_RECOVER_S without a new miss (one lucky answer between misses does not close it and open
+        another: that would be a row per flap)."""
+        if not nm_episode:
+            return
+        now_t, say = time.time(), None
+        with mu:
+            if nm_episode:
+                if answered:
+                    nm_episode.setdefault("ok_at", now_t)
+                if not nm_episode.get("ok_at"):
+                    return
+                if now_t - nm_episode["ok_at"] >= NO_MODEL_RECOVER_S:
+                    say = nm_close(now_t)
+        if say:
+            alert(say)
+
+    def no_model_hit(mode, wait_s=0.0, pause=None, alerts=None):
+        """A draft found no model (or, with pause given, nothing can answer so none was tried). Sets the pause every
+        drafter honours (mode, the job kind, is only for the log), counts the attempt into the episode, logs at most
+        one row per NO_MODEL_LOG_EVERY_S, and alerts once per episode. wait_s: what the chain knows (llm.no_model_wait)
+        stretches the pause up to NO_MODEL_PAUSE_MAX_S; after NO_MODEL_TRIES attempts it stretches to
+        NO_MODEL_LONG_PAUSE_S, logged once. Returns the pause in seconds."""
+        now_t, say = time.time(), []
+        with mu:
+            ep = nm_episode
+            if ep.get("ok_at") and now_t - ep["ok_at"] >= NO_MODEL_RECOVER_S:
+                say.append(nm_close(now_t))                      # a long gap since the last miss: a new episode
+            first = not ep
+            if first:
+                ep.update(since=now_t, n=0, logged=0, modes={}, win={}, last_log=0.0, backoff=False)
+            ep.pop("ok_at", None)
+            ep["n"] += 1
+            ep["modes"][mode] = ep["modes"].get(mode, 0) + 1
+            ep["win"][mode] = ep["win"].get(mode, 0) + 1
+            stretched = False
+            if pause is None:
+                pause = max(NO_MODEL_PAUSE_S, min(wait_s, NO_MODEL_PAUSE_MAX_S))
+                if ep["n"] >= NO_MODEL_TRIES:
+                    pause = max(pause, NO_MODEL_LONG_PAUSE_S)
+                    stretched, ep["backoff"] = not ep["backoff"], True      # logged once per episode
+            else:
+                pause = min(pause, NO_MODEL_PAUSE_MAX_S)
+            no_model_until[0] = max(no_model_until[0], now_t + pause)
+            no_model_times[:] = [x for x in no_model_times if now_t - x < NO_MODEL_ALERT_S] + [now_t]
+            if first or stretched or now_t - ep["last_log"] >= NO_MODEL_LOG_EVERY_S:
+                log({"act": "no_model", "phase": "start" if first else "ongoing", "n": ep["n"],
+                     "new": ep["n"] - ep["logged"], "modes": ep["win"],
+                     "since": dt.datetime.fromtimestamp(ep["since"], dt.timezone.utc).isoformat(),
+                     "pause_s": round(pause), "wait_s": round(wait_s), "backoff": ep["backoff"]})
+                ep.update(logged=ep["n"], win={}, last_log=now_t)
+                print(f"no model answers ({', '.join(f'{m}={c}' for m, c in ep['modes'].items())}); drafting paused "
+                      f"{pause:.0f} s, nothing dropped (n={ep['n']})")
+            if args.live and not no_model_alerted[0] and (
+                    len(no_model_times) >= NO_MODEL_ALERT_N or now_t - ep["since"] >= NO_MODEL_ALERT_AGE_S):
+                no_model_alerted[0] = now_t                      # once per episode: no model for minutes
+                say.append(f"NO MODEL: {ep['n']} draft attempts in {(now_t - ep['since']) / 60:.0f} min found no model "
+                           f"(free ones parked, paid ones over budget or held for amplified posts). Drafting is paused "
+                           f"and nothing is dropped; retrying about every {max(1, round(pause / 60))} min. Dashboard 'Drafting' has the numbers.")
+        if alerts is not None:                                   # the caller holds mu and sends them after releasing it
+            alerts.extend(filter(None, say))
+        else:
+            for s in filter(None, say):
+                alert(s)
+        return pause
+
+    beats = {}                         # thread name -> time its loop last went round (status.json, the watchdog)
     workers = []
     rate_limited = []                    # times of 429s in the last hour (dashboard)
     write_rl = [None]                    # the write budget as our last write's headers reported it (todo/24)
@@ -1154,7 +1319,8 @@ def main():
                 **(dict(loop="split", threads={name: dict(
                     last_run=dt.datetime.fromtimestamp(b, dt.timezone.utc).isoformat(), age_s=round(t - b),
                     **({"max_silent_s": limits[name]} if name in limits else {})) for name, b in sorted(beats.items())},
-                    queue=dict(reply_backs=len(queue), candidates=len(targeter.candidates), drafts_ready=len(ready)),
+                    queue=dict(reply_backs=len(queue), candidates=len(targeter.candidates), drafts_ready=len(ready),
+                               drafts_inflight=len(inflight)),
                     **dict(zip(("oldest_waiting_s", "oldest_queued_s"), targeter.oldest_pending()))) if split else {})))
         except OSError as e:
             print("status.json not written:", e)
@@ -1190,7 +1356,7 @@ def main():
     def held(mode=None):
         """Jobs chosen and not yet sent (split loop: drafting or waiting for the writer). choose() counts them as
         written, so draft-ahead makes the decisions the serial loop would."""
-        jobs = [d["job"] for d in ready] + ([inflight[0]] if inflight[0] else [])
+        jobs = [d["job"] for d in ready] + list(inflight)
         return [j for j in jobs if mode is None or j["mode"] == mode]
 
     def save_state():
@@ -1275,6 +1441,12 @@ def main():
         (None, None, seconds to wait) when nothing is worth writing. The caller holds mu."""
         contacted = contacted_now(state["contacted"], held(), t)   # our voices per citizen this session (todo/21, /24)
         engaged = set(state["engaged"])
+        # 23 Oct, several drafters: a citizen one drafter is drafting for is not given to another meanwhile (two voices
+        # answering at once would not see each other's text). Their reply-backs, second voices and candidates wait.
+        busy = {str(j["target"].get("author_id")) for j in inflight if j.get("target")}
+        cit_contacted = {a: set(v) for a, v in contacted.items()}
+        for a in busy:
+            cit_contacted.setdefault(a, set()).update(f"<drafting {i}>" for i in range(config.SESSION_VOICES))
         pending = [j["mode"] for j in held()]               # chosen but not sent yet: counted as written (todo/22)
         job = None
         # the first reply-back whose voice may write: not within REPLY_BACK_GAP_S of its last write (don't double-post
@@ -1282,6 +1454,8 @@ def main():
         for j in queue:
             if j["rec"].get("last_write", 0) + REPLY_BACK_GAP_S > t:
                 continue
+            if j["rec"]["persona"] in accounts.reserved or str(j["target"].get("author_id")) in busy:
+                continue                  # its voice or citizen is being drafted for by another drafter: next round
             why = accounts.rest(j["rec"], t)
             if why:
                 log_rest(why, mode="reply_back", persona=j["rec"]["persona"], target_post=j["target"]["post_id"])
@@ -1300,7 +1474,7 @@ def main():
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
         job = pick_job(job, (lambda: None) if desk else
-                       (lambda: citizen_reply(targeter, accounts, ids, state["replied_posts"], contacted, engaged,
+                       (lambda: citizen_reply(targeter, accounts, ids, state["replied_posts"], cit_contacted, engaged,
                                               state)), amp)
         drafted = None
         if job is None and amp and amp.priority_window():          # priority lane: the fresh thread gets the slots
@@ -1316,6 +1490,8 @@ def main():
             due = [s for s in state["second_voice"] if s["due"] <= t]
             picked = []
             for sv in due:
+                if str(sv["author"]) in busy:
+                    continue                                     # a draft for them is under way: kept for the next round
                 rec = (accounts.assignable(sv["frame"], exclude={sv["first_persona"]} | desk.busy("second_voice", picked))
                        if desk else accounts.eligible(sv["frame"], exclude={sv["first_persona"]}))
                 if not rec:
@@ -1333,7 +1509,8 @@ def main():
                 if target_class(target.get("body") or "") == "off_topic":
                     continue                                     # no vote pitch into a thread about something else
                 job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
-                           wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"))
+                           wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"),
+                           defer=lambda sv=sv: sv in state["second_voice"] or state["second_voice"].append(sv))   # no model: kept
                 if not desk:
                     break
                 picked.append(job)
@@ -1420,9 +1597,9 @@ def main():
                 recent_texts = state["recent_texts"] + [d["text"] for d in ready if d["text"]]
                 recent_shapes = state["recent_shapes"] + [d["job"]["meta"]["shape"] for d in ready
                                                           if (d["job"].get("meta") or {}).get("shape")]
-                persona, system, user = build_prompt(job, targeter, recent_shapes, pulse_now, recent_texts=recent_texts)
                 if mode in quality.PERSONAL_KINDS and target and config.is_citizen(target.get("author_id")):
                     job["phrase_texts"] = citizen_texts(state.get("recent_sent", []), ready)     # todo/27
+                persona, system, user = build_prompt(job, targeter, recent_shapes, pulse_now, recent_texts=recent_texts)
 
             def rejected(why, raw, backend, repaired):
                 with mu:
@@ -1438,6 +1615,8 @@ def main():
                 job["read_skip"] = "arm_conv:lean_no"     # todo/25: a regex No-leaner costs no LLM call
             else:
                 text, backend, repair = draft_checked(gen, job, system, user, recent_texts[-300:], rejected, ledger)
+                if backend is not None:
+                    no_model_ok()                     # a model answered (even if the gate then refused the draft)
         if job.get("read_skip"):                      # the light read: hostile or not about the vote (final)
             if hasattr(targeter, "skip"):
                 targeter.skip(target, f"light_read:{job['read_skip'][:60]}", job.get("source"))
@@ -1450,21 +1629,19 @@ def main():
         if not text and mode != "repost":
             # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
             if backend is None:
-                no_model_until[0] = time.time() + NO_MODEL_PAUSE_S
-                now_t = time.time()
-                no_model_times[:] = [x for x in no_model_times if now_t - x < NO_MODEL_ALERT_S] + [now_t]
-                if args.live and not no_model_alerted[0] and len(no_model_times) >= NO_MODEL_ALERT_N:
-                    no_model_alerted[0] = now_t                # once per episode: the drafter has had no model for minutes
-                    alert(f"NO MODEL: {len(no_model_times)} drafts in {NO_MODEL_ALERT_S // 60} min found no model (free ones "
-                          f"parked, paid ones over budget). Replies are paused. Dashboard 'Drafting' has the numbers.")
+                # no model could answer: whatever the mode, the job goes back (lose -> defer) and the episode counts
+                # it. The pause is set first, so no drafter can pick the same job meanwhile (mu is held below).
+                alerts = []
+                with mu:                              # hit and deferral in one hold: no drafter sees the job in between
+                    no_model_hit(mode, model_wait(gen), alerts=alerts)
+                    lose(targeter, queue, job, "no_model")
+                for s in alerts:
+                    alert(s)
+                return None
             with mu:
-                lose(targeter, queue, job, "no_model" if backend is None else
-                     f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
+                lose(targeter, queue, job, f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
             return None
         job["t_drafted"] = time.time()
-        if no_model_alerted[0]:
-            alert(f"recovered: drafts find a model again (after {(time.time() - no_model_alerted[0]) / 60:.0f} min)")
-            no_model_alerted[0], no_model_times[:] = 0.0, []
         return dict(job=job, drafted=drafted, text=text, backend=backend, repair=repair, persona=persona)
 
     def send(d):
@@ -1622,6 +1799,7 @@ def main():
              "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
              "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
              "thread": threading.current_thread().name,                                   # todo/22: the writer
+             "eng_cell": engage.cell(target["author_id"]) if target and mode in stealth.CITIZEN_MODES else None,
              **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})
         where = ""
         if target:
@@ -1688,6 +1866,7 @@ def main():
                 if amp:
                     amp.tick()
                 poll_reply_backs()
+                no_model_ok(answered=False)
 
                 wait = next_write - time.time()
                 if wait > 0:
@@ -1696,9 +1875,9 @@ def main():
                 if time.time() < no_model_until[0]:
                     pause(min(no_model_until[0] - time.time(), 30))
                     continue
-                if gen.next_available_in() > 0 and not args.allow_qwen:
-                    print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
-                    pause(min(gen.next_available_in() + 1, 600))
+                wait_m = model_wait(gen)
+                if wait_m > 0 and not args.allow_qwen:       # nothing can answer (parked, or the budget holds the paid ones)
+                    no_model_hit("any", wait_m, pause=wait_m + 1)
                     continue
                 job, drafted, wait = choose(time.time(), ids)
                 if job is None:
@@ -1735,8 +1914,15 @@ def main():
         stop.wait(min(60.0, max(1.0, due - time.time())))
 
     def drafter_step():
-        """Choose the next job and draft it while the writer waits for its slot (at most DRAFT_AHEAD waiting)."""
-        if len(ready) >= config.DRAFT_AHEAD:
+        """Choose the next job and draft it while the writer waits for its slot. config.DRAFTERS of these run at once,
+        each with its own job: choose() and the reservation of the job's voice happen together under mu, so two
+        drafters never hold the same voice or citizen, and drafts chosen but not sent (ready + inflight) stay at most
+        DRAFT_AHEAD."""
+        def full():
+            with mu:
+                return len(ready) + len(inflight) >= config.DRAFT_AHEAD
+        no_model_ok(answered=False)          # a spell of no model ends once a model has answered for a while
+        if full():
             stop.wait(IDLE_S)
             return
         if not accounts.voices():
@@ -1748,21 +1934,20 @@ def main():
         job = d = None
         try:
             ids = our_ids()
-            with mu:
-                kept = {k: state[k] for k in ("pulse", "pulse_next") if k in state}
-            pulse_now = pulse.update(kept, targeter, ids, gen, log)       # the LLM call happens outside the lock
-            with mu:
-                state.update(kept)
-            if gen.next_available_in() > 0 and not args.allow_qwen:
-                print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
-                stop.wait(min(gen.next_available_in() + 1, 600))
+            with mu:                                     # the pulse thread refreshes it (pulse_step); drafters only read
+                pulse_now = pulse.current(state)
+            wait_m = model_wait(gen)
+            if wait_m > 0 and not args.allow_qwen:           # nothing can answer (parked, or the budget holds the paid ones)
+                no_model_hit("any", wait_m, pause=wait_m + 1)    # one episode row; the pause holds every drafter
                 return
             woken.clear()
             with mu:
+                if len(ready) + len(inflight) >= config.DRAFT_AHEAD:      # the others filled it while this one waited
+                    return
                 job, drafted, wait = choose(time.time(), ids)
                 if job:
                     accounts.reserved.add(job["rec"]["persona"])        # no second draft for this voice meanwhile
-                    inflight[0] = job
+                    inflight.append(job)
             if job is None:
                 woken.wait(wait)                                      # or until the reader finds something
                 return
@@ -1771,19 +1956,65 @@ def main():
             handle(e, job, stop.wait)
         finally:
             with mu:
-                inflight[0] = None
+                if job:
+                    inflight[:] = [j for j in inflight if j is not job]
+                if d and clashes_with_ready(d["text"], job["mode"], ready):
+                    # a draft that finished while this one was under way: the gate could not compare with it
+                    log({"act": "reject", "why": "clash_concurrent", "mode": job["mode"],
+                         "draft_id": job.get("draft_id"), "target_post": (job.get("target") or {}).get("post_id")})
+                    lose(targeter, queue, job, "clash_concurrent")
+                    d = None
                 if d:
                     ready.append(d)
                 elif job:
                     accounts.reserved.discard(job["rec"]["persona"])
 
+    def pulse_step():
+        """The pulse thread (23 Oct): refreshes state["pulse"] on pulse.update's own cadence (PULSE_EVERY_S, a third of
+        that after a failure), so no drafter spends time on its LLM call. The call runs on a copy outside mu; the two
+        state keys are written back inside it. A failed refresh keeps the last pulse (drafts go on with it until
+        PULSE_MAX_AGE_S) and is retried after a third of PULSE_EVERY_S, logged once per failure."""
+        if not config.PULSE_ON:
+            stop.wait(PULSE_POLL_S)
+            return
+        with mu:
+            kept = {k: state[k] for k in ("pulse", "pulse_next") if k in state}
+        due = kept.get("pulse_next", 0)
+        if time.time() < due:
+            stop.wait(min(PULSE_POLL_S, max(1.0, due - time.time())))
+            return
+        if stop.is_set():
+            return
+        try:
+            pulse.update(kept, targeter, our_ids(), gen, log)
+        except Exception as e:                  # noqa: BLE001 - a duty the bot can do without: never kill the thread
+            kept["pulse_next"] = time.time() + config.PULSE_EVERY_S / 3
+            log({"act": "pulse_error", "why": type(e).__name__, "detail": str(e)[:200]})
+            print(f"pulse refresh failed ({type(e).__name__}): {e}"[:300])
+            if isinstance(e, LOOP_ERRORS):
+                handle(e, None, stop.wait)
+        with mu:
+            state.update(kept)
+
     def check_workers():
         """The watchdog (todo/22): a thread that died or went silent stops the bot. It logs, alerts like BOT CRASHED,
-        saves the state and exits 1, so systemd restarts it. Never runs on without its reader or drafter."""
+        saves the state and exits 1, so systemd restarts it. Never runs on without its reader or drafter. The pulse
+        thread (critical=False) only logs and alerts, once per spell: drafts use the last pulse without it."""
         if stop.is_set():
             return
         for w in workers:
             why = w.problem()
+            if not w.critical:
+                if why and not w.reported:
+                    w.reported = True
+                    log({"act": "thread_died", "thread": w.name, "why": why, "fatal": False})
+                    print(f"watchdog: {w.name} {why} (not fatal)")
+                    if args.live:
+                        alert(f"BOT THREAD FAILED (not fatal): {w.name} ({why}); drafts use the last pulse. "
+                              f"Restart when convenient. Logs: journalctl -u swan-bot -n 50")
+                elif not why:
+                    w.reported = False
+                continue
             if why:
                 log({"act": "thread_died", "thread": w.name, "why": why})
                 print(f"watchdog: {w.name} {why}")
@@ -1856,8 +2087,10 @@ def main():
 
         old = {s: signal.signal(s, on_signal) for s in (signal.SIGTERM, signal.SIGINT)}
         try:
-            workers += [Worker("reader", reader_step, stop, beats, config.READER_SILENT_S),
-                        Worker("drafter", drafter_step, stop, beats, config.DRAFTER_SILENT_S)]
+            workers += [Worker("reader", reader_step, stop, beats, config.READER_SILENT_S)]
+            workers += [Worker(f"drafter-{i}", drafter_step, stop, beats, config.DRAFTER_SILENT_S)
+                        for i in range(1, max(1, int(config.DRAFTERS)) + 1)]
+            workers += [Worker("pulse", pulse_step, stop, beats, config.PULSE_SILENT_S, critical=False)]
             for w in workers:
                 w.start()
             write_loop()

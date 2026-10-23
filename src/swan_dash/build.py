@@ -830,9 +830,12 @@ BUDGET_LOW_X = 2                               # priced-model budget left under 
 def drafting_state(actions, data, now):
     """The 'no model' banner: dict(level, text); green (empty text) when all is well or nothing can be read. Budget maths is swan_bot.llm's own; a missing file or import means no budget signal, not a crash."""
     short, long_ = (now - dt.timedelta(minutes=m) for m in (NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN))
-    drops = [a["_t"] for a in actions if a.get("act") in ("lost", "requeue") and a["_t"] >= long_
+    drops = [(a["_t"], 1) for a in actions if a.get("act") in ("lost", "requeue") and a["_t"] >= long_
              and str(a.get("why")).split(":")[-1] == "no_model"]              # "no_model" and "expired:no_model"
-    d10, d30 = sum(t >= short for t in drops), len(drops)
+    # 23 Oct: the bot logs a no-model spell as episode rows (act "no_model", "new" = attempts since the last row)
+    drops += [(a["_t"], a["new"]) for a in actions if a.get("act") == "no_model" and a["_t"] >= long_
+              and isinstance(a.get("new"), int) and not isinstance(a.get("new"), bool)]
+    d10, d30 = sum(k for t, k in drops if t >= short), sum(k for _, k in drops)
     wpm = sum(a["_t"] >= short for a in actions if a.get("act") in WRITES and a.get("live") is True) / NOMODEL_SHORT_MIN
     left = None
     held = low = False
@@ -854,8 +857,9 @@ def drafting_state(actions, data, now):
     head = "NO MODEL" if d30 else "BUDGET SPENT" if gone else "BUDGET LOW"
     text = f"{head} · {d10} drops in {NOMODEL_SHORT_MIN} min, {d30} in {NOMODEL_LONG_MIN} · {wpm:.1f} writes/min"
     summary = ("Replies stalled" if level == "red" else "Replies slowed") + (": no model free" if d30 else ": budget spent" if gone else ": budget low")
-    detail = ([f"The drafter found no model free for {d30} replies in the last {NOMODEL_LONG_MIN} min ({d10} in the last {NOMODEL_SHORT_MIN}) and dropped them. "
-               "Free models are parked or rate-limited; it retries every minute."] if d30 else []) + \
+    detail = ([f"The drafter found no model free for {d30} drafts in the last {NOMODEL_LONG_MIN} min ({d10} in the last {NOMODEL_SHORT_MIN}); "
+               "since 23 Oct they are put back, not dropped. "
+               "Free models are parked or rate-limited; it retries after a pause."] if d30 else []) + \
         [f"Writing {wpm:.1f} a minute over the last {NOMODEL_SHORT_MIN} min (normal about {NOMODEL_NORMAL_WPM}; red below {NOMODEL_WRITES_FLOOR:g})."] + \
         ([f"${left:.2f} left today" + (": " + why[3:] if why else ": not the cause.")] if left is not None else []) + \
         ["Amber is slowed but working; red is stalled or out of budget."]

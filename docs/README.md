@@ -25,6 +25,7 @@ Facts about **Capture the Narrative 2026** that matter for building and running 
 | &nbsp;&nbsp;[api-reference.md](04-technical/api-reference.md) | `capturethenarrative` 0.5.x: Legit Social, news sites, LLM, errors, rate limits, organisers' first-days advice |
 | &nbsp;&nbsp;[environment.md](04-technical/environment.md) | How this repo/venv is set up; secrets handling |
 | &nbsp;&nbsp;[swan-bot-runbook.md](04-technical/swan-bot-runbook.md) | How to dry-run, run live, stop, measure and host our bot (laptop / EC2 / Lambda) |
+| &nbsp;&nbsp;[aws-cost.md](04-technical/aws-cost.md) | What we have been billed against the $200 credit, ledger vs bill, `scripts/aws_cost.py`, the IAM permissions it needs |
 | **05-reference/** | |
 | &nbsp;&nbsp;[links-and-contacts.md](05-reference/links-and-contacts.md) | URLs and who to ask on Discord |
 | &nbsp;&nbsp;[launch-webinar-2026-10-19.md](05-reference/launch-webinar-2026-10-19.md) | Organiser hints from the launch webinar: tactics, prompting pattern, example bots |
