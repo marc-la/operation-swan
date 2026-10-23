@@ -800,15 +800,22 @@ REACH_SHARE = 0.9              # answered / answerable, and drafts passing on th
 STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 green, 6-10 amber, 11+ red (Marc, 23 Oct; the 200 allowance over 14 days is ~14 a day)
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
-LIGHT_TIPS = dict(      # the hover text on each tile: what the colours mean (Marc, 23 Oct)
-    speed=f"Speed. Median time from a citizen's post to our reply, last hour. New posts: green ≤ {REACH_SPEED_MIN} min, "
-          f"amber {REACH_SPEED_MIN}-{REACH_SPEED_RED}, red over {REACH_SPEED_RED}. Citizens answering us: green ≤ {REACH_BACK_MIN} min, amber up to 3×, red above. Worst row wins. Replies to posts made while we "
-          f"were barely posting (a stall) are left out as catch-up, and counted in the row.",
-    volume=f"Volume. Green: posting at {VOLUME_GREEN:.0%} or more of the team's 3 writes a minute, 10+ voices, no citizen lost. "
-           f"Amber: {VOLUME_AMBER:.0%}-{VOLUME_GREEN:.0%} of budget or few voices. Red: under {VOLUME_AMBER:.0%}, or any citizen lost in the last full hour.",
-    conversion="Conversion. Changes of mind today, toward No minus away. Green: net positive. Amber: neutral (net 0, or none yet). Red: net negative.",
-    stealth=f"Stealth. Accounts banned since 9pm Perth. Green: {STEALTH_GREEN_MAX} or fewer. Amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX}. "
-            f"Red: {STEALTH_AMBER_MAX + 1} or more. Any hidden post turns it amber.")
+LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jargon (Marc, 23 Oct)
+    speed=f"Speed: how long a citizen waits for our reply (median, last hour).\n"
+          f"New citizen posts: green up to {REACH_SPEED_MIN} min · amber {REACH_SPEED_MIN}-{REACH_SPEED_RED} · red over {REACH_SPEED_RED}.\n"
+          f"Citizens answering us: green up to {REACH_BACK_MIN} min · amber {REACH_BACK_MIN}-{3 * REACH_BACK_MIN} · red over {3 * REACH_BACK_MIN}.\n"
+          f"The time splits into wait (their post until we pick it up), draft (writing the reply) and hold (waiting to send).\n"
+          f"Replies to posts from an outage backlog are left out; the row says how many.",
+    volume=f"Volume: how much we post. The team limit is {TEAM_CAP_PER_MIN} a minute.\n"
+           f"Posting rate, last {VOLUME_WINDOW_MIN} min: green {VOLUME_GREEN * TEAM_CAP_PER_MIN:g}+ a minute · amber "
+           f"{VOLUME_AMBER * TEAM_CAP_PER_MIN:g}-{VOLUME_GREEN * TEAM_CAP_PER_MIN:g} · red under {VOLUME_AMBER * TEAM_CAP_PER_MIN:g}.\n"
+           f"Voices writing: amber if under {VOICES_MIN}.\n"
+           f"Citizens lost in the last full hour: red if any.",
+    conversion="Conversion: are our replies moving people toward No? Net = changes of mind toward us minus away, today.\n"
+               "Green: net above 0 · amber: net 0 · red: net below 0.",
+    stealth=f"Stealth: accounts banned today (since 9pm Perth).\n"
+            f"Green: 0-{STEALTH_GREEN_MAX} · amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX} · red: {STEALTH_AMBER_MAX + 1} or more.\n"
+            f"Hidden posts are shown but do not change the colour: they already count as bans.")
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
@@ -1288,8 +1295,8 @@ def gather(root, now, service):
     srows = [dict(group="stealth", name="New bans today", light="green" if bans <= STEALTH_GREEN_MAX else "amber" if bans <= STEALTH_AMBER_MAX else "red",
                   now=f"{bans}" + (f" · {today_acct['why']}" if today_acct and today_acct["why"] else ""),
                   target=f"0-{STEALTH_GREEN_MAX} (amber to {STEALTH_AMBER_MAX})", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
-             dict(group="stealth", name="Posts hidden today", light="amber" if hidden_today else "green", now=f"{hidden_today}",
-                  target="0", fix="3 hidden posts suspend an account. See Activity.", note=""),
+             dict(group="stealth", name="Posts hidden today", light="green", now=f"{hidden_today}",
+                  target="shown only: hidden posts already show up as bans", fix="", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
                   now=f"{acct_days[0]['banned']} of {acct_days[0]['registered']} registered" if acct_days else "—", target="", fix="", note="")]
     rc["rows"] += srows
@@ -1297,6 +1304,13 @@ def gather(root, now, service):
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
     rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts",
                              light=max((r["light"] for r in srows), key=order.get)))
+    for i in rc["lights"]:      # the hover: the rule, then the amber and red rows with their figure and any note (Marc, 23 Oct)
+        bad = [f"{r['light'].upper()} {r['name']}: {r['now']}" + (f" (in hand: {r['note']})" if r.get("note") else "")
+               for r in i["rows"] if r["light"] in ("amber", "red")]
+        i["tip"] = i["tip"] + ("\n\nNeeds a look:\n" + "\n".join(bad) if bad else "\n\nNothing amber or red.")
+        if i["key"] == "speed":
+            split = [f"{r['name'].removeprefix('Where the time goes, ')}: {r['now']}" for r in i["rows"] if r["name"].startswith("Where the time goes")]
+            i["tip"] += "\n\nWhere the time goes (median minutes):\n" + "\n".join(split)
     rc["light"] = max((i["light"] for i in rc["lights"]), key=order.get)
     levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"])
     return dict(

@@ -707,8 +707,8 @@ def test_drafting_missing_files_degrade_quietly(tmp_path):
 def test_each_light_tile_says_on_hover_what_its_colours_mean(tmp_path):
     ctx, html = page(make_root(tmp_path, [write(3)]))
     for i in ctx["reach"]["lights"]:
-        assert i["tip"] and f'title="{i["tip"]}"' in html.replace("&#39;", "'"), i["key"]
-    assert "Green: 5 or fewer. Amber: 6-10. Red: 11 or more" in html
+        assert i["tip"] and ("Needs a look:" in i["tip"] or "Nothing amber or red." in i["tip"]) and "title=" in html, i["key"]
+    assert "Green: 0-5 · amber: 6-10 · red: 11 or more." in html
 
 
 def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):
@@ -735,3 +735,19 @@ def test_new_post_reply_time_bars_3_green_5_amber_over_red(tmp_path):
                  t_drafted=sent - 10, t_sent=sent)
         ctx, _ = page(make_root(tmp_path / f"w{wait}", [a]))
         assert rowof(ctx, "Reply time, new")["light"] == want, wait
+
+
+def test_hidden_posts_are_shown_but_never_colour_stealth(tmp_path):
+    root = make_root(tmp_path, [write(3), dict(write(2), act="alert")])
+    ctx, _ = page(root)
+    assert rowof(ctx, "Posts hidden")["light"] == "green"
+    st = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
+    assert st["light"] == "green" and "Nothing amber or red." in st["tip"]
+
+
+def test_hover_lists_the_amber_and_red_rows_with_their_note(tmp_path):
+    root = make_root(tmp_path, [write(3)])
+    (root / "data" / "reach_notes.json").write_text(json.dumps({"Posting": "bot restarted 15:20"}))
+    ctx, _ = page(root)
+    tip = next(i for i in ctx["reach"]["lights"] if i["key"] == "volume")["tip"]
+    assert "Needs a look:" in tip and "Posting, last 30 min" in tip and "(in hand: bot restarted 15:20)" in tip
