@@ -512,6 +512,28 @@ def test_watchdog_stops_the_bot_when_a_thread_dies(thread, tmp_path, monkeypatch
     assert "targeter" in state, "the state is saved before the exit"
 
 
+@pytest.mark.parametrize("split", [True, False], ids=["split", "serial"])
+def test_dropped_connection_on_a_send_costs_one_round(split, tmp_path, monkeypatch, no_network):
+    """23 Oct: only the reader and drafter threads rode out a network error; one dropped connection in the writer's
+    send, like or registration still exited the bot. Now it is logged (net_error), the draft is not sent again (the
+    outcome is unknown) and the bot goes on writing."""
+    world, spies = setup_world(monkeypatch, tmp_path, split=split, amp_off=True)
+    monkeypatch.setattr(bot, "NET_RETRY_S", 0.05)
+    real, dropped = world.write, []
+
+    def write(rec, kind, target=None, body=None):
+        if kind == "reply" and not dropped:
+            dropped.append(target)
+            raise bot.urllib.error.URLError(bot.ssl.SSLEOFError("UNEXPECTED_EOF_WHILE_READING"))
+        return real(rec, kind, target, body)
+
+    monkeypatch.setattr(world, "write", write)
+    run_main(monkeypatch, seconds=12)                          # would raise out of main() before the fix
+    acts = actions(tmp_path)
+    assert dropped and any(a["act"] == "net_error" and a["why"] == "URLError" for a in acts)
+    assert sum(1 for w in world.writes if w["kind"] == "reply") >= 2, "the bot kept replying after the blip"
+
+
 def test_no_model_pauses_the_drafter(tmp_path, monkeypatch, no_network):
     """23 Oct: with no model answering, the drafter lost 27,858 jobs in 3 h because nothing made it wait. One failed
     draft now pauses drafting for NO_MODEL_PAUSE_S."""

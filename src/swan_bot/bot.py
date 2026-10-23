@@ -1527,6 +1527,8 @@ def main():
         tags = "|".join(str(meta[k]) for k in ("voice", "shape") if meta.get(k))
         print(f"[{mode}|{job['frame']}|{tags}|{backend}{via}] {persona['name']}{where}\n    {text}\n")
 
+    net_fails = [0]                      # transient network errors in a row on the writer (reset by a send)
+
     def handle(e, job, wait):
         """What every loop does with an API, LLM or fact-desk error (wait: that loop's sleep). The rest is raised."""
         if isinstance(e, ctn.RateLimited):
@@ -1549,10 +1551,19 @@ def main():
         elif isinstance(e, content.AllPaused):        # the fact desk paused every frame: wait for a review
             print(e)
             wait(300)
+        elif isinstance(e, TRANSIENT_NET):            # one request dropped (23 Oct); outages (NET_MAX_IN_ROW) still raise
+            net_fails[0] += 1                         # a write's outcome is unknown, so the draft is not sent again
+            log({"act": "net_error", "why": type(e).__name__, "mode": (job or {}).get("mode"), "in_row": net_fails[0],
+                 "target_post": ((job or {}).get("target") or {}).get("post_id")})
+            if net_fails[0] >= NET_MAX_IN_ROW:
+                raise e
+            print(f"network error ({net_fails[0]}/{NET_MAX_IN_ROW}): {type(e).__name__}: {e}"[:300])
+            wait(NET_RETRY_S)
         else:
             raise e
 
     LOOP_ERRORS = (ctn.APIError, openai.APIError, content.AllPaused)
+    WRITE_ERRORS = LOOP_ERRORS + TRANSIENT_NET       # the loops that send: a dropped connection costs one round
 
     # ---- the serial loop (config.SPLIT_LOOP off): read, draft and write in turn, as before todo/22 ----
     def serial_loop():
@@ -1591,7 +1602,8 @@ def main():
                 d = draft(job, drafted, pulse_now)
                 if d:
                     send(d)
-            except LOOP_ERRORS as e:
+                    net_fails[0] = 0
+            except WRITE_ERRORS as e:
                 handle(e, job, pause)
             except KeyboardInterrupt:
                 if job and job.get("mode") == "reply_back" and job not in queue:
@@ -1719,7 +1731,8 @@ def main():
                     continue
                 job = d["job"]
                 send(d)
-            except LOOP_ERRORS as e:
+                net_fails[0] = 0
+            except WRITE_ERRORS as e:
                 handle(e, job, pause)
             finally:
                 if job:
