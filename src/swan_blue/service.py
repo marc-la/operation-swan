@@ -113,6 +113,21 @@ WIDEN_RECHECK_S = 2 * 3600    # a root looked up (a citizen's post, say) isn't l
 # todo/28, co-reporting: the ruling timer halves per extra team reporting, so a post ruled this soon after we filed it
 # was reported by 2+ teams. Its ring's reply authors are checked for hides first (account leads, multi-team boost).
 CO_S = 2 * 3600
+# todo/43 item 1, the liveness filter on account reports (BLUE_ACCOUNT_LIVE_H hours, 0 = off): an account report files
+# only if the account posted that recently, read at filing time from account_posts(limit=1) (the 300/min read route,
+# not the report budget). 46 of 89 account reports on 23 Oct were on accounts idle for 3 h+ (probably suspended already:
+# dismissed, a slot lost for 3 h); the 37 filed while the account was active were all upheld-or-stopped-by-the-ruling.
+LIVE_H = 2.0
+LIVE_FRESH_S = 30 * 60        # a liveness read older than this says nothing: it is read again before the lead ranks
+LIVE_REFRESH_S = 15 * 60      # a live lead is read again after this, so it stays inside LIVE_FRESH_S
+LIVE_IDLE_S = 60 * 60         # an idle one (under 12 h) is looked at again after this, an older one after 6 h
+LIVE_IDLE_LONG_S = 6 * 3600
+LIVE_ERR_S = 5 * 60           # after a failed read, try that account again after this
+LIVE_CHECK_S = 60             # at filing, a read this young counts as the re-check (it was made in this very pass)
+LIVE_REFRESH_PER_TICK = 10    # liveness reads per tick for the ranking (a tick is a minute: well under the 300/min route)
+LIVE_FILE_READS_PER_TICK = 8  # liveness reads per tick at filing (idle leads skipped in the fill each cost one)
+LIVE_BLIND_GAP_S = 10 * 60    # a failed liveness read may file blind at most this often
+READ_RESERVE = 60             # liveness, scan and sibling reads leave this many of the 300/min read calls unspent
 # the platform's answer while we're locked: "reporting is suspended for your team until 2026-10-22T02:00:49Z"
 LOCK_UNTIL_RE = re.compile(r"suspended .*until (\d{4}-\d\d-\d\dT[\d:.]+Z?)", re.I)
 
@@ -165,6 +180,8 @@ class Blue:
         self.det = read_json(self.detect_file, None) or detect.empty()
         self.probe_file = CAP_PROBE_FILE if live else CAP_PROBE_FILE.with_suffix(".dry.json")
         self.probing, self.probe_refusal = False, None
+        self.skip = None                      # why file() just skipped a report without asking (idle account, say)
+        self.file_reads = 0                   # liveness reads made at filing this tick (LIVE_FILE_READS_PER_TICK)
 
     # ---- plumbing ----
     def log(self, rec):
@@ -420,6 +437,72 @@ class Blue:
             share, expect = first / (first + later), sum(predicted) / len(predicted)
             self.s["pf_scale"] = round(min(1.3, max(0.4, share / expect)), 2)
 
+    # ---- todo/43 item 1: liveness of an account lead (reads only) ----
+    def read_ok(self):
+        """Is there room in the 300/min read bucket? The last response's remaining count is the best we know."""
+        rl = getattr(self.social, "rate_limit", None)
+        return not (rl and rl.remaining < READ_RESERVE)
+
+    def read_live(self, aid, h):
+        """One account_posts(limit=1) read of a lead: when it last posted. True if the read worked."""
+        t = now()
+        try:
+            page = list(self.social.account_posts(int(aid), limit=1))
+        except ctn.APIError:
+            h["live_err"] = t
+            return False
+        h["live_at"], h["last_post"] = t, (ev.ts(page[0]["created_at"]) if page else None)
+        h.pop("live_err", None)
+        return True
+
+    def live_state(self, h, t=None):
+        """(state, idle hours) of an account lead from its newest read. 'live' posted within BLUE_ACCOUNT_LIVE_H of
+        that read, 'idle' did not, 'unknown' the last read failed (priced as before todo/43), 'unread' no fresh
+        read yet (it waits for one), 'off' the filter is off."""
+        live_h, t = policy()["live_h"], t or now()
+        if live_h <= 0:
+            return "off", None
+        at = h.get("live_at")
+        if h.get("live_err") and t - h["live_err"] <= LIVE_FRESH_S and h["live_err"] > (at or 0):
+            return "unknown", None
+        if at is None or t - at > LIVE_FRESH_S:
+            return "unread", None
+        idle_h = round((at - h["last_post"]) / 3600, 2) if h.get("last_post") else None
+        return ("live" if idle_h is not None and idle_h <= live_h else "idle"), idle_h
+
+    def refresh_live(self):
+        """Read the newest post of the ready account leads (never read first, then the oldest read), a few a tick, so
+        the ranking only sees live ones. Idle leads are looked at again hourly (6 hourly past 12 h idle)."""
+        live_h, t, due = policy()["live_h"], now(), []
+        if live_h <= 0:
+            return
+        for aid, h in self.s["harvest"].items():
+            if not h.get("ready") or f"a{aid}" in self.s["reports"] or int(aid) in self.ours:
+                continue
+            at, idle = h.get("live_at"), None
+            if at is not None and h.get("last_post"):
+                idle = (at - h["last_post"]) / 3600
+            wait = LIVE_REFRESH_S if idle is not None and idle <= live_h else \
+                (LIVE_IDLE_LONG_S if idle is None or idle > 12 else LIVE_IDLE_S)
+            if h.get("live_err") and h["live_err"] > (at or 0):
+                wait = LIVE_ERR_S
+                at = h["live_err"]
+            if at is None or t - at >= wait:
+                due.append((at is not None, at or 0, aid))
+        for _, _, aid in sorted(due)[:LIVE_REFRESH_PER_TICK]:
+            if not self.read_ok():
+                break
+            self.read_live(aid, self.s["harvest"][aid])
+
+    def live_summary(self):
+        """The ready account leads by liveness, for the dashboard: how many a report could go out on now."""
+        out = dict(live_h=policy()["live_h"], live=0, idle=0, unread=0, unknown=0, off=0,
+                   idle_skips_today=(self.s.get("idle_skips") or {}).get(sydney_day(now()), 0))
+        for aid, h in self.s["harvest"].items():
+            if h.get("ready") and f"a{aid}" not in self.s["reports"] and int(aid) not in self.ours:
+                out[self.live_state(h)[0]] += 1
+        return out
+
     # ---- candidates, ranked by expected value ----
     def candidates(self):
         t, out = now(), []
@@ -456,9 +539,12 @@ class Blue:
                         break
         for aid, h in self.s["harvest"].items():
             if h.get("ready") and f"a{aid}" not in reported:
+                live, idle_h = self.live_state(h)
+                if live in ("idle", "unread"):
+                    continue                  # todo/43: an idle account isn't filed; an unread one waits for its read
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), classes=["hidden_post"],
-                                side=self.lead_side(h),
+                                live=live, idle_h=idle_h, side=self.lead_side(h),
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"],
                                                          self.watch_evidence(aid, h)),
                                 pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
@@ -486,7 +572,7 @@ class Blue:
             for c in cands:
                 n = counts.get(c["label"], 0)
                 c["n_today"] = n
-                c["ev"] = round(ev.account_ev(n) if c["kind"] == "account" else
+                c["ev"] = round(ev.account_ev(n, c.get("live") == "live") if c["kind"] == "account" else
                                 ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"], pg=c["pg"]), 1)
                 c["rank"] = c["ev"] * (1 - SPREAD * n if n < 5 else 1) * BLUE_SIDE_BIAS.get(c.get("side"), 1.0)
             best = max(cands, key=lambda c: c["rank"])
@@ -581,6 +667,8 @@ class Blue:
                     self.spent(c)
                     post_room -= c["kind"] == "post"
                     self.unlock("the platform took a report")
+                elif self.skip:
+                    continue                  # skipped before any request (an idle account): the try is still ours
                 elif self.s["reports"].get(c["key"], {}).get("status") == "refused":
                     continue                  # refused for that target only (gone, say): the next one asks
                 self.s["lock_confirm"] = confirm = False
@@ -623,6 +711,8 @@ class Blue:
             taken = self.file(c)
         finally:
             self.probing = False
+        if not taken and self.skip:
+            return                                    # skipped before any request (an idle account): no try, no answer
         d.update(tries=d.get("tries", 0) + 1, last=iso(), key=c["key"], pending=len(self.pending()) - taken)
         if taken:
             d.update(result="accounts_dont_count", why=f"{c['key']} taken with {d['pending']} pending")
@@ -673,7 +763,42 @@ class Blue:
             return f"post read failed: {e.status}"
         return "own account" if author in self.ours or c.get("author") in self.ours else None
 
+    def live_at_filing(self, c):
+        """todo/43 item 1: the last look before an account report. Its newest post is read again now (the lead may be
+        hours old), and an account that has not posted within BLUE_ACCOUNT_LIVE_H is skipped, logged as `idle`. A
+        failed read files blind at most once per LIVE_BLIND_GAP_S (priced as unknown). True to file. Sets self.skip
+        when nothing was asked, so the caller doesn't count it as a try."""
+        live_h, t = policy()["live_h"], now()
+        if live_h <= 0:
+            return True
+        aid = str(c["target"])
+        h = self.s["harvest"].get(aid) or {}
+        if h.get("live_at") is None or t - h["live_at"] > LIVE_CHECK_S or h.get("live_err", 0) > h["live_at"]:
+            if self.file_reads >= LIVE_FILE_READS_PER_TICK or not self.read_ok():
+                self.skip = "budget"
+                return False
+            self.file_reads += 1
+            if not self.read_live(aid, h):
+                if t - self.s.get("live_blind", 0) < LIVE_BLIND_GAP_S:
+                    self.skip = "read_failed"
+                    return False
+                self.s["live_blind"] = t
+                c.update(live="unknown", idle_h=None)
+                return True
+        idle_h = round((h["live_at"] - h["last_post"]) / 3600, 2) if h.get("last_post") else None
+        if idle_h is None or idle_h > live_h:
+            self.skip = "idle"
+            skips = self.s.setdefault("idle_skips", {})
+            skips[sydney_day(t)] = skips.get(sydney_day(t), 0) + 1
+            if t - h.get("skip_log", 0) >= LIVE_IDLE_S:
+                h["skip_log"] = t
+                self.log({"act": "skip", "key": c["key"], "reason": "idle", "idle_h": idle_h, "live_h": live_h})
+            return False
+        c.update(live="live", idle_h=idle_h)
+        return True
+
     def file(self, c):
+        self.skip = None
         acc = self.session()
         if acc is None:
             return False
@@ -693,6 +818,8 @@ class Blue:
         if why:
             self.error(f"not filed {c['key']}: {why}")
             return False
+        if c["kind"] == "account" and not self.live_at_filing(c):
+            return False
         try:
             if c["kind"] == "post":
                 resp = acc.report_post(c["target"], "inauthentic", c["detail"])
@@ -709,11 +836,11 @@ class Blue:
         self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"], label=c["label"],
                                            filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf, pg=pg,
                                            classes=c["classes"], ring=c.get("ring"), age_min=c.get("age_min"),
-                                           side=c.get("side"))
+                                           side=c.get("side"), idle_h=c.get("idle_h"), live=c.get("live"))
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
                   "label": c["label"], "classes": c["classes"], "ev": c["ev"], "pg": pg, "n_today": c.get("n_today"),
-                  "age_min": c.get("age_min"), "side": c.get("side"),
-                  "detail": c["detail"], "reporter": self.reporter_name, "owner": config.operator(),
+                  "age_min": c.get("age_min"), "side": c.get("side"), "idle_h": c.get("idle_h"),
+                  "live": c.get("live"), "detail": c["detail"], "reporter": self.reporter_name, "owner": config.operator(),
                   "response": resp if isinstance(resp, dict) else None})
         self.save()
         rl = acc.rate_limit                          # pace from the server's budget (3/min per report route)
@@ -855,7 +982,11 @@ class Blue:
                 continue
             h["checked"] = t
             try:
-                n = len(list(self.social.iterate(self.social.account_posts, int(aid), max_items=100)))
+                posts = list(self.social.iterate(self.social.account_posts, int(aid), max_items=100))
+                n = len(posts)
+                if posts and posts[0].get("created_at"):       # the newest post comes first: liveness for free
+                    h["live_at"], h["last_post"] = t, ev.ts(posts[0]["created_at"])
+                    h.pop("live_err", None)
                 if n < 100:
                     n += len(list(self.social.iterate(self.social.account_likes, int(aid), max_items=100 - n)))
             except ctn.APIError:
@@ -947,7 +1078,7 @@ class Blue:
             clusters=dict(today=len(counts), full=sum(n < 5 for n in counts.values()),
                           ready=len({c["label"] for c in ranked}),
                           new=len({c["label"] for c in ranked if counts.get(c["label"], 0) == 0})),
-            widen=self.s["widen"],
+            widen=self.s["widen"], leads_live=self.live_summary(),
             # todo/28 step 5: the account-lead detectors: per kind, accounts watched, with a hidden post, reported
             detect=self.detect_status(),
             next_ruling=iso(pend[0]["filed"] + RULE_S) if pend else None,
@@ -1037,11 +1168,13 @@ class Blue:
 
     # ---- one pass ----
     def tick(self):
+        self.file_reads = 0
         self.scan()
         if self.due("rulings"):
             self.rulings()
         if self.due("harvest"):
             self.harvest()
+        self.refresh_live()
         if self.due("detect"):
             self.run_detectors()
         if self.due("calibrate"):
@@ -1075,13 +1208,14 @@ class Blue:
 
 
 def policy():
-    """The no-lock mode's settings (todo/28), from .env on the box or the defaults above."""
+    """Blue's settings, from .env on the box or the defaults above: the no-lock mode's (todo/28) and todo/43's."""
     def num(key, default):
         try:
             return float(os.environ.get(key, default))
         except ValueError:
             return default
-    return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY))
+    return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
+                live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H))
 
 
 def rings(cands):

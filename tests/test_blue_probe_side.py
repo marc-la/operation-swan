@@ -97,7 +97,7 @@ def test_yes_side_ranks_first_but_no_side_still_fills_and_never_reaches_the_deta
                                         target=c["target"], label=c["label"])
         return True
     monkeypatch.setattr(b, "file", take)
-    monkeypatch.setattr(S, "policy", lambda: dict(pg_max=0.1, per_day=10.0))
+    monkeypatch.setattr(S, "policy", lambda: dict(pg_max=0.1, per_day=10.0, live_h=S.LIVE_H))
     b.fill(ranked, "auto")
     assert "p100" in filed and "p200" in filed and filed.index("p100") < filed.index("p200")
     b.status("auto", "x", [])
