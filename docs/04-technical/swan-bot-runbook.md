@@ -120,3 +120,98 @@ Settings: the `# ---- todo/24 throughput ----` block in `config.py`, and `--per-
 ## Hosting
 
 **Since 2026-10-20 the bot runs on EC2 under systemd, with auto-deploy from `main`. See [hosting](hosting.md).** Don't run `--live` anywhere else. The laptop/tmux instructions are retired.
+
+## Diagnosing without SSH (2026-10-23, [todo/34](../../todo/34-box-robustness.md))
+
+The team's one EC2 box runs the bot, Blue, the dashboard, the timers and the update timer: `i-06471b75b0166b3c7`, region `ap-southeast-2`, Elastic IP 13.210.120.238 (survives stop/start), **t3.medium since 2026-10-23 03:03 UTC** (was t3.micro, 913 MB), **Unlimited** credit mode. When it stalls, SSH accepts the TCP connection and never sends a banner, the dashboard is slow and **no alerts arrive, because they live on the box too**. These commands were all run on 23 Oct.
+
+**SSH-less checklist**
+1. Load the AWS key (below) and set `INST=i-06471b75b0166b3c7`.
+2. `describe-instance-status`: checks passing while SSH hangs = the OS is starved, not a dead VM.
+3. `get-console-output`, grep for OOM kills: which unit, how big.
+4. CloudWatch: `EBSByteBalance%` ~0 and `CPUCreditBalance` 0 are the usual starvation signs; `NetworkIn` rules an attack in or out.
+5. Fix: `reboot-instances`; if it comes back and stalls again, stop, resize, start (same IP).
+6. Confirm over SSH (last section), and check that the dashboard shows the right commit.
+
+### The key (never print it)
+
+The IAM user is `ctn-user` in account 618529336476 (EC2 permissions). Its key is in `.env` as `EC2_ACCESS_KEY` and `EC2_SECRET_ACCESS_KEY`. The laptop's **default AWS profile is a different account and cannot see the box**, so load the team key into the environment, and do not `echo`, `set -x` or paste it anywhere:
+
+```bash
+# ~/ctn/secrets/awsenv.sh  (secrets/ is gitignored; source it, do not run it)
+env_get() { grep -E "^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=" "$HOME/ctn/.env" | tail -1 | sed -E 's/^[^=]*=//; s/\r$//; s/^[[:space:]]*["'"'"']?//; s/["'"'"']?[[:space:]]*$//'; }
+export AWS_ACCESS_KEY_ID=$(env_get EC2_ACCESS_KEY)
+export AWS_SECRET_ACCESS_KEY=$(env_get EC2_SECRET_ACCESS_KEY)
+export AWS_DEFAULT_REGION=ap-southeast-2 AWS_PAGER=""
+export INST=i-06471b75b0166b3c7
+unset -f env_get
+```
+
+Check it is the right account without showing the key: `aws sts get-caller-identity --query Account --output text` must print `618529336476`. If it does not, the default profile is still in use.
+
+### Triage, in order
+
+```bash
+source ~/ctn/secrets/awsenv.sh
+aws ec2 describe-instance-status --instance-ids $INST --include-all-instances
+aws ec2 get-console-output --instance-id $INST --latest --output text --query Output \
+  | grep -E 'Out of memory|oom-kill|invoked oom-killer|Killed process'
+```
+
+- **`describe-instance-status`:** `InstanceState` running, `SystemStatus` and `InstanceStatus` both `ok` while SSH hangs = the VM is alive and the OS is starved (memory, then disk). `impaired` is a dead or hung VM: reboot straight away.
+- **Console output:** each `Killed process <pid> (<name>) ... anon-rss:<kB>` names the victim and its resident size. Before 23 Oct it was `swan-sync` and `swan-followup` at 394-514 MB each. The console output is only the latest ~64 KB, so run it soon after an incident.
+
+```bash
+m() {  # m METRIC STATISTIC [hours back, default 6]
+  aws cloudwatch get-metric-statistics --namespace AWS/EC2 --metric-name "$1" \
+    --dimensions Name=InstanceId,Value=$INST --period 300 --statistics "$2" \
+    --start-time "$(date -u -d "-${3:-6} hours" +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" \
+    --query 'sort_by(Datapoints,&Timestamp)[].[Timestamp,'"$2"']' --output text
+}
+m CPUUtilization Average; m CPUCreditBalance Average; m CPUSurplusCreditBalance Average
+m CPUSurplusCreditsCharged Average; m EBSByteBalance% Minimum; m EBSIOBalance% Minimum
+m NetworkIn Average; m StatusCheckFailed Maximum
+```
+
+| Metric (5-minute period) | Reading it |
+|---|---|
+| `CPUUtilization` (Average) | Pinned at the baseline (10% per vCPU on a t3.micro) while credits are 0 = throttled. High with credits left = a runaway job. |
+| `CPUCreditBalance` (Average) | **0 on a Standard-mode instance = throttled to baseline.** In Unlimited mode it sits near 0 and the instance borrows instead (next row). |
+| `CPUSurplusCreditBalance`, `CPUSurplusCreditsCharged` (Average) | Unlimited mode only. Surplus balance is credits borrowed; `Charged` above 0 is **money** (todo/34 item 7: check it is small after a day on the t3.medium). |
+| `EBSByteBalance%`, `EBSIOBalance%` (Minimum) | The instance's disk-bandwidth and IOPS burst. **~0 = spent**, typical when swapping; every disk read then crawls and sshd's banner times out. |
+| `NetworkIn` (Average) | A flood would show here. It was normal on 23 Oct. |
+| `StatusCheckFailed` (Maximum) | 1 = AWS sees the VM as failed. 0 while SSH hangs points back to starvation. |
+
+**What told us what on 23 Oct.** Status checks passed and `NetworkIn` was normal, so no dead VM and no attack (about 66 failed SSH logins in 3 h is internet background noise). The kernel log showed the OOM kills, and `EBSByteBalance%` reached 0 at 03:00: pytest in `update.sh` plus the timer jobs exhausted a 913 MB box, it swapped, the disk burst ran out, and everything IO-bound (sshd, the dashboard, the alert timers) crawled. The CPU credit balance had hit 0 at about 23:00 (Standard mode), which made it worse. Cause and fixes: [todo/34](../../todo/34-box-robustness.md).
+
+### Fixes, least invasive first
+
+```bash
+aws ec2 reboot-instances --instance-ids $INST
+```
+The bot, Blue and the timers come back from systemd. The tree is whatever commit the box was on, and within about 2 minutes the update timer moves it to `origin/main`. A reboot alone only helped until the load came back on 23 Oct.
+
+If it keeps stalling, resize (about 2 minutes of downtime; the Elastic IP and the credit specification persist):
+
+```bash
+aws ec2 stop-instances --instance-ids $INST
+aws ec2 wait instance-stopped --instance-ids $INST
+aws ec2 modify-instance-attribute --instance-id $INST --instance-type '{"Value":"t3.medium"}'
+aws ec2 start-instances --instance-ids $INST
+aws ec2 wait instance-running --instance-ids $INST
+```
+
+**Confirm afterwards** (ssh in as `ec2-user`):
+
+```bash
+cd ~/ctn && git log -1 --oneline            # the commit you expect (the dashboard version box shows the same)
+systemctl is-active swan-bot swan-blue swan-dash
+free -m                                      # "available" well above 500 MB on the t3.medium
+tail -n 400 logs/swan_actions.jsonl | grep -cE '"act": "(reply|reply_back|second_voice|post|thread|repost)"'   # writes among the last 400 actions; with the timestamps, compare with the dashboard's writes/min
+```
+
+### What NOT to do
+
+- **Do not run the full test suite on the box**, and do not change `update.sh` to. It runs `deploy/check.sh` with `SKIP_TESTS=1` (compile, import and `--help` checks only); GitHub CI and the laptop run the tests. Pytest on the 913 MB box was the trigger on 23 Oct. Since todo/34 item 6, `update.sh` also checks each new commit in a throwaway worktree (`data/deploy-check`) before it moves the live tree, so a killed run leaves the old commit and the old bot.
+- **Do not leave a manual `git reset` / `git pull` on the box without a deploy record.** The dashboard's version box reads `logs/deploys.jsonl` and the `deployed ...` alert, so it stays stale (it showed `65b71c1 02:03` after a manual deploy on 23 Oct). `update.sh` now notices a HEAD with no `ok` record on its next tick (within 2 minutes) and writes a catch-up record plus the alert (`note: "catch-up"`); it restarts the bot only if the commits since the last recorded one changed code and the bot started before the tree moved. If you changed the tree by hand, restart the bot yourself (`sudo systemctl restart swan-bot swan-blue`).
+- **A bad commit fails once:** one `DEPLOY FAILED` alert, then it is skipped (`logs/deploy_failed_sha`) until `origin/main` moves. Push the fix; do not reset the box to "make it deploy".
