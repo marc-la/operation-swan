@@ -60,6 +60,7 @@ class Params:
     warm_h: dict = field(default_factory=lambda: dict(healthy=(6, 36), sagging=(3, 12), low=(1, 4)))
     ramp_h: dict = field(default_factory=lambda: dict(healthy=(60, 72), sagging=(48, 60), low=(36, 48)))
     ramp_start: float = 0.25
+    convert_ramp_h: dict = field(default_factory=lambda: dict(healthy=(24, 36), sagging=(12, 24), low=(6, 12)))
     loss_window_s: float = 72 * 3600
     loss_half_life_s: float = 24 * 3600
     runway_min_loss: float = 0.5
@@ -73,6 +74,7 @@ class Params:
                    low_frac=config.POOL_LOW_FRAC, fast_frac=config.POOL_FAST_FRAC, median_pts=tuple(tuple(x) for x in config.POOL_MEDIAN_PTS),
                    sigma=config.POOL_DELAY_SIGMA, delay_max_s=config.POOL_DELAY_MAX_S, warm_h=dict(config.POOL_WARM_H),
                    ramp_h=dict(config.POOL_RAMP_H), ramp_start=config.POOL_RAMP_START,
+                   convert_ramp_h=dict(config.POOL_CONVERT_RAMP_H),
                    loss_window_s=config.POOL_LOSS_WINDOW_S, loss_half_life_s=config.POOL_LOSS_HALF_LIFE_S,
                    runway_min_loss=config.POOL_RUNWAY_MIN_LOSS, card_cooldown_s=config.POOL_CARD_COOLDOWN_S,
                    end_iso=config.POOL_END)
@@ -293,7 +295,7 @@ def plan_step(snap, now, rng, p):
     if state != "healthy" and snap["convertible"] and snap["free_cards"] and snap["voices"] < snap["target"]:
         card = choose_card(snap, rng)
         return dict(base, act="convert", username=rng.choice(snap["convertible"]), card=card,
-                    ramp_h=_hours(p.ramp_h, wstate, rng),
+                    ramp_h=_hours(p.convert_ramp_h, wstate, rng),           # an aged booster: a shorter ramp than a fresh account
                     reason=f"{state}: supply {snap['supply']} < {snap['target']}, convert before register")
     # 3. register a warming account (a 429's Retry-After and a failed register's backoff hold only this: conversion and
     # activation are local)

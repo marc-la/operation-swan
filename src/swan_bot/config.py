@@ -483,6 +483,9 @@ POOL_DELAY_SIGMA = 0.7
 POOL_DELAY_MAX_S = 18 * 3600
 POOL_WARM_H = dict(healthy=(6, 36), sagging=(3, 12), low=(1, 4))     # warm-up before a registered account may write (hours)
 POOL_RAMP_H = dict(healthy=(60, 72), sagging=(48, 60), low=(36, 48))   # a new voice's ramp: ready chance 0.25 -> 1 over this long
+# 2026-10-23: a converted BOOSTER is already an aged account (days of views and likes), so its ramp is shorter; when the pool is
+# low (9 of 31) a 36-48 h ramp would leave each conversion at ~60% for two days, against the 'convert harder when it sags' rule.
+POOL_CONVERT_RAMP_H = dict(healthy=(24, 36), sagging=(12, 24), low=(6, 12))
 POOL_RAMP_START = 0.25              # a ramping voice is ready with this chance at first, rising linearly to 1
 POOL_LOSS_WINDOW_S = 72 * 3600      # losses (suspensions) counted for loss_per_day
 POOL_LOSS_HALF_LIFE_S = 24 * 3600   # EWMA half-life of that count

@@ -290,7 +290,7 @@ def test_low_floor_is_eight_minutes_and_conversions_come_before_registrations():
     assert pool.plan_step(s, T0 + 7 * 60, random.Random(0), P) is None
     a = pool.plan_step(s, T0 + 8 * 60 + 1, random.Random(0), P)
     assert a["act"] == "convert" and a["username"].startswith("b") and a["card"] in s["free_cards"] and a["state"] == "low"
-    assert 36 <= a["ramp_h"] <= 48
+    assert 6 <= a["ramp_h"] <= 12                      # a converted booster is aged: the short ramp (23 Oct), not the fresh-account one
     none = snap_for(14, boosters=0, st=pool.PoolState(z=-2.0, want_since=T0 - 9999), last_action_ts=T0)
     assert pool.plan_step(none, T0 + 9 * 60, random.Random(0), P)["act"] == "register", "no booster to convert"
     assert pool.plan_step(snap_for(14, boosters=6, st=pool.PoolState(z=-2.0, want_since=T0 - 9999), last_action_ts=T0,
@@ -515,7 +515,7 @@ def test_live_convert_a_booster_into_a_ramping_voice(tmp_path):
     rec = next(x for x in r.acc.records if x["username"] == plan["username"])
     assert rec["role"] == "voice" and rec["persona"] == plan["card"] and rec["pool_state"] == "active"
     assert rec["variant"]["base"] == plan["card"] and rec["variant"]["name"] == rec["display_name"], "keeps the name it has"
-    assert rec["ramp"]["until"] - rec["ramp"]["from"] >= 36 * 3600 and rec["ramp"]["start"] == 0.25
+    assert rec["ramp"]["until"] - rec["ramp"]["from"] >= 6 * 3600 and rec["ramp"]["start"] == 0.25    # the short conversion ramp
     assert rec["converted"]["by"] == "pool" and rec["converted"]["from_role"] == "booster" and rec["username"] == plan["username"]
     assert plan["username"] != "b0", "Blue's reporter (lowest id) is never converted"
     assert rec in r.acc.voices() and rec not in r.acc.boosters()
@@ -1019,3 +1019,13 @@ def test_bot_main_shadow_pool_registers_nothing(tmp_path):
     assert all(a["dry_run"] is True for a in acts if a["act"] == "pool_shadow")
     recs = json.loads((tmp_path / "secrets" / "swan_accounts.json").read_text())
     assert not [r for r in recs if r.get("pool") or r.get("pool_state")], "the shadow wrote nothing to the records"
+
+
+def test_a_conversion_ramps_faster_than_an_activation_in_every_state():
+    """23 Oct: a converted booster is an aged account, so POOL_CONVERT_RAMP_H (6-12 / 12-24 / 24-36 h by state) applies to
+    conversions only; a fresh warmed account keeps POOL_RAMP_H. Every draw stays inside its band."""
+    for state, lo, hi in (("low", 6, 12), ("sagging", 12, 24), ("healthy", 24, 36)):
+        for seed in range(30):
+            got = pool._hours(P.convert_ramp_h, state, random.Random(seed))
+            assert lo <= got <= hi, (state, got)
+    assert P.convert_ramp_h["low"][1] < P.ramp_h["low"][0], "the conversion band sits wholly under the activation band"
