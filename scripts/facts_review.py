@@ -16,6 +16,8 @@ Autopilot (todo/29, config.FACTDESK_AUTO): the desk decides its own proposals on
 logged in data/facts_auto.jsonl); what it leaves (a check failed, or over the daily cap) is still decided here.
 --undo runs ON THE BOX (the overlay lives there): it puts back what that decision replaced, reopens the proposal
 for a human here, and restarts the bot. A commit to facts.toml later than an auto decision wins over it.
+--undo-touches ID also runs ON THE BOX: it removes the persona touches (todo/37) that desk log id wrote and prints what
+it removed. No restart: the bot re-reads data/touches_auto.json when it changes.
 
 Proposals and pauses come from the team Mongo (the desk mirrors them there); --local reads data/ instead (on the
 box, or in tests). The dashboard's Facts section lists the same items with the command for each. Every decision
@@ -38,7 +40,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from swan_bot import config, content, factdesk  # noqa: E402
+from swan_bot import config, content, factdesk, touches  # noqa: E402
 from swan_bot import facts as fact_store  # noqa: E402
 
 FACTS = fact_store.FILE
@@ -295,8 +297,13 @@ def main():
     ap.add_argument("--yes", action="store_true", help="don't ask before rejecting a contradiction")
     ap.add_argument("--local", action="store_true", help="read data/ instead of Mongo")
     ap.add_argument("--undo", type=int, metavar="ID", help="on the box: undo the fact desk's auto decision on proposal ID")
+    ap.add_argument("--undo-touches", type=int, metavar="ID",
+                    help="on the box: remove the persona touches that log id ID (data/touches_auto.jsonl) added")
     args = ap.parse_args()
     config.load_env()
+    if args.undo_touches is not None:
+        print(touches.undo(args.undo_touches))
+        return
     if args.undo is not None:
         undo(args.undo)
         return

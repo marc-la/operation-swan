@@ -242,6 +242,13 @@ FACTDESK_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "openai/gpt-oss-120b"
 # scripts/facts_review.py as before. Undo one: ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo ID'
 FACTDESK_AUTO = True
 FACTDESK_AUTO_PER_DAY = None        # no cap (Marc, 22 Oct: "completely autonomous"); a number caps changes a Sydney day
+# Persona touches (todo/37, swan_bot/touches.py): a new desk fact tells the voices it bites how it lands in their week.
+TOUCHES_ON = False                  # False: generated and logged (when the desk script runs it), never put in a prompt
+TOUCH_CLAUSE_MAX = 110              # characters per clause
+TOUCH_MAX_VOICES = 6                # personas given a clause per fact
+TOUCH_TEAM_CAP = 3                  # distinct voices that may use one fact's touch...
+TOUCH_TEAM_WINDOW_S = 6 * 3600      # ...in this window, team-wide
+TOUCH_DICE = {1: 1 / 6, 2: 1 / 4, 3: 1 / 3}   # chance a draft uses a touch, by impact weight
 
 # ---- swarm (src/swan_bot/swarm.py, docs/04-technical/swarm.md): like + repost other Vote No posts every 5 min ----
 SWARM_ACCOUNTS_FILE = SECRETS / "swarm_accounts.json"   # its own file: the bot process never writes it

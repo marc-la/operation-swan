@@ -30,3 +30,6 @@ Then `sudo systemctl restart swan-bot`. The cost in writes/day of each rule is i
 
 ## Still open (content, the todo/25 session)
 Retire the F14 skeleton, rotate facts so no single fact is in more than ~8% of writes ("Central's 40 empty nursing posts" was 25%), drop the stock closing question, give each voice its own style, and a lab stealth score (overlap with `data/lab/hidden_corpus.jsonl`). None of these cost volume.
+
+## Persona touches (23 Oct, todo/37): built, OFF
+New desk facts get a one-clause "what this means in my week" for the personas they touch, used in a draft at 1 in 6 to 1 in 3 by impact. It ships OFF (`config.TOUCHES_ON`); the stealth risk is the tells (concession opener, closing "who has moved to No?", invented named friend, one fact on many voices at once), so it is capped at 3 voices per fact per 6 h and switched off if those tells rise. Runbook: [swan-bot-runbook](../04-technical/swan-bot-runbook.md).

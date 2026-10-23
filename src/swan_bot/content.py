@@ -20,7 +20,7 @@ import random
 import re
 from zoneinfo import ZoneInfo
 
-from . import config, experiment
+from . import config, experiment, touches
 from . import facts as fact_store
 
 try:
@@ -627,6 +627,8 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
     covid = covid if usable([covid]) and not off else None
     problem = persona.get("problem") if usable([persona.get("problem")]) and not off else None
     heat = f.get("heat") if register == "fed_up" and not fact_store.paused_in(f.get("heat")) and not off else None
+    touch = touches.draft_pick(persona, random) if config.TOUCHES_ON and not off else None   # todo/37; flag first
+    heat = None if touch and register == "fed_up" else heat          # a touch replaces the frame's heat line, never both
     voice = VOICES[register]["instruction"] + (f" Your sharpest take on today's point, in your own words: {heat}"
                                                if heat else "")
     doses = fact_store.ok(["first_doses"])
@@ -648,6 +650,8 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
             out.append(f"People in your life: {' '.join(clip(x, 80, keep=0.2) for x in people)}")
         if problem:
             out.append(f"What a Yes would cost you: {clip(problem, 130)}")
+        if touch:
+            out.append(touch[0])
         if covid:
             out.append(f"Your COVID years: {clip(covid, 100)}")
         if now:
@@ -659,8 +663,9 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
     head = f"{base}\n{block}" if block else base
     text = f"{head}\n{profile()}\n{rest}"
     covid_frame = "covid_business" in f["facts"]       # there the COVID years are the story: they go last
-    for drop in ("person", "problem", "covid") if covid_frame else ("covid", "person", "problem"):
-        if len(text) - len(head) + len(base) <= BASE_BUDGET:      # the pulse has its own budget, never a profile line's
+    budget = BASE_BUDGET + (len(touch[0]) + 1 if touch else 0)    # a touch line adds to the budget: it never squeezes
+    for drop in ("person", "problem", "covid") if covid_frame else ("covid", "person", "problem"):   # other lines out
+        if len(text) - len(head) + len(base) <= budget:           # the pulse has its own budget, never a profile line's
             break
         if drop == "covid":
             covid = None
@@ -670,7 +675,8 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
             problem = None
         text = f"{head}\n{profile()}\n{rest}"
     _fill(meta, persona=persona["key"], voice=register, now=now, people=[x.split(",")[0] for x in people],
-          heat=bool(heat), covid=bool(covid), problem=bool(problem), **({"pulse": pulse["id"]} if block else {}))
+          heat=bool(heat), covid=bool(covid), problem=bool(problem), **({"pulse": pulse["id"]} if block else {}),
+          **({"touch": touch[1]} if touch else {}))
     return text
 
 

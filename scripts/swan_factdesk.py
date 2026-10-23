@@ -10,6 +10,7 @@ team Mongo; scripts/facts_review.py still decides by hand whatever the desk leav
     python scripts/swan_factdesk.py                      # what the timer runs
     python scripts/swan_factdesk.py --dry                # print only: no state, pause, proposal, decision, alert, log or Mongo
     python scripts/swan_factdesk.py --no-auto            # propose only, as before autopilot (this run)
+    python scripts/swan_factdesk.py --no-touches         # skip the persona touches step (todo/37) this run
     python scripts/swan_factdesk.py --dry --since-hours 48   # also re-read what the first run skipped
 
 Reads only sites.legitreal.com (no Legit Social calls at all) and calls our LLM chain (config.FACTDESK_MODELS first).
@@ -26,7 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import capturethenarrative as ctn  # noqa: E402
 
-from swan_bot import config, factdesk, llm  # noqa: E402
+from swan_bot import config, factdesk, llm, touches  # noqa: E402
 
 
 def mongo_mirror(state):
@@ -61,11 +62,38 @@ def mongo_mirror(state):
     return send
 
 
+def touches_ask(gen):
+    """ask(system, user) for touches.refresh (todo/37): the desk's models in config.FACTDESK_MODELS order, JSON mode, no
+    strict schema (the clause call has one key per persona), the desk's own parser. The parsed answer, or None."""
+    chain = [m for _, m in getattr(gen, "chain", [])]
+    order = [m for m in config.FACTDESK_MODELS if m in chain] + [m for m in chain if m not in config.FACTDESK_MODELS]
+
+    def ask(system, user):
+        for m in order[:3]:
+            out, _ = gen.complete(system, user, json_mode=True, models=[m], temperature=0.2)
+            obj = factdesk._parse(out) if out is not None else None
+            if obj is not None:
+                return obj
+        return None
+    return ask
+
+
+def run_touches(gen, dry, alert):
+    """Persona touches after the desk's decisions: generated and logged even while config.TOUCHES_ON is off. A failure
+    here is alerted at most as a line and never fails the desk run."""
+    try:
+        return touches.refresh(touches_ask(gen), log=alert, dry=dry)
+    except Exception as e:                                  # noqa: BLE001 (the desk run must survive any touches fault)
+        print(f"touches: {type(e).__name__} {str(e)[:150]}; skipped this run")
+        return []
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry", action="store_true", help="print only")
     ap.add_argument("--since-hours", type=float, help="backfill: also articles the first run skipped, this recent")
     ap.add_argument("--no-auto", action="store_true", help="propose only (config.FACTDESK_AUTO off for this run)")
+    ap.add_argument("--no-touches", action="store_true", help="skip the persona touches step (todo/37) this run")
     args = ap.parse_args()
     config.load_env()
 
@@ -96,6 +124,8 @@ def main():
     if config.FACTDESK_AUTO and not args.no_auto:
         auto = factdesk.auto_decide(dry=args.dry, alert=alert, mirror=mirror, log=log, test=factdesk.run_facts_tests)
         print(json.dumps({k: [r["id"] for r in v] if isinstance(v, list) else v for k, v in auto.items()}))
+    if not args.no_touches:
+        run_touches(gen, args.dry, alert)
     if not args.dry:
         state["last_run"] = dt.datetime.now(dt.timezone.utc).isoformat()    # the dashboard's "desk stalled" check
         factdesk.write_json(factdesk.STATE_FILE, state)      # after the decisions: a failed mirror waits in it
