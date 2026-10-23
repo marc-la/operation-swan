@@ -31,7 +31,7 @@ scan (reads only)                    rank                                fill
  Trending every 10 min ─┐            each candidate:                     while not locked and pending < 30:
  Latest every 3 min ────┼─ team-     EV = 0.9 × (25·P(first)+5·(1−P))     file the best EV first
  ring authors' posts ───┘  account   × team's daily rate × strength       (approve mode: only approved posts;
-   every 5 min              posts    account EV = 0.95 × 15 × rate         account reports always)
+   every 5 min              posts    account EV = 0.9 × 15 × rate (§10)    account reports always)
         │                 audit at 10 min (and 45 min):  ↑ team count updated after each pick
         └──────────────── likers, replies, timing  ──→ like ring / reply ring? → cluster label
 rulings every 10 min: 404 = hidden (inauthentic) → its author is an account-report lead
@@ -201,4 +201,99 @@ What changed (`service.py`, `evidence.py`):
 4. Front-loading at the Sydney reset needed no new code: `counts_today` counts by the day a report is *ruled* (open question B.10: assumed, not confirmed), so from 3 h before Sydney midnight (6pm Perth) every team is back at full rate for what we file. With the gates off, the fill takes the 30 slots with the best fresh full-rate reports as soon as we are unlocked.
 5. Widening for new teams: unchanged. Rank spreading (`SPREAD`) already puts new clusters first, and the account-lead detectors (§8) are the route for rings that are not ring posts.
 
-To check on 24 Oct against the table above: post reports filed, genuine per post ruling (expect about 8%), hours locked, first-report awards, and whether `ready_ok` is now close to `ready`.
+To check on 24 Oct against the table above: post reports filed, genuine per post ruling (expect about 8%), hours locked, first-report awards, and whether `ready_ok` is now close to `ready`. (Done for 24 Oct in the §10 table, which also adds the liveness and fleet measures.)
+
+## 10. Live targets: liveness filter, live-lead scanner, fleets (todo/43, 2026-10-24)
+
+Work item: [todo/43](../../todo/43-blue-live-targets.md); evidence: [rival-census-2026-10-23](rival-census-2026-10-23.md). Code: `swan_blue/{service,evidence,scan,fleets}.py`; offline tools `scripts/blue_fleet_eval.py`, `scripts/blue_scan_eval.py`. Built and tested against fakes only on 24 Oct; **nothing here has run against the real platform** (the first live numbers go in the table at the end).
+
+**Why.** Of our 89 account reports on 23 Oct, 46 (52%) were on accounts already idle for over 3 h at filing (27 over 12 h), and all 37 filed while the account was active (last post an hour or less before) had stopped posting by the ruling. So the 0.5 in `ACCOUNT_UPHELD` was the idle waste, not the live rate. Live supply was thin (21 of 189 unreported leads had posted in the previous 2 h), so the filter alone would only shrink Blue; the scanner and the sibling checks widen the supply of live leads. Fleets replace the 16 clusters as the unit of "one target team": c8701 holds 450 accounts, more than a team's 200, so it showed "saturated".
+
+### What changed, and how to turn each part off
+
+| Part | Default | Setting (in `.env` on the box; read when swan-blue starts) | Off |
+|---|---|---|---|
+| **Liveness filter** on account reports: the account's newest post is read right before filing (`account_posts(limit=1)`, the 300/min read route, not the report budget); skipped unless it posted within the window | **on, 2 h** | `BLUE_ACCOUNT_LIVE_H=2` | `0` (no filter, priced at the old 0.5) |
+| **Live-lead scanner** (reads only): a pass every 3 h re-reads the newest 50 posts of each live rival account (40 reads a minute at most) and logs/lists leads | **on** | `BLUE_SCAN_EVERY_S=10800` | `0` |
+| **Filing from the scanner and siblings** | **off** | `BLUE_SCAN_FILE=0` | `1` turns filing on |
+| **Sibling checks**: the fleet mates of a live lead are read first (5 a tick) | on (needs the scanner and the account list) | `BLUE_SIBLINGS=1` | `0` |
+| **Fleets**: the platform account list is read (100 a page, about 105 reads) every 6 h; awards are counted per fleet | **on** | `BLUE_FLEET_EVERY_S=21600`, `BLUE_FLEET_GAP_S=30` | `BLUE_FLEET_EVERY_S=0` (Blue's cluster labels count teams, as before) |
+| **Slot ordering** (below) | on | code: `evidence.ACCOUNT_CO_BOOST=1.3` | set it to `1.0` |
+
+`BLUE_OFF`, approve mode, the 30-report cap (the last slot an account report's), the lock logic, "never our own accounts", dry runs and the report budgets are untouched. A dry run (`cd src && python -m swan_blue`) uses `*.dry.json` files for the new state as well and files nothing.
+
+### 1. The liveness filter (`idle_h`)
+
+- **At filing** (`live_at_filing`, after the own-account check): the newest post is read again now, because a lead may be hours old. Idle hours = the read time minus that post's time. Over `BLUE_ACCOUNT_LIVE_H` (or never posted): skipped, `{"act": "skip", "reason": "idle", "idle_h": ...}` in `logs/blue_reports.jsonl` (at most one line per account per hour), not recorded as refused (it may come back). A read from the same pass (under 60 s old) counts as the re-check.
+- **Ranking**: `refresh_live` reads the ready leads' newest post, never-read first, 10 a tick, a live one again after 15 min, an idle one hourly (every 6 h once idle over 12 h). Only leads with a read under 30 min old and within the window are candidates: `unread` and `idle` ones wait. The harvest's own 100-post read also stamps the newest post time for free.
+- **Pricing** (`evidence.account_ev`): a live account is `ACCOUNT_UPHELD` = **0.9** (EV 13.5 at full rate), an unknown one `ACCOUNT_UPHELD_UNKNOWN` = 0.5 (7.5, the old behaviour). Unknown means the liveness read failed: the account is still a candidate, but a report on one goes out blind at most once per 10 min (`LIVE_BLIND_GAP_S`), the others wait for the next tick. When the read bucket is nearly spent (`READ_RESERVE`: under 60 of 300 left) or after 8 filing-time reads in a tick, the report waits; it never files blind for lack of budget.
+- **Reading the log**: every `act: report` now has `idle_h` (hours since the account's last post, at the read made just before filing; `null` with `live: "unknown"` or `"off"`), `live`, `team` (the fleet or cluster counted) and `n_today` (that team's award count when it was picked). `blue_status.json` → `leads_live`: ready leads by state (`live`, `idle`, `unread`, `unknown`, `off`) and `idle_skips_today`.
+- **The window is a guess until measured.** 2 h comes from "all 37 filed within an hour of the last post were gone by the ruling, 46 of 89 over 3 h were wasted". Nothing separates 1 h from 3 h yet. The portal gives upheld counts per hourly row, not per report, so the rate by idle bucket can only be read where a row's rulings (filed 3 h earlier) fall in one bucket; to split 1-2 h from 2-3 h, run a day at `BLUE_ACCOUNT_LIVE_H=3` and compare. Keep `ACCOUNT_UPHELD` at 0.9 until a day of live reports says otherwise.
+
+### 2. The live-lead scanner (`scan.py`, `Blue.scan_step`)
+
+- **Tracked**: team accounts (not ours, citizens or verified) the bot's Latest snapshot saw posting in the last 6 h, plus those with a live snapshot; capped at 1,500, newest posters first. A pass reads each once (`account_posts`, newest 50), 40 a minute at most and only while the read bucket is above `READ_RESERVE`. The 23 Oct census had **797** such accounts (30+ posts, last post within 6 h of the pull's end), so a pass is about 20 minutes.
+- **Diff**: the snapshot is post ids only (at most 50 per account, compact JSON in `data/blue_scan.json`, about 0.5 MB at the cap). An id that was on the previous page and is missing now counts only if it should still be there: newer than the oldest id read, or the page holds the whole history. Posts pushed off the page by new ones are not candidates. An account with under 30 posts or not posting for 6 h is dropped.
+- **Confirmation**: `get_post` must answer 404 on two reads at least 10 minutes apart; a 200 drops the candidate. Then it is a lead: `{"act": "lead", "by": "scan", "vanished": [...], "posts_per_h", "last_post", "fleet", "file"}` in the Blue log, and listed (newest 40) in `blue_status.json` → `scan.leads`, with `scan.stats` (passes, reads, vanished, confirmed, visible, siblings, errors).
+- **What a lead means.** A hidden post vanishes from `account_posts`, **and so does one its author deleted**: from outside they look the same (both 404). Such an account report is dismissed (a slot for 3 h, never a lock). A five-team temporary hide may look the same too and be restored on a genuine ruling. So the detail says only what was measured: *"its post #N is no longer available, it has taken 100+ actions"* plus the measured pace (*"it has posted 50 times in the last 8.2 hours (about 6 an hour)"*) or a lockstep/detector clause **only if measured**. It never says the moderator hid it (that wording stays for leads the existing harvest established) and never mentions a side.
+- **Filing, flag off (default)**: leads are logged and listed; nothing enters the filing path. **Flag on** (`BLUE_SCAN_FILE=1`): a lead found in the last 12 h joins the harvest (`by: scan` or `sibling`), which counts its actions (100+ needed, as for every lead), then the same ranked fill, liveness gate, cap and last-slot rule apply. A scan lead without a measured pattern (pace under 3 posts an hour on the page, no lockstep ring, no detector numbers) is not a candidate: the report would have nothing to state.
+- **Test it on the second census snapshot before turning the flag on**: `python scripts/blue_scan_eval.py data/rival_census/rest.jsonl data/rival_census/rest-2026-10-24.jsonl --census data/rival_census/census.jsonl --ours data/rival_census/ours_all.json --page 100 --out live_leads.json`. It applies the same diff rule and prints the candidates, how many live accounts it could compare and candidates per hour. A 24 h gap hides vanished posts of fast posters (their old page has scrolled off), so read the count as a floor, and check a handful of candidates with `get_post` (expect 404) before trusting it. The baseline to beat is the 21 live leads of 189.
+
+### 3. Slot value ordering (`Blue.ranked`)
+
+Per target team (fleet) the first 5 awards pay in full, the 6th to 10th half, the 11th on 10%, posts and accounts counted together. The ranking already did the right thing once the numbers were honest; it is now written out in `ranked()` and tested:
+1. A fresh ring post whose expected value pays for the lock (`ev >= pg x LOCK_COST`, about 21 against 12) goes first: 25 points for the first report.
+2. Live account reports (13.5, no lock risk) fill the rest.
+3. An account lead other teams are reporting ranks `ACCOUNT_CO_BOOST` (1.3) higher: our report on it was ruled in under 2 h (`co`), or another team's hide of its post was found in the last 2 h (`by: other`). The ruling then comes in half the time or less, so the slot turns over twice as fast, and an upheld report pays every team that reported. This weights the rank, not the points (EV stays 13.5).
+4. From the 6th award a post no longer pays for its lock and an account is worth 6.75; from the 11th, 1.35 is under `MIN_EV`, so the fill moves to another team. `SPREAD` still puts teams with fewer awards first.
+
+### 4. Fleets as the team proxy (`fleets.py`)
+
+A fleet is a chain of team accounts in id order where each link is at most 5 ids and **30 s** from the one before (`FLEET_ID_GAP`, `FLEET_GAP_S`); a chain over 200 (a team's allowance) is cut at its largest time gaps. A private account has no `created_at` and rides with its neighbours. Ours are left out so they cannot bridge a rival's fleet. The key is `f<lowest id>`; a fleet of one with a cluster label counts under the label; with no account list yet, or `BLUE_FLEET_EVERY_S=0`, the label counts, as before.
+
+**Validation** (`python scripts/blue_fleet_eval.py data/rival_census [--min-posts N]`, census of 23 Oct, pull ending 16:12 UTC). Dead = newest post 24 h or more before the end of the pull, alive = under 6 h. Same-fate share of the pairs inside a fleet, against the same pairs with the fate labels shuffled across accounts (30 shuffles; z = shuffle standard deviations above the mean):
+
+| Accounts with | Labelled | Fleets (5 ids, 30 s): same fate | Shuffled | z | Pairs |
+|---|---|---|---|---|---|
+| 1+ posts | 3,219 | 69.6% | 50.8% | 43 | 27,845 |
+| 10+ posts | 1,784 (742 dead) | 69.0% | 51.6% | 24 | 19,533 |
+| 30+ posts | 1,345 (532 dead) | **76.0%** | 52.0% | 36 | 11,525 |
+
+The old yardstick agrees: consecutive labelled ids up to 3 apart share a fate in 73% (10+ posts) to 77% (30+ posts) of 1,261 / 920 pairs. Blue's own clusters agree less: 63.5% against 51.4% shuffled (10+ posts, 34,310 pairs).
+
+How the thresholds were chosen (10+ posts, id gap 5): the **time gap is the cut; the id gap barely matters** (ids are dense, the median gap between neighbours is 15 s). Same fate stays at 68-70% from 20 s to 60 s while the share of accounts in a fleet of 2+ climbs from 81% to 95%, then it falls (65% at 120 s); label agreement keeps falling with a looser gap.
+
+| Time gap | Same fate | Fleets | In a fleet of 2+ | Same Blue label (chance 10.5%) |
+|---|---|---|---|---|
+| 10 s | 63.5% | 4,851 | 58% | 68% |
+| 20 s | 69.3% | 2,992 | 81% | 56% |
+| **30 s** | **69.0%** | **2,356** | **87%** | **58%** |
+| 60 s | 68.1% | 1,224 | 95% | 52% |
+| 120 s | 65.4% | 552 | 98% | 45% |
+| none | 67.3% | 187 | 100% | 31% |
+
+A single-id gap (neighbours only) is worse at the same time gap (64.1% at 30 s): other teams' registrations sit between a team's accounts. 30 s is where more time gap stops buying agreement and starts costing purity.
+
+**What a fleet is, honestly: a registration batch, not a team.** The census has 7,910 team accounts in 2,356 fleets (1,312 of 2+ accounts, median 3, 90th percentile 8, largest 198; 37% of accounts sit in fleets of 10+) against about 157 teams, so one team is roughly 15 fleets. Teams that register in bursts show whole (cluster c3370: 147 of 187 accounts in 5 fleets of up to 50); drip registrars scatter (c6604: 219 accounts in 175 fleets; c8701's 450 in 185). Consequences:
+- Counting per fleet **undercounts** a team that is spread over many fleets: a second fleet of the same team looks fresh while the team is already past its 5 full awards, and those reports pay half. Cluster counts overcounted (c8701). Neither is right; fleets are better where the batch is the team and where clusters over-merge, and they fate-agree better than the clusters do.
+- Check it from the table below: the share of reports filed with `n_today` under 5 that the portal paid at a reduced rate (`Moderation (x0.5 points)` lines, `awards_by_rate`). If a third or more of the reports Blue believed full-rate are paid reduced, loosen the gap (`BLUE_FLEET_GAP_S=120`, 552 fleets) or key on the cluster label too.
+
+### 5. Sibling checks
+
+When a lead is read live and its fleet is known (or the scanner confirms one), the fleet's other accounts (up to 30, those the bot's Latest snapshot saw lately first; once per fleet per 6 h) are queued and read before the scan's own list, 5 a tick. A post the bot saw a sibling write 30+ minutes ago (`detect` keeps the last 6 ids per account) that is missing from its page now is a vanished-post candidate and goes through the same two-404 confirmation; its lead is `by: sibling` and files only under `BLUE_SCAN_FILE=1`. Logged as `{"act": "siblings", ...}` and `{"act": "scan", "src": "sibling"}`.
+
+### After: to fill in on 25 Oct (24 Oct is the first day with this code; the 23 Oct column is §9's)
+
+| Measure | 23 Oct | 24 Oct (from the deploy) | 25 Oct |
+|---|---|---|---|
+| Account reports filed / upheld (portal "upheld account reports") | 89 / about half | | |
+| Filed with `idle_h` over `BLUE_ACCOUNT_LIVE_H` (expect 0), and with `live: unknown` | 46 over 3 h | | |
+| `idle_skips_today`; `leads_live` live / idle / unread at a quiet hour | n/a | | |
+| Upheld rate of live reports (upheld / ruled; by idle bucket where one row's rulings are one bucket) | n/a | | |
+| Scan: passes, reads a minute, candidates, confirmed leads (`scan.stats`), by `scan` / `sibling` | n/a | | |
+| Scan leads judged by hand: of 10, how many 404 on `get_post`; how many the author deleted | n/a | | |
+| Live account leads ready at once (`ready_accounts`) | 15 | | |
+| Reports with `n_today` under 5 that the portal paid reduced (fleet undercount) | n/a | | |
+| Teams (fleets) paid; awards at full rate; hours locked; genuine per post ruling | see §9 | | |
+
+Turn `BLUE_SCAN_FILE=1` on only after the scan leads have been checked by hand and the offline run on the 24 Oct ~16:00 UTC census snapshot looks right.

@@ -111,7 +111,7 @@ def test_watched_account_with_a_hidden_post_becomes_an_account_lead_never_a_post
     b.harvest_watched()
     h = b.s["harvest"]["6600"]
     assert h["by"] == "watch" and h["hidden_post"] == 1000 and h["kinds"] == ["fingerprint"]
-    h.update(ready=True, actions=100, ring_posts=[])
+    h.update(ready=True, actions=100, ring_posts=[], live_at=t, last_post=t - 600)     # read live a moment ago
     cands = b.candidates()
     assert [c["kind"] for c in cands] == ["account"]                   # nothing from a detector is a post report
     assert "posted the same 6-word sequence" in cands[0]["detail"] and "lockstep" not in cands[0]["detail"]

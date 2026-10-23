@@ -131,15 +131,22 @@ def brief(a, root=None):
     return ", ".join(bits)
 
 
-def account_detail(account_id, hidden_post, actions, ring_posts, detected=None):
+def account_detail(account_id, hidden_post, actions, ring_posts, detected=None, vanished=False, pace=None):
     """detected: the detectors' clauses (detect.evidence_text) for a lead they found; then the lockstep clause is
-    only stated when we measured it on a ring post."""
+    only stated when we measured it on a ring post.
+    vanished (todo/43): the lead came from the scanner or a sibling check, which saw the post gone from the account's
+    page and answer 404 twice, 10+ minutes apart. An author's own delete looks the same, so the text says only that
+    (never that the moderator hid it), and the lockstep clause appears only when measured on a ring post. pace: the
+    measured posting rate, 'N posts in H hours' (scan.pace_text)."""
     shown = ", ".join(f"#{p}" for p in ring_posts[:3])
-    bits = [f"the moderator has already hidden its post #{hidden_post} as inauthentic",
+    bits = [f"its post #{hidden_post} is no longer available" if vanished else
+            f"the moderator has already hidden its post #{hidden_post} as inauthentic",
             f"it has taken {actions}+ actions"]
-    if ring_posts or not detected:
+    if ring_posts or not (detected or vanished):
         bits.append("it acts in lockstep with a group of accounts registered after the campaign launch that like and "
                     "reply to the same posts within minutes of each other" + (f" (e.g. {shown})" if shown else ""))
+    if pace:
+        bits.append(f"it has posted {pace}")
     bits += detected or []
     return ("I think that this account is conducting inauthentic (bot) activity because " + ", ".join(bits[:-1])
             + ", and " + bits[-1] + ".")
@@ -216,12 +223,22 @@ def p_genuine(a, cls, author_hidden=False):
     return round(min(PG_RANGE[1], max(PG_RANGE[0], p)), 3)
 
 
-ACCOUNT_UPHELD = 0.5              # share of account reports upheld: 7 of 13 on 22 Oct, 32 of 67 on 23 Oct (the rest
-                                  # are dismissed: no points and no lock)
+# Account reports (todo/43): the 23 Oct census showed what the old 0.5 (7 of 13 on 22 Oct, 32 of 67 on 23 Oct) really
+# was: the idle waste. Of 89 filed, 46 were on accounts already idle for over 3 h (27 over 12 h), probably suspended
+# already; all 37 reported while active (last post <= 1 h before filing) had stopped posting by the ruling. So an
+# account that posted within service.BLUE_ACCOUNT_LIVE_H is priced at ACCOUNT_UPHELD, and an idle one is not filed.
+# ACCOUNT_UPHELD_UNKNOWN is the old behaviour, for an account whose liveness we could not read (or with the filter
+# off, BLUE_ACCOUNT_LIVE_H=0). Measure the upheld rate by idle bucket from the portal's Moderation lines (blue-reporting
+# section 10) before moving either number.
+ACCOUNT_UPHELD = 0.9              # a live account with a hidden post and 100+ actions: upheld almost every time
+ACCOUNT_UPHELD_UNKNOWN = 0.5      # liveness unknown (read failed, or the filter is off): as before todo/43
+ACCOUNT_CO_BOOST = 1.3            # rank weight (not points) for an account other teams are reporting: the ruling
+                                  # comes in half the time, so the slot turns over twice as fast (todo/43 item 3)
 
 
-def account_ev(n_today):
-    return ACCOUNT_UPHELD * ACCOUNT * rate(n_today)
+def account_ev(n_today, live=True):
+    """Expected points of an account report: P(upheld) x 15 x the target team's daily rate."""
+    return (ACCOUNT_UPHELD if live else ACCOUNT_UPHELD_UNKNOWN) * ACCOUNT * rate(n_today)
 
 
 # ---- measuring first: the portal's points log says which awards paid as first reporter ----
