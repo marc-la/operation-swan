@@ -495,6 +495,23 @@ POOL_STATUS_ACTS = 8                # last_actions kept in status.json["pool"]
 POOL_SILENT_S = 15 * 60             # the watchdog: the pool thread (non-critical) may be silent this long
 POOL_CARD_COOLDOWN_S = 12 * 3600    # a card whose voice was suspended less than this ago is the last choice for a new account
 
+# ---- account budget (todo/39, swan_bot/budget.py): a FORECAST and an ALERT, nothing here throttles the pool ----
+# Writes planned per Sydney day (the day rolls at midnight Sydney = 9pm Perth). Marc edits the numbers; a day missing from
+# the table takes the last given day's value. The cap is 4,320 a day (3 a minute); we have run ~2,400 (22 Oct 2,350, 23 Oct
+# 2,479) and the x4 days (1-2 Nov) are planned at the cap. Bans a day = writes / WRITES_PER_BAN_DEFAULT (or the measured one).
+# To cut spend by hand: lower POOL_WRITERS or SWAN_VOICE_WRITES_PER_DAY (runbook "Account budget").
+BAN_PLAN = {
+    "2026-10-24": 2400, "2026-10-25": 2400,
+    "2026-10-26": 2400, "2026-10-27": 2400, "2026-10-28": 2400, "2026-10-29": 2400, "2026-10-30": 2400, "2026-10-31": 2400,
+    "2026-11-01": 4320, "2026-11-02": 4320,
+}
+WRITES_PER_BAN_DEFAULT = 145        # a voice dies at ~145 text writes (bootstrap 127-178; hide-risk-analysis-2026-10-23)
+RESERVE_GOAL = 60                   # spare registrations wanted at the END of RESERVE_DAY: 2 x 4,320 / 145 for the x4 days
+RESERVE_DAY = "2026-10-31"
+BUDGET_END_DAY = "2026-11-02"       # the forecast runs to here (polling day, Sydney)
+BUDGET_KM_MIN_BANS = 10             # fewer measured bans than this: use WRITES_PER_BAN_DEFAULT, not the Kaplan-Meier median
+BUDGET_ALERT_GAP_S = 6 * 3600       # the same alert is not sent again within this
+
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped
 # broadcast and started answering No-leaners. Each arm runs a whole 2 h block (experiment.block), logged as arm_conv
