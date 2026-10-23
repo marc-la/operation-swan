@@ -666,7 +666,8 @@ def test_drafting_amber_on_any_drops_in_30_min(tmp_path):
     ctx, html, _ = drafting(tmp_path, [write(1), write(2), write(3), lost(25), lost(20, "expired:no_model", "requeue")], left=20)
     b = ctx["draft_banner"]
     assert b["level"] == "amber" and "0 drops in 10 min, 2 in 30" in b["text"] and "0.3 writes/min" in b["text"] and "$20.00 left" in b["text"]
-    assert "<b>Drafting</b>" in html
+    assert "<b>Drafting</b> · Replies slowed: no model free" in html and "Free models are parked" in html
+    assert "not the cause" in "".join(b["detail"])
 
 
 def test_drafting_amber_when_paid_models_held_back_or_budget_low(tmp_path):

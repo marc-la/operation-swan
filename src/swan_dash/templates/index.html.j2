@@ -35,6 +35,8 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .chip.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
 .alerts { margin: 8px 0 0; }
 .alerts p { margin: 3px 0; padding: 5px 10px; border-radius: 8px; font-size: 13px; }
+.alerts details { margin: 3px 0; padding: 5px 10px; border-radius: 8px; font-size: 13px; }
+.alerts details div { margin-top: 4px; }
 .ver { margin: 8px 0; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
 td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .green { background: var(--green-bg); color: var(--green); }
@@ -236,7 +238,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 <div class="alerts">
   {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
   {% if blue_banner.level != 'green' %}<p class="{{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</p>{% endif %}
-  {% if draft_banner.level != 'green' %}<p class="{{ draft_banner.level }}"><b>Drafting</b> · {{ draft_banner.text }}</p>{% endif %}
+  {% if draft_banner.level != 'green' %}<details class="{{ draft_banner.level }}"><summary><b>Drafting</b> · {{ draft_banner.summary }}</summary>{% for l in draft_banner.detail %}<div>{{ l }}</div>{% endfor %}</details>{% endif %}
   {% if running and running.failed %}<p class="red"><b>Deploy failed {{ running.failed }}</b>, still on v{{ running.sha }}</p>{% endif %}
 </div>
 {% if rollback %}<div class="ver red">Roll back to the last stable version (pauses auto-deploy; restart it with <code>sudo systemctl start swan-update.timer</code> after pushing a fix):<code class="cmd">{{ rollback }}</code></div>{% endif %}

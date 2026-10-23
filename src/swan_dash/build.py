@@ -784,6 +784,7 @@ MIND = re.compile(r"(\d+) (.*)")
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
 NOMODEL_WRITES_FLOOR = 1.0                     # writes a minute over the short window: below it, drops make it red (normal ~2.9, 23 Oct starved ~0.4)
+NOMODEL_NORMAL_WPM = 2.9                       # for the banner text only
 BUDGET_LOW_X = 2                               # priced-model budget left under this many times the amplified-post reserve: amber
 
 
@@ -813,7 +814,14 @@ def drafting_state(actions, data, now):
     why = " · budget spent: paid models off" if gone else " · paid models held back for amplified posts" if held else ""
     head = "NO MODEL" if d30 else "BUDGET SPENT" if gone else "BUDGET LOW"
     text = f"{head} · {d10} drops in {NOMODEL_SHORT_MIN} min, {d30} in {NOMODEL_LONG_MIN} · {wpm:.1f} writes/min"
-    return dict(level=level, text=text + (f" · ${left:.2f} left today" if left is not None else "") + why)
+    summary = ("Replies stalled" if level == "red" else "Replies slowed") + (": no model free" if d30 else ": budget spent" if gone else ": budget low")
+    detail = ([f"The drafter found no model free for {d30} replies in the last {NOMODEL_LONG_MIN} min ({d10} in the last {NOMODEL_SHORT_MIN}) and dropped them. "
+               "Free models are parked or rate-limited; it retries every minute."] if d30 else []) + \
+        [f"Writing {wpm:.1f} a minute over the last {NOMODEL_SHORT_MIN} min (normal about {NOMODEL_NORMAL_WPM}; red below {NOMODEL_WRITES_FLOOR:g})."] + \
+        ([f"${left:.2f} left today" + (": " + why[3:] if why else ": not the cause.")] if left is not None else []) + \
+        ["Amber is slowed but working; red is stalled or out of budget."]
+    return dict(level=level, text=text + (f" · ${left:.2f} left today" if left is not None else "") + why,
+                summary=summary + (f" · {wpm:.1f} writes/min"), detail=detail)
 
 
 def _id_clock(actions):
