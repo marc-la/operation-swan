@@ -151,3 +151,40 @@ def test_leaderboard_rows_cap_a_stale_saved_top_at_the_finalist_places():
     stale = [team(i, 9000) for i in (1, 2, 3, 4)]                       # portal.json written when the line was at four
     rows = build.leaderboard_rows(dict(top=stale, rank=12, score=500, above=team(11), below=team(13)))
     assert [r["rank"] for r in rows["finalists"]] == [1, 2, 3]
+
+
+def test_leaderboard_history_is_one_line_an_hour_with_first_and_third(tmp_path):
+    root = make_root(tmp_path)
+    portal.run(root, NOW, get=fake(PAGES), pause=0)
+    portal.run(root, NOW + dt.timedelta(minutes=15), get=fake(PAGES), pause=0)          # same clock hour: no second line
+    portal.run(root, NOW + dt.timedelta(minutes=70), get=fake(PAGES), pause=0)
+    lines = [json.loads(x) for x in (root / "data" / "leaderboard.jsonl").read_text().splitlines()]
+    assert len(lines) == 2
+    assert lines[0] == {"ts": NOW.isoformat(), "rank": 3, "score": 31200, "first": 39113, "third": 31200, "teams": 4}
+    assert lines[1]["ts"] == (NOW + dt.timedelta(minutes=70)).isoformat()
+
+
+def test_leaderboard_history_is_bounded_and_survives_a_damaged_line(tmp_path):
+    path = tmp_path / "leaderboard.jsonl"
+    path.write_text("not json\n")
+    for h in range(5):
+        line = dict(ts=(NOW + dt.timedelta(hours=h)).isoformat(), rank=3, score=h, first=9, third=8, teams=4)
+        assert portal.append_leaderboard(path, line, [CODE], keep=3)
+    rows = path.read_text().splitlines()
+    assert [json.loads(x)["score"] for x in rows] == [2, 3, 4] and not list(tmp_path.glob(".*.tmp"))
+    path.write_text("{broken\n")
+    assert portal.append_leaderboard(path, dict(ts=NOW.isoformat(), rank=1, score=1, first=1, third=1, teams=1), [CODE])
+
+
+def test_leaderboard_history_never_writes_the_team_code(tmp_path):
+    path = tmp_path / "leaderboard.jsonl"
+    with pytest.raises(RuntimeError, match="refusing"):
+        portal.append_leaderboard(path, dict(ts=NOW.isoformat(), rank=1, score=1, first=1, third=1, teams=CODE), [CODE])
+    assert not path.exists()
+
+
+def test_no_leaderboard_line_when_we_are_not_on_the_board(tmp_path):
+    root = make_root(tmp_path)
+    away = BOARD.replace("Operation Swan", "Someone Else")
+    portal.run(root, NOW, get=fake({**PAGES, portal.LEADERBOARD: away}), pause=0)
+    assert not (root / "data" / "leaderboard.jsonl").exists()

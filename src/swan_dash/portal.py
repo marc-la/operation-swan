@@ -4,7 +4,9 @@
 
 Logs in with the session cookie in secrets/portal_cookie (one line, name=value, copied from a logged-in browser), so
 no portal password is stored. Three read-only GETs per run. It writes numbers and points-log lines only, to
-data/portal.json, and appends to data/score.json when the score or rank changes. The portal shows our team code on
+data/portal.json, appends to data/score.json when the score or rank changes, and adds one line an hour to
+data/leaderboard.jsonl (rank, our score, the 1st and 3rd place scores, team count: the gap to 3rd over time, todo/42).
+The portal shows our team code on
 the team page, so every write is checked first: a run that would write the team code or the cookie fails instead.
 """
 import csv
@@ -28,6 +30,8 @@ ACTIVITY_CSV = "/user/teams/170/activity.csv"
 TEAM_NAME = "Operation Swan"
 USER_AGENT = "OperationSwan-dashboard/1.0 (team 170)"
 KEEP_EVENTS_H = 48
+LEADERBOARD_LOG = "leaderboard.jsonl"
+LEADERBOARD_KEEP = 24 * 14                     # hourly lines kept (two weeks): the file never grows past this
 
 
 class SessionExpired(Exception):
@@ -135,9 +139,9 @@ def standing(board):
                 above=by_rank.get(us["rank"] - 1), below=by_rank.get(us["rank"] + 1))
 
 
-def checked(obj, banned):
+def checked(obj, banned, indent=1):
     """JSON text for obj; raises if a secret would be written."""
-    s = json.dumps(obj, indent=1)
+    s = json.dumps(obj, indent=indent)
     if any(b in s for b in banned):
         raise RuntimeError("refusing to write: output contains the team code or the cookie")
     return s
@@ -147,6 +151,32 @@ def write_atomic(path, s):
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(s)
     os.replace(tmp, path)
+
+
+def leaderboard_line(result, now):
+    """One hourly leaderboard point: {ts, rank, score, first, third, teams}. first/third are the 1st and 3rd place scores
+    (None when the board has no such row); rank/score are ours (None when we are not on the board)."""
+    place = lambda n: next((r["score"] for r in result.get("rows") or [] if r["rank"] == n), None)
+    return dict(ts=now.isoformat(), rank=result["rank"], score=result["score"], first=place(1), third=place(3),
+                teams=result["teams"])
+
+
+def append_leaderboard(path, line, banned, keep=LEADERBOARD_KEEP):
+    """Add `line` to the jsonl history unless the file already has a line from the same clock hour (UTC); keep the last
+    `keep` lines. Atomic (a temp file replaces the old one) and checked for secrets like every other write. True if added."""
+    new = checked(line, banned, indent=None)
+    try:
+        old = [ln for ln in path.read_text().splitlines() if ln.strip()]
+    except FileNotFoundError:
+        old = []
+    hour = lambda s: s[:13]                      # '2026-10-24T05': ISO UTC timestamps share this prefix within an hour
+    try:
+        if old and hour(json.loads(old[-1])["ts"]) == hour(line["ts"]):
+            return False
+    except (ValueError, KeyError, TypeError):    # a damaged last line: write a new one after it
+        pass
+    write_atomic(path, "\n".join((old + [new])[-keep:]) + "\n")
+    return True
 
 
 def run(root, now, get=fetch, pause=2):
@@ -187,6 +217,8 @@ def run(root, now, get=fetch, pause=2):
             entries.append(dict(ts=now.isoformat(), score=result["score"], rank=result["rank"],
                                 teams=result["teams"], by="portal"))
             write_atomic(score_path, checked(entries, banned))
+    if result["rank"] is not None:                       # the hourly leaderboard series: the gap to 3rd over time
+        append_leaderboard(data / LEADERBOARD_LOG, leaderboard_line(result, now.astimezone(dt.timezone.utc)), banned)
     return result
 
 

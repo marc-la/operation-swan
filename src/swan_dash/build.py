@@ -11,6 +11,7 @@ import argparse
 import collections
 import datetime as dt
 import json
+import math
 import os
 import pathlib
 import re
@@ -23,6 +24,10 @@ import jinja2
 from swan_blue.evidence import awards_by_rate, first_later
 from swan_bot import config as bot_config
 from swan_dash.portal import FINALISTS  # constants only (FACTDESK_AUTO): it reads no .env on import
+try:
+    from swan_bot import budget      # todo/39: the ban forecast (pure). Not merged yet: the forecast rows are left out
+except ImportError:
+    budget = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
@@ -802,6 +807,17 @@ CATCHUP_BUCKET_S = 600         # speed leaves out catch-up: a post made in a 10 
                                # (the box stalled, drafting starved) and then answered later than the bar (Marc, 23 Oct)
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
 STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 green, 6-10 amber, 11+ red (Marc, 23 Oct; the 200 allowance over 14 days is ~14 a day)
+# ---- stealth as rates, and the bans forecast against a plan (todo/42, Marc 24 Oct) ----
+HIDE_TARGET = getattr(bot_config, "HIDE_RATE_TARGET", 0.014)   # hidden text posts / text writes: 1.4% now, 1.0% after todo/40
+HIDE_WINDOW_H = 24             # trailing window of writes for the hide rate
+HIDE_CENSOR_H = 3.6            # a hide takes ~3.3 h to show: only writes at least this old are counted (hide-risk analysis)
+HIDE_MIN_N = 300               # fewer text writes than this and the rate is shown grey with its n
+KM_WINDOW_H = 72               # voices for writes-per-ban: banned in the last 72 h, or still alive and writing
+KM_MIN_BANS = 5                # fewer bans than this: the Kaplan-Meier median is noise, the default writes per ban is used
+FORECAST_FROM = dt.date(2026, 10, 24)    # the forecast table starts here (todo/39); earlier days are history only
+BAN_TOL_SIGMA = 1.5            # net (actual - forecast) is inside the tolerance up to this many sqrt(forecast), at least 2
+TEXT_WRITES = frozenset(WRITES) - {"repost"}   # replies, posts, threads: what a hide is counted against (not reposts)
+LIFE_ACTS = frozenset(a.encode() for a in (*WRITES, "suspended"))
 AUDIT_STALE_S = 4 * 3600       # data/pattern_audit.json (scripts/pattern_audit.py): older than this the pattern rows go grey
 RUNWAY_AMBER_X = 1.5           # pool runway (days of spare accounts at today's loss rate) under days left: red; under 1.5x: amber
 POOL_ACTS = 5                  # the pool worker's last actions shown behind the Pool line
@@ -822,7 +838,10 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
                "Green: net above 0 · amber: net 0 · red: net below 0.",
     stealth=f"Stealth: accounts banned today (since 9pm Perth).\n"
             f"Green: 0-{STEALTH_GREEN_MAX} · amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX} · red: {STEALTH_AMBER_MAX + 1} or more.\n"
-            f"Hidden posts are shown but do not change the colour: they already count as bans.\n"
+            f"The count of hidden posts is shown but does not change the colour: they already count as bans.\n"
+            f"Hide rate (hidden text posts / text writes, last {HIDE_WINDOW_H} h, writes at least {HIDE_CENSOR_H:g} h old, 95% interval): "
+            f"green when the interval is under {HIDE_TARGET:.1%}, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.\n"
+            f"Writes per ban, runway and the bans-against-plan line are grey: the forecast is under Bot > Accounts by day.\n"
             f"Pattern score (once scripts/pattern_audit.py has run): how much our writes read like a rota, 0-100. Green 70+ · amber 45-69 · red under 45.\n"
             f"Its worst metrics and voices are listed under the tile. It goes grey when the audit is over {AUDIT_STALE_S // 3600} h old.")
 
@@ -1101,13 +1120,324 @@ def account_days(log, now):
         upto = [c for c in counts if day(c["_t"]) <= d]
         end = upto[-1] if upto else prev
         why = [x["why"] for x in sus if day(x["_t"]) == d]
-        rows.append(dict(day=perth_span(d), today=d == today, registered=end["registered"], banned=end["banned"],
-                         new_reg=end["registered"] - prev["registered"], new=end["banned"] - prev["banned"],
+        new = end["banned"] - prev["banned"]
+        # the portal's counts row moves before the suspension messages do (23 Oct: 25 banned, 21 named): `unnamed` is
+        # how many of the day's bans have no name and reason yet
+        rows.append(dict(day=perth_span(d), date=d.isoformat(), today=d == today, registered=end["registered"],
+                         banned=end["banned"], new_reg=end["registered"] - prev["registered"], new=new,
+                         unnamed=max(new - len(why), 0),
                          why=" · ".join(f"{w} ×{why.count(w)}" for w in dict.fromkeys(why))))
         prev, d = end, d + dt.timedelta(days=1)
     listed = [dict(time=perth(x["_t"]).strftime("%a %H:%M"), username=x["username"], id=x["id"], why=x["why"])
               for x in sorted(sus, key=lambda x: x["_t"], reverse=True)]
     return rows[::-1], listed
+
+
+# ---- one number for bans, hide rate with an interval, writes per ban, and the forecast (todo/42) ----
+def ban_figures(log, accounts):
+    """The bans number everywhere on the page: registered and banned from the newest account_log.counts row (it moves
+    before the suspension messages that carry the names), `listed` = names the log holds, `lag` = bans not named yet.
+    Falls back to the team page's table (portal.json "accounts") when there are no counts rows. None with neither."""
+    rows = [c for c in (log or {}).get("counts") or [] if isinstance(c.get("registered"), int) and isinstance(c.get("banned"), int)]
+    src = rows[-1] if rows else accounts if isinstance(accounts, dict) else {}
+    if not isinstance(src.get("registered"), int) or not isinstance(src.get("banned"), int):
+        return None
+    listed = len({x.get("id") or x.get("username") for x in (log or {}).get("suspended") or []}) if rows else None
+    lag = max(src["banned"] - listed, 0) if listed is not None else 0       # no activity log: nothing to compare with
+    return dict(registered=src["registered"], banned=src["banned"], listed=listed, lag=lag,
+                text=f"{src['banned']} banned" + (f" (list shows {listed})" if lag else ""))
+
+
+def wilson(k, n, z=1.96):
+    """(lo, hi) of the 95% Wilson score interval for k hits in n tries, or None for n = 0. Unlike the plain normal interval
+    it stays inside [0, 1] and is not zero-width at k = 0 or k = n, which matters at a rate near 1%."""
+    if n <= 0:
+        return None
+    k = min(max(k, 0), n)
+    p, denom = k / n, 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (0.0 if k == 0 else max(0.0, centre - half)), (1.0 if k == n else min(1.0, centre + half))     # exact at the ends
+
+
+def life_scan(path, since):
+    """What the stealth rates need from logs/swan_actions.jsonl, in ONE streamed pass (the file is 100+ MB: never loaded
+    whole, todo/34; lines are only parsed when their act is a write or a suspension). Our live writes only:
+      day_writes   {Sydney day: live writes of any kind}   (the plan's unit: everything that spends the write budget)
+      voice_posts  {username: {post ids}}                   text writes ever (replies, posts, threads; not reposts)
+      last_write   {username: time of its last live write}
+      dead         {username: when the bot first got a 403 'suspended'} (late: it learns on its next action)
+      text         {post id: (time, username)} text writes since `since`, for the hide rate
+    A missing file gives empty results."""
+    out = dict(day_writes=collections.Counter(), voice_posts=collections.defaultdict(set), last_write={}, dead={}, text={})
+    try:
+        f = open(path, "rb")
+    except OSError:
+        return out
+    with f:
+        for line in f:
+            if not line.endswith(b"\n"):
+                break                                    # being written
+            i = line.find(b'"act": "', 0, 400)
+            if i < 0 or line[i + 8:line.find(b'"', i + 8)] not in LIFE_ACTS:
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            t = ts(r.get("ts")) if isinstance(r, dict) else None
+            user = r.get("username") if t else None
+            if not user:
+                continue
+            if r.get("act") == "suspended":
+                out["dead"].setdefault(user, t)
+                continue
+            if r.get("live") is not True:                # dry runs, and the swarm's rows (no live flag)
+                continue
+            out["day_writes"][t.astimezone(SYDNEY).date().isoformat()] += 1
+            out["last_write"][user] = max(t, out["last_write"].get(user, t))
+            pid = r.get("post_id")
+            if r["act"] in TEXT_WRITES and pid not in (None, "None", ""):
+                out["voice_posts"][user].add(str(pid))
+                if t >= since:
+                    out["text"][str(pid)] = (t, user)
+    return out
+
+
+HIDDEN_ALERT = re.compile(r"@(\w+): post #(\d+) hidden by the moderator")
+
+
+def hidden_posts(logs):
+    """{post id: username} of posts the moderator hid, from logs/swan_watch.jsonl (its hidden_post rows) and, for any the
+    watch only alerted, logs/alerts.log. Empty when neither file is there."""
+    out = {}
+    for r in tail_jsonl(logs / "swan_watch.jsonl", 20_000_000):
+        if r.get("act") == "hidden_post" and r.get("post_id") is not None:
+            out[str(r["post_id"])] = r.get("username")
+    for line in tail_lines(logs / "alerts.log", 5000):
+        m = HIDDEN_ALERT.search(line)
+        if m:
+            out.setdefault(m.group(2), m.group(1))
+    return out
+
+
+def hide_rate(life, hidden, now):
+    """Hidden text posts / text writes among writes made in the last HIDE_WINDOW_H hours that are at least HIDE_CENSOR_H
+    old (a hide takes about 3.3 h to show, so younger writes would count as clean when they are only undecided), with the
+    95% Wilson interval. Every hidden post is matched to a write in the window, so the top and bottom cover the same
+    posts. {n, k, rate, lo, hi}; rate, lo and hi are None with no writes."""
+    now_t = now - dt.timedelta(hours=HIDE_CENSOR_H)
+    window = [pid for pid, (t, _) in life["text"].items() if now - dt.timedelta(hours=HIDE_WINDOW_H) <= t <= now_t]
+    n, k = len(window), sum(pid in hidden for pid in window)
+    iv = wilson(k, n)
+    return dict(n=n, k=k, rate=k / n if n else None, lo=iv and iv[0], hi=iv and iv[1])
+
+
+def voice_lives(life, banned_at, now):
+    """[{username, writes, banned}] for budget.km_writes_per_ban: the life of a voice in text writes. A voice is in when it
+    was banned in the last KM_WINDOW_H hours (banned_at: {username: when}), or is still alive and wrote in them: alive
+    ones are censored at the writes they have made so far. Voices with no text write are left out."""
+    since = now - dt.timedelta(hours=KM_WINDOW_H)
+    out = []
+    for user in sorted(set(life["voice_posts"]) | set(banned_at)):
+        writes = len(life["voice_posts"].get(user, ()))
+        if not writes:
+            continue
+        died = banned_at.get(user)
+        if (died or life["last_write"].get(user, since - dt.timedelta(seconds=1))) >= since:
+            out.append(dict(username=user, writes=writes, banned=died is not None))
+    return out
+
+
+def hides_per_voice(hidden, banned_names):
+    """Median hidden posts a banned voice had before it went (the watch stops looking once a voice is suspended, so
+    these are lower bounds). None until there is a hidden post on record and at least 3 banned voices."""
+    per = collections.Counter(u for u in hidden.values() if u)
+    counts = [per.get(u, 0) for u in banned_names]
+    if not hidden or len(counts) < 3:
+        return None
+    return dict(median=_median(counts), n=len(counts), with_hide=sum(c > 0 for c in counts))
+
+
+def gap_trend(rows, now, ours, third):
+    """How the gap to third place moved, from the hourly leaderboard series (data/leaderboard.jsonl lines {ts, score,
+    third}). For 6 h and 24 h back: the gap then, the change in it (negative = closing), and what each side scored since.
+    A window is left out when the series has no line near enough (within a quarter of the window, at least 1.5 h).
+    {gap, windows: [...], points: lines in the series}."""
+    pts = sorted((ts(r.get("ts")), r) for r in rows if ts(r.get("ts")) and _num(r.get("score")) is not None
+                 and _num(r.get("third")) is not None)
+    gap, windows = third - ours, []
+    for hours in (6, 24):
+        want = now - dt.timedelta(hours=hours)
+        t, r = min(pts, key=lambda p: abs((p[0] - want).total_seconds()), default=(None, None))
+        if t is None or abs((t - want).total_seconds()) > max(1.5, hours / 4) * 3600:
+            continue
+        then = r["third"] - r["score"]
+        windows.append(dict(hours=hours, then=then, change=gap - then, us=ours - r["score"], them=third - r["third"]))
+    return dict(gap=gap, windows=windows, points=len(pts))
+
+
+def signed(x):
+    """+3 / −5 / 0 for a figure on the page (a real minus sign, as in 'net −5')."""
+    v = round(x)
+    return "0" if v == 0 else f"{'+' if v > 0 else '−'}{abs(v)}"
+
+
+def bans_since(log, now, hours=24):
+    """Bans in the last `hours`, from the account_log counts rows: the rise in banned since the last row at or before then
+    (0 before the first row)."""
+    rows = sorted((ts(c["ts"]), c["banned"]) for c in (log or {}).get("counts") or []
+                  if ts(c.get("ts")) and isinstance(c.get("banned"), int) and ts(c["ts"]) <= now)
+    before = [b for t, b in rows if t <= now - dt.timedelta(hours=hours)]
+    return rows[-1][1] - (before[-1] if before else 0) if rows else 0
+
+
+def _cfg(name, default):
+    return getattr(bot_config, name, default)
+
+
+def ban_forecast(days, writes_by_day, km, log, now):
+    """The bans forecast against the plan (todo/39, todo/42), from account_days' rows. Per Sydney day from the first day
+    on the portal to the end of the budget (config.BUDGET_END_DAY): planned writes (config.BAN_PLAN; a day not in it
+    takes that day's actual writes if it is over, else the average of the last 3 complete days), forecast bans =
+    planned / writes per ban, the actual, the net with its tolerance, and the balance (alive, spare registrations) at
+    the end of the day: actual for past days, forecast for today and after, the forecast starting from the counts at
+    the start of today. budget.py (pure) does the maths; None when it is not there or nothing can be planned.
+    Today's net compares the bans so far with the forecast for the share of the day gone."""
+    if budget is None or not days:
+        return None
+    today = now.astimezone(SYDNEY).date()
+    end = dt.date.fromisoformat(str(_cfg("BUDGET_END_DAY", "2026-11-02")))
+    goal, rday = _cfg("RESERVE_GOAL", 60), str(_cfg("RESERVE_DAY", "2026-10-31"))
+    by_date, first = {d["date"]: d for d in days}, dt.date.fromisoformat(days[-1]["date"])
+    start, one = min(FORECAST_FROM, today), dt.timedelta(days=1)
+    med = (km or {}).get("median") if ((km or {}).get("n_banned") or 0) >= KM_MIN_BANS else None
+    wpb = med or _cfg("WRITES_PER_BAN_DEFAULT", 145)
+    recent = [writes_by_day[k] for k in sorted(writes_by_day) if k < today.isoformat() and writes_by_day[k] > 0][-3:]
+    average = sum(recent) / len(recent) if recent else None
+    plan_cfg, plan, src = _cfg("BAN_PLAN", {}) or {}, {}, {}
+    d = start
+    while d <= max(end, today):
+        k = d.isoformat()
+        value, how = ((plan_cfg[k], "plan") if k in plan_cfg else (writes_by_day.get(k), "actual") if d < today
+                      else (average, "average"))
+        if value:
+            plan[k], src[k] = float(value), how
+        d += one
+    if not plan:
+        return None
+    for i in range((max(end, today) - start).days + 1):
+        k = (start + i * one).isoformat()
+        if k not in plan:                         # a day with nothing planned or known takes the last given value
+            plan[k], src[k] = plan[max((p for p in plan if p < k), default=min(plan))], "carried"
+    def at(day):                                  # (alive, spare) at the start of `day`, from the end of the day before
+        row = by_date.get((day - one).isoformat())
+        return (row["registered"] - row["banned"], TOTAL_CAP - row["registered"]) if row else (0, TOTAL_CAP)
+    try:
+        rows = {}
+        if start < today:
+            rows.update({str(r["day"]): r for r in budget.forecast_days(plan, wpb, *at(start), start.isoformat(), (today - one).isoformat())})
+        fut = budget.forecast_days(plan, wpb, *at(today), today.isoformat(), max(end, today).isoformat())
+        rows.update({str(r["day"]): r for r in fut})
+        status = budget.reserve_status(fut, goal, rday)
+    except (ValueError, KeyError, TypeError):
+        return None
+    elapsed = min((now - sydney_midnight(today)).total_seconds() / 86400, 1.0)
+    out, d = [], first
+    while d <= max(end, today):
+        k, a, f = d.isoformat(), by_date.get(d.isoformat()), rows.get(d.isoformat())
+        row = dict(date=k, day=perth_span(d), today=d == today, future=d > today, actual=a["new"] if a else None,
+                   reg=a["registered"] if a else None, banned=a["banned"] if a else None,
+                   new_reg=a["new_reg"] if a else 0, why=a["why"] if a else "", unnamed=a["unnamed"] if a else 0,
+                   mult=next((m for md, m in reversed(MULTIPLIERS) if md <= d), 1), planned=None, src="", forecast=None,
+                   net=None, tol=None, level="", alive=None, spare=None, goal_delta=None)
+        if a and d < today:
+            row.update(alive=a["registered"] - a["banned"], spare=TOTAL_CAP - a["registered"])
+        if f:
+            row.update(planned=f["planned_writes"], src=src.get(k, ""), forecast=f["forecast_bans"])
+            if d >= today:
+                row.update(alive=max(round(f["alive_end"]), 0), spare=max(round(f["spare_end"]), 0))
+            if a and d <= today:
+                due = f["forecast_bans"] * (elapsed if d == today else 1)
+                row.update(net=a["new"] - due, tol=max(2, round(BAN_TOL_SIGMA * math.sqrt(due))))
+                row["level"] = "down" if row["net"] > row["tol"] else "up" if row["net"] < -row["tol"] else ""
+        if k == rday and d >= today and status.get("delta") is not None:
+            row["goal_delta"] = status["delta"]
+        out.append(row)
+        d += one
+    now_row = next((r for r in out if r["today"]), None)
+    latest = by_date.get(today.isoformat())
+    spare_now = TOTAL_CAP - latest["registered"] if latest else None
+    per_day = (now_row["forecast"] if now_row else None)
+    left = (sydney_midnight(end + one) - now).total_seconds() / 86400
+    runway = spare_now / per_day if spare_now is not None and per_day else None
+    try:
+        alerts = budget.ban_alert(bans_since(log, now), per_day or 0, status)
+    except (ValueError, KeyError, TypeError):
+        alerts = []
+    ok = status.get("on_track")
+    label = dt.date.fromisoformat(rday).strftime("%-d %b")
+    summary = " · ".join(x for x in (
+        f"bans today {now_row['actual']}" if now_row and now_row["actual"] is not None else None,
+        f"forecast {now_row['forecast']:.0f}" if per_day is not None else None,
+        f"net {signed(now_row['net'])}" if now_row and now_row["net"] is not None else None,
+        f"spare {spare_now}" if spare_now is not None else None,
+        (f"{'on' if ok else 'off'} track for {label}: {signed(status['delta'])}" if ok is not None
+         else f"{label} reserve: day passed" if dt.date.fromisoformat(rday) < today else None)) if x)
+    return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src="Kaplan-Meier" if med else "default",
+                goal=goal, status=status, runway=runway, days_left=left, per_day=per_day,
+                planned_today=now_row["planned"] if now_row else None, spare=spare_now)
+
+
+def stealth_rates(logs, log, acct_days, now):
+    """(rows for the Stealth tile, the ban_forecast dict or None): hide rate with its interval, hides per banned voice,
+    writes per ban, runway, and the bans-against-plan line. "Hidden posts never colour stealth" (Marc, 23 Oct) holds for
+    the count row; the hide RATE may colour it (a rate with an interval, 24 Oct). The rest is grey: the Pool line and the
+    forecast alert carry the account-budget alarm."""
+    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=HIDE_WINDOW_H + 1))
+    hidden = hidden_posts(logs)
+    banned_at = dict(life["dead"])
+    for x in (log or {}).get("suspended") or []:
+        t = ts(x.get("ts"))
+        if t and x.get("username"):
+            banned_at[x["username"]] = min(t, banned_at.get(x["username"], t))
+    grey = lambda name, text, target="": dict(group="stealth", name=name, light="grey", now=text, target=target, fix="", note="")
+    rows = []
+    hr = hide_rate(life, hidden, now)
+    if hr["rate"] is None:
+        rows.append(grey("Hide rate, last 24 h", "no text writes old enough yet", f"under {HIDE_TARGET:.1%}"))
+    else:
+        few = hr["n"] < HIDE_MIN_N
+        light = "grey" if few else "green" if hr["hi"] < HIDE_TARGET else "red" if hr["lo"] > HIDE_TARGET else "amber"
+        rows.append(dict(group="stealth", name="Hide rate, last 24 h", light=light, note="",
+                         now=f"{hr['rate']:.2%} [{hr['lo']:.2%}–{hr['hi']:.2%}] · {hr['k']} hidden of {hr['n']} text writes"
+                         + (f" · n = {hr['n']}, under {HIDE_MIN_N}: too few to colour" if few else ""),
+                         target=f"under {HIDE_TARGET:.1%} (green: the interval is below it · red: above)",
+                         fix="Hidden posts per write are above target: the levers are in todo/40 and docs/06-strategy/hide-risk-analysis-2026-10-23.md."))
+    hp = hides_per_voice(hidden, list(banned_at))
+    if hp:
+        rows.append(grey("Hides before a ban", f"median {hp['median']:g} per banned voice · {hp['with_hide']} of {hp['n']} had one",
+                         "a lower bound: the watch stops once a voice is suspended"))
+    km = None
+    if budget is not None:
+        try:
+            km = budget.km_writes_per_ban(voice_lives(life, banned_at, now))
+        except (ValueError, KeyError, TypeError):
+            km = None
+    forecast = ban_forecast(acct_days, life["day_writes"], km, log, now)
+    if km is not None:
+        ci = f" [{km['lo']:.0f}, {km['hi']:.0f}]" if km.get("lo") is not None and km.get("hi") is not None else ""
+        rows.append(grey("Writes per ban", (f"{km['median']:.0f}{ci} text writes" if km.get("median") is not None
+                                            else f"too few bans for an estimate (the forecast uses {forecast['wpb']:.0f})" if forecast
+                                            else "too few bans for an estimate"),
+                         f"{km['n_banned']} banned, {km['n_alive']} alive in {KM_WINDOW_H} h (alive ones censored); the forecast divides by this"))
+    if forecast and forecast["runway"] is not None:
+        rows.append(grey("Runway", f"{forecast['runway']:.1f} d of spare accounts · {forecast['days_left']:.1f} d left",
+                         f"{forecast['spare']} spare ÷ {forecast['per_day']:.1f} bans a day "
+                         f"({forecast['planned_today']:.0f} planned writes ÷ {forecast['wpb']:.0f} per ban, {forecast['wpb_src']})"))
+    if forecast and forecast["summary"]:
+        rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov"))
+    return rows, forecast
 
 
 def _num(v):
@@ -1228,7 +1558,9 @@ def gather(root, now, service):
     acc = status.get("accounts") or {}
     per_min = status.get("per_min")
 
-    acct_days, banned_list = account_days(portal.get("account_log"), now)
+    log = portal.get("account_log")
+    acct_days, banned_list = account_days(log, now)
+    ban_no = ban_figures(log, portal.get("accounts"))      #the one bans number: Bot header, Accounts, Stealth tile
 
     facts = fact_desk(root, now)
     blue = blue_panel(data, now, points, day_start, logs)
@@ -1309,6 +1641,11 @@ def gather(root, now, service):
     board = dict(leader=portal.get("leader"), above=portal.get("above"), below=portal.get("below"),
                  rank=portal.get("rank"), score=portal.get("score"),
                  **leaderboard_rows(portal)) if portal.get("rank") else None
+    if board:
+        board["trend"] = None
+    if board and board["cutoff"] is not None:      # behind 3rd: is the gap closing? (data/leaderboard.jsonl, hourly, from the portal poll)
+        third = next(r for r in board["finalists"] if r["rank"] == 3)
+        board["trend"] = gap_trend(tail_jsonl(data / "leaderboard.jsonl", 500_000), now, board["score"], third["score"])
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
         return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
@@ -1393,7 +1730,9 @@ def gather(root, now, service):
              dict(group="stealth", name="Posts hidden today", light="green", now=f"{hidden_today}",
                   target="shown only: hidden posts already show up as bans", fix="", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
-                  now=f"{acct_days[0]['banned']} of {acct_days[0]['registered']} registered" if acct_days else "—", target="", fix="", note="")]
+                  now=f"{ban_no['text']} of {ban_no['registered']} registered" if ban_no else "—", target="the portal's count; names follow it", fix="", note="")]
+    extra_rows, forecast = stealth_rates(logs, log, acct_days, now)       # todo/42: rates, writes per ban, runway, the plan
+    srows += extra_rows
     pattern = audit_rows(read_json(data / "pattern_audit.json"), now)      # todo/38: how much our writes read like a rota; [] until the audit has run
     srows += pattern
     pattern_sub = f" · pattern {pattern[0]['now'].split('/')[0]}" if pattern and pattern[0]["light"] != "grey" else ""
@@ -1416,6 +1755,7 @@ def gather(root, now, service):
     return dict(
         pool=pool,
         now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,
+        bans=ban_no, forecast=forecast,
         worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
         status_word=STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], score=score, history=history, board=board, milestone=milestone,
         multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),
@@ -1438,7 +1778,7 @@ def render(ctx, template="index.html.j2"):
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent / "templates"),
                              autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
-    env.filters["short"], env.filters["hm"] = short, hm
+    env.filters["short"], env.filters["hm"], env.filters["signed"] = short, hm, signed
     return env.get_template(template).render(ctx)
 
 

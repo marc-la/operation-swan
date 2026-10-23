@@ -14,6 +14,7 @@ import sys  # noqa: E402
 import pytest  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+import _budget_stub  # noqa: E402,F401  swan_bot.budget (todo/39) until it is merged: the dashboard imports it
 
 
 @pytest.fixture(autouse=True)
