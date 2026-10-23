@@ -1,9 +1,11 @@
 """Hidden-post watch, hourly ring self-audit and hourly new-citizen watch (scripts/citizen_watch.py), read-only
-(swan_bot/watch.py says what and why). swan-watch.timer runs it every 20 min on EC2. New hidden posts, a ring alarm
-and a possible run of new citizens go to logs/swan_watch.jsonl and the alert channel.
+(swan_bot/watch.py says what and why). swan-watch.timer runs it every 20 min on EC2. New hidden posts, a ring alarm,
+a possible run of new citizens and the account-budget alert (todo/39: spare registrations on 31 Oct vs the reserve goal)
+go to logs/swan_watch.jsonl and the alert channel.
 
     python scripts/swan_watch.py            # what the timer runs
     python scripts/swan_watch.py --dry      # print only: no state, log or alert
+    python scripts/swan_watch.py --budget-only --dry   # just the account forecast and its alerts: local files, no network
 """
 import argparse
 import datetime as dt
@@ -26,6 +28,8 @@ from swan_bot import config, feeds, jsonl, watch  # noqa: E402
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--budget-only", action="store_true",
+                    help="only the account-budget forecast and alert (reads local files, no network); with --dry: print only")
     args = ap.parse_args()
 
     def record(rec):
@@ -40,7 +44,6 @@ def main():
             subprocess.run([str(ROOT / "deploy" / "alert.sh"), msg], check=False)
 
     now = time.time()
-    social = ctn.LegitSocial()
     state = watch.load()
     hidden = state.setdefault("hidden", {})
     records = json.loads(config.ACCOUNTS_FILE.read_text()) if config.ACCOUNTS_FILE.exists() else []   # ids only
@@ -48,6 +51,10 @@ def main():
     scan = watch.LogScan()                           # one streamed pass: only live rows matter to anything below
     for r in jsonl.Reader(config.ACTIONS_LOG, contains='"live"'):
         scan.add(r)
+    if args.budget_only:
+        watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry)
+        return
+    social = ctn.LegitSocial()
 
     # ---- hidden posts, every run ----
     for username, pid in watch.find_hidden(social, voices, scan.logged_posts(now), hidden):
@@ -90,6 +97,11 @@ def main():
             citizen_watch.scan(social, state, {r.get("account_id") for r in records}, record, alert)
         except ctn.APIError as e:
             print("citizen_watch:", e.status, e.message)
+    # ---- account budget forecast and reserve alert (todo/39): alert only; it must never stop the watch above ----
+    try:
+        watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry)
+    except Exception as e:                           # noqa: BLE001 - a bad file here is not worth a failed unit
+        print(f"budget: {type(e).__name__}: {e}")
     if not args.dry:
         watch.save(state)
 
