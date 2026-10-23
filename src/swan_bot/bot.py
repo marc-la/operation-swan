@@ -48,6 +48,10 @@ REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's l
 WAIT_S = dict(no_voice=30, nothing=45, priority=15)   # a loop with nothing to do waits this long (s)
 IDLE_S = 1.0                  # split loop: the writer looks for a ready draft this often (s)
 JOIN_S = 10.0                 # split loop: on a stop, how long the writer waits for the other threads (s)
+# No model answered a draft (every free model parked, the paid ones kept back for amplified posts or over budget): the
+# drafter pauses this long before choosing again. 2026-10-23: without it, 27,858 jobs were lost as no_model in 3 h
+# (10,782 in one 10-minute window): next_available_in() is 0 while a paid model is skipped but not parked.
+NO_MODEL_PAUSE_S = 60
 
 
 def now_iso():
@@ -1018,6 +1022,7 @@ def main():
     save_due = threading.Event()         # the reader asks the writer to save the state
     ready = []                           # drafts waiting for the writer, in the order chosen (at most DRAFT_AHEAD)
     inflight = [None]                    # the job the drafter is drafting now
+    no_model_until = [0.0]               # no draft before this time: the last one found no model (NO_MODEL_PAUSE_S)
     beats = {}                           # thread name -> time its loop last went round (status.json, the watchdog)
     workers = []
     rate_limited = []                    # times of 429s in the last hour (dashboard)
@@ -1344,6 +1349,8 @@ def main():
             return None
         if not text and mode != "repost":
             # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
+            if backend is None:
+                no_model_until[0] = time.time() + NO_MODEL_PAUSE_S
             with mu:
                 lose(targeter, queue, job, "no_model" if backend is None else
                      f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
@@ -1570,6 +1577,9 @@ def main():
                 if wait > 0:
                     pause(min(wait, 30))
                     continue
+                if time.time() < no_model_until[0]:
+                    pause(min(no_model_until[0] - time.time(), 30))
+                    continue
                 if gen.next_available_in() > 0 and not args.allow_qwen:
                     print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
                     pause(min(gen.next_available_in() + 1, 600))
@@ -1614,6 +1624,9 @@ def main():
             return
         if not accounts.voices():
             stop.wait(WAIT_S["no_voice"])
+            return
+        if time.time() < no_model_until[0]:
+            stop.wait(max(0.1, no_model_until[0] - time.time()))
             return
         job = d = None
         try:

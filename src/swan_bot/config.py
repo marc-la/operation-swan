@@ -172,11 +172,15 @@ AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3
 STRONG_MODES = {"reply", "reply_back"}
 CHEAP_MODES = {"thread", "thread_answer"}
 
-# ---- LLM spend (llm.py). Bedrock is paid from the AWS free-plan credits: $99.67 on 2026-10-21, shared with EC2 ----
+# ---- LLM spend (llm.py). Bedrock is paid from the AWS free-plan credits: $99.67 on 2026-10-21, $200 from 2026-10-23
+# (Marc, plan upgrade), shared with EC2 ----
 # $99.67 credits = this + EC2 to ~5 Nov (t3.micro ~$0.32/day, public IPv4 $0.12/day, 8 GB disk ~$0.03/day: ~$7.50;
 # load 0.00, so no unlimited-CPU surcharge) + ~$7 tolerance (Bedrock calls made off the box with the same key aren't
 # counted here; the bill lags by hours). With LLM_PRICES padded ~25%, the real spend should come in under this.
-LLM_BUDGET_USD = 85.0               # all priced models together, 21 Oct to 2 Nov
+# 2026-10-23: 85 -> 170 with the credit at $200 (EC2 ~$7.50 and ~$22 tolerance for the lag and for calls made off the box).
+# At 85 the allowance through 23 Oct ($10.20) was spent by ~23:20 UTC: only the amplified-post reserve was left, the
+# paid models were skipped and, with every free model parked, drafts found no model (see NO_MODEL_PAUSE_S in bot.py).
+LLM_BUDGET_USD = 170.0              # all priced models together, 21 Oct to 2 Nov
 # USD per million tokens (input, output). us-west-2 list prices padded ~25% (Kimi $0.60/$3.00, GLM-5 $1.00/$3.20 from
 # third-party listings, 2026-10-21; eu-west-2 runs ~20% over us-west-2). Replace with the console's Sydney prices.
 LLM_PRICES = {"moonshotai.kimi-k2.5": (0.75, 3.75), "zai.glm-5": (1.25, 4.00)}

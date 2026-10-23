@@ -512,6 +512,18 @@ def test_watchdog_stops_the_bot_when_a_thread_dies(thread, tmp_path, monkeypatch
     assert "targeter" in state, "the state is saved before the exit"
 
 
+def test_no_model_pauses_the_drafter(tmp_path, monkeypatch, no_network):
+    """23 Oct: with no model answering, the drafter lost 27,858 jobs in 3 h because nothing made it wait. One failed
+    draft now pauses drafting for NO_MODEL_PAUSE_S."""
+    world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
+    monkeypatch.setattr(bot, "draft_checked",
+                        lambda gen, job, system, user, *a, **kw: (job.setdefault("meta", {}), (None, None, None))[1])
+    monkeypatch.setattr(bot, "NO_MODEL_PAUSE_S", 5)
+    run_main(monkeypatch, seconds=12)
+    dropped = [a for a in actions(tmp_path) if a["act"] in ("lost", "requeue") and a.get("why") == "no_model"]
+    assert 1 <= len(dropped) <= 6, f"{len(dropped)} no_model drops in 12 s: the drafter kept spinning"
+
+
 def test_sigterm_stops_cleanly_with_nothing_half_sent(tmp_path, monkeypatch, no_network):
     world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
     handlers = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
