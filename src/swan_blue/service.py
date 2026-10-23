@@ -31,6 +31,7 @@ import capturethenarrative as ctn
 from swan_bot import config
 from . import detect
 from . import evidence as ev
+from . import fleets as fleets_mod
 from .side import side as side_of
 
 STATE_FILE = config.DATA / "blue_state.json"
@@ -39,6 +40,7 @@ APPROVALS = config.DATA / "blue_approved.jsonl"        # scripts/blue.sh appends
 SESSION_FILE = config.SECRETS / "blue_session.json"   # the reporter's token (never logged)
 REPORTS_LOG = config.LOGS / "blue_reports.jsonl"
 DETECT_FILE = config.DATA / "blue_detect.json"        # todo/28 step 5: the account-lead detectors' memory
+FLEETS_FILE = config.DATA / "blue_fleets.json"        # todo/43 item 4: the platform's team accounts [id, created], for fleets
 # todo/28, the cap probe (Marc, 22 Oct): does an account report count toward the 30 pending? Answered once, from
 # behaviour: with 30 pending and an account lead ready, one extra account report goes out. Taken: they don't count.
 # Refused with a 4xx naming the cap: they do. The answer is kept here and never asked again.
@@ -128,6 +130,13 @@ LIVE_REFRESH_PER_TICK = 10    # liveness reads per tick for the ranking (a tick 
 LIVE_FILE_READS_PER_TICK = 8  # liveness reads per tick at filing (idle leads skipped in the fill each cost one)
 LIVE_BLIND_GAP_S = 10 * 60    # a failed liveness read may file blind at most this often
 READ_RESERVE = 60             # liveness, scan and sibling reads leave this many of the 300/min read calls unspent
+# todo/43 item 4, fleets as the team proxy: the platform's account list (client.accounts(), 100 a read, ~100 reads for
+# everyone; its own read route) is re-read every BLUE_FLEET_EVERY_S (0 = never: Blue's cluster labels count teams, as
+# before), a few pages a tick. fleets.py builds the fleets from the ids and creation times; counts_today counts awards
+# per fleet instead of per cluster (c8701 holds 450 accounts, more than one team's 200, so it said "saturated").
+FLEET_EVERY_S = 6 * 3600
+FLEET_PAGES_PER_TICK = 20
+FLEET_ERR_S = 5 * 60          # after a failed page read, wait this long
 # the platform's answer while we're locked: "reporting is suspended for your team until 2026-10-22T02:00:49Z"
 LOCK_UNTIL_RE = re.compile(r"suspended .*until (\d{4}-\d\d-\d\dT[\d:.]+Z?)", re.I)
 
@@ -151,10 +160,10 @@ def read_json(path, default):
         return default
 
 
-def write_json(path, obj, private=False):
+def write_json(path, obj, private=False, compact=False):
     path.parent.mkdir(exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(obj, indent=1))
+    tmp.write_text(json.dumps(obj, separators=(",", ":")) if compact else json.dumps(obj, indent=1))
     if private:
         os.chmod(tmp, 0o600)
     os.replace(tmp, path)
@@ -179,6 +188,10 @@ class Blue:
         self.detect_file = DETECT_FILE if live else DETECT_FILE.with_suffix(".dry.json")
         self.det = read_json(self.detect_file, None) or detect.empty()
         self.probe_file = CAP_PROBE_FILE if live else CAP_PROBE_FILE.with_suffix(".dry.json")
+        self.fleets_file = FLEETS_FILE if live else FLEETS_FILE.with_suffix(".dry.json")
+        self.fl = read_json(self.fleets_file, None) or dict(rows=[], built=0)
+        self.fleet_map, self.fleet_size = {}, {}
+        self.make_fleets()
         self.probing, self.probe_refusal = False, None
         self.skip = None                      # why file() just skipped a report without asking (idle account, say)
         self.file_reads = 0                   # liveness reads made at filing this tick (LIVE_FILE_READS_PER_TICK)
@@ -212,7 +225,10 @@ class Blue:
         records = read_json(config.ACCOUNTS_FILE, [])
         swarm = read_json(config.SWARM_ACCOUNTS_FILE, [])           # the swarm's likers are ours too (ids only)
         # never shrinks: a file caught mid-write (or a deleted account) must not turn one of ours into a target
-        self.ours = {r["account_id"] for r in records + swarm if r.get("account_id")} | self.ours
+        ours = {r["account_id"] for r in records + swarm if r.get("account_id")} | self.ours
+        if ours != self.ours:
+            self.ours = ours
+            self.make_fleets()            # ours never bridge a rival's fleet
         rec = config.blue_reporter(records)
         self.reporter_name = rec and rec["username"]
         return rec
@@ -387,17 +403,79 @@ class Blue:
         self.s["authors"] = {k: v for k, v in self.s["authors"].items() if v >= cut}
         self.s["author_ring"] = {k: v for k, v in self.s["author_ring"].items() if v["t"] >= cut}
 
+    # ---- todo/43 item 4: fleets, the team proxy ----
+    def make_fleets(self):
+        """Build the fleets from the cached account rows. Our own accounts are left out: they must not bridge a rival's
+        fleet. The map is only ever a proxy for the target team (fleets.py)."""
+        rs = [(i, t) for i, t in self.fl.get("rows", []) if i not in self.ours]
+        self.fleet_map = fleets_mod.fleets_from_rows(rs)
+        self.fleet_size = {}
+        for k in self.fleet_map.values():
+            self.fleet_size[k] = self.fleet_size.get(k, 0) + 1
+
+    def team_key(self, aid, label=None):
+        """The target team an award is counted against: the account's fleet, or (no account list yet, the filter off,
+        or a fleet of one with a cluster label) its Blue cluster label."""
+        label = label or self.s["labels"].get(str(aid))
+        k = self.fleet_map.get(int(aid)) if policy().get("fleet_every", FLEET_EVERY_S) > 0 else None
+        if k is not None and (self.fleet_size.get(k, 1) > 1 or not label):
+            return k
+        return label or f"c{aid}"
+
+    def refresh_fleets(self):
+        """Read the platform's account list, a few pages a tick, every FLEET_EVERY_S (reads only)."""
+        every, t = policy().get("fleet_every", FLEET_EVERY_S), now()
+        if every <= 0:
+            return
+        fl = self.fl
+        if "pass" not in fl:
+            if t - fl.get("built", 0) < every:
+                return
+            fl["pass"] = dict(cursor=None, rows=[], started=t)
+        ps = fl["pass"]
+        if t - ps["started"] > 2 * 3600:               # a pass that never finishes starts over
+            fl.pop("pass")
+            return
+        if t - ps.get("err", 0) < FLEET_ERR_S:
+            return
+        for _ in range(FLEET_PAGES_PER_TICK):
+            if not self.read_ok():
+                return
+            try:
+                page = self.social.accounts(limit=100, cursor=ps["cursor"])
+            except ctn.APIError:
+                ps["err"] = t
+                return
+            ps["rows"] += fleets_mod.rows(page)
+            ps["cursor"] = page.next_cursor
+            if not ps["cursor"] or not len(page):
+                fl.update(rows=sorted(set(map(tuple, ps["rows"]))), built=t)
+                fl.pop("pass")
+                self.make_fleets()
+                self.log({"act": "fleets", "accounts": len(fl["rows"]), "fleets": len(self.fleet_size),
+                          "multi": sum(n > 1 for n in self.fleet_size.values())})
+                write_json(self.fleets_file, fl, compact=True)
+                return
+
+    def fleet_status(self):
+        return dict(on=policy().get("fleet_every", FLEET_EVERY_S) > 0 and bool(self.fleet_map),
+                    accounts=len(self.fleet_map), fleets=len(self.fleet_size),
+                    multi=sum(n > 1 for n in self.fleet_size.values()),
+                    built=iso(self.fl["built"]) if self.fl.get("built") else None, reading="pass" in self.fl)
+
     # ---- the ledger ----
     def pending(self):
         return {k: r for k, r in self.s["reports"].items() if r["status"] == "pending"}
 
     def counts_today(self):
-        """{team label: awards on the Sydney day a report filed now would be ruled} (paid + still pending)."""
+        """{target team (fleet, or cluster label): awards on the Sydney day a report filed now would be ruled} (paid +
+        still pending). Posts and accounts count together (scoring section 3)."""
         day, out = sydney_day(now() + RULE_S), {}
         for r in self.s["reports"].values():
             if (r["status"] in ("hidden", "ruled") and r.get("ruled_day") == day) or \
                     (r["status"] == "pending" and sydney_day(r["filed"] + RULE_S) == day):
-                out[r["label"]] = out.get(r["label"], 0) + 1
+                k = self.team_key(r["author"], r["label"]) if r.get("author") else r["label"]
+                out[k] = out.get(k, 0) + 1
         return out
 
     def precision(self):
@@ -459,7 +537,7 @@ class Blue:
         """(state, idle hours) of an account lead from its newest read. 'live' posted within BLUE_ACCOUNT_LIVE_H of
         that read, 'idle' did not, 'unknown' the last read failed (priced as before todo/43), 'unread' no fresh
         read yet (it waits for one), 'off' the filter is off."""
-        live_h, t = policy()["live_h"], t or now()
+        live_h, t = policy().get("live_h", LIVE_H), t or now()
         if live_h <= 0:
             return "off", None
         at = h.get("live_at")
@@ -473,7 +551,7 @@ class Blue:
     def refresh_live(self):
         """Read the newest post of the ready account leads (never read first, then the oldest read), a few a tick, so
         the ranking only sees live ones. Idle leads are looked at again hourly (6 hourly past 12 h idle)."""
-        live_h, t, due = policy()["live_h"], now(), []
+        live_h, t, due = policy().get("live_h", LIVE_H), now(), []
         if live_h <= 0:
             return
         for aid, h in self.s["harvest"].items():
@@ -496,7 +574,7 @@ class Blue:
 
     def live_summary(self):
         """The ready account leads by liveness, for the dashboard: how many a report could go out on now."""
-        out = dict(live_h=policy()["live_h"], live=0, idle=0, unread=0, unknown=0, off=0,
+        out = dict(live_h=policy().get("live_h", LIVE_H), live=0, idle=0, unread=0, unknown=0, off=0,
                    idle_skips_today=(self.s.get("idle_skips") or {}).get(sydney_day(now()), 0))
         for aid, h in self.s["harvest"].items():
             if h.get("ready") and f"a{aid}" not in self.s["reports"] and int(aid) not in self.ours:
@@ -519,6 +597,7 @@ class Blue:
             side = side_of(p["post"].get("body"))          # a ring reply stands with its ring's root
             if f"p{pid}" not in reported:
                 out.append(dict(key=f"p{pid}", kind="post", target=int(pid), author=a["author"], label=p["label"],
+                                team=self.team_key(a["author"], p["label"]),
                                 age_min=round(age_min), trending=p["trending"], classes=cls,
                                 detail=ev.post_detail(a), ring=int(pid), ring_why=ring_why, side=side,
                                 pg=ev.p_genuine(a, cls, str(a["author"]) in self.s["harvest"]),
@@ -531,7 +610,8 @@ class Blue:
                     seen.add(r["author"])
                     r_age = (t - ev.ts(r["created"])) / 60
                     out.append(dict(key=f"p{r['post_id']}", kind="post", target=r["post_id"], author=r["author"],
-                                    label=p["label"], age_min=round(r_age), trending=False, classes=["reply_ring"],
+                                    label=p["label"], team=self.team_key(r["author"], p["label"]),
+                                    age_min=round(r_age), trending=False, classes=["reply_ring"],
                                     detail=ev.reply_detail(r, a), ring=int(pid), ring_why=ring_why, side=side,
                                     pg=ev.p_genuine(a, ["reply_ring"], str(r["author"]) in self.s["harvest"]),
                                     base=(r_age, False, 0.95)))
@@ -543,8 +623,8 @@ class Blue:
                 if live in ("idle", "unread"):
                     continue                  # todo/43: an idle account isn't filed; an unread one waits for its read
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
-                                label=self.s["labels"].get(aid, f"c{aid}"), classes=["hidden_post"],
-                                live=live, idle_h=idle_h, side=self.lead_side(h),
+                                label=self.s["labels"].get(aid, f"c{aid}"), team=self.team_key(int(aid)),
+                                classes=["hidden_post"], live=live, idle_h=idle_h, side=self.lead_side(h),
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"],
                                                          self.watch_evidence(aid, h)),
                                 pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
@@ -570,7 +650,7 @@ class Blue:
         cands, counts, picked = self.candidates(), self.counts_today(), []
         while cands and len(picked) < 2 * CAP:
             for c in cands:
-                n = counts.get(c["label"], 0)
+                n = counts.get(c["team"], 0)
                 c["n_today"] = n
                 c["ev"] = round(ev.account_ev(n, c.get("live") == "live") if c["kind"] == "account" else
                                 ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"], pg=c["pg"]), 1)
@@ -580,7 +660,7 @@ class Blue:
                 break
             cands.remove(best)
             picked.append(best)
-            counts[best["label"]] = counts.get(best["label"], 0) + 1
+            counts[best["team"]] = counts.get(best["team"], 0) + 1
         return picked
 
     # ---- approvals ----
@@ -768,7 +848,7 @@ class Blue:
         hours old), and an account that has not posted within BLUE_ACCOUNT_LIVE_H is skipped, logged as `idle`. A
         failed read files blind at most once per LIVE_BLIND_GAP_S (priced as unknown). True to file. Sets self.skip
         when nothing was asked, so the caller doesn't count it as a try."""
-        live_h, t = policy()["live_h"], now()
+        live_h, t = policy().get("live_h", LIVE_H), now()
         if live_h <= 0:
             return True
         aid = str(c["target"])
@@ -836,9 +916,11 @@ class Blue:
         self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c["author"], label=c["label"],
                                            filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf, pg=pg,
                                            classes=c["classes"], ring=c.get("ring"), age_min=c.get("age_min"),
-                                           side=c.get("side"), idle_h=c.get("idle_h"), live=c.get("live"))
+                                           side=c.get("side"), idle_h=c.get("idle_h"), live=c.get("live"),
+                                           team=c.get("team"))
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
-                  "label": c["label"], "classes": c["classes"], "ev": c["ev"], "pg": pg, "n_today": c.get("n_today"),
+                  "label": c["label"], "team": c.get("team"), "classes": c["classes"], "ev": c["ev"], "pg": pg,
+                  "n_today": c.get("n_today"),
                   "age_min": c.get("age_min"), "side": c.get("side"), "idle_h": c.get("idle_h"),
                   "live": c.get("live"), "detail": c["detail"], "reporter": self.reporter_name, "owner": config.operator(),
                   "response": resp if isinstance(resp, dict) else None})
@@ -1076,8 +1158,9 @@ class Blue:
                       cap=round(pol["per_day"] * PG_BURST_DAYS, 3),
                       posts_now=sum(1 for _ in self._affordable(posts))),
             clusters=dict(today=len(counts), full=sum(n < 5 for n in counts.values()),
-                          ready=len({c["label"] for c in ranked}),
-                          new=len({c["label"] for c in ranked if counts.get(c["label"], 0) == 0})),
+                          ready=len({c["team"] for c in ranked}),
+                          new=len({c["team"] for c in ranked if counts.get(c["team"], 0) == 0})),
+            fleets=self.fleet_status(),
             widen=self.s["widen"], leads_live=self.live_summary(),
             # todo/28 step 5: the account-lead detectors: per kind, accounts watched, with a hidden post, reported
             detect=self.detect_status(),
@@ -1175,6 +1258,7 @@ class Blue:
         if self.due("harvest"):
             self.harvest()
         self.refresh_live()
+        self.refresh_fleets()
         if self.due("detect"):
             self.run_detectors()
         if self.due("calibrate"):
@@ -1215,7 +1299,7 @@ def policy():
         except ValueError:
             return default
     return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
-                live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H))
+                live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S))
 
 
 def rings(cands):
