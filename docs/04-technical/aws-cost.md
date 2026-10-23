@@ -21,7 +21,7 @@ It uses the IAM key in `.env` (`EC2_ACCESS_KEY`, never printed) through the `aws
 ## Status (script prints OK / WATCH / OVER)
 OK = even if the bot spends the whole `LLM_BUDGET_USD`, we finish under 90% of the credit. 23 Oct: OK. At the recent pace (~$5.85 ledger/day) about $79 in total; spending the full budget about $161. Resources keep billing after 2 Nov: stop the instance and release the Elastic IP then.
 
-## IAM permissions to add (inline policy on `ctn-user`)
+## IAM permissions (inline policy on `ctn-user`, added 23 Oct)
 Console: IAM > Users > ctn-user > Permissions > Add permissions > **Create inline policy** > JSON. These are single actions, so they are not in the "attach managed policies" list.
 ```json
 {
@@ -39,3 +39,8 @@ Console: IAM > Users > ctn-user > Permissions > Add permissions > **Create inlin
 }
 ```
 `GetAccountPlanState` returns the remaining credit and its expiry; `GetCostForecast` is AWS's own projection (the "$194" in the billing console); the budgets pair lets us create the spend alert (none exists).
+
+## Checked 2026-10-23, after the permissions
+- `freetier:GetAccountPlanState`: plan PAID, ACTIVE, **$190.87 credit remaining** = $200 - $9.13 billed, so the credit is $200 and Cost Explorer agrees with it. No expiry date is returned by the API; Marc confirmed in the console (23 Oct) that the credit does not expire during the competition.
+- `ce:GetCostForecast`: allowed, but AWS answers "Insufficient amount of historical data" (the account is days old), so no AWS forecast exists to compare with; the console's own projection uses a different model.
+- `budgets`: allowed. **Budget `ctn-gross-usage-170` created 2026-10-23** (Marc: $170, what the LLM budget is sized to): monthly, cost, **credits excluded** (`IncludeCredit` false; by default Budgets nets credits and would never fire), emails marc.labouchardiere13@gmail.com when actual gross spend passes 50% ($85), 80% ($136) and 100% ($170). Its first reading was $9.128, the same as Cost Explorer's gross. It is monthly, so it counts October, then November from 1 Nov. Forecast-based alerts are not set: AWS can't forecast yet (above). To change it: console > Billing > Budgets.
