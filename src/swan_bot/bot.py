@@ -1549,8 +1549,6 @@ def main():
             state["modes"] = (state["modes"] + [mode])[-20:]
 
             if target:
-            if target and mode in engage.FOLLOW_MODES + engage.LIKE_MODES:      # todo/33: the citizen's cell
-                engage.push(state, engage.plan(job, rec, target["author_id"], target["post_id"]))
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
                 targeter.answered(target, mode)          # the funnel (todo/21 G12)
             if mode in ("reply", "reply_back", "second_voice"):   # the session cap counts our voices (todo/21)
@@ -1624,7 +1622,6 @@ def main():
              "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
              "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
              "thread": threading.current_thread().name,                                   # todo/22: the writer
-             "eng_cell": engage.cell(target["author_id"]) if target and mode in stealth.CITIZEN_MODES else None,
              **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})
         where = ""
         if target:
@@ -1699,7 +1696,6 @@ def main():
                 if time.time() < no_model_until[0]:
                     pause(min(no_model_until[0] - time.time(), 30))
                     continue
-                engage_actions(state, accounts, args.live)
                 if gen.next_available_in() > 0 and not args.allow_qwen:
                     print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
                     pause(min(gen.next_available_in() + 1, 600))
