@@ -117,6 +117,8 @@ WIDEN_RECHECK_S = 2 * 3600    # a root looked up (a citizen's post, say) isn't l
 # todo/28, co-reporting: the ruling timer halves per extra team reporting, so a post ruled this soon after we filed it
 # was reported by 2+ teams. Its ring's reply authors are checked for hides first (account leads, multi-team boost).
 CO_S = 2 * 3600
+CO_RECENT_S = 2 * 3600        # todo/43 item 3: a lead found from another team's hide this recently is likely on its way to
+                              # a ruling already (their account report waits on the same hidden post)
 # todo/43 item 1, the liveness filter on account reports (BLUE_ACCOUNT_LIVE_H hours, 0 = off): an account report files
 # only if the account posted that recently, read at filing time from account_posts(limit=1) (the 300/min read route,
 # not the report budget). 46 of 89 account reports on 23 Oct were on accounts idle for 3 h+ (probably suspended already:
@@ -761,11 +763,17 @@ class Blue:
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), team=self.team_key(int(aid)),
                                 classes=["hidden_post"], live=live, idle_h=idle_h, side=self.lead_side(h),
+                                co=self.co_lead(h),
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"],
                                                          self.watch_evidence(aid, h), vanished=bool(h.get("vanished")),
                                                          pace=h.get("pace_text") if h.get("vanished") else None),
                                 pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
         return out
+
+    def co_lead(self, h):
+        """Are other teams on this account lead? Its hidden post was ruled within CO_S of our report (two or more teams
+        reported it), or another team's hide of its post was found in the last CO_RECENT_S (todo/43 item 3)."""
+        return bool(h.get("co") or (h.get("by") == "other" and now() - h.get("found", 0) <= CO_RECENT_S))
 
     def watch_evidence(self, aid, h):
         """The detectors' measured numbers for an account lead (todo/28), or None for a ring-only lead."""
@@ -782,8 +790,13 @@ class Blue:
 
     def ranked(self):
         """Greedy order: the best expected value first, the team's count updated after every pick. Expected value
-        counts P(genuine), and a cluster that already has awards today ranks a little lower (SPREAD) while it's still
-        at full rate."""
+        counts P(genuine) and the daily rate (todo/43 item 3): against one target team (fleet) the first 5 awards pay in
+        full, so a fresh ring post (about 21) goes ahead of a live account report (13.5, no lock risk) and the account
+        reports fill the rest; the 6th to 10th pay half (a post then no longer pays for its lock, an account's 6.75
+        still files) and from the 11th on 10% falls under MIN_EV, so the fill moves to another team. A team ranks a little
+        lower for every award it already has while still at full rate (SPREAD). An account lead other teams are already
+        reporting ranks higher by ACCOUNT_CO_BOOST (not in its expected points): its ruling comes in half the time or
+        less, so the slot turns over twice as fast, and an upheld report pays every team that reported."""
         cands, counts, picked = self.candidates(), self.counts_today(), []
         while cands and len(picked) < 2 * CAP:
             for c in cands:
@@ -791,7 +804,8 @@ class Blue:
                 c["n_today"] = n
                 c["ev"] = round(ev.account_ev(n, c.get("live") == "live") if c["kind"] == "account" else
                                 ev.post_ev(*c["base"], n=n, scale=self.s["pf_scale"], pg=c["pg"]), 1)
-                c["rank"] = c["ev"] * (1 - SPREAD * n if n < 5 else 1) * BLUE_SIDE_BIAS.get(c.get("side"), 1.0)
+                c["rank"] = c["ev"] * (1 - SPREAD * n if n < 5 else 1) * BLUE_SIDE_BIAS.get(c.get("side"), 1.0) * \
+                    (ev.ACCOUNT_CO_BOOST if c.get("co") else 1.0)
             best = max(cands, key=lambda c: c["rank"])
             if best["ev"] < MIN_EV:
                 break
@@ -1118,7 +1132,8 @@ class Blue:
             except ctn.APIError as e:
                 if e.status == 404:
                     self.ruled(key, r, "hidden", t)
-                    h = self.s["harvest"].setdefault(str(r["author"]), dict(hidden_post=r["target"], checked=0))
+                    h = self.s["harvest"].setdefault(str(r["author"]), dict(hidden_post=r["target"], checked=0,
+                                                                              found=t))
                     if t - r["filed"] < CO_S:         # 2+ teams reported it: its ring's other authors next
                         h["co"] = True
                         ring = self.s["posts"].get(str(r.get("ring") or r["target"]))
@@ -1194,7 +1209,7 @@ class Blue:
                     if ring is None:
                         self.s["posts"][str(post_id)]["gone"] = True
                     self.s["harvest"][str(author)] = dict(hidden_post=post_id, checked=0, by="other",
-                                                          ring=ring or post_id)
+                                                          ring=ring or post_id, found=t)
                     self.log({"act": "lead", "account": author, "hidden_post": post_id, "ring": ring or post_id})
         for aid, h in self.s["harvest"].items():
             if h.get("ready") or int(aid) in self.ours or t - h.get("checked", 0) < 2 * 3600:
