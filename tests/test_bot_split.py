@@ -428,6 +428,8 @@ def test_todo20_and_todo21_logging(run):
     assert any(a["act"] == "reject" for a in acts), "rejects are logged"
     replies = [a for a in acts if a["act"] == "reply" and a.get("post_id")]
     assert replies and all("read_ok" in a and "style" in a and "target_class" in a for a in replies)
+    seconds = [a for a in acts if a["act"] == "second_voice" and a.get("post_id")]      # todo/40: the arm is on every one
+    assert seconds and all(a.get("sv_delay") in config.SECOND_VOICE_ARMS for a in seconds)
 
 
 # ---- 2. the core rules -----------------------------------------------------------------------------------------

@@ -1843,7 +1843,9 @@ def main():
                 state["engaged"][str(target["author_id"])] = time.time()     # ENGAGED_BONUS on their next post
             if (mode == "reply" and config.SECOND_VOICE and job.get("arm") != "firm_yes"     # no pile-on on a firm Yes
                     and job.get("group") != "off_topic"):                 # nor a referendum angle on their own topic
-                job["sv_delay"] = experiment.alternate("sv_delay", list(stealth.second_voice_arms()))    # todo/20 step 7 (todo/38: no 'fast' arm in a big pool)
+                arms = list(stealth.second_voice_arms())              # todo/20 step 7 (todo/38: no 'fast' arm in a big pool)
+                job["sv_delay"] = (experiment.per_voice_day("sv_delay", arms, rec["username"])    # todo/40: per voice-day
+                                   if config.SV_DELAY_PER_VOICE_DAY else experiment.alternate("sv_delay", arms))
                 state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_ARMS[job["sv_delay"]]),
                                                   sv_delay=job["sv_delay"],
                                                   post_id=target["post_id"], author=target["author_id"],

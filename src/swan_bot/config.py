@@ -349,6 +349,12 @@ REPLY_STYLES = ["current"]
 # Second voice inside the citizen's session (step 7): sessions last 1-5 min, and the contribution pool counts only
 # posts read in the session where the change happens. Delays taken in turn, logged as sv_delay (was always 10-30 min).
 SECOND_VOICE_ARMS = {"fast": (60, 4 * 60), "slow": (10 * 60, 30 * 60)}
+# todo/40 (24 Oct): which arm a second voice follows a reply with is fixed per VOICE and Sydney DAY (experiment.per_voice_day: a
+# hash of voice + day, so about half the voice-days run each and a restart reshuffles nothing), not by turns that restart at random
+# on every deploy. The slow arm's first replies were hidden 2.1% against 0.8% (p = 0.001; one of ~60 fields scanned, no known
+# mechanism): read it out after ~3,000 writes, hides per text write by sv_delay. False = strict turns again (experiment.alternate).
+# Only with a pool of SECOND_FAST_MAX_N or fewer: above it the fast arm is off (stealth.second_voice_arms) and every arm is slow.
+SV_DELAY_PER_VOICE_DAY = True
 # One own like on our reply to a citizen (step 8, never tried before): on alternate replies a booster likes it
 # 1-4 min after it goes out (logged as own_like on the reply, and as a like with purpose reply_like). Drop it if
 # citizen likes and replies don't rise.
@@ -460,7 +466,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
-               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
