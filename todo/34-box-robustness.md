@@ -33,7 +33,7 @@ checks passed), no shortage of targets.
 ## To do (in this order)
 
 **Status 2026-10-23 (evening):**
-- Item 2: done in code, not yet on the box. `src/swan_bot/jsonl.py` (streaming reader with a resumable cursor);
+- Item 2: done and deployed (b4eccbb, 03:40 UTC). `src/swan_bot/jsonl.py` (streaming reader with a resumable cursor);
   `scripts/swan_sync_mongo.py` is incremental (cursors in `data/swan_sync_cursors.json`, `--full` resyncs, chunks of
   1,000); `followup.load_rows` and `scripts/swan_watch.py` stream; `swan_measure`, `swan_view` and `experiment_report
   --local` too. Peak RSS on a 650k-line, 149 MB fixture: followup 993 -> 189 MB, sync 1,287 -> 73 MB, watch 993 -> 79 MB
@@ -43,6 +43,13 @@ checks passed), no shortage of targets.
   `swan-factdesk`, `swan-swarm`, `swan-blue`. Re-measure on the t3.medium (`systemd-cgtop`, `MemoryPeak` in
   `systemctl show`) and tighten.
 - Item 4: done (dee1ff6, the lead): the writer path rides out network errors.
+- Item 5: done (6fbce0a): a draft that no model answers is retried once with the amplified-post reserve; 5 no-model drafts
+  in 10 min send one `NO MODEL` alert and a `recovered` one; `qwen-plus-character` (Alibaba free quota spent, 403) is out of
+  `deploy/llm_chain.txt` and `config.AMP_MODELS` (Marc, 23 Oct).
+- Item 1: fleshed out as [todo/35](35-off-box-alerts.md) (needs one decision from Marc: which dead-man service).
+- Item 7: check on 2026-10-24 about 04:00 UTC: CloudWatch `CPUSurplusCreditsCharged` (Sum, 1 h) and `CPUSurplusCreditBalance`
+  for the instance (see the runbook's "Diagnosing without SSH"); small is expected on the t3.medium.
+- Log rotation: not needed before 2 Nov (~40 MB a day; nothing scans the whole log any more). Marc, 23 Oct.
 - Other whole-file reads left alone: `scripts/conversion_report.py` (manual), `swan_dash.build.tail_lines` on
   `logs/alerts.log` (slow growth), `swan_lab` (retired).
 
