@@ -574,6 +574,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     why = tag_problem(t, kind)
     if why:
         return None, why
+    if kind == "post" and config.POST_NO_TAG_WITH_VOTE and TAG.search(t) and VOTES_NO.search(t):
+        return None, "tag_with_vote"                  # todo/40: a hashtag and "I'm voting No" together; fix() cuts the tag
     if any(ord(ch) > 0x2600 for ch in t):        # emoji and other symbols
         return None, "emoji"
     if not specific and VOTE_TALK.search(t) and not VOTE_TALK.search(target_text or ""):
@@ -758,6 +760,9 @@ def fix(text, why, kind, recent=(), same=()):
     why = why or ""
     if why == "llm_artefact":
         return strip_filler(text)
+    if why == "tag_with_vote":                     # todo/40: the post keeps its statement of the vote and loses the hashtag
+        out = strip_tag(normalise(text)).strip()
+        return out if out != normalise(text) else None
     if why == "near_duplicate" and kind in PERSONAL_KINDS:
         return drop_clash(text, kind, recent, same)
     if why.startswith("length_") and int(why.split("_")[1]) > LENGTHS[kind][1]:
@@ -923,6 +928,8 @@ def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), s
         return f"Cut {quoted} and say your own point straight out; change nothing else."
     if why == "no_vote_statement":
         return "Say plainly that you're voting No."
+    if why == "tag_with_vote":
+        return "Remove the hashtag: end on your question, with no hashtag. Change nothing else."
     if why.startswith(PHRASE_PREFIX):              # todo/27: name each worn phrase as the draft has it
         keys = why[len(PHRASE_PREFIX):].split("+")
         said = [m.group(0) for k in keys if k in PHRASE_BUDGETS

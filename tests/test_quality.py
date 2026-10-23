@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from swan_bot import quality  # noqa: E402
+from swan_bot import config, quality  # noqa: E402
 
 # playbook §9 tomasi rewrite: the reference good post every single-reason variant below is built from
 GOOD = ("Aunty Losa rides my ferry every Tuesday for the clinic. Under a Yes she'd need papers just to board, and "
@@ -17,6 +17,13 @@ GOOD = ("Aunty Losa rides my ferry every Tuesday for the clinic. Under a Yes she
         "That isn't the point. Sign first, read later? Not me. I'm voting No. Who in your family rides that ferry? "
         "#KeepKingstoniaOpen")
 GOOD_UNTAGGED = GOOD.rsplit(" #", 1)[0]
+
+
+@pytest.fixture(autouse=True)
+def _tagged_posts(monkeypatch):
+    """These tests are about the tag machinery and the reference posts, which carry a hashtag beside "I'm voting No": the
+    pre-todo/40 posts. The new default (no hashtag with the vote) is tested in tests/test_post_tag_vote.py."""
+    monkeypatch.setattr(config, "POST_NO_TAG_WITH_VOTE", False)
 
 
 def ok(text, kind="post", **kw):

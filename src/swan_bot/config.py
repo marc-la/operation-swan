@@ -64,7 +64,7 @@ REPLY_BACK_AMP = True               # with REPLY_BACK off: still answer citizens
 JOURNALIST_MAX_AGE_H = 12
 JOURNALIST_GAP_S = 45 * 60          # at most one journalist reply per 45 min
 JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
-POST_EVERY_N = 4                    # persona posts: at most 1 in every 4 writes (replies come first)
+POST_EVERY_N = 8                    # persona posts: at most 1 in every 8 writes (replies come first). todo/40, 24 Oct: was 4 (see below)
 IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothing better to write
 
 # ---- todo/40 hide-rate changes (2026-10-24, from docs/06-strategy/hide-risk-analysis-2026-10-23.md) ----
@@ -76,6 +76,11 @@ NEW_VOICE_NO_POST_H = 24
 # The share of our last quality.PHRASE_WINDOW citizen-facing texts (replies, reply-backs, second voices) that may say "I'm voting No".
 # Was 0.15; "I'm voting No" in a reply is a hide tell (adjusted OR 2.5). 0 rejects it (quality.drop_vote cuts it, no LLM call).
 REPLY_VOTE_SHARE = 0.0
+# Standalone persona posts were hidden 4.1% of the time against 1.3% for the rest (adjusted OR ~10, 147 posts): POST_EVERY_N 4 -> 8
+# halves them, and a post no longer carries a hashtag together with a statement of the vote (the hashtag posts: 5 of 71 hidden).
+# A post must still say it is voting No (quality's no_vote_statement), so it is the hashtag that goes: content.post_prompt asks for
+# none and a draft that adds one has it cut (quality.fix, no LLM call). False = the old posts, hashtag and "I'm voting No" together.
+POST_NO_TAG_WITH_VOTE = True
 
 # ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
@@ -445,7 +450,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
-               "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
