@@ -164,8 +164,7 @@ def test_fleet_pass_reads_pages_over_ticks_writes_a_compact_cache_and_backs_off(
         b.refresh_fleets()
     assert "pass" not in b.fl and b.fl["built"] > 0 and len(b.fleet_map) > 400
     assert max(len(v) for v in F.members(b.fleet_map).values()) <= F.FLEET_MAX
-    raw = (tmp_path / "fleets.dry.json").read_text() if (tmp_path / "fleets.dry.json").exists() else \
-        (tmp_path / "fleets.json").with_suffix(".dry.json").read_text()
+    raw = (tmp_path / "fleets.dry.json").read_text()                      # a dry run's own file, compact JSON
     assert "\n" not in raw and json.loads(raw)["built"] == b.fl["built"]
     pages = b.social.pages
     b.refresh_fleets()

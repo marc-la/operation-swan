@@ -120,6 +120,9 @@ def main():
                 print(f"{g:5d}  {'none' if s >= 1e9 else int(s):>8} | {r[0]:9.3f}  {r[1]:8.3f} {r[2]:6.1f} {r[3]:7d} | "
                       f"{len(sizes):6d}  {multi:5.0%}  {max(sizes.values()):7d}  | {lb}{mark}")
     if labels:
+        r = agreement({i: c for i, c in labels.items()}, lab, args.shuffles, rng)
+        print(f"\nBlue's own clusters, same yardstick: same fate {r[0]:.3f} against {r[1]:.3f} shuffled "
+              f"(z {r[2]:.1f}, {r[3]} pairs)")
         tot = len(labels)
         cl = collections.Counter(labels.values())
         print(f"\nchance two labelled accounts share a Blue label: {sum(c * (c - 1) for c in cl.values()) / (tot * (tot - 1)):.3f}"

@@ -14,6 +14,10 @@ Being first pays 25 against 5 (by order, not time; nobody can see others' report
   - posts over an hour old are not post-reported at all (17% genuine against 4%, and they pay 5, not 25)
   - the portal log says which awards paid as first; that share against our prediction scales every estimate
 
+Live targets (todo/43, blue-reporting section 10): an account report files only on an account that posted within
+BLUE_ACCOUNT_LIVE_H (read at filing); awards are counted per fleet of neighbouring ids and creation times (fleets.py);
+scan.py finds live accounts' vanished posts from reads alone and files only with BLUE_SCAN_FILE=1.
+
 Modes: auto from the start; approve (files only posts a person approved, scripts/blue.sh approve ...) once 10+
 rulings show under BLUE_MIN_RATE inauthentic; account reports are rule-based and always go. off: BLUE_OFF exists,
 or a dry run. Reads keep going in every mode.
