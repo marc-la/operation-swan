@@ -22,7 +22,7 @@ main() {
   fi
   if grep -qE '^deploy/.*\.(service|timer)$' <<< "$changed"; then sudo deploy/install.sh --units-only; fi
   if grep -vE '^content/lab/' <<< "$changed" | grep -qE '^(src/|scripts/|deploy/|content/|requirements\.txt)'; then
-    sudo systemctl try-restart swan-bot swan-blue swan-lab   # only if running: a deliberate stop stays stopped
+    sudo systemctl try-restart swan-bot swan-blue   # only if running: a deliberate stop stays stopped
   fi                                        # docs/todo-only pushes don't restart the bot (content/facts.toml does);
                                             # content/lab/ (the lab's strategies, cards) is reread by the lab itself
   record "$old" "$new" ok

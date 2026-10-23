@@ -546,7 +546,7 @@ BLUE_STALE_S = 10 * 60                         # swan-blue writes its status eve
 # Red is down: back to the commit before the running one. swan-update.timer would pull origin/main again within 2 min,
 # so it is paused first; start it again once a fix is pushed.
 ROLLBACK = ("ssh swan-ec2 'cd ctn && sudo systemctl stop swan-update.timer && git reset --hard {prev} && "
-            "sudo systemctl restart swan-bot swan-blue swan-lab'")
+            "sudo systemctl restart swan-bot swan-blue'")
 BLUE_APPROVE = "ssh swan-ec2 'ctn/scripts/blue.sh approve all'"
 BLUE_ERROR_S = 2 * 3600                        # an older error has been dealt with or retried: not shown
 # Is Blue going well? A day's Blue points against the modelled ceiling (docs/06-strategy/blue-reporting.md §2:
