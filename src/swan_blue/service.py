@@ -32,6 +32,7 @@ from swan_bot import config
 from . import detect
 from . import evidence as ev
 from . import fleets as fleets_mod
+from . import scan as scan_mod
 from .side import side as side_of
 
 STATE_FILE = config.DATA / "blue_state.json"
@@ -41,6 +42,7 @@ SESSION_FILE = config.SECRETS / "blue_session.json"   # the reporter's token (ne
 REPORTS_LOG = config.LOGS / "blue_reports.jsonl"
 DETECT_FILE = config.DATA / "blue_detect.json"        # todo/28 step 5: the account-lead detectors' memory
 FLEETS_FILE = config.DATA / "blue_fleets.json"        # todo/43 item 4: the platform's team accounts [id, created], for fleets
+SCAN_FILE = config.DATA / "blue_scan.json"            # todo/43 item 2: the live-lead scanner's snapshots (post ids only)
 # todo/28, the cap probe (Marc, 22 Oct): does an account report count toward the 30 pending? Answered once, from
 # behaviour: with 30 pending and an account lead ready, one extra account report goes out. Taken: they don't count.
 # Refused with a 4xx naming the cap: they do. The answer is kept here and never asked again.
@@ -137,6 +139,17 @@ READ_RESERVE = 60             # liveness, scan and sibling reads leave this many
 FLEET_EVERY_S = 6 * 3600
 FLEET_PAGES_PER_TICK = 20
 FLEET_ERR_S = 5 * 60          # after a failed page read, wait this long
+# todo/43 item 2, the live-lead scanner (scan.py): a pass reads the newest page of each tracked live rival account every
+# BLUE_SCAN_EVERY_S (0 = never), SCAN_READS_PER_TICK a minute (the 300/min account_posts route is shared with the bot's
+# sweep, about 30 a minute, and Blue's other reads), and diffs it with the last one. Vanished posts become leads after
+# two 404s 10 minutes apart. Leads are logged and shown in blue_status.json; they file only with BLUE_SCAN_FILE=1.
+SCAN_EVERY_S = 3 * 3600
+SCAN_READS_PER_TICK = 40
+SCAN_CONFIRMS_PER_TICK = 10
+SCAN_PROMOTE_S = 12 * 3600    # a logged lead is still fresh enough to file when the flag goes on, this long after it was found
+SIB_PER_TICK = 5              # todo/43 item 5: siblings of a live lead read per tick (each: one page and a few get_post checks)
+SIB_MAX = 30                  # siblings looked at per lead event
+SIB_CHECKS = 6                # recent posts of one sibling checked for a hide (those the bot's Latest snapshot saw)
 # the platform's answer while we're locked: "reporting is suspended for your team until 2026-10-22T02:00:49Z"
 LOCK_UNTIL_RE = re.compile(r"suspended .*until (\d{4}-\d\d-\d\dT[\d:.]+Z?)", re.I)
 
@@ -192,6 +205,10 @@ class Blue:
         self.fl = read_json(self.fleets_file, None) or dict(rows=[], built=0)
         self.fleet_map, self.fleet_size = {}, {}
         self.make_fleets()
+        self.scan_file = SCAN_FILE if live else SCAN_FILE.with_suffix(".dry.json")
+        self.sc = read_json(self.scan_file, None) or scan_mod.empty()
+        for k, v in scan_mod.empty().items():
+            self.sc.setdefault(k, v)
         self.probing, self.probe_refusal = False, None
         self.skip = None                      # why file() just skipped a report without asking (idle account, say)
         self.file_reads = 0                   # liveness reads made at filing this tick (LIVE_FILE_READS_PER_TICK)
@@ -301,6 +318,7 @@ class Blue:
                     self.note(post, "latest")
             self.widen(posts)
             detect.observe(self.det, posts, lambda a: ev.is_team(a, self.ours), now())
+            scan_mod.observe(self.sc, posts, lambda a: ev.is_team(a, self.ours), now())
         if self.due("authors"):
             ring = sorted(self.s["authors"].items(), key=lambda kv: -kv[1])[:WATCH_AUTHORS]
             for author, _ in ring:
@@ -402,6 +420,121 @@ class Blue:
                            (v.get("classes") or t - ev.ts(v["post"]["created_at"]) <= PLAIN_KEEP_S)}
         self.s["authors"] = {k: v for k, v in self.s["authors"].items() if v >= cut}
         self.s["author_ring"] = {k: v for k, v in self.s["author_ring"].items() if v["t"] >= cut}
+
+    # ---- todo/43 item 2: the live-lead scanner (reads only; filing from it behind BLUE_SCAN_FILE) ----
+    def scan_step(self):
+        """One tick of the scanner: start a pass when due, read up to SCAN_READS_PER_TICK accounts' newest pages (the
+        siblings of a live lead first), confirm vanished-post candidates with get_post, write the snapshot file."""
+        every, t = policy().get("scan_every", SCAN_EVERY_S), now()
+        sc = self.sc
+        if every <= 0:
+            return
+        dirty = False
+        if not sc["todo"] and t - sc["pass_at"] >= every:
+            todo = scan_mod.targets(sc, t, lambda a: ev.is_team(a, self.ours))
+            if todo:
+                sc.update(todo=todo, pass_at=t, pass_n=len(todo))
+                sc["stats"]["passes"] += 1
+                dirty = True
+        reads = self.sibling_step(t)
+        while sc["todo"] and reads < SCAN_READS_PER_TICK and self.read_ok():
+            aid = sc["todo"].pop(0)
+            reads += 1
+            self.scan_read(aid, t)
+        dirty |= bool(reads)
+        dirty |= self.scan_confirm(t)
+        self.scan_promote(t)
+        if dirty:
+            scan_mod.prune(sc, t)
+            write_json(self.scan_file, sc, compact=True)
+
+    def scan_read(self, aid, t, src="scan"):
+        """Read one account's newest page, diff it with the last, and note what vanished. True if the read worked."""
+        sc = self.sc
+        try:
+            page = list(self.social.account_posts(int(aid), limit=scan_mod.PAGE))
+        except ctn.APIError:
+            sc["stats"]["errors"] += 1
+            return False
+        sc["stats"]["reads"] += 1
+        gone = scan_mod.compare(sc, aid, page, t, src)
+        if gone:
+            sc["stats"]["vanished"] += len(gone)
+            self.log({"act": "scan", "account": int(aid), "vanished": gone, "src": src})
+        return True
+
+    def scan_confirm(self, t):
+        """Check the vanished-post candidates that are due: get_post twice, 10+ minutes apart, both 404. True if any
+        was asked."""
+        sc, asked = self.sc, False
+        for aid, pid in scan_mod.due(sc, t, SCAN_CONFIRMS_PER_TICK):
+            if not self.read_ok():
+                break
+            src = scan_mod.src_of(sc, aid, pid)
+            try:
+                self.social.get_post(pid)
+                gone = False
+            except ctn.APIError as e:
+                if e.status != 404:
+                    continue
+                gone = True
+            asked = True
+            out = scan_mod.verdict(sc, aid, pid, t, gone)
+            if out == "visible":
+                sc["stats"]["visible"] += 1
+            elif out == "confirmed":
+                sc["stats"]["confirmed"] += 1
+                self.scan_lead(aid, pid, t, src)
+        return asked
+
+    def scan_lead(self, aid, pid, t, src="scan"):
+        """A vanished post confirmed by two 404s: an account lead with a post no longer available. Logged and kept in
+        the scan file always; it enters the filing path only with BLUE_SCAN_FILE=1 (scan_promote)."""
+        sc, snap = self.sc, self.sc["snap"].get(aid)
+        if snap is None or int(aid) in self.ours or not ev.is_team(int(aid), self.ours):
+            return                            # stopped posting since, or ours: not a live lead
+        lead = sc["leads"].setdefault(aid, dict(by=src, account=int(aid), vanished=[], found=round(t), filed="off"))
+        lead["vanished"] = sorted(set(lead["vanished"]) | {pid})[-10:]
+        lead.update(last_post=snap["last"], posts=snap["n"], pace=snap["pace"], fleet=self.fleet_map.get(int(aid)),
+                    pace_text=scan_mod.pace_text(snap["n"], snap["span"]))
+        self.log({"act": "lead", "account": int(aid), "hidden_post": pid, "by": src, "vanished": lead["vanished"],
+                  "posts_per_h": lead["pace"], "last_post": iso(lead["last_post"]), "fleet": lead["fleet"],
+                  "file": bool(policy().get("scan_file", 0))})
+        self.queue_siblings(int(aid), t)
+
+    def scan_promote(self, t):
+        """With BLUE_SCAN_FILE=1, leads the scanner found (the last SCAN_PROMOTE_S) enter the harvest, which counts their
+        actions (100+ needed) and hands them to the ranked fill like any account lead. With 0 nothing is queued."""
+        if not policy().get("scan_file", 0):
+            return
+        for aid, lead in self.sc["leads"].items():
+            if lead["filed"] != "off" or t - lead["found"] > SCAN_PROMOTE_S:
+                continue
+            if aid in self.s["harvest"] or int(aid) in self.ours:
+                lead["filed"] = "known"       # already a lead by another route (or ours)
+                continue
+            self.s["harvest"][aid] = dict(hidden_post=lead["vanished"][-1], checked=0, by=lead["by"], vanished=True,
+                                          pace=lead["pace"], pace_text=lead["pace_text"], found=t)
+            lead["filed"] = "queued"
+            self.s["last"]["harvest"] = 0     # count its actions at the next tick
+
+    def scan_status(self):
+        sc, t = self.sc, now()
+        leads = sorted(sc["leads"].values(), key=lambda x: -x["found"])[:40]
+        return dict(every_s=policy().get("scan_every", SCAN_EVERY_S), file=bool(policy().get("scan_file", 0)),
+                    tracked=len(sc["snap"]), seen=len(sc["seen"]), todo=len(sc["todo"]), pass_n=sc["pass_n"],
+                    pass_at=iso(sc["pass_at"]) if sc["pass_at"] else None,
+                    candidates=sum(len(v) for v in sc["cand"].values()), stats=sc["stats"],
+                    leads=[dict(account=x["account"], vanished=x["vanished"], posts_per_h=x.get("pace"),
+                                last_post=iso(x["last_post"]) if x.get("last_post") else None, fleet=x.get("fleet"),
+                                found=iso(x["found"]), by=x["by"], filed=x["filed"]) for x in leads])
+
+    # ---- todo/43 item 5: siblings of a live lead (below) ----
+    def queue_siblings(self, aid, t):
+        pass
+
+    def sibling_step(self, t):
+        return 0
 
     # ---- todo/43 item 4: fleets, the team proxy ----
     def make_fleets(self):
@@ -622,11 +755,15 @@ class Blue:
                 live, idle_h = self.live_state(h)
                 if live in ("idle", "unread"):
                     continue                  # todo/43: an idle account isn't filed; an unread one waits for its read
+                if h.get("vanished") and not scan_mod.has_pattern(dict(h, kinds=(self.det["watch"].get(aid) or {}).get(
+                        "kinds"))):
+                    continue                  # a scanner lead with nothing measured to state beyond the vanished post
                 out.append(dict(key=f"a{aid}", kind="account", target=int(aid), author=int(aid),
                                 label=self.s["labels"].get(aid, f"c{aid}"), team=self.team_key(int(aid)),
                                 classes=["hidden_post"], live=live, idle_h=idle_h, side=self.lead_side(h),
                                 detail=ev.account_detail(int(aid), h["hidden_post"], h["actions"], h["ring_posts"],
-                                                         self.watch_evidence(aid, h)),
+                                                         self.watch_evidence(aid, h), vanished=bool(h.get("vanished")),
+                                                         pace=h.get("pace_text") if h.get("vanished") else None),
                                 pg=0.0, ring=None, ring_why=f"post #{h['hidden_post']} already hidden, {h['actions']}+ actions"))
         return out
 
@@ -1161,7 +1298,7 @@ class Blue:
                           ready=len({c["team"] for c in ranked}),
                           new=len({c["team"] for c in ranked if counts.get(c["team"], 0) == 0})),
             fleets=self.fleet_status(),
-            widen=self.s["widen"], leads_live=self.live_summary(),
+            widen=self.s["widen"], leads_live=self.live_summary(), scan=self.scan_status(),
             # todo/28 step 5: the account-lead detectors: per kind, accounts watched, with a hidden post, reported
             detect=self.detect_status(),
             next_ruling=iso(pend[0]["filed"] + RULE_S) if pend else None,
@@ -1259,6 +1396,7 @@ class Blue:
             self.harvest()
         self.refresh_live()
         self.refresh_fleets()
+        self.scan_step()
         if self.due("detect"):
             self.run_detectors()
         if self.due("calibrate"):
@@ -1299,7 +1437,8 @@ def policy():
         except ValueError:
             return default
     return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
-                live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S))
+                live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S),
+                scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0))
 
 
 def rings(cands):
