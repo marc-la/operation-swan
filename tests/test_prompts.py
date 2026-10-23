@@ -10,8 +10,10 @@ import re
 import sys
 import types
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
-from swan_bot import batch, content, experiment  # noqa: E402
+from swan_bot import batch, config, content, experiment  # noqa: E402
 from swan_bot.playbook import craft, voices  # noqa: E402
 
 try:
@@ -22,6 +24,14 @@ except ImportError:
 P = content.PERSONA_BY_KEY
 FRAME_KEYS = list(content.FRAMES)
 HEADLINE = "Schools brace for H2D2 rules"
+
+
+@pytest.fixture(autouse=True)
+def _tagged_posts(monkeypatch):
+    """The post anatomy below ends on one hashtag (the pre-todo/40 posts); the default without one is tested in
+    tests/test_post_tag_vote.py."""
+    monkeypatch.setattr(config, "POST_NO_TAG_WITH_VOTE", False)
+
 # Long, realistic character fields (like L3's drafts) to exercise clipping, the budget and the jab-timing filter.
 FAKE = types.SimpleNamespace(CHARACTERS={
     "lani": dict(

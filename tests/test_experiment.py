@@ -73,6 +73,7 @@ def test_length_bands_fit_the_quality_gate():
 
 def test_no_ask_drops_the_question(monkeypatch):
     monkeypatch.setattr(config, "PIN", {"ask_kind": "none"})
+    monkeypatch.setattr(config, "POST_NO_TAG_WITH_VOTE", False)       # the example post below carries its #VoteNo
     meta = {}
     u = content.reply_prompt("not sure about the mandate", "F1_blank_cheque", [], meta=meta)
     assert meta["ask_kind"] == "none" and content.REPLY_ASK_NONE in u          # replies end on the reason

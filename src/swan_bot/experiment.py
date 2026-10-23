@@ -8,9 +8,12 @@ The arm and the block id go into the draft's meta and from there into the action
 `experiments` collection (scripts/swan_sync_mongo.py) and the morning report (scripts/experiment_report.py).
 config.ARM_WEIGHTS can reweight arms (the bandit, from night 2); keep every arm ≥ 20% of uniform.
 """
+import datetime as dt
+import hashlib
 import random
 import subprocess
 import time
+from zoneinfo import ZoneInfo
 
 from . import config
 
@@ -98,6 +101,23 @@ def alternate(dim, arms, meta=None, rng=random):
     else:
         n = _TURN.setdefault(dim, rng.randrange(len(arms)))
         arm, _TURN[dim] = arms[n % len(arms)], n + 1
+    if meta is not None:
+        meta[dim] = arm
+    return arm
+
+
+def per_voice_day(dim, arms, voice, meta=None, t=None):
+    """The arm for this voice on this Sydney day (todo/40): a sha256 of dimension, voice and day picks one of `arms`
+    (sorted, so the dict's order does not matter), so the split is about 50/50 over voice-days, the same for every
+    draft of that voice that day, and the same after a restart. config.PIN still wins. Writes meta[dim] when given."""
+    pinned = getattr(config, "PIN", {}).get(dim)
+    if pinned in arms:
+        arm = pinned
+    else:
+        t = time.time() if t is None else t
+        day = dt.datetime.fromtimestamp(t, ZoneInfo(config.LOCAL_TZ)).date().isoformat()
+        arms = sorted(arms)
+        arm = arms[int(hashlib.sha256(f"{dim}:{voice}:{day}".encode()).hexdigest()[:8], 16) % len(arms)]
     if meta is not None:
         meta[dim] = arm
     return arm

@@ -64,8 +64,36 @@ REPLY_BACK_AMP = True               # with REPLY_BACK off: still answer citizens
 JOURNALIST_MAX_AGE_H = 12
 JOURNALIST_GAP_S = 45 * 60          # at most one journalist reply per 45 min
 JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
-POST_EVERY_N = 4                    # persona posts: at most 1 in every 4 writes (replies come first)
+POST_EVERY_N = 8                    # persona posts: at most 1 in every 8 writes (replies come first). todo/40, 24 Oct: was 4 (see below)
 IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothing better to write
+
+# ---- todo/40 hide-rate changes (2026-10-24, from docs/06-strategy/hide-risk-analysis-2026-10-23.md) ----
+# Each has a name here and a SWAN_<NAME> override in .env (STEALTH_ENV, read at the next restart): no deploy to roll one back.
+# A converted or newly activated voice's first top-level posts were hidden 5 of 15 times (33%) against 1 of 122 for original
+# voices (its replies were normal): for this many hours of voice life (stealth.voice_age_h) it makes no persona post, no
+# amplified post and no thread reply, replies only. 0 = off.
+NEW_VOICE_NO_POST_H = 24
+# The share of our last quality.PHRASE_WINDOW citizen-facing texts (replies, reply-backs, second voices) that may say "I'm voting No".
+# Was 0.15; "I'm voting No" in a reply is a hide tell (adjusted OR 2.5). 0 rejects it (quality.drop_vote cuts it, no LLM call).
+REPLY_VOTE_SHARE = 0.0
+# Standalone persona posts were hidden 4.1% of the time against 1.3% for the rest (adjusted OR ~10, 147 posts): POST_EVERY_N 4 -> 8
+# halves them, and a post no longer carries a hashtag together with a statement of the vote (the hashtag posts: 5 of 71 hidden).
+# A post must still say it is voting No (quality's no_vote_statement), so it is the hashtag that goes: content.post_prompt asks for
+# none and a draft that adds one has it cut (quality.fix, no LLM call). False = the old posts, hashtag and "I'm voting No" together.
+POST_NO_TAG_WITH_VOTE = True
+# The bot learned a voice was suspended from a 403 on its next action, 40 min to 12 h after the portal said so (22-23 Oct), and held
+# its slot (and a wasted write) meanwhile. The dashboard poller (swan-portal.timer, 15 min) already writes the portal's suspension
+# messages to data/portal.json (account_log.suspended); the writer reads that local file (no network call) every PORTAL_SYNC_S and
+# marks a voice or booster suspended when the file names its username AND account id. A file whose own `ts` is older than
+# PORTAL_MAX_AGE_S (the poller died, or its cookie expired), missing or malformed is ignored.
+PORTAL_SYNC = True
+PORTAL_SYNC_S = 120
+PORTAL_MAX_AGE_S = 3600
+PORTAL_FILE = DATA / "portal.json"
+# scripts/swan_watch.py looked at active voices only, so a voice suspended on its third hide (or reported) stopped being watched
+# while its last posts still awaited rulings (about 3 h after the write): hides were undercounted. It now keeps checking a voice that
+# is no longer active for this long after its last logged write, and logs those hides flagged after_suspension (no alert). 0 = off.
+WATCH_TAIL_S = 4 * 3600
 
 # ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
@@ -325,6 +353,12 @@ REPLY_STYLES = ["current"]
 # Second voice inside the citizen's session (step 7): sessions last 1-5 min, and the contribution pool counts only
 # posts read in the session where the change happens. Delays taken in turn, logged as sv_delay (was always 10-30 min).
 SECOND_VOICE_ARMS = {"fast": (60, 4 * 60), "slow": (10 * 60, 30 * 60)}
+# todo/40 (24 Oct): which arm a second voice follows a reply with is fixed per VOICE and Sydney DAY (experiment.per_voice_day: a
+# hash of voice + day, so about half the voice-days run each and a restart reshuffles nothing), not by turns that restart at random
+# on every deploy. The slow arm's first replies were hidden 2.1% against 0.8% (p = 0.001; one of ~60 fields scanned, no known
+# mechanism): read it out after ~3,000 writes, hides per text write by sv_delay. False = strict turns again (experiment.alternate).
+# Only with a pool of SECOND_FAST_MAX_N or fewer: above it the fast arm is off (stealth.second_voice_arms) and every arm is slow.
+SV_DELAY_PER_VOICE_DAY = True
 # One own like on our reply to a citizen (step 8, never tried before): on alternate replies a booster likes it
 # 1-4 min after it goes out (logged as own_like on the reply, and as a like with purpose reply_like). Drop it if
 # citizen likes and replies don't rise.
@@ -434,7 +468,9 @@ STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is 
 STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE", "VOICE_HOUR_CAP", "VOICE_WRITES_PER_H",
                "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
-               "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE")    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
+               "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
+               "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
+               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
@@ -640,6 +676,13 @@ def stealth_from_env(env=None):
             if raw not in ("1", "0", "true", "false", "on", "off", "yes", "no"):
                 raise SystemExit(f"SWAN_{name}={raw!r}: expected 1/0, true/false, on/off or yes/no")
             value = raw in ("1", "true", "on", "yes")
+        elif isinstance(current, float):                  # a share (todo/40: REPLY_VOTE_SHARE), 0 to 1
+            try:
+                value = float(raw)
+            except ValueError:
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected a number from 0 to 1") from None
+            if not 0.0 <= value <= 1.0:
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected a number from 0 to 1")
         else:
             try:
                 value = int(raw)

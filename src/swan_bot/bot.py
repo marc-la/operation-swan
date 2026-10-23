@@ -39,6 +39,7 @@ import capturethenarrative as ctn
 
 from . import batch, config, content, engage, experiment, feeds, humanize, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
+from .analysis import ts_of
 from .llm import Generator
 from .targeting import YES_REASON, agrees, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
 
@@ -146,6 +147,7 @@ class Accounts:
         self.open = {}
         self.next_register = 0.0
         self._hidden, self._hidden_mtime = {}, None
+        self._portal_next = 0.0      # todo/40: the next time sync_portal reads data/portal.json
         self.reserved = set()        # personas with a draft not sent yet (split loop): not picked for another
         created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records
                    if r.get("created") and r.get("role", "voice") != "booster"]
@@ -247,6 +249,44 @@ class Accounts:
     def parked(self, rec):
         """Too many hidden posts to write again (config.HIDDEN_STOP): a person decides what happens to it."""
         return self.hidden().get(rec["username"], 0) >= config.HIDDEN_STOP
+
+    def mark_suspended(self, rec, at=None):
+        """The one way a record becomes suspended: a 403 "suspended" on a write (bot.handle) or a like (amplify), or the
+        portal's own list (sync_portal). Keeps the first suspended_at (the pool's loss rate reads it) and saves.
+        at: an ISO time when the platform did it (the portal's), else now. The caller logs it."""
+        rec["status"] = "suspended"
+        rec.setdefault("suspended_at", at or now_iso())
+        self.save()
+
+    def sync_portal(self, log, t=None):
+        """todo/40: mark every active record the portal's suspension list names (data/portal.json, written by the dashboard
+        poller; watch.portal_suspended), at most every config.PORTAL_SYNC_S. A match needs the record's username AND
+        account id to equal the portal's: a similar name, or an id with another name, marks nothing. Returns the
+        usernames newly marked. The caller holds the bot's lock. Live only."""
+        t = time.time() if t is None else t
+        if not (self.live and config.PORTAL_SYNC) or t < self._portal_next:
+            return []
+        self._portal_next = t + config.PORTAL_SYNC_S
+        found = watch.portal_suspended(now=t)
+        marked = []
+        for rec in self.records:
+            ident = rec.get("account_id")
+            hit = found.get((rec.get("username"), ident)) if isinstance(ident, int) and not isinstance(ident, bool) else None
+            if not hit or rec.get("status", "active") != "active":
+                continue
+            when = dt.datetime.fromtimestamp(min(ts_of(hit["ts"]), t), dt.timezone.utc).isoformat()    # never in the future
+            self.mark_suspended(rec, at=when)
+            log({"act": "suspended", "username": rec["username"], "account_id": ident, "via": "portal",
+                 "portal_ts": hit["ts"], "why": hit["why"]})
+            marked.append(rec["username"])
+        return marked
+
+    def young(self, t=None):
+        """todo/40: the personas of voices in their first config.NEW_VOICE_NO_POST_H hours of voice life (stealth.new_voice).
+        They write replies only: the callers that pick a voice for a persona post, an amplified post or a thread reply
+        leave these out (exclude=)."""
+        t = time.time() if t is None else t
+        return {r["persona"] for r in self.voices() if stealth.new_voice(r, t)}
 
     def rest(self, rec, t=None, citizen=True):
         """Why this voice keeps from writing now under todo/31's human day ("voice_asleep", "voice_capped"), or None.
@@ -1347,6 +1387,16 @@ def main():
     write_rl = [None]                    # the write budget as our last write's headers reported it (todo/24)
     last_status = [0.0]
 
+    def portal_sync():
+        """todo/40: voices and boosters the portal says are suspended are marked at once (Accounts.sync_portal; a local
+        file, no network), instead of at their next 403, which came 40 min to 12 h late."""
+        try:
+            with mu:
+                for username in accounts.sync_portal(log):
+                    print(f"portal: @{username} is suspended")
+        except OSError as e:                          # a full disk must not stop the writer
+            print("portal sync failed:", e)
+
     def write_status():
         """data/status.json for the dashboard (todo/09), at most every 30 s. Counts and model names only, no secrets.
         The split loop adds each thread's heartbeat and the queues between them (todo/22)."""
@@ -1523,7 +1573,7 @@ def main():
         conv_arm = experiment.block("arm_conv")[1]      # todo/25 broadcast arm: a plain persona post ahead of citizens
         if (job is None and conv_arm == "broadcast" and (not amp or amp.paused())
                 and "post" not in pending and t - state.get("last_post", 0) > config.CONV_POST_GAP_S):
-            rec = accounts.eligible()
+            rec = accounts.eligible(exclude=accounts.young(t))          # todo/40: not a voice in its first hours
             if rec:
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
@@ -1608,7 +1658,7 @@ def main():
             if drafted is None:
                 picked = []
                 while len(picked) < desk.size:
-                    rec = accounts.assignable(exclude=desk.busy("post", picked))
+                    rec = accounts.assignable(exclude=desk.busy("post", picked) | accounts.young(t))    # todo/40
                     if not rec:
                         break
                     picked.append(dict(mode="post", rec=rec,
@@ -1619,7 +1669,7 @@ def main():
         if drafted:
             job = drafted["job"]
         if job is None and post_ok and not desk:
-            rec = accounts.eligible()
+            rec = accounts.eligible(exclude=accounts.young(t))                       # todo/40
             if rec:
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         if job is None:
@@ -1793,7 +1843,9 @@ def main():
                 state["engaged"][str(target["author_id"])] = time.time()     # ENGAGED_BONUS on their next post
             if (mode == "reply" and config.SECOND_VOICE and job.get("arm") != "firm_yes"     # no pile-on on a firm Yes
                     and job.get("group") != "off_topic"):                 # nor a referendum angle on their own topic
-                job["sv_delay"] = experiment.alternate("sv_delay", list(stealth.second_voice_arms()))    # todo/20 step 7 (todo/38: no 'fast' arm in a big pool)
+                arms = list(stealth.second_voice_arms())              # todo/20 step 7 (todo/38: no 'fast' arm in a big pool)
+                job["sv_delay"] = (experiment.per_voice_day("sv_delay", arms, rec["username"])    # todo/40: per voice-day
+                                   if config.SV_DELAY_PER_VOICE_DAY else experiment.alternate("sv_delay", arms))
                 state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_ARMS[job["sv_delay"]]),
                                                   sv_delay=job["sv_delay"],
                                                   post_id=target["post_id"], author=target["author_id"],
@@ -1875,9 +1927,7 @@ def main():
             msg = (e.message or "").lower()
             if e.status == 403 and "suspended" in msg and job:
                 with mu:
-                    job["rec"]["status"] = "suspended"
-                    job["rec"].setdefault("suspended_at", now_iso())      # todo/38: the pool's loss rate reads it
-                    accounts.save()
+                    accounts.mark_suspended(job["rec"])                  # todo/38: the pool's loss rate reads suspended_at
                 log({"act": "suspended", "username": job["rec"]["username"]})
             elif e.status == 403 and "locked" in msg:
                 wait(300)
@@ -1907,6 +1957,7 @@ def main():
         while time.time() < end and not (args.samples and stats["accepted"] >= args.samples):
             job = None
             write_status()
+            portal_sync()
             try:
                 register()
                 if not accounts.voices():
@@ -2107,6 +2158,7 @@ def main():
             beats["writer"] = time.time()
             check_workers()
             write_status()
+            portal_sync()
             job = None
             try:
                 register()

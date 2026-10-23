@@ -216,6 +216,7 @@ def test_agrees_reads_the_answer(monkeypatch):
 
 
 def test_agree_close_draft_passes_the_gate_and_the_vote_budget_falls_back_to_the_base_prompt(monkeypatch):
+    monkeypatch.setattr(config, "REPLY_VOTE_SHARE", 0.15)       # todo/40 zeroed the budget: this arm needs it put back (SWAN_REPLY_VOTE_SHARE)
     job, user = prompt_for("agree_close", AGREES, monkeypatch)
     job["meta"].update(llm_calls=0)
     # the vote phrase is in more than 15% of our last 100 citizen-facing texts: the closing draft is rejected

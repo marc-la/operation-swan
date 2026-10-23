@@ -24,7 +24,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import config
+from . import config, pool
 
 # every write a voice makes (the dashboard's WRITES), and the ones to a citizen that count for one voice per citizen
 WRITE_MODES = ("post", "reply", "reply_back", "second_voice", "journalist", "thread", "thread_answer", "repost")
@@ -83,6 +83,34 @@ def key_of(rec):
     if rec.get("converted"):
         return rec.get("username")
     return rec.get("persona") or rec.get("username")
+
+
+def voice_since(rec):
+    """Epoch seconds a voice's life began, for todo/40's first-hours rule, or None when the record says nothing (then it
+    counts as old, so a dry-run record or an old one without dates is never held back). A converted booster: converted.at.
+    A warmed account the pool activated: its pool note (act activate / convert) or ramp.from. Any other voice: created
+    (an original voice wrote within minutes of registering), so its first write is its first minutes."""
+    conv = rec.get("converted") or {}
+    note = rec.get("pool") or {}
+    for v in (conv.get("at"), note.get("at") if note.get("act") in ("activate", "convert") else None,
+              (rec.get("ramp") or {}).get("from"), rec.get("created")):
+        t = pool.parse_ts(v)
+        if t is not None:
+            return t
+    return None
+
+
+def voice_age_h(rec, t=None):
+    """Hours of voice life (voice_since), or None when unknown."""
+    since = voice_since(rec)
+    return None if since is None else ((time.time() if t is None else t) - since) / 3600
+
+
+def new_voice(rec, t=None):
+    """todo/40: still inside its first NEW_VOICE_NO_POST_H hours of voice life, so it writes replies only: no persona
+    post, amplified post or thread reply (a converted voice's first top-level posts were hidden 33% of the time)."""
+    age = voice_age_h(rec, t)
+    return bool(config.NEW_VOICE_NO_POST_H) and age is not None and age < config.NEW_VOICE_NO_POST_H
 
 
 def writes_in(rec, t, window):

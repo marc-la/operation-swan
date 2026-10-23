@@ -1,7 +1,10 @@
 """Hidden-post watch, hourly ring self-audit and hourly new-citizen watch (scripts/citizen_watch.py), read-only
 (swan_bot/watch.py says what and why). swan-watch.timer runs it every 20 min on EC2. New hidden posts, a ring alarm,
 a possible run of new citizens and the account-budget alert (todo/39: spare registrations on 31 Oct vs the reserve goal)
-go to logs/swan_watch.jsonl and the alert channel.
+go to logs/swan_watch.jsonl and the alert channel. todo/40: each hidden_post row also
+carries the write (id, kind, backend, age), its arms (sv_delay...), the voice and its card, and the time since its previous
+hide; a `suspension` row, once per account, gives the portal's suspension time and reason (from data/portal.json, no
+extra request); a voice that is no longer active is watched for 4 h after its last write.
 
     python scripts/swan_watch.py            # what the timer runs
     python scripts/swan_watch.py --dry      # print only: no state, log or alert
@@ -43,11 +46,13 @@ def main():
         if not args.dry:
             subprocess.run([str(ROOT / "deploy" / "alert.sh"), msg], check=False)
 
+    config.load_env()                                # SWAN_WATCH_TAIL_S from .env (todo/40), like the other scripts
     now = time.time()
     state = watch.load()
     hidden = state.setdefault("hidden", {})
+    hidden_at = state.setdefault("hidden_at", {})    # todo/40: {username: [epoch each hide was found]}, additive to "hidden"
+    seen_susp = state.setdefault("suspended_seen", {})
     records = json.loads(config.ACCOUNTS_FILE.read_text()) if config.ACCOUNTS_FILE.exists() else []   # ids only
-    voices = [r for r in records if r.get("role", "voice") != "booster" and r.get("status", "active") == "active"]
     scan = watch.LogScan()                           # one streamed pass: only live rows matter to anything below
     for r in jsonl.Reader(config.ACTIONS_LOG, contains='"live"'):
         scan.add(r)
@@ -55,19 +60,36 @@ def main():
         watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry)
         return
     social = ctn.LegitSocial()
+    portal = watch.portal_suspended(now=now)         # the poller's local file (no network): {(username, id): {ts, why}}
+    # active voices, and for WATCH_TAIL_S after its last write a voice that is not (todo/40: its last posts still await rulings)
+    voices = watch.watched(records, scan, now)
+    by_name = {r["username"]: r for r in voices}
 
     # ---- hidden posts, every run ----
     for username, pid in watch.find_hidden(social, voices, scan.logged_posts(now), hidden):
+        rec = by_name[username]
+        prev = hidden_at.setdefault(username, [])
+        extra = watch.hide_fields(rec, records, pid, scan, prev, portal.get((username, rec.get("account_id"))), now)
+        prev.append(now)
         hidden.setdefault(username, []).append(pid)
         n = len(hidden[username])
         actions = scan.actions[username]
         step = ("stops writing" if n >= config.HIDDEN_STOP else
                 "off amplified posts and threads" if n >= config.HIDDEN_OFF_AMP else "no change")
         record({"act": "hidden_post", "username": username, "post_id": pid, "hidden": n, "actions": actions,
-                "bot": step})
+                "bot": step, **extra})
+        if extra["after_suspension"]:
+            continue                                 # logged for the count; nothing left to decide for a suspended voice
         alert(f"@{username}: post #{pid} hidden by the moderator ({n} hidden, {actions} actions; 3 hidden suspend it, "
               f"and with 1+ hidden and 100+ actions one upheld account report does; posts of the last ~3 h are "
               f"still awaiting rulings, so more may follow). Bot: {step}. Decide whether this voice keeps writing.")
+    # ---- suspensions the portal states, once each (todo/40): when and why, and what led up to it ----
+    for rec in records:
+        hit = portal.get((rec.get("username"), rec.get("account_id")))      # both must match
+        if hit and rec["username"] not in seen_susp:
+            seen_susp[rec["username"]] = hit["ts"]
+            record({"act": "suspension", **watch.suspension_fields(rec, records, hit, hidden_at.get(rec["username"], []),
+                                                                  len(hidden.get(rec["username"], [])), scan)})
     state["checked"] = now
 
     # ---- ring self-audit, hourly ----

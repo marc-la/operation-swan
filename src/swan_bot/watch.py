@@ -7,6 +7,9 @@ A moderator-hidden post answers 404 "post not found" and drops out of its author
   hidden   every run: each voice's logged posts vs its post list; a missing one that answers 404 is hidden. The
            counts go to data/swan_watch.json, which the bot reads (Accounts.hidden): config.HIDDEN_OFF_AMP hidden
            posts take a voice off amplified posts and threads, config.HIDDEN_STOP stop it writing.
+           todo/40: a voice that is no longer active is still checked for config.WATCH_TAIL_S after its last write, and
+           each hide is logged with its write, arms, card and timing (hide_fields), each suspension with the portal's
+           time and reason (suspension_fields). Fields are only ever added to logs/swan_watch.jsonl and the state file.
   ring     hourly: scripts/ring_audit.py's score on our last amplified posts and on Trending (others' posts only).
            Alert when our median reaches the leaders' median: that's when Blue reporters rank us next to them.
   budget   every run: the account forecast (swan_bot/budget.py, todo/39) to config.BUDGET_END_DAY and an alert when the
@@ -17,11 +20,13 @@ import collections
 import datetime as dt
 import json
 import os
+import re
 import statistics
+import time
 
 import capturethenarrative as ctn
 
-from . import budget, config
+from . import budget, config, stealth
 from .analysis import ts_of
 
 WATCH_FILE = config.DATA / "swan_watch.json"
@@ -34,6 +39,11 @@ RING_OURS, RING_TRENDING = 8, 20
 RING_ALERT_GAP_S = 6 * 3600
 BUDGET_FILE = config.DATA / "swan_budget.json"      # the account-budget job's state: alerts sent, the last forecast (todo/39)
 PORTAL_FILE = config.DATA / "portal.json"           # swan_dash/portal.py: team-page counts and the suspension messages
+# What a hide record takes from the write's own action row (todo/40 item 5): the experiment arms, so a read-out can split hides by
+# arm (sv_delay above all), and who/what wrote it. Only keys the row holds are kept.
+HIDE_ARMS = ("sv_delay", "arm", "arm_conv", "arm_eng", "eng_cell", "group", "style", "own_like", "lever", "concede",
+             "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level", "block_id", "fresh",
+             "agree", "amp_level", "target_class")
 
 
 def load(path=None):
@@ -48,6 +58,36 @@ def save(state, path=None):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=1))
     os.replace(tmp, path)                     # the bot reads this file: never let it see half a write
+
+
+def portal_suspended(path=None, now=None, max_age_s=None):
+    """{(username, account_id): {"ts": iso, "why": str}} of the accounts the portal says are suspended, read from the
+    dashboard poller's file (config.PORTAL_FILE, account_log.suspended; no network). {} when the file is missing, not
+    JSON, not the shape the poller writes, or older than max_age_s by its own `ts` (config.PORTAL_MAX_AGE_S): a stale
+    file is no evidence. A malformed entry is skipped on its own. The key is the pair, so a caller matches on both."""
+    now = time.time() if now is None else now
+    max_age_s = config.PORTAL_MAX_AGE_S if max_age_s is None else max_age_s
+    try:
+        doc = json.loads((path or config.PORTAL_FILE).read_text())
+        read_at = ts_of(doc["ts"])
+        rows = doc["account_log"]["suspended"]
+        if not isinstance(rows, list):
+            return {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    if now - read_at > max_age_s:
+        return {}
+    out = {}
+    for r in rows:
+        try:
+            name, ident = r["username"], r["id"]
+            if not isinstance(name, str) or not name or isinstance(ident, bool) or int(ident) != ident:
+                continue
+            ts_of(r["ts"])
+            out[(name, int(ident))] = dict(ts=r["ts"], why=str(r.get("why") or ""))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return out
 
 
 def logged_posts(rows, now):
@@ -72,6 +112,7 @@ class LogScan:
 
     def __init__(self):
         self.first_ts = {}                                    # username -> {post_id: earliest ts of a write row}
+        self.ctx = {}                                         # post_id -> what its write row says (HIDE_ARMS, backend, draft_id...)
         self.actions = collections.Counter()                  # username -> live rows
         self.plans = collections.deque(maxlen=RING_OURS)      # post ids of the last RING_OURS live amp_plan rows
         self.text_ids = {}                                    # username -> post ids of live text writes (budget.TEXT_WRITES)
@@ -90,11 +131,18 @@ class LogScan:
             except (KeyError, ValueError):
                 return
             seen = self.first_ts.setdefault(r["username"], {})
+            if r["post_id"] not in seen:                      # the first row of a write is the write
+                self.ctx[r["post_id"]] = dict(act=r["act"], ts=ts, backend=r.get("backend"), draft_id=r.get("draft_id"),
+                                              length=r.get("length"),
+                                              arms={k: r[k] for k in HIDE_ARMS if r.get(k) is not None})
             seen[r["post_id"]] = min(ts, seen.get(r["post_id"], ts))
 
     def text_writes(self):
         """{username: live text writes}, as budget.text_writes_by_voice gives over the same rows."""
         return {u: len(ids) for u, ids in self.text_ids.items()}
+    def last_write(self, username):
+        """Epoch seconds of the voice's latest logged live write, or None."""
+        return max(self.first_ts.get(username, {}).values(), default=None)
 
     def logged_posts(self, now):
         """Same as logged_posts(rows, now): {username: {post_id, ...}} of our live writes old enough to be listed."""
@@ -106,8 +154,28 @@ class LogScan:
         return out
 
 
+def watched(records, scan, now, tail_s=None):
+    """The voices to check for hidden posts: every active one, and (todo/40 item 5) a voice that is no longer active for
+    config.WATCH_TAIL_S after its last logged write. A post is ruled hidden about 3 h after it is written, so a voice
+    suspended on its third hide, or on a report, still has posts awaiting rulings; the watch used to drop it at once."""
+    tail_s = config.WATCH_TAIL_S if tail_s is None else tail_s
+    out = []
+    for r in records:
+        if r.get("role", "voice") == "booster" or not r.get("username"):
+            continue
+        if r.get("status", "active") == "active":
+            out.append(r)
+            continue
+        last = scan.last_write(r["username"])
+        if tail_s and last is not None and now - last < tail_s:
+            out.append(r)
+    return out
+
+
 def find_hidden(social, voices, logged, known):
-    """New hidden posts as [(username, post_id)]: logged, not listed, and get_post answers 404."""
+    """New hidden posts as [(username, post_id)]: logged, not listed, and get_post answers 404. A voice that is no longer
+    active (the watch's tail) is only believed when its post list shows some of its logged posts: a suspended account's
+    list may be empty or gone, and then every post of it would read as hidden."""
     new, budget = [], MAX_CONFIRM
     for rec in voices:
         mine = logged.get(rec["username"], set()) - set(known.get(rec["username"], []))
@@ -117,6 +185,8 @@ def find_hidden(social, voices, logged, known):
             listed = {p["post_id"] for p in social.iterate(social.account_posts, rec["account_id"], max_items=3000)}
         except ctn.APIError as e:
             print(f"{rec['username']}: account_posts {e.status} {e.message}")
+            continue
+        if rec.get("status", "active") != "active" and not listed & logged.get(rec["username"], set()):
             continue
         for pid in sorted(mine - listed):
             if budget <= 0:
@@ -128,6 +198,66 @@ def find_hidden(social, voices, logged, known):
                 if e.status == 404:
                     new.append((rec["username"], pid))
     return new
+
+
+def _iso(t):
+    return None if t is None else dt.datetime.fromtimestamp(t, dt.timezone.utc).isoformat()
+
+
+def _hours(a, b):
+    """Hours from epoch a to b, 2 places, or None when either is missing."""
+    return None if a is None or b is None else round((b - a) / 3600, 2)
+
+
+def handle_shape(username):
+    """A handle's form with each run of letters as a and each run of digits as 9 ("ana_fifita_rn27" -> "a_a_a9")."""
+    return re.sub(r"\d+", "9", re.sub(r"[a-z]+", "a", (username or "").lower()))
+
+
+def card_info(rec, records):
+    """The attributes of a voice's card and account for a hide record (todo/40 item 5): role, age, place, handle shape,
+    original or converted, and re-use of the card. Nothing secret is read: no password, token or code. `records` is the
+    whole accounts list, only to count the other accounts that held the same card (all, and the suspended ones)."""
+    from . import content                           # only the watch's records need it; the bot has it loaded already
+    card = content.PERSONA_BY_KEY.get(rec.get("persona")) or {}
+    variant, conv = rec.get("variant") or {}, rec.get("converted") or {}
+    origin = "converted" if conv else "activated" if (rec.get("pool") or {}).get("act") == "activate" else "original"
+    others = [r for r in records if r is not rec and r.get("persona") and r.get("persona") == rec.get("persona")]
+    return dict(persona=rec.get("persona"), role=card.get("role"), place=card.get("place"),
+                age=variant.get("age") or card.get("age"), shape=variant.get("shape"),
+                handle=handle_shape(rec.get("username")), origin=origin, card_of=conv.get("card_of"),
+                card_reuse=len(others), card_reuse_suspended=sum(r.get("status") == "suspended" for r in others))
+
+
+def hide_fields(rec, records, post_id, scan, prev_hides, portal_hit, now):
+    """Fields added to a hidden_post record (todo/40 item 5), all additive: the write (its id, kind, backend, age when
+    found: the hide rate wants writes at least 3.6 h old), its arms (sv_delay and the rest), the voice (age at the write,
+    card attributes, origin, card re-use), the time since its previous hide, and the portal's suspension time and reason
+    when the portal already lists the voice. prev_hides: epoch times this voice's earlier hides were found (before this
+    one). after_suspension: the voice was no longer active (the watch's tail, WATCH_TAIL_S)."""
+    ctx = scan.ctx.get(post_id) or {}
+    wrote = ctx.get("ts")
+    return dict(write_id=ctx.get("draft_id"), write_act=ctx.get("act"), write_ts=_iso(wrote),
+                write_age_h=_hours(wrote, now), backend=ctx.get("backend"), length=ctx.get("length"),
+                arms=ctx.get("arms") or {}, voice_age_h=_hours(stealth.voice_since(rec), wrote),
+                card=card_info(rec, records), hides_before=len(prev_hides),
+                since_prev_hide_h=_hours(prev_hides[-1], now) if prev_hides else None,
+                after_suspension=rec.get("status", "active") != "active",
+                portal=dict(ts=portal_hit["ts"], why=portal_hit["why"]) if portal_hit else None)
+
+
+def suspension_fields(rec, records, portal_hit, hide_times, hidden_n, scan):
+    """The record of a voice's suspension as the portal states it (act "suspension", logged once per account), with what
+    led up to it: when and how many of its hides were found, its last write, its age and its card. hide_times: epoch
+    times its hides were found."""
+    at = ts_of(portal_hit["ts"])
+    last = scan.last_write(rec["username"])
+    return dict(username=rec["username"], account_id=rec.get("account_id"), role=rec.get("role", "voice"),
+                portal_ts=portal_hit["ts"], why=portal_hit["why"], hidden=hidden_n, hide_ts=[_iso(x) for x in hide_times],
+                since_first_hide_h=_hours(hide_times[0], at) if hide_times else None,
+                since_last_hide_h=_hours(hide_times[-1], at) if hide_times else None,
+                last_write_ts=_iso(last), last_write_to_suspension_h=_hours(last, at),
+                voice_age_h=_hours(stealth.voice_since(rec), at), card=card_info(rec, records))
 
 
 def ring_medians(ours, trending, score):

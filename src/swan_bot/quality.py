@@ -11,7 +11,7 @@ without it the built-in defaults below apply.
 """
 import re
 
-from . import content
+from . import config, content
 from . import facts as fact_store
 
 try:
@@ -388,7 +388,11 @@ def near_duplicate(body, kind, recent_texts=(), same=()):
 # clause that only states the vote, drop_vote). Posts must still say No (no_vote_statement) and are not budgeted.
 PHRASE_WINDOW = 100
 PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
-    "vote": (VOTES_NO, 0.15),
+    # todo/40 (24 Oct): 0.15 -> 0 for replies, reply-backs and second voices (the PERSONAL_KINDS this budget is applied to; posts and
+    # threads are not budgeted, and a post must still say No). A vote statement in a reply: adjusted OR 2.5, 19% hidden when one
+    # leaked after the gate (n = 26). The prompts already say not to (content.NO_VERDICT_RULE); this rejects the leak and
+    # drop_vote cuts it. The live value is config.REPLY_VOTE_SHARE (budget_share), so SWAN_REPLY_VOTE_SHARE=0.15 undoes it.
+    "vote": (VOTES_NO, config.REPLY_VOTE_SHARE),
     "binds_us": (re.compile(r"\bbind(s|ing)? (us|you|everyone|kingstonia)\b", re.I), 0.10),
     "no_review": (re.compile(r"\bno\b[^.?!]{0,25}\breview\b", re.I), 0.10),      # "no end date or review" too
     "end_date": (re.compile(r"\bend dates?\b", re.I), 0.10),
@@ -411,6 +415,12 @@ PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
 }
 TELL_KEYS = ("switch_close", "switch_story", "concede_open")      # share 0: never, whatever the window holds
 PHRASE_PREFIX = "phrase_"
+
+
+def budget_share(k):
+    """The share of the window key k may take: PHRASE_BUDGETS', except "vote", read live from config.REPLY_VOTE_SHARE
+    (todo/40) so a .env override reaches a bot that imported this module before the override was applied."""
+    return config.REPLY_VOTE_SHARE if k == "vote" else PHRASE_BUDGETS[k][1]
 
 
 def phrases_in(text):
@@ -465,7 +475,7 @@ def over_budget(text, window, exempt=(), echo=()):
     for k in said:
         if k in exempt:
             continue
-        share = PHRASE_BUDGETS[k][1] * (ECHO_CEILING if k in echo and k in ECHO_KEYS else 1)
+        share = budget_share(k) * (ECHO_CEILING if k in echo and k in ECHO_KEYS else 1)
         if _used(k, last) + 1 > share * PHRASE_WINDOW:
             out.append(k)
     return out
@@ -480,7 +490,7 @@ def spent_phrases(window, target_text=""):
     last = list(window)[-(PHRASE_WINDOW - 1):]
     echo = echoed(target_text)
     return [(k, PHRASE_LABELS[k]) for k in ECHO_KEYS if k in PHRASE_LABELS
-            and _used(k, last) + 1 > PHRASE_BUDGETS[k][1] * PHRASE_WINDOW * (ECHO_CEILING if k in echo else 1)]
+            and _used(k, last) + 1 > budget_share(k) * PHRASE_WINDOW * (ECHO_CEILING if k in echo else 1)]
 
 
 PHRASE_LABELS = {"binds_us": "binds us", "no_review": "no review", "end_date": "end date",
@@ -564,6 +574,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     why = tag_problem(t, kind)
     if why:
         return None, why
+    if kind == "post" and config.POST_NO_TAG_WITH_VOTE and TAG.search(t) and VOTES_NO.search(t):
+        return None, "tag_with_vote"                  # todo/40: a hashtag and "I'm voting No" together; fix() cuts the tag
     if any(ord(ch) > 0x2600 for ch in t):        # emoji and other symbols
         return None, "emoji"
     if not specific and VOTE_TALK.search(t) and not VOTE_TALK.search(target_text or ""):
@@ -748,6 +760,9 @@ def fix(text, why, kind, recent=(), same=()):
     why = why or ""
     if why == "llm_artefact":
         return strip_filler(text)
+    if why == "tag_with_vote":                     # todo/40: the post keeps its statement of the vote and loses the hashtag
+        out = strip_tag(normalise(text)).strip()
+        return out if out != normalise(text) else None
     if why == "near_duplicate" and kind in PERSONAL_KINDS:
         return drop_clash(text, kind, recent, same)
     if why.startswith("length_") and int(why.split("_")[1]) > LENGTHS[kind][1]:
@@ -913,6 +928,8 @@ def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), s
         return f"Cut {quoted} and say your own point straight out; change nothing else."
     if why == "no_vote_statement":
         return "Say plainly that you're voting No."
+    if why == "tag_with_vote":
+        return "Remove the hashtag: end on your question, with no hashtag. Change nothing else."
     if why.startswith(PHRASE_PREFIX):              # todo/27: name each worn phrase as the draft has it
         keys = why[len(PHRASE_PREFIX):].split("+")
         said = [m.group(0) for k in keys if k in PHRASE_BUDGETS

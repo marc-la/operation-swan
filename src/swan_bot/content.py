@@ -738,7 +738,7 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
     pillar = PILLARS.get(f["pillar"]) or _PILLARS_V1[PILLAR_OF[frame_key]]
     stakes = usable(f["stakes"])
     stake = random.choice(stakes) if stakes else None
-    tag = random.choice(pillar["tags"])
+    tag = None if config.POST_NO_TAG_WITH_VOTE else random.choice(pillar["tags"])     # todo/40: no hashtag beside "I'm voting No"
     arc = (persona or {}).get("arc") if key == "conversion" else None
     arc = None if fact_store.paused_in(arc) else arc
     asks = [a for a in f["asks"] if not fact_store.paused_in(a) and not advocacy(a)]
@@ -809,7 +809,8 @@ def post_prompt(frame_key, headline=None, shape=None, ask=False, meta=None, pers
         "Then grant the other side in 8 words or fewer, without repeating their reasons." if concede else
         line or ("" if key in NO_FACT_SHAPES else "Use one fact, in plain words. Appeal to feeling, not to the fine print."),
         *closing,
-        f"Then finish with exactly one hashtag, {tag}, and nothing after it.",
+        f"Then finish with exactly one hashtag, {tag}, and nothing after it." if tag else
+        "No hashtag: the post ends on its last sentence.",
     ]
     _fill(meta, frame=frame_key, shape=key, hook=HOOKS.get(key, key), pillar=f["pillar"], stake=stake, tag=tag,
           slogan=slogan, ask=question, closing_question=close == "question_last", **arms)

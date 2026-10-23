@@ -193,7 +193,9 @@ class Amplifier:
         config.AMP_AUTHOR_EXPLORE of the time."""
         hidden = self.accounts.hidden()
         reserved = getattr(self.accounts, "reserved", ())     # a draft of theirs waits to be sent (bot.py, todo/22)
+        young = self.accounts.young()                         # todo/40: replies only in a voice's first hours
         ready = [r for r in self.accounts.voices() if self.accounts.ready(r, citizen=False) and r["persona"] not in reserved
+                 and r["persona"] not in young
                  and hidden.get(r["username"], 0) < config.HIDDEN_OFF_AMP]          # a voice with a hidden post stays off
         if not ready:
             return None
@@ -290,6 +292,8 @@ class Amplifier:
                 hidden = self.accounts.hidden()
                 busy |= {r["persona"] for r in self.accounts.voices()
                          if hidden.get(r["username"], 0) >= config.HIDDEN_OFF_AMP}
+                if th["kind"] == "thread":
+                    busy |= self.accounts.young(t)                    # todo/40: no thread reply in a voice's first hours
                 rec = self.accounts.eligible(frame, exclude={th["author"], *busy}, gap=gap)
                 if not rec:
                     continue
@@ -414,9 +418,7 @@ class Amplifier:
             self.liked(rec["username"]).append(pid)            # never retry a failed like (failed-request budget)
             if e.status in (403, 404, 410) and not filler:
                 if "suspend" in (e.message or "").lower():
-                    rec["status"] = "suspended"
-                    rec.setdefault("suspended_at", dt.datetime.now(dt.timezone.utc).isoformat())    # todo/38 loss rate
-                    self.accounts.save()
+                    self.accounts.mark_suspended(rec)                 # todo/38 loss rate
                     self.log({"act": "suspended", "username": rec["username"]})
                 else:
                     self.drop_post(pid, f"like {e.status}")
