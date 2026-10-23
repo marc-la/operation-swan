@@ -180,16 +180,17 @@ def post_ev(age_min, trending, strong=1.0, n=0, scale=1.0, pg=None):
     return (MODERATOR_RIGHT if pg is None else 1 - pg) * (FIRST * pf + LATER * (1 - pf)) * rate(n) * strong
 
 
-# ---- lock economics (todo/26, recalibrated todo/28): P(genuine) by evidence class ----
-# Every genuine ruling locks ALL our reporting for 6 h. Measured over every ruling to 22 Oct 10:00 UTC (86 post
-# rulings, blue-reporting §8): like ring alone 2 genuine of 20 (10%, the scoring page's "1 in 10"); reply rings 2 of
-# 56 (3.6%; it was 0 of 28 at 05:00, which looked like 2%); like ring + early ring 0 of 10. Neither an id run of 10+
-# (3 of 38 with one, 1 of 48 without) nor an author already hidden (1 of 8) makes a report safer, so they don't count.
-PG_BASE = 0.10                    # a like ring alone: 2 of 20
-PG_FACTORS = dict(reply_ring=0.4,     # replies in lockstep: 2 of 56, so about 4%
-                  second_class=0.7,   # like ring plus early ring (repeat accounts): 0 of 10, so unproven
+# ---- lock economics (todo/26, todo/28, flattened 23 Oct): P(genuine) is the moderator's error, not our class ----
+# Every genuine ruling locks ALL our reporting for 6 h. Over every post ruling to 23 Oct 09:00 UTC (100): 7 genuine.
+# Reply rings 5 of 64 (8%), like rings alone 2 of 20 (10%), like ring + early ring 0 of 10. The 22 Oct estimate of 4%
+# for reply rings (2 of 56) was a small-sample low: 3 of the next 14 came back genuine. No class separates risk beyond
+# the scoring page's "1 in 10", so one rate covers them all. What did separate it is the post's age at filing:
+# <= 60 min 3 of 76 (4%), over 60 min 4 of 24 (17%, Fisher p = 0.055), so service.POST_MAX_AGE_MIN keeps old posts out.
+PG_BASE = 0.08                    # all classes: 7 of 100
+PG_FACTORS = dict(reply_ring=1.0,     # 5 of 64: no safer than a like ring
+                  second_class=1.0,   # like ring plus early ring: 0 of 10, too few to credit
                   author_hidden=1.0,  # the moderator already hid a post by this author: 1 of 8, no safer
-                  weak=1.4)           # a small, slow like ring (< 30 likes, no 60-s burst of 8): #155963, genuine
+                  weak=1.0)           # a small, slow like ring: 1 case (#155963), no support
 PG_RANGE = (0.005, 0.3)
 
 
@@ -215,8 +216,12 @@ def p_genuine(a, cls, author_hidden=False):
     return round(min(PG_RANGE[1], max(PG_RANGE[0], p)), 3)
 
 
+ACCOUNT_UPHELD = 0.5              # share of account reports upheld: 7 of 13 on 22 Oct, 32 of 67 on 23 Oct (the rest
+                                  # are dismissed: no points and no lock)
+
+
 def account_ev(n_today):
-    return 0.95 * ACCOUNT * rate(n_today)      # rule-based ruling: no moderator error, no lock if dismissed
+    return ACCOUNT_UPHELD * ACCOUNT * rate(n_today)
 
 
 # ---- measuring first: the portal's points log says which awards paid as first reporter ----

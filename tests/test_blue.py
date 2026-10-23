@@ -126,16 +126,16 @@ def test_mode_gate(tmp_path, monkeypatch):
     assert b.mode()[0] == "off"
 
 
-def test_account_leads_fill_every_slot_without_post_reports(tmp_path, monkeypatch):
+def test_a_better_post_report_takes_a_slot_before_an_account_lead(tmp_path, monkeypatch):
     b = blue(tmp_path, monkeypatch)
     b.live = True
     filed = []
     monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
-    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 2)}
-    ranked = [dict(key="p1", kind="post", ev=20), dict(key="a1", kind="account", ev=14),
-              dict(key="a2", kind="account", ev=14)]
+    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 3)}
+    ranked = [dict(key="p1", kind="post", ev=20, pg=0.08, age_min=10), dict(key="a1", kind="account", ev=7.5),
+              dict(key="a2", kind="account", ev=7.5)]
     b.fill(ranked, "auto")
-    assert filed == ["a1", "a2"]             # 2 free slots, 2 account leads: the post waits
+    assert filed == ["p1", "a1", "a2"]       # 3 free slots: the 20-point post first, then the accounts
 
 
 def test_approval_rows_are_one_per_ring():
@@ -187,14 +187,15 @@ def test_known_ring_author_is_audited_early_and_compared(tmp_path, monkeypatch):
     assert p["audit"]["overlap"] == 12 and p["classes"] == ["early_ring"]
 
 
-def test_stale_posts_leave_the_last_slots_for_fresh_ones(tmp_path, monkeypatch):
+def test_posts_over_an_hour_old_are_not_post_reported(tmp_path, monkeypatch):
     b = blue(tmp_path, monkeypatch)
+    b.live = True
     filed = []
     monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
-    b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=time.time()) for i in range(S.CAP - 6)}
-    ranked = [dict(key=f"s{i}", kind="post", age_min=120, ev=12, pg=0.02) for i in range(4)]
+    ranked = [dict(key="old", kind="post", age_min=S.POST_MAX_AGE_MIN + 1, ev=20, pg=0.08),
+              dict(key="new", kind="post", age_min=S.POST_MAX_AGE_MIN, ev=20, pg=0.08)]
     b.fill(ranked, "auto")
-    assert filed == ["s0"]                       # 6 free: one stale fills, the last 5 wait for fresh ring posts
+    assert filed == ["new"]
 
 
 def test_first_reporter_share_from_the_portal():
@@ -279,42 +280,47 @@ def test_dashboard_day_row_adds_up_with_accounts_and_pending():
 
 
 # ---- todo/26: lock economics, more teams, wider discovery ----
-def test_p_genuine_by_evidence_class():
+def test_p_genuine_is_one_rate_for_every_class():
     like = audit(team_replies=0, reply_authors=0, run=3)
     assert ev.p_genuine(like, ["like_ring"]) == ev.PG_BASE
-    assert ev.p_genuine(audit(), ["reply_ring", "like_ring"]) < ev.p_genuine(like, ["like_ring", "early_ring"]) \
-        < ev.p_genuine(like, ["like_ring"])
-    assert ev.p_genuine(like, ["like_ring"], author_hidden=True) == ev.PG_BASE     # 1 of 8: no safer (22 Oct)
-    weak = audit(team_likes=22, likes=22, burst60=3, team_replies=0, reply_authors=0, run=3)   # #155963, 21 Oct
-    assert ev.p_genuine(weak, ["like_ring"]) > ev.PG_BASE
+    assert ev.p_genuine(audit(), ["reply_ring", "like_ring"]) == ev.PG_BASE      # 5 of 64 on 23 Oct: no safer
+    assert ev.p_genuine(like, ["like_ring", "early_ring"]) == ev.PG_BASE
+    assert ev.p_genuine(like, ["like_ring"], author_hidden=True) == ev.PG_BASE
     assert ev.post_ev(10, False, pg=0.04) > ev.post_ev(10, False, pg=0.14)
 
 
-def test_no_lock_mode_files_accounts_then_only_the_lowest_risk_posts(tmp_path, monkeypatch):
+def test_full_rate_posts_and_accounts_file_in_one_ranking_by_value(tmp_path, monkeypatch):
     b = blue(tmp_path, monkeypatch)
     b.live = True
     filed = []
     monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
-    monkeypatch.delenv("BLUE_POST_PG_MAX", raising=False)
-    monkeypatch.delenv("BLUE_PG_PER_DAY", raising=False)
-    like = [dict(key=f"l{i}", kind="post", ev=20, pg=0.1, age_min=10) for i in range(3)]       # like ring alone
-    reply = [dict(key=f"r{i}", kind="post", ev=18, pg=0.02, age_min=10) for i in range(8)]     # reply ring
-    cheap = [dict(key="c0", kind="post", ev=2.3, pg=0.02, age_min=10)]                          # a 10%-rate report
-    b.fill(like + reply + cheap + [dict(key="a1", kind="account", ev=14, pg=0.0)], "auto")
-    assert filed == ["a1", "r0", "r1", "r2", "r3", "r4"]      # the bucket holds 0.1: five 2% reports, then accounts
-    assert b.bucket()["level"] < 0.02
+    for k in ("BLUE_POST_PG_MAX", "BLUE_PG_PER_DAY"):
+        monkeypatch.delenv(k, raising=False)
+    pg = ev.PG_BASE
+    like = dict(key="l0", kind="post", ev=21, pg=pg, age_min=10)               # any class files now
+    reply = dict(key="r0", kind="post", ev=20, pg=pg, age_min=45)
+    old = dict(key="o0", kind="post", ev=20, pg=pg, age_min=61)                # over an hour: never a post report
+    half = dict(key="h0", kind="post", ev=10, pg=pg, age_min=10)               # a half-rate report: not worth a lock
+    acct = dict(key="a1", kind="account", ev=7.5, pg=0.0)
+    b.fill([like, reply, old, half, acct], "auto")
+    assert filed == ["l0", "r0", "a1"]                       # ranked by value: the 21 and 20 before the 7.5
+    assert ev.account_ev(0) == ev.ACCOUNT_UPHELD * ev.ACCOUNT
+
+
+def test_risk_bucket_and_class_gate_still_work_when_set(tmp_path, monkeypatch):
+    b = blue(tmp_path, monkeypatch)
+    b.live = True
+    filed = []
+    monkeypatch.setattr(b, "file", lambda c: filed.append(c["key"]) or True)
+    monkeypatch.setenv("BLUE_PG_PER_DAY", "0.4")
+    reply = [dict(key=f"r{i}", kind="post", ev=18, pg=0.02, age_min=10) for i in range(8)]
+    b.fill(reply, "auto")
+    assert filed == ["r0", "r1", "r2", "r3", "r4"]           # the bucket holds 0.1: five 2% reports
+    monkeypatch.setenv("BLUE_POST_PG_MAX", "0.01")
     filed.clear()
-    monkeypatch.setattr(S, "now", lambda: time.time() + 6 * 3600)          # a quarter of a day later: full again
-    b.fill(reply[5:] + [dict(key="a2", kind="account", ev=14, pg=0.0)], "auto")
-    assert filed == ["a2", "r5", "r6", "r7"]
-    monkeypatch.setenv("BLUE_POST_PG_MAX", "0.1")                           # a setting in .env on the box
-    mid = [dict(key="m0", kind="post", ev=20, pg=0.05, age_min=10)]
-    filed.clear()
-    b.fill(mid, "auto")
-    assert filed == []                                     # allowed now, but 0.04 left in the bucket: it waits
-    monkeypatch.setattr(S, "now", lambda: time.time() + 12 * 3600)
-    b.fill(like + mid, "auto")
-    assert filed == ["m0"]                                 # a 10% report risks more than its 20 points are worth
+    monkeypatch.setattr(S, "now", lambda: time.time() + 6 * 3600)
+    b.fill(reply[5:], "auto")
+    assert filed == []                                       # 2% is over the class gate
 
 
 def test_ranking_puts_new_clusters_first_at_equal_value(tmp_path, monkeypatch):

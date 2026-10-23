@@ -175,3 +175,30 @@ Assumptions: ~50 account leads a day that reach 100 actions (55 found in the fir
   - *cadence*: active in 20+ of the last 24 hours with 40+ posts seen, or 20+ posts seen inside one hour (Latest is sampled, so lower bounds);
   - *registration block*: inside a one-wording group, 5+ accounts created within 30 minutes of each other (the platform's `created_at`), and the username shape most share (`mira_solis_kc` → `w_w_2`).
   A flagged account is watched for 3 days: its recent posts are checked for a hide (30 per harvest round, each once per 2 h). A hidden one makes it an account lead (`"act": "lead", "by": "watch"`); it still only files at 100+ actions, and its detail states the detector's measured numbers instead of the ring clause. `blue_status.json` → `detect.by.<kind>` = accounts watched, with a hidden post, reported (the support each detector earns).
+
+## 9. The no-lock mode relaxed (Marc, 23 Oct 2026)
+
+The no-lock mode (§8) cost more than it saved. From the 23 Oct 09:00 UTC data (`logs/blue_reports.jsonl`, `data/portal.json`):
+
+| | 22 Oct | 23 Oct (20 h of 24) |
+|---|---|---|
+| Filed | 99 (86 post) | 81 (14 post, 67 account) |
+| First-report awards paid | 78 | 9 |
+| Upheld account reports | 7 | 32 of 67 ruled (about half dismissed), mostly ×0.5 |
+| Genuine post rulings | 4 | 3 of 14 |
+| Hours locked | 12.5 | 10.7 |
+| Blue points (estimated from award counts; the portal log mixes them into hourly rows) | about 1,200 | about 500 |
+
+- **Class doesn't separate risk.** All 100 post rulings: 7 genuine. Reply rings 5 of 64 (8%), like rings 2 of 20, like ring + early ring 0 of 10. The 4% for reply rings (§8) was a small-sample low. `PG_BASE` is now 0.08 for every class.
+- **A lock only stops new filings.** Pending reports still pay. The cap on points is each target team's 5 full-rate awards a day (4 of 12 clusters still at full rate on 23 Oct), so more volume against the same teams pays 10%.
+- **Accounts first starved the posts.** Account leads filled the 30 slots (67 of 81 reports) at about 7 points each (15 × 0.5 upheld, mostly at half rate) while 25-point post reports waited. Posts and accounts now share one ranking by expected value (`ACCOUNT_UPHELD` = 0.5).
+- **Post age.** Filed at 60 min or under: 3 genuine of 76. Over 60 min: 4 of 24 (Fisher p = 0.055; suggestive, not proven). Three of 23 Oct's genuine rulings were posts 67–131 min old, filed the minute the last lock ended.
+
+What changed (`service.py`, `evidence.py`):
+1. The class gate (`BLUE_POST_PG_MAX`) and the daily risk bucket (`BLUE_PG_PER_DAY`) are off by default. They still work when set in `.env`. **The box's `.env` had `BLUE_PG_PER_DAY=1.0`: remove it, or the bucket stays on.**
+2. A post is post-reported only up to `POST_MAX_AGE_MIN` = 60 min old. The fresh-reserve rule is gone (nothing old files).
+3. "Worth the lock": ev ≥ pg × `LOCK_COST`, with pg 8% and `LOCK_COST` 150 (was 300): a fresh full-rate report (about 20) files, a half-rate one (about 10) doesn't.
+4. Front-loading at the Sydney reset needed no new code: `counts_today` counts by the day a report is *ruled* (open question B.10: assumed, not confirmed), so from 3 h before Sydney midnight (6pm Perth) every team is back at full rate for what we file. With the gates off, the fill takes the 30 slots with the best fresh full-rate reports as soon as we are unlocked.
+5. Widening for new teams: unchanged. Rank spreading (`SPREAD`) already puts new clusters first, and the account-lead detectors (§8) are the route for rings that are not ring posts.
+
+To check on 24 Oct against the table above: post reports filed, genuine per post ruling (expect about 8%), hours locked, first-report awards, and whether `ready_ok` is now close to `ready`.

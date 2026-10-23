@@ -5,12 +5,13 @@ lock after any "genuine" ruling (about 1 in 10 for a like ring alone). Points co
 the moment we may, with the highest expected value first:
   post report    (1 - P(genuine)) x (25 if we are first, else 5) x the team's daily rate (5 full, 5 half, then 10%)
   account report 15 x that rate, near-certain, no lock risk (the account already has a hidden post and 100+ actions)
-The no-lock mode (todo/28, the default): account reports always first; post reports only at P(genuine) <= 4% (reply
-rings, the safest class measured), worth the lock they risk, and within a daily risk budget (policy(), .env).
+Post and account reports share one ranking by expected value (23 Oct: account-first filled the 30 slots with
+~7-point reports and left the 25-point post reports waiting). A post report must be under POST_MAX_AGE_MIN old and
+worth the lock it risks; no class gate and no daily risk budget (both off by default, policy(), .env).
 Being first pays 25 against 5 (by order, not time; nobody can see others' reports), so we push the odds:
   - ring authors' timelines are polled every 3 min, and a known ring author's new post is audited at 4, 12, 45 min;
     an early ring (most of its likers ran that author's earlier ring) qualifies before the ring is big
-  - the last FRESH_RESERVE free slots are kept for posts under an hour old
+  - posts over an hour old are not post-reported at all (17% genuine against 4%, and they pay 5, not 25)
   - the portal log says which awards paid as first; that share against our prediction scales every estimate
 
 Modes: auto from the start; approve (files only posts a person approved, scripts/blue.sh approve ...) once 10+
@@ -68,8 +69,7 @@ APPROVAL_TTL_S = 6 * 3600
 MAX_POST_AGE_H = 12           # older ring posts have almost surely been reported by someone
 AUDITS_MIN = (10, 45)         # audit a post at these ages (min) until it shows ring evidence
 KNOWN_AUDITS_MIN = (4, 12, 45)  # a known ring author's post: earlier, so we report it before other teams do
-FRESH_MIN = 60                # a post report older than this is "stale" (the first-reporter odds drop)...
-FRESH_RESERVE = 5             # ...and may not take the last this-many free slots: they wait for fresh ring posts
+POST_MAX_AGE_MIN = 60         # a post report is filed only under this age: over it 4 of 24 came back genuine, 3 of 76 under
 CALIBRATE_AFTER = 8           # paid post awards in the portal log before we trust our first-reporter share
 PORTAL_FILE = config.DATA / "portal.json"           # swan_dash/portal.py writes the points log here
 # The bot is the team's Latest reader (todo/21): it writes its pages here, {"read_at", "posts", "trending": {...}}.
@@ -87,19 +87,20 @@ AUDITS_PER_TICK = 15
 HARVEST_CHECKS = 80           # ring posts and ring replies checked for someone else's hide per harvest round
 HIDE_RECHECK_S = 2 * 3600     # a post checked for a hide isn't checked again for this long
 FEED_RESERVE = 4              # leave the bot this many feed calls of the team's 10/min
-# todo/28, the no-lock mode (the default): a genuine ruling locks ALL our reporting for 6 h, and the moderator's error,
-# not our evidence, sets the floor. Account reports always go first (a dismissed one can't lock us). A post report
-# files only when
-#  - its P(genuine) (evidence.p_genuine) is at most BLUE_POST_PG_MAX: 4% lets reply rings through (2 genuine of 56
-#    to 22 Oct 10:00 UTC; no class reaches 1-2%) and keeps every like ring out (2 of 20);
-#  - its expected value pays for the lock it risks: ev >= pg x LOCK_COST (a 10%-rate report never does); and
-#  - the risk bucket holds its P(genuine): it refills BLUE_PG_PER_DAY a day (expected genuine rulings a day; 0.4 is
-#    about 3 a week, todo/28's bar) and holds a quarter of that, so post reports spread over the day.
-# BLUE_POST_PG_MAX and BLUE_PG_PER_DAY can be set in .env on the box (blue-reporting §8 has what each costs).
-PG_MAX = 0.04
-PG_PER_DAY = 0.4
+# todo/28, the no-lock mode, relaxed 23 Oct: the moderator's error (7 genuine of 100 post rulings, whatever the class)
+# sets the lock rate, and the class gate plus the risk bucket cut post reports 6x (86 -> 14 a day) and Blue points by
+# half without cutting locked hours (12.5 -> 10.7). A lock only stops new filings; pending reports still pay, and what
+# limits points is each target team's 5 full-rate awards a day. So a post report files when
+#  - it is under POST_MAX_AGE_MIN old, and
+#  - its expected value pays for the lock it risks: ev >= pg x LOCK_COST (full-rate reports only: a half-rate one never
+#    does, a fresh full-rate one is ~20 against 12), and
+#  - (off by default) its P(genuine) is at most BLUE_POST_PG_MAX and the risk bucket holds it (BLUE_PG_PER_DAY a day).
+# Rates counted by the Sydney day a report is *ruled* (counts_today), so from 3 h before the Sydney midnight (6pm
+# Perth) every team is back at full rate for what we file: the reset's reports go out as soon as we are unlocked.
+PG_MAX = 1.0
+PG_PER_DAY = 0.0              # 0 = no risk bucket
 PG_BURST_DAYS = 0.25          # the bucket holds this many days of PG_PER_DAY
-LOCK_COST = 300               # points a 6 h lock costs: a quarter of a ~1,200-point Blue day (§2)
+LOCK_COST = 150               # points a 6 h lock costs: only the fills we can't make before a team's full-rate awards run out
 # todo/26, more teams at full rate: while a cluster is under its 5 full-rate awards today, each award already counted
 # against it lowers its next report's rank by this share, so new clusters go first and fresh ring posts of the busy
 # ones still find a full-rate award later in the day
@@ -527,17 +528,16 @@ class Blue:
         return b
 
     def spent(self, c):
-        if c["kind"] == "post":
+        if c["kind"] == "post" and policy()["per_day"] > 0:
             self.bucket()["level"] -= c.get("pg", ev.PG_BASE)
 
     def fileable(self, ranked):
-        """What fill() may file, in order: account leads first (a dismissed account report pays nothing but can't
-        lock us), then the post reports the no-lock mode allows (P(genuine) at most BLUE_POST_PG_MAX, worth the
-        lock they risk). The risk bucket is fill()'s to check."""
+        """What fill() may file: the account leads and the post reports that are young enough, worth the lock they
+        risk (and under BLUE_POST_PG_MAX if set). fill() merges them in ranking order; the risk bucket is its to check."""
         pg_max = policy()["pg_max"]
         accounts = [c for c in ranked if c["kind"] == "account"]
-        posts = [c for c in ranked if c["kind"] == "post" and c.get("pg", ev.PG_BASE) <= pg_max
-                 and c.get("ev", 0) >= c.get("pg", ev.PG_BASE) * LOCK_COST]
+        posts = [c for c in ranked if c["kind"] == "post" and c.get("age_min", 0) <= POST_MAX_AGE_MIN
+                 and c.get("pg", ev.PG_BASE) <= pg_max and c.get("ev", 0) >= c.get("pg", ev.PG_BASE) * LOCK_COST]
         return accounts, posts
 
     def fill(self, ranked, mode):
@@ -562,7 +562,8 @@ class Blue:
         if free <= 0 and not confirm:         # full by our ledger, which can't see account rulings: one try a hold
             self.s["cap_hold"] = now() + CAP_HOLD_S
             free = 1
-        ranked = accounts if len(accounts) >= free else accounts + posts   # enough account leads: no lock risk
+        fit = {id(c) for c in accounts + posts}
+        ranked = [c for c in ranked if id(c) in fit]      # one ranking by expected value, accounts and posts together
         for c in ranked:
             if self.locked() and not confirm:
                 break
@@ -570,10 +571,8 @@ class Blue:
                 continue                      # full (account reports go beyond it once the probe says they may)
             if c["kind"] == "post" and post_room <= 0:
                 continue                      # the last slot is left to account reports
-            if c["kind"] == "post" and self.bucket()["level"] < c.get("pg", ev.PG_BASE):
-                continue                      # the day's lock risk is spent: accounts only until it refills
-            if c["kind"] == "post" and c.get("age_min", 0) > FRESH_MIN and free <= FRESH_RESERVE:
-                continue                      # keep the last slots for fresh ring posts, where we can be first
+            if c["kind"] == "post" and policy()["per_day"] > 0 and self.bucket()["level"] < c.get("pg", ev.PG_BASE):
+                continue                      # the risk bucket (if set) is spent: accounts only until it refills
             if mode == "approve" and c["kind"] == "post" and c["key"] not in ok:
                 continue
             if confirm:
@@ -976,6 +975,9 @@ class Blue:
 
     def _affordable(self, posts):
         """The post reports the risk bucket would let through now, in order."""
+        if policy()["per_day"] <= 0:
+            yield from posts                  # no risk bucket
+            return
         level = self.bucket()["level"]
         for c in posts:
             if c.get("pg", ev.PG_BASE) <= level:
