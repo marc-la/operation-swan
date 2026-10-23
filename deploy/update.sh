@@ -14,7 +14,7 @@ main() {
   if grep -qx requirements.txt <<< "$changed"; then .venv/bin/pip install -q -r requirements.txt; fi
   .venv/bin/python -c "import pytest" 2>/dev/null || .venv/bin/pip install -q pytest   # check.sh skips tests without it
   local subject; subject=$(git log -1 --format='%h %an: %s' "$new")
-  if ! out=$(deploy/check.sh 2>&1); then
+  if ! out=$(SKIP_TESTS=1 deploy/check.sh 2>&1); then
     git reset -q --hard "$old"
     record "$old" "$new" failed
     deploy/alert.sh "DEPLOY FAILED, rolled back to ${old:0:7}. Bad commit: $subject. $(tail -3 <<< "$out")"

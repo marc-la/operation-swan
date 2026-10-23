@@ -8,5 +8,7 @@ $PY -c "import sys; sys.path.insert(0, 'src'); import swan_bot.bot, swan_bot.swa
 $PY scripts/run_swan.py --help > /dev/null
 $PY scripts/swan_swarm.py --help > /dev/null
 bash -n deploy/*.sh
-if [ -d tests ] && $PY -c "import pytest" 2>/dev/null; then $PY -m pytest -q tests; fi
+# SKIP_TESTS=1 (update.sh on the box): the t3.micro (913 MB) stalls for minutes under the full suite, with the bot and the
+# dashboard on it (23 Oct, twice). GitHub CI and the laptop run the tests; the box keeps the compile/import/--help checks.
+if [ "${SKIP_TESTS:-}" != 1 ] && [ -d tests ] && $PY -c "import pytest" 2>/dev/null; then $PY -m pytest -q tests; fi
 echo "checks ok"
