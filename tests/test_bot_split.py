@@ -296,6 +296,7 @@ def setup_world(mp, tmp, split, amp_off=False):
     mp.setattr(config, "assigned_side", lambda: "no")
     mp.setattr(config, "team_code", lambda: "dummy-team-code")
     mp.setattr(config, "operator", lambda: "tester")
+    mp.setattr(config, "HIDDEN_STOP", 2)       # live it is off (2026-10-23, Marc); the parked path stays tested
     mp.setattr(bot, "REPLY_BACK_GAP_S", REPLY_BACK_GAP)
     mp.setattr(bot, "IDLE_S", 0.05)
     mp.setattr(bot, "JOIN_S", 3.0)

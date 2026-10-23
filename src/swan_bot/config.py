@@ -32,7 +32,9 @@ ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (
 # Moderator-hidden posts per voice (scripts/swan_watch.py). 1 hidden + ≥100 actions = the next account report
 # suspends it; 3 hidden = suspended (scoring guide §3). Lost @lani_wharfcafe23 this way on 2026-10-20.
 HIDDEN_OFF_AMP = 1                  # this many: off amplified posts and threads (less on show, fewer reports)
-HIDDEN_STOP = 2                     # this many: stops writing (one more hidden post would suspend it)
+HIDDEN_STOP = 99                    # OFF (2026-10-23, Marc: use every voice until the platform suspends it; todo/38). Was 2: stops writing
+                                    # at this many hidden posts. Parking did not protect an account (one upheld account report suspends it
+                                    # with 1+ hidden and 100+ actions) and cost writers: 7 of 16 were parked and the pace fell to 2.3/min.
 
 # 2026-10-21 late: every 2 min (was 4). Citizens are online a few minutes per session, and the replies they answer
 # in-session landed in the first ~5 min (ctn-68's reach study, 2 posts: 5 of 9 and 4 of 8 team replies answered).
