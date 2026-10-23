@@ -144,13 +144,15 @@ def collect(ssh=None):
     now = dt.datetime.now(dt.timezone.utc)
     end = (now + dt.timedelta(days=1)).date().isoformat()
     today = now.astimezone(SYDNEY).date().isoformat()
-    denied = []
+    denied, unavailable = [], []
 
     def guarded(label, fn):
         try:
             return fn()
         except Denied as e:
             denied.append(f"{label} ({e})")
+        except RuntimeError as e:                       # allowed but no answer (a new account has too little history to forecast)
+            unavailable.append(f"{label}: {str(e).split(': ')[-1][:90]}")
 
     by_service = ce(FIRST_DAY, end, "SERVICE")
     tokens = ce(FIRST_DAY, end, "USAGE_TYPE", granularity="MONTHLY", metrics=("UnblendedCost", "UsageQuantity"))
@@ -193,7 +195,7 @@ def collect(ssh=None):
         "unpriced_billed": unpriced, "ledger": ledger, "ledger_source": ssh or "local data/llm_spend.json",
         "projection": proj, "status": status(proj),
         "plan_state": plan, "aws_forecast": forecast, "budgets": None if budgets is None else budgets.get("Budgets", []),
-        "not_permitted": denied,
+        "not_permitted": denied, "unavailable": unavailable,
     }
 
 
@@ -218,11 +220,16 @@ def report(d):
     if d["aws_forecast"]:
         lines.append(f"  AWS's own forecast         ${float(d['aws_forecast']['Total']['Amount']):7.2f}  (gross usage, to 3 Nov)")
     if d["plan_state"]:
-        lines.append(f"plan state: {json.dumps(d['plan_state'])[:300]}")
+        left = d["plan_state"].get("accountPlanRemainingCredits", {}).get("amount")
+        lines.append(f"AWS says {d['plan_state'].get('accountPlanType')} plan {d['plan_state'].get('accountPlanStatus')}, "
+                     f"credit remaining ${left}" + (f" (credit {d['credit_usd']:.0f} - billed {d['billed_gross']:.2f} = "
+                                                    f"{d['credit_usd'] - d['billed_gross']:.2f})" if left is not None else ""))
     if d["budgets"] is not None:
         lines.append(f"AWS budgets set: {len(d['budgets'])}" + ("  <- none: no spend alert exists" if not d["budgets"] else ""))
     if d["not_permitted"]:
         lines.append("not permitted: " + ", ".join(d["not_permitted"]))
+    if d.get("unavailable"):
+        lines.append("allowed, but AWS had no answer: " + "; ".join(d["unavailable"]))
     return "\n".join(lines)
 
 

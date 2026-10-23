@@ -152,7 +152,7 @@ Settings: the `# ---- todo/24 throughput ----` block in `config.py`, and `--per-
 
 **Since 2026-10-20 the bot runs on EC2 under systemd, with auto-deploy from `main`. See [hosting](hosting.md).** Don't run `--live` anywhere else. The laptop/tmux instructions are retired.
 
-## Diagnosing without SSH (2026-10-23, [todo/34](../../todo/34-box-robustness.md))
+## Diagnosing without SSH (2026-10-23, todo/34 (handoff removed, git history))
 
 The team's one EC2 box runs the bot, Blue, the dashboard, the timers and the update timer: `i-06471b75b0166b3c7`, region `ap-southeast-2`, Elastic IP 13.210.120.238 (survives stop/start), **t3.medium since 2026-10-23 03:03 UTC** (was t3.micro, 913 MB), **Unlimited** credit mode. When it stalls, SSH accepts the TCP connection and never sends a banner, the dashboard is slow and **no alerts arrive, because they live on the box too**. These commands were all run on 23 Oct.
 
@@ -213,7 +213,7 @@ m NetworkIn Average; m StatusCheckFailed Maximum
 | `NetworkIn` (Average) | A flood would show here. It was normal on 23 Oct. |
 | `StatusCheckFailed` (Maximum) | 1 = AWS sees the VM as failed. 0 while SSH hangs points back to starvation. |
 
-**What told us what on 23 Oct.** Status checks passed and `NetworkIn` was normal, so no dead VM and no attack (about 66 failed SSH logins in 3 h is internet background noise). The kernel log showed the OOM kills, and `EBSByteBalance%` reached 0 at 03:00: pytest in `update.sh` plus the timer jobs exhausted a 913 MB box, it swapped, the disk burst ran out, and everything IO-bound (sshd, the dashboard, the alert timers) crawled. The CPU credit balance had hit 0 at about 23:00 (Standard mode), which made it worse. Cause and fixes: [todo/34](../../todo/34-box-robustness.md).
+**What told us what on 23 Oct.** Status checks passed and `NetworkIn` was normal, so no dead VM and no attack (about 66 failed SSH logins in 3 h is internet background noise). The kernel log showed the OOM kills, and `EBSByteBalance%` reached 0 at 03:00: pytest in `update.sh` plus the timer jobs exhausted a 913 MB box, it swapped, the disk burst ran out, and everything IO-bound (sshd, the dashboard, the alert timers) crawled. The CPU credit balance had hit 0 at about 23:00 (Standard mode), which made it worse. Cause and fixes: todo/34 (handoff removed, git history).
 
 ### Fixes, least invasive first
 
@@ -260,10 +260,10 @@ What it is: after each hourly desk run (`scripts/swan_factdesk.py`, after `auto_
 - **Undo:** `ssh swan-ec2 'cd ctn && .venv/bin/python scripts/facts_review.py --undo-touches 7'` removes what log id 7 added and prints `{id, status, removed}`. A paused fact drops its touches by itself; `swan_factdesk.py --no-touches` skips the step for one run; `--dry` writes nothing.
 - **Read-out after a day (flag still off):** `tail data/touches_auto.jsonl`, read ten clauses across registers (anger only at the rule or the handling, nothing at groups or Yes voters, nothing invented). Then flip the flag and compare hides per 100 writes with and without (`docs/06-strategy/hidden-post-audit-2026-10-23.md`); `grep '"touch"' logs/swan_actions.jsonl` finds the drafts that used one.
 
-## Pattern audit (2026-10-23, [todo/38](../../todo/38-pool-orchestrator.md))
+## Pattern audit (2026-10-23, todo/38 (design in git history, 3890af0))
 `python scripts/pattern_audit.py` (read-only; `--window-h N`, `--no-write`) writes `data/pattern_audit.json` from `logs/swan_actions.jsonl` and the account records' metadata; the dashboard's Stealth tile reads it (score, worst metrics, worst voices; grey when over 4 h old, absent file = no rows). No timer yet. The thresholds are the `SPECS` table in `src/swan_bot/pattern_audit.py`; what each metric means is in [stealth](../06-strategy/stealth.md). The dashboard's Pool line reads `status.json["pool"]` (schema in `src/swan_dash/build.py` `pool_view`) and is absent until the pool worker writes it.
 
-## Pool scheduler: stealth bought with voices (2026-10-23, [todo/38](../../todo/38-pool-orchestrator.md)), switch ON
+## Pool scheduler: stealth bought with voices (2026-10-23, todo/38 (design in git history, 3890af0)), switch ON
 
 What it does: with 16 to 31 voices able to write, `swan_bot/stealth.py` gives each voice a stored **life profile** (`rec["life"]`: sleep window 6 to 9 h, gap multiplier, session length 1 to 4 writes, volume multiplier), picks who writes next by **weighted random** instead of "longest rest first" (the metronome), and runs a **rate controller** (a gap multiplier in 0.6 to 1.0 that tracks 2.9/min from the writes of the last 20 min, in memory). The stealth level **L** (0 to 1) comes from N, the voices able to write: 0 up to 13 voices, 1 from 28, and **always lowered until the awake voices' capacity is at least 1.15 x 2.9 = 3.335 writes/min**. The 4-minute per-voice floor (`ACCOUNT_MIN_GAP_S`) is never shortened. From 24 writers `ONE_VOICE_PER_CITIZEN` is effective by itself (off again under 22); above 20 writers the 'fast' second-voice arm is dropped.
 
@@ -288,7 +288,7 @@ A variant is a new account on an existing base card (a live one or one of the 12
 - **Distinct** (`distinct(variant, records)` -> `(ok, reasons)`): handle stem and display name at edit distance 3 or more from every record (suspended too) and every card; first name not any live voice's or card's; no name token shared with another live voice's people; hand at least `EPS_HAND` (0.12, summed probability gaps) from the base card's and every live voice's; age not the card's; two or more differences in `use`. Names come from fictional pools (about 450 first names, 360 surnames) minus every persona, profile person, live variant and a deny list (the setting's officials, real public figures); a suspended variant's people names become free again.
 - **Not done here (pool worker / other owners)**: `stealth.key_of` still keys sleep windows on the persona, so two live voices of one card would share a window (return the username when `rec.get("variant")`); `Accounts.reserved/by_persona` still assume one voice per card; `batch.py` (only with `--batch`) builds prompts from `content.PERSONA_BY_KEY[...]` directly, so it would draft a variant as its base card until it uses `persona_of`; the register code must pass `display_name=variant["name"]`, store the whole variant on the record before the API call (write-ahead), and the staged cards must be promoted before `Accounts.assignable` can see them. Tests: `tests/test_variants.py`.
 
-## 2026-10-23: pool orchestrator ([todo/38](../../todo/38-pool-orchestrator.md)), SHIPS OFF (`config.POOL_LIVE = False`)
+## 2026-10-23: pool orchestrator (todo/38 (design in git history, 3890af0)), SHIPS OFF (`config.POOL_LIVE = False`)
 
 **What it is.** One owner for the voice pool. `src/swan_bot/pool.py` is the pure planning core (records + caps + `now` + a seeded rng in, an action out; no I/O). `src/swan_bot/pool_runner.py` is the executor, run by `bot.py` as the non-critical **`pool`** worker (tick 30 to 60 s, `Worker(critical=False)`, silent limit 15 min). If it dies the bot keeps writing with the pool it has; the watchdog alerts once ("BOT THREAD FAILED (not fatal): pool ... no accounts are added or activated until a restart"). It needs `--live` and the split loop; `POOL_LIVE` is forced off otherwise. It never holds `mu` across a network call.
 
