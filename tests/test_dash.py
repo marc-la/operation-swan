@@ -751,3 +751,124 @@ def test_hover_lists_the_amber_and_red_rows_with_their_note(tmp_path):
     ctx, _ = page(root)
     tip = next(i for i in ctx["reach"]["lights"] if i["key"] == "volume")["tip"]
     assert "Needs a look:" in tip and "Posting, last 30 min" in tip and "(in hand: bot restarted 15:20)" in tip
+
+
+# ---- todo/38: the Pool line (status.json["pool"]) and the pattern audit rows on the stealth tile (23 Oct) ----
+FULL = [write(0.3 * i + 0.1) for i in range(100)]            # 3.3 writes a minute: volume green
+BASE = "amber"                                                     # ... and Conversion amber (no change of mind yet): the page level without a pool
+
+POOL = {"dry_run": False, "state": "healthy", "writers_target": 31, "writers": 29, "ramping": 2, "warming": 4, "alive": 47,
+        "alive_cap": 49, "total_used": 71, "total_cap": 200, "spare_total": 129, "loss_per_day": 4.0, "runway_days": 32.0,
+        "days_left": 10.0, "next_add_in_min": 38.0,
+        "last_actions": [{"ts": iso(30), "act": "pool_register", "username": "ana_t"}, {"ts": iso(5), "act": "pool_convert", "username": "<script>x</script>"}]}
+
+
+def pool_page(tmp_path, **over):
+    ctx, html = page(make_root(tmp_path, FULL, status={"pool": dict(POOL, **over)}))
+    return ctx, html
+
+
+def test_no_pool_and_no_audit_render_as_before(tmp_path):
+    ctx, html = page(make_root(tmp_path, FULL))
+    assert ctx["pool"] is None and 'id="pool"' not in html
+    assert not any(r["name"].startswith("Pattern") for r in ctx["reach"]["rows"])
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "stealth"]     # still four tiles
+    assert html.count('class="light ') == 4 and ctx["worst"] == BASE
+
+
+def test_pool_line_is_compact_and_green_when_healthy(tmp_path):
+    ctx, html = pool_page(tmp_path)
+    p = ctx["pool"]
+    assert p["light"] == "green" and p["head"] == "Pool healthy"
+    assert p["sub"] == "29/31 writers (+2 ramp, 4 warm) · 47/49 alive · 71/200 used · runway 32.0d of 10.0d · next +38m · 4.0 lost/day"
+    assert 'class="poolrow green"' in html and "Pool healthy" in html and html.count('class="light ') == 4
+    assert "pool_convert" in html and "&lt;script&gt;x&lt;/script&gt;" in html and "<script>x" not in html     # newest first, escaped
+    assert [a["act"] for a in p["acts"]] == ["pool_convert", "pool_register"] and ctx["worst"] == BASE
+
+
+def test_pool_amber_when_sagging_or_runway_under_one_and_a_half_times_days_left(tmp_path):
+    ctx, html = pool_page(tmp_path, state="sagging", runway_days=40.0)
+    assert ctx["pool"]["light"] == "amber" and 'class="poolrow amber"' in html and ctx["worst"] == "amber"
+    assert "state sagging" in ctx["pool"]["tip"]
+    for runway, want in ((15.0, "green"), (14.9, "amber"), (10.0, "amber"), (9.9, "red")):               # days_left 10: bars at 15 and 10
+        assert pool_page(tmp_path / f"r{runway}", runway_days=runway)[0]["pool"]["light"] == want, runway
+
+
+def test_pool_red_when_low_or_runway_short_and_it_turns_the_page_red(tmp_path):
+    ctx, html = pool_page(tmp_path, state="low")
+    assert ctx["pool"]["light"] == "red" and ctx["worst"] == "red" and 'class="poolrow red"' in html
+    ctx, _ = pool_page(tmp_path / "rw", runway_days=3.1)
+    assert ctx["pool"]["light"] == "red" and "runway 3.1 d of spare accounts against 10.0 d left" in ctx["pool"]["tip"]
+    assert ctx["worst"] == "red" and "<title>Swan · DOWN</title>" in build.render(ctx)
+
+
+def test_dry_run_pool_is_shown_but_never_alarms(tmp_path):
+    ctx, html = pool_page(tmp_path, dry_run=True, state="low")
+    assert ctx["pool"]["light"] == "red" and "dry run" in ctx["pool"]["head"] and ctx["worst"] == BASE
+
+
+def test_odd_pool_fields_do_not_break_the_page(tmp_path):
+    for junk in ({"state": "weird", "writers": "many", "runway_days": None}, {"last_actions": ["x", None, {"ts": "bad"}]}, {"state": "healthy"}, []):
+        ctx, html = page(make_root(tmp_path / str(abs(hash(str(junk)))), FULL, status={"pool": junk}))
+        assert "Swan" in html
+    assert page(make_root(tmp_path / "e", FULL, status={"pool": {"state": "weird"}}))[0]["pool"]["light"] == "grey"
+
+
+def audit_report(grade, score, ago_min=10, worst=("gap_cv",), voices=(("ana_t", 12),)):
+    return {"ts": iso(ago_min), "stealth_score": score, "grade": grade,
+            "metrics": {"gap_cv": {"label": "Gap variation (CV, in-session)", "value": 0.07, "grade": "red", "fix": "Gaps too even.",
+                                   "thresholds": {"better": "higher", "green": 0.5, "red": 0.25}},
+                        "modal_gap": {"label": "Gaps within +-10% of the modal gap", "value": 0.3, "grade": "amber", "fix": "",
+                                      "thresholds": {"better": "lower", "green": 0.25, "red": 0.45}}},
+            "worst_metrics": list(worst), "worst_voices": [{"voice": v, "persona": "x", "score": s, "why": []} for v, s in voices]}
+
+
+def stealth_of(ctx):
+    return next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
+
+
+def test_pattern_audit_rows_on_the_stealth_tile(tmp_path):
+    root = make_root(tmp_path, FULL)
+    (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report("red", 31, worst=("gap_cv", "modal_gap"), voices=(("ana_t", 12), ("bo_k", 20)))))
+    ctx, html = page(root)
+    st = stealth_of(ctx)
+    assert st["light"] == "red" and st["head"] == "0 bans" and st["sub"] == "today · 0 hidden posts · pattern 31"
+    assert rowof(ctx, "Pattern score")["now"] == "31/100" and rowof(ctx, "Pattern score")["light"] == "red"
+    assert rowof(ctx, "Pattern: Gap variation")["target"] == "≥ 0.5 green · ≥ 0.25 amber"
+    assert rowof(ctx, "Pattern: Gaps within")["light"] == "amber" and rowof(ctx, "Pattern: Gaps within")["target"].startswith("≤ 0.25")
+    assert rowof(ctx, "Worst voices")["now"] == "ana_t (12), bo_k (20)" and rowof(ctx, "Worst voices")["light"] == "grey"
+    assert "RED Pattern score: 31/100" in st["tip"] and ctx["worst"] == "red" and html.count('class="light ') == 4
+    assert any(r["name"] == "Pattern score" for r in ctx["reach"]["fixes"])
+
+
+def test_pattern_audit_green_amber_and_stale(tmp_path):
+    for grade, score, want in (("green", 88, "green"), ("amber", 60, "amber")):
+        root = make_root(tmp_path / grade, FULL)
+        (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report(grade, score, worst=())))
+        ctx, _ = page(root)
+        assert stealth_of(ctx)["light"] == want and rowof(ctx, "Pattern score")["light"] == want
+    root = make_root(tmp_path / "stale", FULL)
+    (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report("red", 20, ago_min=5 * 60)))      # 5 h old
+    ctx, _ = page(root)
+    assert rowof(ctx, "Pattern score")["light"] == "grey" and "(stale)" in rowof(ctx, "Pattern score")["now"]
+    assert stealth_of(ctx)["light"] == "green" and "pattern" not in stealth_of(ctx)["sub"]                   # a stale audit never colours the tile
+
+
+def test_pattern_audit_garbage_is_ignored(tmp_path):
+    for i, junk in enumerate(("not json", "[]", json.dumps({"metrics": []}), json.dumps({"metrics": {}, "ts": "bad", "stealth_score": "x"}))):
+        root = make_root(tmp_path / f"g{i}", FULL)
+        (root / "data" / "pattern_audit.json").write_text(junk)
+        ctx, html = page(root)
+        assert stealth_of(ctx)["light"] in ("green", "grey") and "Swan" in html
+
+
+def test_real_audit_of_the_two_simulated_pools_colours_the_tile(tmp_path):
+    from swan_bot import pattern_audit as pa
+    for sched, want in (("old", "red"), ("mixed", "green")):
+        rows, accounts, end = pa.simulate_pool(30, 48, 2, sched)
+        rep = pa.audit(rows, accounts, end)
+        rep["ts"] = iso(15)                                                  # as if it ran 15 min ago
+        root = make_root(tmp_path / sched, FULL)
+        (root / "data" / "pattern_audit.json").write_text(json.dumps(rep))
+        ctx, _ = page(root)
+        assert stealth_of(ctx)["light"] == want, sched

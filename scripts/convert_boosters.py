@@ -75,6 +75,11 @@ def convert(records, todo, by, now=None):
     return lines
 
 
+def pool_is_live():
+    """todo/38: with the pool orchestrator live this script must not touch the records (I4, one writer)."""
+    return bool(config.POOL_LIVE)
+
+
 def bot_running():
     return subprocess.run(["pgrep", "-f", "scripts/run_swan.py"], capture_output=True).returncode == 0
 
@@ -85,6 +90,10 @@ def main():
     ap.add_argument("--apply", action="store_true", help="rewrite the account records (default: print the plan)")
     ap.add_argument("--by", help="team member who decided this (required with --apply)")
     args = ap.parse_args()
+    config.load_env()                    # SWAN_POOL_LIVE from .env
+    if pool_is_live():
+        sys.exit("the pool orchestrator is live (config.POOL_LIVE / SWAN_POOL_LIVE): it is the only writer of the account "
+                 "records and converts boosters itself (todo/38). Not running. Touch POOL_OFF to stop it first.")
     records = json.loads(config.ACCOUNTS_FILE.read_text())
     todo, skipped = plan(records, args.n)
     for rec, key, style in todo:

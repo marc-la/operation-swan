@@ -432,7 +432,65 @@ STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is 
 # SWAN_<NAME>=..., e.g. SWAN_VOICE_WRITES_PER_DAY=80 and SWAN_VOICE_DAY_CAP=1 (switches: 1/0, true/false, on/off).
 # Marc is weighing more voices against a higher cap (22 Oct: 40 a day x 14 voices is ~560 writes a day, ~0.4/min).
 STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE", "VOICE_HOUR_CAP", "VOICE_WRITES_PER_H",
-               "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN")
+               "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
+               "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
+               "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE")    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
+
+# ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
+# Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
+# intensity L in [0, 1] is derived from N, the voices able to write: 0 up to STEALTH_N_LO, 1 from STEALTH_N_HI, and always
+# lowered until the pool's capacity (awake voices / their mean gap) is >= POOL_HEADROOM x POOL_TARGET_RATE. The writer
+# picks a ready voice by weight, not by longest rest. False (+ restart, or SWAN_POOL_SCHEDULER=0 in .env) = the old pick.
+POOL_SCHEDULER = True
+POOL_TARGET_RATE = 2.9              # team writes per minute we aim for (limit 3; --per-min is 2.9)
+POOL_RATE_CEILING = 2.95            # the observed average is never pushed above this
+POOL_HEADROOM = 1.15                # capacity of the awake voices stays >= this x POOL_TARGET_RATE
+STEALTH_N_LO, STEALTH_N_HI = 13, 28
+STEALTH_SLEEP_PLAN_FRAC = 0.40      # planned share of the pool asleep at L = 1 (mean window 7.5 h = 31%, plus uneven starts)
+STEALTH_GAP_SLACK = 0.25            # mean gap awake is at least floor x (1 + SLACK x L): room for jitter above the 4-min floor
+POOL_MULT_RANGE = (0.6, 1.6)        # the rate controller's global gap multiplier (upper end also bounded by capacity)
+POOL_RATE_WINDOW_S = 20 * 60        # observed team rate = writes in this window
+ONE_VOICE_AUTO = True               # ONE_VOICE_PER_CITIZEN is effective from ONE_VOICE_AUTO_N writers (off again below _OFF_N)
+ONE_VOICE_AUTO_N, ONE_VOICE_AUTO_OFF_N = 24, 22
+SECOND_FAST_MAX_N = 20              # the 'fast' second-voice arm (60-240 s) only while the pool is this small
+
+# ---- todo/38 pool orchestrator (swan_bot/pool.py planning core, bot.py "pool" worker), 2026-10-23 ----
+# ONE owner for the voice pool: registers warming accounts, converts boosters, activates warmed accounts as voices, to hold
+# POOL_WRITERS writers. SHIPS OFF: with POOL_LIVE False the worker only plans and logs `pool_shadow` rows (nothing is
+# registered, converted or saved) and the old registrars (Accounts.maybe_register, the --boosters top-up) run as before.
+# POOL_LIVE True makes the worker the ONLY registrar (the old ones stand down). Go-live: SWAN_POOL_LIVE=1 in .env + restart;
+# stop: touch POOL_OFF (no restart; the worker then neither registers nor converts and the old ones stay down).
+# Runbook "2026-10-23: pool orchestrator" has the go-live checklist. Never enable from code or a test.
+POOL_LIVE = False
+POOL_WRITERS = 31                   # W*: writers (voices able to write) the pool is held at
+POOL_PIPELINE = 4                   # P: warming accounts kept in the pipeline, on top of W*
+POOL_OFF_FILE = ROOT / "POOL_OFF"   # touch it: the pool worker does nothing irreversible (checked before every action)
+POOL_TICK_S = (30.0, 60.0)          # the worker looks this often (a random wait in the range)
+POOL_END = "2026-11-03T00:00:00+11:00"   # the competition's end: midnight Sydney after polling day (2 Nov); days_left counts to it
+POOL_TOTAL_CAP = 200                # accounts in total (registered, never freed); a 403 for it is terminal
+POOL_FLOOR_S = 15 * 60              # least time between any two pool actions (healthy and sagging)
+POOL_FLOOR_LOW_S = 8 * 60           # ...and when the pool is low (< POOL_LOW_FRAC x W*)
+POOL_LOW_FRAC = 0.7                 # low: supply under this share of W*
+# The pace of the next add (register or convert) = a log-normal draw around a median that shrinks with the deficit
+# d = (W* - supply) / W* (pool.median_delay_s: log-linear between these (d, median seconds) points), clipped to
+# [floor, POOL_DELAY_MAX_S]: supply >= W* (d = 0): 5 h, one replacement per loss; 10% short (3 of 31): 45 min; 30%: 15 min;
+# 100%: 8 min. One draw z per action (kept), so for a given z the delay only ever shrinks as the deficit grows. sigma 0.7:
+# heavy tail, never a metronome. (2026-10-23 simulation, 13 and 38 losses a day: a gentler curve let the pool settle 13-30%
+# short, because a delay that shrinks only with the deficit is a proportional controller.)
+POOL_MEDIAN_PTS = ((0.0, 5 * 3600), (0.1, 45 * 60), (0.3, 15 * 60), (1.0, 8 * 60))
+POOL_FAST_FRAC = 0.85               # writers alone under this share of W* = fast mode: the low floor (8 min), warm-up and ramp
+POOL_DELAY_SIGMA = 0.7
+POOL_DELAY_MAX_S = 18 * 3600
+POOL_WARM_H = dict(healthy=(6, 36), sagging=(3, 12), low=(1, 4))     # warm-up before a registered account may write (hours)
+POOL_RAMP_H = dict(healthy=(60, 72), sagging=(48, 60), low=(36, 48))   # a new voice's ramp: ready chance 0.25 -> 1 over this long
+POOL_RAMP_START = 0.25              # a ramping voice is ready with this chance at first, rising linearly to 1
+POOL_LOSS_WINDOW_S = 72 * 3600      # losses (suspensions) counted for loss_per_day
+POOL_LOSS_HALF_LIFE_S = 24 * 3600   # EWMA half-life of that count
+POOL_RUNWAY_MIN_LOSS = 0.5          # runway_days = spare_total / max(loss_per_day, this)
+POOL_BACKOFF_S = 30 * 60            # a failed register (transient / active cap / not ready) waits this long
+POOL_STATUS_ACTS = 8                # last_actions kept in status.json["pool"]
+POOL_SILENT_S = 15 * 60             # the watchdog: the pool thread (non-critical) may be silent this long
+POOL_CARD_COOLDOWN_S = 12 * 3600    # a card whose voice was suspended less than this ago is the last choice for a new account
 
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----
 # Toward + away went 6 -> 0 between the nights of 20 and 21 Oct, when one deploy changed the reply model, stopped

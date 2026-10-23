@@ -119,10 +119,12 @@ def _slip(word, device, rng):
 
 
 def apply(text, persona_key, kind="post", rng=random):
-    """(text as this persona types it, list of what changed). Unknown personas get a light default hand."""
+    """(text as this persona types it, list of what changed). Unknown personas get a light default hand.
+    persona_key may also be a hand itself (a dict, as a variant's persona carries: variants.py)."""
     if not text:
         return text, []
-    h, out, changes = HANDS.get(persona_key, _DEFAULT), text, []
+    hand = {**_DEFAULT, **persona_key} if isinstance(persona_key, dict) else HANDS.get(persona_key, _DEFAULT)
+    h, out, changes = hand, text, []
     careful = rng.random() < h["careful"]
     if not careful and rng.random() < h["slip"]:
         spans = _protected_spans(out)

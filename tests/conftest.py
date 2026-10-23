@@ -28,3 +28,11 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     # the live switchback (todo/25 arm_conv) follows the clock: in a target_order block next_target ranks lean_no
     # first and test_targeting failed for 2 h at a time (23 Oct). Tests that need an arm set SWITCHBACK themselves.
     monkeypatch.setattr(config, "SWITCHBACK", [])
+    # todo/38: the pool scheduler is on in config, but the older tests are written for the longest-rest-first pick; the
+    # scheduler's own tests (tests/test_pool_scheduler.py) switch it on. Its state is per process: start every test clean.
+    from swan_bot import stealth
+    monkeypatch.setattr(config, "POOL_SCHEDULER", False)
+    stealth.reset()
+    # todo/38: the pool orchestrator ships OFF and no test may switch it on by accident (a .env override included);
+    # tests/test_pool.py turns it on against fakes, with sockets blocked.
+    monkeypatch.setattr(config, "POOL_LIVE", False)

@@ -801,6 +801,9 @@ CATCHUP_BUCKET_S = 600         # speed leaves out catch-up: a post made in a 10 
                                # (the box stalled, drafting starved) and then answered later than the bar (Marc, 23 Oct)
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
 STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 green, 6-10 amber, 11+ red (Marc, 23 Oct; the 200 allowance over 14 days is ~14 a day)
+AUDIT_STALE_S = 4 * 3600       # data/pattern_audit.json (scripts/pattern_audit.py): older than this the pattern rows go grey
+RUNWAY_AMBER_X = 1.5           # pool runway (days of spare accounts at today's loss rate) under days left: red; under 1.5x: amber
+POOL_ACTS = 5                  # the pool worker's last actions shown behind the Pool line
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
 LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jargon (Marc, 23 Oct)
@@ -818,7 +821,9 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
                "Green: net above 0 · amber: net 0 · red: net below 0.",
     stealth=f"Stealth: accounts banned today (since 9pm Perth).\n"
             f"Green: 0-{STEALTH_GREEN_MAX} · amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX} · red: {STEALTH_AMBER_MAX + 1} or more.\n"
-            f"Hidden posts are shown but do not change the colour: they already count as bans.")
+            f"Hidden posts are shown but do not change the colour: they already count as bans.\n"
+            f"Pattern score (once scripts/pattern_audit.py has run): how much our writes read like a rota, 0-100. Green 70+ · amber 45-69 · red under 45.\n"
+            f"Its worst metrics and voices are listed under the tile. It goes grey when the audit is over {AUDIT_STALE_S // 3600} h old.")
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
@@ -1104,6 +1109,88 @@ def account_days(log, now):
     return rows[::-1], listed
 
 
+def _num(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def pool_view(pool, now):
+    """The Pool line (todo/38) from status.json["pool"], or None when the pool worker has not written one (as today).
+    Red: state low, or runway_days under days_left. Amber: state sagging, or runway under RUNWAY_AMBER_X x days_left.
+    Fields are read one by one; anything missing or odd is left out of the text and never turns a light by itself."""
+    if not isinstance(pool, dict) or not pool:
+        return None
+    n = lambda k: _num(pool.get(k))
+    fmt_pair = lambda a, b: f"{a:g}/{b:g}" if a is not None and b is not None else (f"{a:g}" if a is not None else "?")
+    state = pool.get("state") if pool.get("state") in ("healthy", "sagging", "low") else None
+    runway, left = n("runway_days"), n("days_left")
+    lights, why = [], []
+    if state:
+        lights.append(dict(healthy="green", sagging="amber", low="red")[state])
+        if state != "healthy":
+            why.append(f"{lights[-1].upper()} state {state}: {fmt_pair(n('writers'), n('writers_target'))} writers")
+    if runway is not None and left is not None:
+        lights.append("red" if runway < left else "amber" if runway < RUNWAY_AMBER_X * left else "green")
+        if lights[-1] != "green":
+            why.append(f"{lights[-1].upper()} runway {runway:.1f} d of spare accounts against {left:.1f} d left"
+                       + (f" (x{RUNWAY_AMBER_X:g} = {RUNWAY_AMBER_X * left:.1f} d is the amber bar)" if lights[-1] == "amber" else ""))
+    order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
+    light = max(lights, key=order.get) if lights else "grey"
+    fmt = fmt_pair
+    writers = fmt(n("writers"), n("writers_target")) + " writers"
+    extra = [f"{int(n(k))} {w}" for k, w in (("ramping", "ramp"), ("warming", "warm")) if n(k)]
+    if extra:
+        writers += f" (+{', '.join(extra)})"
+    nxt = n("next_add_in_min")
+    bits = [writers, fmt(n("alive"), n("alive_cap")) + " alive", fmt(n("total_used"), n("total_cap")) + " used"]
+    runway_txt = (f"runway {runway:.1f}d" + (f" of {left:.1f}d" if left is not None else "")) if runway is not None else None
+    sub = " · ".join(b for b in bits + [runway_txt,
+                                        f"next +{nxt:.0f}m" if nxt is not None else None,
+                                        f"{n('loss_per_day'):.1f} lost/day" if n("loss_per_day") is not None else None] if b)
+    acts = []
+    for a in (pool.get("last_actions") or [])[-POOL_ACTS:][::-1]:
+        if isinstance(a, dict):
+            t = ts(a.get("ts"))
+            acts.append(dict(when=ago(now - t) if t else "?", act=short(str(a.get("act") or ""), 30), username=short(str(a.get("username") or ""), 30)))
+    dry = pool.get("dry_run") is True
+    head = f"Pool {state or '—'}" + (" · dry run" if dry else "")
+    tip = ("Pool: how many voices are writing and how long the spare accounts last.\n"
+           f"Red: state low, or runway under the days left. Amber: state sagging, or runway under {RUNWAY_AMBER_X:g}x the days left.\n"
+           "Runway = spare registrations / accounts lost per day.")
+    if why:
+        tip += "\n\nNeeds a look:\n" + "\n".join(why)
+    return dict(light=light, head=head, sub=sub, acts=acts, dry_run=dry, tip=tip)
+
+
+def audit_rows(audit, now):
+    """Rows for the stealth tile from data/pattern_audit.json (scripts/pattern_audit.py), [] when it is absent or has no
+    score. The score row takes the audit's own grade; the worst metrics follow with theirs. Older than AUDIT_STALE_S: grey."""
+    if not isinstance(audit, dict) or not isinstance(audit.get("metrics"), dict):
+        return []
+    t = ts(audit.get("ts"))
+    stale = t is None or (now - t).total_seconds() > AUDIT_STALE_S
+    ok = lambda g: g if g in ("green", "amber", "red") and not stale else "grey"
+    score = _num(audit.get("stealth_score"))
+    rows = [dict(group="stealth", name="Pattern score", light=ok(audit.get("grade")) if score is not None else "grey",
+                 now=(f"{score:g}/100" if score is not None else "—") + (f" · {ago(now - t)} (stale)" if stale and t else " · stale" if stale else ""),
+                 target="green 70+ · amber 45-69", note="",
+                 fix="Our writes read like a rota: scripts/pattern_audit.py lists the worst metrics and voices (todo/38).")]
+    for k in (audit.get("worst_metrics") or [])[:3]:
+        m = audit["metrics"].get(k)
+        if not isinstance(m, dict) or _num(m.get("value")) is None:
+            continue
+        th = m.get("thresholds") or {}
+        lower = th.get("better") == "lower"
+        rows.append(dict(group="stealth", name=f"Pattern: {short(str(m.get('label') or k), 60)}", light=ok(m.get("grade")),
+                         now=f"{m['value']:g}", note="", fix=short(str(m.get("fix") or ""), 160),
+                         target=(f"{'≤' if lower else '≥'} {th.get('green'):g} green · {'≤' if lower else '≥'} {th.get('red'):g} amber"
+                                 if _num(th.get("green")) is not None and _num(th.get("red")) is not None else "")))
+    offenders = [o for o in audit.get("worst_voices") or [] if isinstance(o, dict) and o.get("voice")][:3]
+    if offenders:
+        rows.append(dict(group="stealth", name="Worst voices", light="grey", target="", fix="", note="",
+                         now=", ".join(f"{short(str(o['voice']), 24)} ({o.get('score')})" for o in offenders)))
+    return rows
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -1306,10 +1393,13 @@ def gather(root, now, service):
                   target="shown only: hidden posts already show up as bans", fix="", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
                   now=f"{acct_days[0]['banned']} of {acct_days[0]['registered']} registered" if acct_days else "—", target="", fix="", note="")]
+    pattern = audit_rows(read_json(data / "pattern_audit.json"), now)      # todo/38: how much our writes read like a rota; [] until the audit has run
+    srows += pattern
+    pattern_sub = f" · pattern {pattern[0]['now'].split('/')[0]}" if pattern and pattern[0]["light"] != "grey" else ""
     rc["rows"] += srows
     rc["fixes"] += [r for r in srows if r["light"] in ("amber", "red")]
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
-    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts",
+    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts" + pattern_sub,
                              light=max((r["light"] for r in srows), key=order.get)))
     for i in rc["lights"]:      # the hover: the rule, then the amber and red rows with their figure and any note (Marc, 23 Oct)
         bad = [f"{r['light'].upper()} {r['name']}: {r['now']}" + (f" (in hand: {r['note']})" if r.get("note") else "")
@@ -1319,8 +1409,11 @@ def gather(root, now, service):
             split = [f"{r['name'].removeprefix('Where the time goes, ')}: {r['now']}" for r in i["rows"] if r["name"].startswith("Where the time goes")]
             i["tip"] += "\n\nWhere the time goes (median minutes):\n" + "\n".join(split)
     rc["light"] = max((i["light"] for i in rc["lights"]), key=order.get)
-    levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"])
+    pool = pool_view(status.get("pool"), now)          # todo/38: None until the pool worker writes status.json["pool"]
+    levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"]) \
+        + ((pool["light"],) if pool and not pool["dry_run"] else ())      # a dry-run pool is shown, never alarms
     return dict(
+        pool=pool,
         now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,
         worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
         status_word=STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], score=score, history=history, board=board, milestone=milestone,

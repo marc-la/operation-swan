@@ -148,6 +148,8 @@ class Amplifier:
     # ---- boosters ----------------------------------------------------------------------------
     def maybe_register_booster(self):
         acc = self.accounts
+        if self.live and config.POOL_LIVE:          # todo/38: the pool worker is the only registrar while it is live
+            return
         if (len(acc.boosters()) >= self.boosters_target or len(acc.active()) + config.swarm_active() >= config.MAX_ACTIVE
                 or len([r for r in acc.records if r.get("role") == "booster"]) >= config.MAX_BOOSTERS
                 or time.time() < self.next_register):
@@ -413,6 +415,7 @@ class Amplifier:
             if e.status in (403, 404, 410) and not filler:
                 if "suspend" in (e.message or "").lower():
                     rec["status"] = "suspended"
+                    rec.setdefault("suspended_at", dt.datetime.now(dt.timezone.utc).isoformat())    # todo/38 loss rate
                     self.accounts.save()
                     self.log({"act": "suspended", "username": rec["username"]})
                 else:

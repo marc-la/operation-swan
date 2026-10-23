@@ -13,6 +13,7 @@ Owners are suggestions using the roles in [system-architecture §5](../docs/06-s
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
 | ~~19~~ | ✓ **Shipped 2026-10-21 (d99bd34):** citizen writes first; Latest every 2 min, paged; "Yes, with conditions" kept; reply-backs and second voices on | Marc + Claude | done | — |
+| [38](38-pool-orchestrator.md) | **Pool orchestrator (design):** one owner for the voice pool: slow unpatterned registration, staggered booster conversion, variants, retire/delete, weighted-random scheduler, stealth derived from pool size, pattern audit, runway guard. Design only | any | after todo/36 cards | cold sessions, one step at a time |
 | ~~37~~ | ✓ **Built 2026-10-23 (77d2a22), flag `TOUCHES_ON` OFF:** persona touches (`touches.py`, desk post-step, prompt hook, `facts_review.py --undo-touches`). Next: deploy, read ten clauses after a day, then 25%; see the runbook. Handoff deleted (git history) | — | done | — |
 | ~~36~~ | ✓ **Done 2026-10-23 (77d2a22):** 12 new base persona cards, **staged, not live**, in `src/swan_bot/playbook/new_cards.py` (rules and mix table: `tests/test_new_cards.py`; runbook note). Promotion goes with the pool orchestrator (todo/38). Handoff deleted (git history) | — | done | — |
 | ~~35~~ | ✓ **Removed 2026-10-23 (Marc: stale);** the handoff (off-box alerts) is in git history (9f6f1ca) | — | done | — |

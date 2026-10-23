@@ -1,0 +1,12 @@
+[Unit]
+Description=Pattern audit (scripts/pattern_audit.py, todo/38): read-only, writes data/pattern_audit.json
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/ctn
+Nice=19
+ExecStart=/home/ec2-user/ctn/.venv/bin/python scripts/pattern_audit.py
+# streams logs/swan_actions.jsonl (jsonl.Reader), never loads it whole
+MemoryMax=300M
+TimeoutStartSec=15min

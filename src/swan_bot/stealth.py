@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import random
+import threading
 import time
 from zoneinfo import ZoneInfo
 
@@ -93,7 +94,10 @@ def rest(rec, t=None, citizen=True):
     "voice_capped" at its daily budget (for a write that isn't to a citizen, VOICE_CITIZEN_RESERVE short of it: the
     rest of the day is kept for citizens) or at its hourly cap."""
     t = time.time() if t is None else t
-    if asleep(key_of(rec), t):
+    if config.POOL_SCHEDULER:                  # todo/38: the voice's own life profile replaces the fixed window
+        if life_asleep(rec, t):
+            return "voice_asleep"
+    elif asleep(key_of(rec), t):
         return "voice_asleep"
     if config.VOICE_DAY_CAP:
         cap = config.VOICE_WRITES_PER_DAY - (0 if citizen else config.VOICE_CITIZEN_RESERVE)
@@ -107,7 +111,7 @@ def rest(rec, t=None, citizen=True):
 def free_in(rec, t=None):
     """Seconds until this voice may write again (an estimate for backing off a citizen who waits for it)."""
     t = time.time() if t is None else t
-    waits = [wakes_in(key_of(rec), t), rec.get("next_ok", 0) - t]
+    waits = [life_wakes_in(rec, t) if config.POOL_SCHEDULER else wakes_in(key_of(rec), t), rec.get("next_ok", 0) - t]
     times = sorted(x for x in rec.get("day_writes") or () if 0 <= t - x < DAY_S)
     if config.VOICE_HOUR_CAP:
         hour = [x for x in times if t - x < HOUR_S]
@@ -119,7 +123,7 @@ def free_in(rec, t=None):
 
 
 def gap_on():
-    return config.VOICE_JITTER or config.VOICE_STAGGER
+    return config.VOICE_JITTER or config.VOICE_STAGGER or config.POOL_SCHEDULER
 
 
 def next_gap():
@@ -137,7 +141,10 @@ def on_write(rec, t=None):
     VOICE_JITTER, its next ordinary write waits next_gap()."""
     t = time.time() if t is None else t
     rec["day_writes"] = [x for x in rec.get("day_writes") or () if t - x < DAY_S + HOUR_S] + [t]
-    if config.VOICE_JITTER:
+    if config.POOL_SCHEDULER and _S["active"]:         # todo/38: the voice's life profile and the pool's level set the gap
+        rec["next_ok"] = t + schedule_gap(rec, t)
+        note_write(t)
+    elif config.VOICE_JITTER:
         rec["next_ok"] = t + next_gap()
 
 
@@ -171,7 +178,7 @@ def owners(state, target, t=None):
 def owner_problem(state, job, t=None):
     """"voice_owner" when another of our voices has this citizen (or their thread) today and this job's voice isn't
     it, else None. A reply-back is never held: the citizen answered or mentioned this voice."""
-    if not config.ONE_VOICE_PER_CITIZEN or job["mode"] not in CITIZEN_MODES or job["mode"] == "reply_back":
+    if not one_voice_on() or job["mode"] not in CITIZEN_MODES or job["mode"] == "reply_back":
         return None
     target = job.get("target") or {}
     if not config.is_citizen(target.get("author_id")):
@@ -183,7 +190,7 @@ def owner_problem(state, job, t=None):
 def required_voice(state, target, t=None):
     """(persona, None) when one voice has this citizen today, (None, None) when none does, (None, "voice_owner") when
     two do (the citizen mentioned another voice, which answered): then no third reply goes out today."""
-    if not config.ONE_VOICE_PER_CITIZEN or not config.is_citizen((target or {}).get("author_id")):
+    if not one_voice_on() or not config.is_citizen((target or {}).get("author_id")):
         return None, None
     mine = owners(state, target, t)
     if len(mine) > 1:
@@ -311,3 +318,361 @@ def metrics(voices, hidden, state, t=None, status=None):
                      writes_per_voice_hour=config.VOICE_WRITES_PER_H, hours_active=16),
         rules={k: getattr(config, k) for k in ("VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER",
                                                "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN")})
+
+
+# ---- todo/38 pool scheduler: stealth bought with voices, never at the cost of volume (2026-10-23) ----------------------
+# Four parts, all behind config.POOL_SCHEDULER (False = the longest-rest-first pick of before, nothing here runs):
+#   plan(n)            pure: the stealth level L from the number of voices able to write, lowered until the awake
+#                      voices' capacity is >= POOL_HEADROOM x POOL_TARGET_RATE; and the mean gap awake that gives;
+#   life profile       per voice, drawn once and stored in its record (rec["life"]): sleep window, mean-gap multiplier,
+#                      session style, volume multiplier; lazily and deterministically from the username if missing;
+#   pick()             a weighted random choice among the voices ready now (how overdue vs its own mean gap, session
+#                      state, volume multiplier), O(N), no I/O; schedule_gap() sets the voice's next_ok after a write;
+#   rate controller    a global gap multiplier in POOL_MULT_RANGE that tracks POOL_TARGET_RATE from the writes seen in
+#                      the last POOL_RATE_WINDOW_S (kept in memory), and relief: a sleeper is woken when the awake
+#                      capacity falls under the need (uneven sleep starts), soonest-waking first.
+# The per-voice floor ACCOUNT_MIN_GAP_S (4 min) is never shortened. All state lives in _S behind _LOCK, so the drafters
+# and the writer (which already hold Accounts' mu) can call it freely.
+LIFE_SLEEP_H = (6.0, 9.0)                       # a voice's full sleep window (hours of the Sydney clock)
+LIFE_GAP_SIGMA, LIFE_GAP_CLIP = 0.25, (0.7, 1.45)    # log-normal mean-gap multiplier around 1
+LIFE_BURST = (1, 4)                             # writes in a session before its break
+LIFE_VOL_SIGMA, LIFE_VOL_CLIP = 0.2, (0.7, 1.4)      # daily-volume multiplier: the voice's weight in the pick
+GAP_NOISE_SIGMA = 1.1                           # at L = 1: mean-preserving log-normal noise on a gap's part above the floor
+BURST_COMPRESS = 0.35                           # at L = 1 the gaps inside a session are 35% shorter than the mean gap
+BURST_BOOST = 1.6                               # weight factor of a voice in mid-session (at L = 1)
+OVERDUE_CAP = 3.0                               # overdue (in mean gaps) beyond which a waiting voice gains no more weight
+WEIGHT_POWER = 0.75                             # weight = (1 + overdue) ** this: 0 = flat among the ready, large = longest-rest
+REFRESH_CACHE_S = 3.0
+LIFE_KEYS = ("sleep_start", "sleep_h", "gap_mult", "burst_max", "vol_mult", "seed")
+_LOCK = threading.RLock()
+_RNG = random.Random()
+_SESS = {}                                      # username -> writes left in its current session (memory only)
+
+
+def _fresh_state():
+    return dict(active=False, n=0, level=0.0, mean_gap_s=float(config.ACCOUNT_MIN_GAP_S), plan=None, relief=frozenset(),
+                one_voice=False, at=0.0, since=None, mult=1.0, mult_hi=1.0, mult_at=0.0, awake=0, asleep=0,
+                writes=collections.deque(), empties=collections.deque())
+
+
+_S = _fresh_state()
+
+
+def reset():
+    """Forget the pool's state (tests, and a restart in-process): level 0, multiplier 1, no sessions or observations."""
+    with _LOCK:
+        _S.clear()
+        _S.update(_fresh_state())
+        _SESS.clear()
+
+
+def plan(n, target=None, floor_s=None, headroom=None):
+    """The calibrator (pure): from n voices able to write, the stealth level and the mean gap that keep the capacity.
+      wanted = clip((n - N_LO) / (N_HI - N_LO), 0, 1)                       0 up to N_LO = 13, 1 from N_HI = 28
+      awake(L) = n (1 - SLEEP_PLAN_FRAC L)                                   expected awake voices (0.40: mean 7.5 h = 31% + slack)
+      need = HEADROOM x target                                               3.335 writes/min at 2.9
+      L <= (n - need floor) / (SLEEP_PLAN_FRAC n + need floor GAP_SLACK)     awake(L) / (floor (1 + GAP_SLACK L)) >= need
+      mean gap awake = max(floor, awake / need)                              so capacity = awake / mean gap = need
+    floor is ACCOUNT_MIN_GAP_S. L = min(wanted, that bound), floored at 0 and rounded down to 0.001. Below about 14
+    voices need is out of reach even at L = 0 (n / floor < need): feasible is False and capacity is the physical n / floor.
+    Returns dict(n, level, wanted, awake, mean_gap_s, capacity, capacity_ratio, need, feasible, target, floor_s)."""
+    target = config.POOL_TARGET_RATE if target is None else target
+    floor_s = config.ACCOUNT_MIN_GAP_S if floor_s is None else floor_s
+    need = (config.POOL_HEADROOM if headroom is None else headroom) * target
+    floor, a, b = floor_s / 60.0, config.STEALTH_SLEEP_PLAN_FRAC, config.STEALTH_GAP_SLACK
+    lo, hi = config.STEALTH_N_LO, config.STEALTH_N_HI
+    n = max(0, int(n))
+    wanted = 0.0 if n <= lo else min(1.0, (n - lo) / (hi - lo))
+    bound = (n - need * floor) / (a * n + need * floor * b) if n else -1.0
+    level = math.floor(max(0.0, min(wanted, bound)) * 1000) / 1000
+    awake = n * (1 - a * level)
+    gap_min = max(floor, awake / need) if n else floor
+    capacity = awake / gap_min if n else 0.0
+    return dict(n=n, level=level, wanted=round(wanted, 3), awake=round(awake, 2), mean_gap_s=gap_min * 60,
+                capacity=capacity, capacity_ratio=capacity / target if target else 0.0, need=need,
+                feasible=capacity >= need - 1e-9, target=target, floor_s=floor_s)
+
+
+# ---- the life profile -------------------------------------------------------------------------------------------------
+def valid_life(life):
+    return isinstance(life, dict) and all(k in life for k in LIFE_KEYS)
+
+
+def _circ(a, b):
+    d = abs(a - b) % 24
+    return min(d, 24 - d)
+
+
+def _mid(life):
+    return (life["sleep_start"] + life["sleep_h"] / 2) % 24
+
+
+def life_profile(rng=None, n_writers=None, taken=()):
+    """One voice's life, drawn once: sleep_start (Sydney hour the full sleep window starts) and sleep_h (6-9 h; the pool
+    level L scales the window around its middle), gap_mult (log-normal around 1: this voice's share of the mean gap),
+    burst_max (1-4 writes a session, then its break), vol_mult (weight in the pick: voices differ in daily volume), seed.
+    taken: the middles of the windows already drawn; the start is the best of several candidates (more with more
+    writers) farthest from them, so the starts spread across the day."""
+    rng = rng or random.Random()
+    sleep_h = rng.uniform(*LIFE_SLEEP_H)
+    k = max(6, min(24, int(n_writers or 16))) if taken else 1
+    mids = [rng.uniform(0, 24) for _ in range(k)]
+    mid = max(mids, key=lambda m: min((_circ(m, x) for x in taken), default=24.0))
+    clip = lambda v, c: min(max(v, c[0]), c[1])
+    return dict(sleep_start=round((mid - sleep_h / 2) % 24, 2), sleep_h=round(sleep_h, 2),
+                gap_mult=round(clip(rng.lognormvariate(0, LIFE_GAP_SIGMA), LIFE_GAP_CLIP), 3),
+                burst_max=rng.randint(*LIFE_BURST),
+                vol_mult=round(clip(rng.lognormvariate(0, LIFE_VOL_SIGMA), LIFE_VOL_CLIP), 3), seed=rng.getrandbits(40))
+
+
+def ensure_life(rec, peers=(), n_writers=None):
+    """rec["life"], drawn now when the voice has none: from an rng seeded by its username (sha256), so a record that is
+    lost and drawn again gets the same life and a restart never reshuffles the pool. The caller saves the record (the
+    life is stored once, then kept). peers: the other voices (their lives keep the sleep starts apart; no two voices
+    end up with the same parameters)."""
+    life = rec.get("life")
+    if valid_life(life):
+        return life
+    user = rec.get("username") or rec.get("persona") or ""
+    rng = random.Random(int(hashlib.sha256(f"life:{user}".encode()).hexdigest()[:16], 16))
+    others = [p["life"] for p in peers if p is not rec and valid_life(p.get("life"))]
+    taken = [_mid(x) for x in others]
+    sig = lambda x: (x["sleep_start"], x["gap_mult"], x["vol_mult"])
+    while True:
+        life = life_profile(rng, n_writers or len(others) + 1, taken)
+        if all(sig(life) != sig(x) for x in others):
+            break
+    rec["life"] = life
+    return life
+
+
+def _span(life, level):
+    """(start, length) in Sydney hours of the sleep window at stealth level `level`: the middle stays, the length scales."""
+    length = life["sleep_h"] * level
+    return (_mid(life) - length / 2) % 24, length
+
+
+def life_asleep(rec, t=None, ignore_relief=False):
+    """Is this voice in its sleep window now (scaled by the pool's level; none at level 0)? A voice woken by relief is not."""
+    level = _S["level"] if _S["active"] else 0.0
+    if level <= 0 or not config.POOL_SCHEDULER:
+        return False
+    if not ignore_relief and rec.get("username") in _S["relief"]:
+        return False
+    start, length = _span(ensure_life(rec), level)
+    return (local_hour(t) - start) % 24 < length
+
+
+def life_wakes_in(rec, t=None):
+    """Seconds until the end of this voice's sleep window (0 when awake)."""
+    if not life_asleep(rec, t):
+        return 0.0
+    start, length = _span(ensure_life(rec), _S["level"])
+    return ((start + length - local_hour(t)) % 24) * 3600
+
+
+# ---- gaps and the weighted pick ---------------------------------------------------------------------------------------
+def _gap_at(rec, mult):
+    life = rec.get("life")
+    m = life["gap_mult"] ** _S["level"] if valid_life(life) else 1.0
+    return max(float(config.ACCOUNT_MIN_GAP_S), _S["mean_gap_s"] * mult * m)
+
+
+def voice_gap_s(rec):
+    """This voice's own mean gap between writes while awake: the pool's mean gap x the controller's multiplier x its
+    gap_mult ** L, never under the 4-min floor."""
+    return _gap_at(rec, _S["mult"])
+
+
+def schedule_gap(rec, t=None, rng=None):
+    """Seconds this voice waits after a write before its next ordinary one (>= the floor, always).
+    Its mean is voice_gap_s(rec). At L = 0 that is all. Above it the voice works in sessions of 1..burst_max writes: the
+    gaps inside a session are shorter (floor-bound), the break after it longer so the mean holds, and each gap's part
+    above the floor gets mean-preserving log-normal noise (sigma GAP_NOISE_SIGMA x L)."""
+    rng = rng or _RNG
+    floor, L = float(config.ACCOUNT_MIN_GAP_S), _S["level"]
+    g = voice_gap_s(rec)
+    if L <= 0 or not valid_life(rec.get("life")):
+        return g
+    with _LOCK:
+        user = rec.get("username")
+        inside = max(floor, g * (1 - BURST_COMPRESS * L))
+        if _SESS.get(user, 0) > 0:
+            _SESS[user] -= 1
+            base = inside
+        else:
+            b = rng.randint(max(1, rec["life"]["burst_max"] - 1), rec["life"]["burst_max"])
+            _SESS[user] = b - 1
+            base = max(floor, b * g - (b - 1) * inside)
+    sigma = GAP_NOISE_SIGMA * L
+    noise = math.exp(sigma * rng.gauss(0, 1) - sigma * sigma / 2)
+    gap = floor + (base - floor) * min(noise, 4.0) + rng.uniform(0, 20 * L)
+    return max(floor, min(gap, 4 * max(base, g)))
+
+
+def weight(rec, t=None):
+    """A ready (or nearly ready) voice's weight in the pick: (1 + overdue) ** WEIGHT_POWER, overdue = how long past its own next_ok
+    in its mean gaps (capped, and as low as -0.9 for a voice still in its gap: assignable), x vol_mult ** L, x
+    BURST_BOOST ** L while it is mid-session."""
+    t = time.time() if t is None else t
+    L = _S["level"]
+    due = max(rec.get("next_ok", 0), rec.get("last_write", 0) + config.ACCOUNT_MIN_GAP_S)
+    w = (1 + min(OVERDUE_CAP, max(-0.9, (t - due) / voice_gap_s(rec)))) ** WEIGHT_POWER
+    if L > 0 and valid_life(rec.get("life")):
+        w *= rec["life"]["vol_mult"] ** L
+        if _SESS.get(rec.get("username"), 0) > 0:
+            w *= BURST_BOOST ** L
+    return w
+
+
+def pick(candidates, t=None, rng=None):
+    """Who writes next: a weighted random choice among `candidates` (the voices ready now, or free to be assigned).
+    O(len), no I/O, no sleeping. None for an empty list."""
+    if not candidates:
+        return None
+    t = time.time() if t is None else t
+    with _LOCK:
+        weights = [weight(r, t) for r in candidates]
+    return (rng or _RNG).choices(candidates, weights=weights)[0]
+
+
+# ---- the pool: refresh (level, relief, controller) -----------------------------------------------------------------------
+def refresh(records, t=None):
+    """Called by Accounts before it picks (live only): `records` are the voices able to write. Gives each a life if it has
+    none (returns True then: the caller saves), sets N, L and the mean gap from plan(), the ONE_VOICE hysteresis, the
+    relief set, and steps the rate controller. Cached for REFRESH_CACHE_S while nothing changed."""
+    if not config.POOL_SCHEDULER:
+        return False
+    t = time.time() if t is None else t
+    with _LOCK:
+        have = [r for r in records if valid_life(r.get("life"))]
+        created = False
+        for r in records:
+            if not valid_life(r.get("life")):
+                ensure_life(r, have, len(records))
+                have.append(r)
+                created = True
+        n = len(records)
+        if not created and _S["active"] and n == _S["n"] and 0 <= t - _S["at"] < REFRESH_CACHE_S:
+            return False
+        p = plan(n)
+        _S.update(active=True, n=n, level=p["level"], mean_gap_s=p["mean_gap_s"], plan=p, at=t)
+        if _S["since"] is None:
+            _S["since"] = t
+        if n >= config.ONE_VOICE_AUTO_N:
+            _S["one_voice"] = True
+        elif n < config.ONE_VOICE_AUTO_OFF_N:
+            _S["one_voice"] = False
+        _relieve(records, t, p)
+        _control(t, p)
+        return created
+
+
+def _relieve(records, t, p):
+    """Wake sleepers, soonest-waking first, while the awake voices' capacity (at the plan's multiplier 1) is under the
+    need: the hard invariant holds on the actual pool at this minute, not only in expectation."""
+    awake_cap, sleepers = 0.0, []
+    for r in records:
+        if life_asleep(r, t, ignore_relief=True):
+            start, length = _span(ensure_life(r), _S["level"])
+            sleepers.append(((start + length - local_hour(t)) % 24, r["username"]))
+        else:
+            awake_cap += 60.0 / _gap_at(r, 1.0)
+    relief = set()
+    for _, user in sorted(sleepers):
+        if awake_cap >= p["need"]:
+            break
+        relief.add(user)
+        awake_cap += 60.0 / _gap_at(next(r for r in records if r["username"] == user), 1.0)
+    _S.update(relief=frozenset(relief), awake=len(records) - len(sleepers) + len(relief),
+              asleep=len(sleepers) - len(relief))
+
+
+def note_write(t=None):
+    """A write happened (on_write): it joins the observations the rate controller reads."""
+    t = time.time() if t is None else t
+    with _LOCK:
+        _S["writes"].append(t)
+        while _S["writes"] and t - _S["writes"][0] > config.POOL_RATE_WINDOW_S:
+            _S["writes"].popleft()
+
+
+def note_empty(t=None):
+    """The picker found no voice ready (voices exist but all are in their gap, asleep or reserved): the controller reads
+    these as 'voices are the limit' before it shortens the gaps."""
+    t = time.time() if t is None else t
+    with _LOCK:
+        _S["empties"].append(t)
+        while _S["empties"] and t - _S["empties"][0] > 600:
+            _S["empties"].popleft()
+
+
+def observed_rate(t=None):
+    """Team writes per minute over the last POOL_RATE_WINDOW_S (or since start, if shorter); None under 5 min of data."""
+    t = time.time() if t is None else t
+    with _LOCK:
+        if _S["since"] is None:
+            return None
+        span = min(config.POOL_RATE_WINDOW_S, t - _S["since"])
+        if span < 300:
+            return None
+        return sum(1 for x in _S["writes"] if t - x <= config.POOL_RATE_WINDOW_S) / (span / 60.0)
+
+
+def _control(t, p):
+    """The rate controller: a global multiplier on every voice's mean gap, one step a minute at most, in POOL_MULT_RANGE.
+    The upper end is also bounded by the capacity (mult <= capacity / need, which is 1 when the plan sits on the need):
+    stealth never buys a gap that takes the pool under HEADROOM x target. Sagging below target with the picker finding
+    nobody ready (voices are the limit): shorter gaps, by up to 15% a step. Above the ceiling: longer, within the bound.
+    On target: hold; after 5 quiet minutes with the rate still at target, drift back to 1."""
+    lo, hi = config.POOL_MULT_RANGE
+    bound = max(1.0, min(hi, p["capacity"] / p["need"])) if p["n"] and p["need"] else 1.0
+    _S["mult_hi"] = bound
+    m = _S["mult"]
+    if t - _S["mult_at"] >= 60:
+        _S["mult_at"] = t
+        obs = observed_rate(t)
+        if obs is not None:
+            target, ceiling = config.POOL_TARGET_RATE, config.POOL_RATE_CEILING
+            err = (target - obs) / target
+            starved = any(t - e < 300 for e in _S["empties"])
+            if obs > ceiling:
+                m *= 1 + min(0.10, (obs - ceiling) / ceiling * 2 + 0.02)
+            elif err > 0.03 and starved:
+                m *= 1 - min(0.15, 0.5 * err)
+            elif err <= 0.03 and not starved and m != 1.0:
+                m += (1.0 - m) * 0.05
+    _S["mult"] = min(max(m, lo), bound)
+
+
+def one_voice_on():
+    """ONE_VOICE_PER_CITIZEN as it is effective now: the config value, or on automatically (ONE_VOICE_AUTO) while the
+    pool has ONE_VOICE_AUTO_N (24) writers or more, off again under ONE_VOICE_AUTO_OFF_N (22)."""
+    return bool(config.ONE_VOICE_PER_CITIZEN or (config.POOL_SCHEDULER and config.ONE_VOICE_AUTO and _S["one_voice"]))
+
+
+def second_voice_arms():
+    """config.SECOND_VOICE_ARMS, less the 'fast' arm (a second voice 1-4 min after the first: the pattern a reply-ring
+    report is made of) once the pool is bigger than SECOND_FAST_MAX_N."""
+    arms = dict(config.SECOND_VOICE_ARMS)
+    if config.POOL_SCHEDULER and _S["active"] and _S["n"] > config.SECOND_FAST_MAX_N and len(arms) > 1:
+        arms.pop("fast", None)
+    return arms
+
+
+def controller_status(t=None):
+    """The scheduler's numbers for data/status.json (plain JSON types)."""
+    t = time.time() if t is None else t
+    with _LOCK:
+        p = _S["plan"] or {}
+        obs = observed_rate(t)
+        return dict(
+            enabled=bool(config.POOL_SCHEDULER), active=_S["active"], n_writers=_S["n"], level=_S["level"],
+            wanted_level=p.get("wanted"), mean_gap_s=round(_S["mean_gap_s"], 1), capacity_per_min=round(p.get("capacity", 0.0), 3),
+            capacity_ratio=round(p.get("capacity_ratio", 0.0), 3), need_per_min=round(p.get("need", 0.0), 3),
+            feasible=p.get("feasible"), awake=_S["awake"], asleep=_S["asleep"], relieved=len(_S["relief"]),
+            mult=round(_S["mult"], 3), mult_range=[config.POOL_MULT_RANGE[0], round(_S["mult_hi"], 3)],
+            observed_rate=None if obs is None else round(obs, 3), target_rate=config.POOL_TARGET_RATE,
+            ceiling=config.POOL_RATE_CEILING, over_ceiling=bool(obs is not None and obs > config.POOL_RATE_CEILING),
+            empties_5m=sum(1 for e in _S["empties"] if t - e < 300), one_voice_effective=one_voice_on(),
+            second_fast=("fast" in second_voice_arms()))

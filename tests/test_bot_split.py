@@ -44,7 +44,8 @@ RUN_S = 12                # a run's --hours, in seconds
 VOICES = 6                # seeded voices; the last is parked (HIDDEN_STOP hidden posts)
 DRAFTER_NAMES = {f"drafter-{i}" for i in range(1, config.DRAFTERS + 1)}
 JOB_TYPES = {"reply", "reply_back", "second_voice", "journalist", "post", "repost"}
-STEALTH_RULES = ("VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN")
+STEALTH_RULES = ("VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
+                 "POOL_SCHEDULER")      # todo/38: the longest-rest pick; the scheduler runs in tests/test_pool_scheduler.py
 
 
 def iso(t=None):
@@ -403,7 +404,7 @@ def test_every_background_duty_fires(run):
     status = json.loads((tmp / "data" / "status.json").read_text())
     assert status["accounts"]["voices"] >= VOICES
     if run["split"]:                        # written at the start of the run (every 30 s): the writer is there first
-        assert "writer" in status["threads"] and set(status["threads"]) <= {"reader", "writer", "pulse", *DRAFTER_NAMES}
+        assert "writer" in status["threads"] and set(status["threads"]) <= {"reader", "writer", "pulse", "pool", *DRAFTER_NAMES}
         assert DRAFTER_NAMES <= set(status["threads"]), "every drafter has its own heartbeat"
         assert s["pulse"].threads == {"pulse"}, f"pulse.update only runs in the pulse thread: {s['pulse'].threads}"
         assert set(status["queue"]) == {"reply_backs", "candidates", "drafts_ready", "drafts_inflight"}

@@ -37,7 +37,7 @@ import urllib.error
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, engage, experiment, feeds, humanize, pulse, quality, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, humanize, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, agrees, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
@@ -152,9 +152,22 @@ class Accounts:
         if created:                      # a restart must not register straight after the last registration
             self.next_register = max(created) + random.uniform(*config.REGISTER_GAP_S)
 
+    _SAVE_LOCK = threading.RLock()          # todo/38: the pool thread saves too; two saves never write the .tmp at once
+
     def save(self):
         if self.live:
-            save_json(config.ACCOUNTS_FILE, self.records, private=True)
+            with Accounts._SAVE_LOCK:
+                save_json(config.ACCOUNTS_FILE, self.records, private=True)
+
+    def ramp_ok(self, rec, t):
+        """todo/38: a voice the pool has just activated or converted (rec["ramp"] = {from, until, start}) is ready with a
+        chance that rises linearly from `start` (0.25) to 1 at `until`: light first days. A voice with no ramp: always."""
+        ramp = rec.get("ramp")
+        if not ramp or t >= ramp.get("until", 0):
+            return True
+        span = max(1.0, ramp["until"] - ramp.get("from", t))
+        p = ramp.get("start", 0.25) + (1 - ramp.get("start", 0.25)) * min(1.0, max(0.0, (t - ramp.get("from", t)) / span))
+        return random.random() < p
 
     def active(self):
         return [r for r in self.records if r.get("status", "active") == "active"]
@@ -174,7 +187,10 @@ class Accounts:
         return [r for r in self.active() if r.get("role") == "booster" and r is not reporter]
 
     def maybe_register(self, k, code, owner):
-        """Drip registration: at most one new account per call, 20-40 min apart, never more than MAX_ACCOUNTS."""
+        """Drip registration: at most one new account per call, 20-40 min apart, never more than MAX_ACCOUNTS.
+        todo/38: not at all while config.POOL_LIVE (the pool worker is then the only registrar)."""
+        if self.live and config.POOL_LIVE:
+            return
         voices_ever = [r for r in self.records if r.get("role", "voice") != "booster"]
         if (len(self.voices()) >= k or len(voices_ever) >= config.MAX_ACCOUNTS
                 or len(self.active()) + config.swarm_active() >= config.MAX_ACTIVE
@@ -268,17 +284,38 @@ class Accounts:
         return (rec.get("status", "active") == "active" and not self.parked(rec)
                 and rec.get("last_write", 0) + gap <= t and self.gap_ok(rec, t) and not self.rest(rec, t, citizen))
 
+    def n_writers(self):
+        """Voices able to write: active persona accounts that are not parked (the N of stealth.plan, todo/38)."""
+        return len([r for r in self.voices() if not self.parked(r)])
+
+    def _sched(self, t):
+        """todo/38: True when the pool scheduler picks (live bot, config.POOL_SCHEDULER). Refreshes its level, life profiles
+        and rate controller from the voices able to write; a life drawn for a voice that had none is saved once."""
+        if not (self.live and config.POOL_SCHEDULER):
+            return False
+        if stealth.refresh([r for r in self.voices() if not self.parked(r)], t):
+            self.save()
+        return True
+
+    def _choose(self, cands, sched, t):
+        """The voice that writes next out of the candidates: the weighted pick of the pool scheduler, else (and in dry
+        runs, or with POOL_SCHEDULER off) the one that wrote longest ago."""
+        if sched and cands:
+            return stealth.pick(cands, t)
+        return min(cands, key=lambda r: r.get("last_write", 0)) if cands else None
+
     def assignable(self, frame=None, exclude=(), prefer=(), citizen=False):
         """Like eligible(), but the voice may still be in its gap: for batched drafts that wait in the pool."""
         t = time.time()
+        sched = self._sched(t)
         free = [r for r in self.voices() if r["persona"] not in exclude and r["persona"] not in self.reserved
-                and not self.parked(r) and not self.rest(r, t, citizen)]
+                and not self.parked(r) and not self.rest(r, t, citizen) and self.ramp_ok(r, t)]
         mine = [r for r in free if r["persona"] in prefer]
         if mine:
             free = mine
         elif frame:
             free = [r for r in free if frame in content.PERSONA_BY_KEY[r["persona"]]["frames"]] or free
-        return min(free, key=lambda r: r.get("last_write", 0)) if free else None
+        return self._choose(free, sched, t)
 
     def eligible(self, frame=None, exclude=(), gap=None, prefer=(), citizen=False):
         """The voice that wrote longest ago among those free now: a shared-identity messenger (prefer) first,
@@ -286,19 +323,22 @@ class Accounts:
         citizen, so the end of the daily budget is open to it), and an ordinary write (gap None) waits for the
         voice's jittered gap; a repost (gap given) only for its own."""
         t = time.time()
+        sched = self._sched(t)
         jitter = gap is None
         if gap is None or not self.live:                         # dry runs rotate personas without waiting
             gap = config.ACCOUNT_MIN_GAP_S if self.live else 0
         ready = [r for r in self.voices() if r.get("last_write", 0) + gap <= t and r["persona"] not in exclude
                  and r["persona"] not in self.reserved and not self.parked(r)
-                 and (not jitter or self.gap_ok(r, t)) and not self.rest(r, t, citizen)]
+                 and (not jitter or self.gap_ok(r, t)) and not self.rest(r, t, citizen) and self.ramp_ok(r, t)]
+        if sched and not ready and jitter and not exclude and not prefer:
+            stealth.note_empty(t)               # todo/38: nobody ready although voices exist: the rate controller reads it
         mine = [r for r in ready if r["persona"] in prefer]
         if mine:
             ready = mine
         elif frame:
             fit = [r for r in ready if frame in content.PERSONA_BY_KEY[r["persona"]]["frames"]]
             ready = fit or ready
-        return min(ready, key=lambda r: r.get("last_write", 0)) if ready else None
+        return self._choose(ready, sched, t)
 
     def by_persona(self, key):
         return next((r for r in self.voices() if r["persona"] == key), None)
@@ -1053,7 +1093,12 @@ def persona_of(rec):
     """The persona card a voice drafts as. A booster turned voice (scripts/convert_boosters.py) takes only the card's
     role, place, frames and argument, under its own display name: the suspended voice's people, signature lines,
     events, arc and any text naming its people are left out, and its style and typing hand (`hand`) come from another
-    suspended card (rec["converted"]["style_of"]), so it doesn't read as the old account back (todo/31)."""
+    suspended card (rec["converted"]["style_of"]), so it doesn't read as the old account back (todo/31).
+    A variant (rec["variant"], variants.py, todo/38) is the card read-only overlaid: its own name, age, hand (a dict
+    humanize.apply takes), people and details, on a copy; the card's profile text is not copied anywhere else."""
+    if rec.get("variant"):
+        from . import variants
+        return variants.persona(rec)
     card = content.PERSONA_BY_KEY[rec["persona"]]
     conv = rec.get("converted")
     if not conv:
@@ -1170,6 +1215,10 @@ def main():
     per_min = max(0.1, min(args.per_min, config.MAX_PER_MIN))    # the headers bind first (write_gap)
 
     split = config.SPLIT_LOOP                           # todo/22: reader, drafter and writer threads
+    if config.POOL_LIVE and not (args.live and split):
+        # the pool worker runs only in the live split loop; without it the old registrars would be off AND nobody registering
+        print("POOL_LIVE needs --live and the split loop: ignoring it, the old registrars run as before")
+        config.POOL_LIVE = False
     social = ctn.LegitSocial()
     rsocial = ctn.LegitSocial() if split else social    # the reader's own client: X-RateLimit-* is per client
     gen = Generator(code, allow_qwen=args.allow_qwen)
@@ -1290,6 +1339,10 @@ def main():
 
     beats = {}                         # thread name -> time its loop last went round (status.json, the watchdog)
     workers = []
+    # todo/38: the pool orchestrator (pool.py plans, pool_runner.py does). Always planning in the live split loop; it only
+    # changes anything when config.POOL_LIVE (SWAN_POOL_LIVE=1), else it logs `pool_shadow` rows. Non-critical worker "pool".
+    pool_run = (pool_runner.PoolRunner(accounts, social, mu, log, alert, code, owner, rng=random.Random())
+                if args.live and split else None)
     rate_limited = []                    # times of 429s in the last hour (dashboard)
     write_rl = [None]                    # the write budget as our last write's headers reported it (todo/24)
     last_status = [0.0]
@@ -1315,6 +1368,7 @@ def main():
                 # todo/31: per voice its writes, active hours, hidden posts and what holds it; the two-voice share
                 stealth=stealth.metrics(accounts.voices(), accounts.hidden(), state, t,
                                         status=lambda r: accounts.status(r, t)),
+                **({"pool": pool_run.status()} if pool_run and pool_run.status() else {}),    # todo/38 (swan_dash pool_view)
                 # todo/22: each thread's heartbeat (max_silent_s: the watchdog's limit) and the queues between them
                 **(dict(loop="split", threads={name: dict(
                     last_run=dt.datetime.fromtimestamp(b, dt.timezone.utc).isoformat(), age_s=round(t - b),
@@ -1482,7 +1536,7 @@ def main():
         gone = lambda j: ((j.get("target") or {}).get("post_id") in state["replied_posts"]
                           or (j["mode"] == "reply"
                               and len(contacted.get(str(j["target"]["author_id"]), ())) >= config.SESSION_VOICES))
-        second = config.SECOND_VOICE and not config.ONE_VOICE_PER_CITIZEN     # todo/31: one voice per citizen
+        second = config.SECOND_VOICE and not stealth.one_voice_on()     # todo/31: one voice per citizen (todo/38: auto from 24 writers)
         if job is None and desk and second:
             drafted = desk.take("second_voice", t, gone)
         if job is None and drafted is None and second:
@@ -1739,7 +1793,7 @@ def main():
                 state["engaged"][str(target["author_id"])] = time.time()     # ENGAGED_BONUS on their next post
             if (mode == "reply" and config.SECOND_VOICE and job.get("arm") != "firm_yes"     # no pile-on on a firm Yes
                     and job.get("group") != "off_topic"):                 # nor a referendum angle on their own topic
-                job["sv_delay"] = experiment.alternate("sv_delay", list(config.SECOND_VOICE_ARMS))    # todo/20 step 7
+                job["sv_delay"] = experiment.alternate("sv_delay", list(stealth.second_voice_arms()))    # todo/20 step 7 (todo/38: no 'fast' arm in a big pool)
                 state["second_voice"].append(dict(due=time.time() + random.uniform(*config.SECOND_VOICE_ARMS[job["sv_delay"]]),
                                                   sv_delay=job["sv_delay"],
                                                   post_id=target["post_id"], author=target["author_id"],
@@ -1822,6 +1876,7 @@ def main():
             if e.status == 403 and "suspended" in msg and job:
                 with mu:
                     job["rec"]["status"] = "suspended"
+                    job["rec"].setdefault("suspended_at", now_iso())      # todo/38: the pool's loss rate reads it
                     accounts.save()
                 log({"act": "suspended", "username": job["rec"]["username"]})
             elif e.status == 403 and "locked" in msg:
@@ -1996,6 +2051,13 @@ def main():
         with mu:
             state.update(kept)
 
+    def pool_step():
+        """The pool thread (todo/38, non-critical): one tick of the pool orchestrator every POOL_TICK_S (30-60 s). It never
+        holds mu across a network call (pool_runner), a failing tick is logged and the 5th in a row ends the thread, which
+        the watchdog reports once; the bot keeps writing with the pool it has."""
+        pool_run.step()
+        stop.wait(random.uniform(*config.POOL_TICK_S))
+
     def check_workers():
         """The watchdog (todo/22): a thread that died or went silent stops the bot. It logs, alerts like BOT CRASHED,
         saves the state and exits 1, so systemd restarts it. Never runs on without its reader or drafter. The pulse
@@ -2010,8 +2072,10 @@ def main():
                     log({"act": "thread_died", "thread": w.name, "why": why, "fatal": False})
                     print(f"watchdog: {w.name} {why} (not fatal)")
                     if args.live:
-                        alert(f"BOT THREAD FAILED (not fatal): {w.name} ({why}); drafts use the last pulse. "
-                              f"Restart when convenient. Logs: journalctl -u swan-bot -n 50")
+                        alert(f"BOT THREAD FAILED (not fatal): {w.name} ({why}); "
+                              + ("no accounts are added or activated until a restart; the bot keeps writing. "
+                                 if w.name == "pool" else "drafts use the last pulse. ")
+                              + "Restart when convenient. Logs: journalctl -u swan-bot -n 50")
                 elif not why:
                     w.reported = False
                 continue
@@ -2091,6 +2155,8 @@ def main():
             workers += [Worker(f"drafter-{i}", drafter_step, stop, beats, config.DRAFTER_SILENT_S)
                         for i in range(1, max(1, int(config.DRAFTERS)) + 1)]
             workers += [Worker("pulse", pulse_step, stop, beats, config.PULSE_SILENT_S, critical=False)]
+            if pool_run:
+                workers += [Worker("pool", pool_step, stop, beats, config.POOL_SILENT_S, critical=False)]
             for w in workers:
                 w.start()
             write_loop()

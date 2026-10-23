@@ -73,6 +73,10 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .light[title] { cursor: help; }
 .light .label::after { content: " ⓘ"; opacity: .6; }
 .light.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+details.poolrow { margin: 0 0 8px; border: 0; border-radius: 8px; font-size: 12px; }
+details.poolrow.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+details.poolrow summary { padding: 4px 10px; } details.poolrow summary b { margin-right: 4px; }
+details.poolrow div { padding: 0 10px 6px; }
 @media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
@@ -272,6 +276,13 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <div class="light {{ i.light }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div></div>
 {% endfor %}
 </div>
+{% if pool %}
+<details class="poolrow {{ pool.light }}" id="pool" title="{{ pool.tip }}"><summary><b>{{ pool.head }}</b> {{ pool.sub }}</summary>
+{% for a in pool.acts %}<div>{{ a.when }} · {{ a.act }}{% if a.username %} · @{{ a.username }}{% endif %}</div>
+{% else %}<div>No pool actions yet.</div>
+{% endfor %}
+</details>
+{% endif %}
 <details class="reach" id="reach">
   <summary><span class="sub">Speed · Volume · Conversion · Stealth: what each light is made of</span></summary>
   <table>
