@@ -9,15 +9,19 @@ A moderator-hidden post answers 404 "post not found" and drops out of its author
            posts take a voice off amplified posts and threads, config.HIDDEN_STOP stop it writing.
   ring     hourly: scripts/ring_audit.py's score on our last amplified posts and on Trending (others' posts only).
            Alert when our median reaches the leaders' median: that's when Blue reporters rank us next to them.
+  budget   every run: the account forecast (swan_bot/budget.py, todo/39) to config.BUDGET_END_DAY and an alert when the
+           spare registrations on config.RESERVE_DAY fall under config.RESERVE_GOAL or bans run over the forecast. It
+           changes nothing; Marc cuts writes by hand (runbook "Account budget").
 """
 import collections
+import datetime as dt
 import json
 import os
 import statistics
 
 import capturethenarrative as ctn
 
-from . import config
+from . import budget, config
 from .analysis import ts_of
 
 WATCH_FILE = config.DATA / "swan_watch.json"
@@ -28,6 +32,8 @@ MAX_CONFIRM = 60            # get_post confirmations per run (read budget: 300/m
 RING_EVERY_S = 3600
 RING_OURS, RING_TRENDING = 8, 20
 RING_ALERT_GAP_S = 6 * 3600
+BUDGET_FILE = config.DATA / "swan_budget.json"      # the account-budget job's state: alerts sent, the last forecast (todo/39)
+PORTAL_FILE = config.DATA / "portal.json"           # swan_dash/portal.py: team-page counts and the suspension messages
 
 
 def load(path=None):
@@ -68,6 +74,7 @@ class LogScan:
         self.first_ts = {}                                    # username -> {post_id: earliest ts of a write row}
         self.actions = collections.Counter()                  # username -> live rows
         self.plans = collections.deque(maxlen=RING_OURS)      # post ids of the last RING_OURS live amp_plan rows
+        self.text_ids = {}                                    # username -> post ids of live text writes (budget.TEXT_WRITES)
 
     def add(self, r):
         if not r.get("live"):
@@ -75,6 +82,8 @@ class LogScan:
         self.actions[r.get("username")] += 1
         if r.get("post_id") and r.get("act") == "amp_plan":
             self.plans.append(r["post_id"])
+        if r.get("post_id") and r.get("act") in budget.TEXT_WRITES and r.get("username"):
+            self.text_ids.setdefault(r["username"], set()).add(r["post_id"])
         if r.get("post_id") and r.get("act") in WRITES and r.get("username"):
             try:
                 ts = ts_of(r["ts"])
@@ -82,6 +91,10 @@ class LogScan:
                 return
             seen = self.first_ts.setdefault(r["username"], {})
             seen[r["post_id"]] = min(ts, seen.get(r["post_id"], ts))
+
+    def text_writes(self):
+        """{username: live text writes}, as budget.text_writes_by_voice gives over the same rows."""
+        return {u: len(ids) for u, ids in self.text_ids.items()}
 
     def logged_posts(self, now):
         """Same as logged_posts(rows, now): {username: {post_id, ...}} of our live writes old enough to be listed."""
@@ -125,3 +138,74 @@ def ring_medians(ours, trending, score):
 
 def ring_alarm(ours_med, leaders_med):
     return ours_med is not None and leaders_med is not None and ours_med >= leaders_med
+
+
+# ---- account budget (todo/39): a forecast and an alert, nothing is throttled or blocked -------------------------------
+def read_json(path):
+    try:
+        v = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return v if isinstance(v, dict) else {}
+
+
+def budget_report(now, writes, records, portal):
+    """The account budget now, as one dict (None when neither the portal nor the records say how many accounts we have).
+    writes: {username: text writes}; records: the account records (usernames, roles, status: nothing secret is read);
+    portal: data/portal.json. Writes per ban is the Kaplan-Meier median once config.BUDGET_KM_MIN_BANS bans are measured,
+    else config.WRITES_PER_BAN_DEFAULT. Today's plan is cut to the part of the Sydney day left (the bans so far are already
+    in alive and spare); bans of the last 24 h are compared with a whole day's plan."""
+    counts = budget.account_counts(portal, records, config.POOL_TOTAL_CAP)
+    if counts is None:
+        return None
+    alive, spare = counts
+    log = portal.get("account_log") or {}
+    names = {s["username"]: budget.epoch(s.get("ts")) for s in log.get("suspended") or [] if s.get("username")}
+    km = budget.km_writes_per_ban(budget.build_voices(writes, records, names))
+    measured = km["median"] is not None and km["n_banned"] >= config.BUDGET_KM_MIN_BANS and km["median"] > 0
+    wpb = km["median"] if measured else float(config.WRITES_PER_BAN_DEFAULT)
+    today = budget.sydney_day(now)
+    first, last = dt.date.fromisoformat(today), dt.date.fromisoformat(config.BUDGET_END_DAY)
+    span = [first + dt.timedelta(days=i) for i in range(max(0, (last - first).days + 1))]
+    plan = {d.isoformat(): budget.plan_for_day(config.BAN_PLAN, d) for d in span}      # filled before today's is cut
+    full_today = budget.plan_for_day(config.BAN_PLAN, today)
+    if today in plan:
+        plan[today] = full_today * budget.day_left_fraction(now)
+    days = budget.forecast_days(plan, wpb, alive, spare, first, last) if span else []
+    status = budget.reserve_status(days, config.RESERVE_GOAL, config.RESERVE_DAY)
+    stamps = {u: t for u, t in names.items() if t is not None}
+    for r in records:                                  # a suspension the portal's names have not shown yet
+        t = budget.epoch(r.get("suspended_at"))
+        if r.get("status") == "suspended" and t is not None and r.get("username") not in stamps:
+            stamps[r["username"]] = t
+    actual = budget.bans_in_window(log.get("counts"), list(stamps.values()), now)
+    forecast24 = full_today / wpb
+    return dict(ts=now, day=today, alive=alive, spare=spare, writes_per_ban=wpb, measured=measured, km=km, days=days,
+                status=status, actual_bans_24h=actual, forecast_bans_24h=forecast24,
+                alerts=budget.ban_alert(actual, forecast24, status, config.RESERVE_DAY))
+
+
+def budget_run(now, writes, records, *, alert, record, dry=False):
+    """One 20-minute pass: report, send each new alert once per config.BUDGET_ALERT_GAP_S (the state is BUDGET_FILE), log
+    one summary row. dry prints the alerts and sends and saves nothing. A missing file is no error: no data, no alert."""
+    rep = budget_report(now, writes, records, read_json(PORTAL_FILE))
+    if rep is None:
+        print("budget: no account counts (no portal file, no records)")
+        return None
+    state = read_json(BUDGET_FILE)
+    due, sent = budget.due_alerts(rep["alerts"], state.get("sent"), now, config.BUDGET_ALERT_GAP_S)
+    record({"act": "budget", "alive": rep["alive"], "spare": rep["spare"], "writes_per_ban": rep["writes_per_ban"],
+            "km": rep["km"], "actual_bans_24h": rep["actual_bans_24h"],
+            "forecast_bans_24h": round(rep["forecast_bans_24h"], 1), "reserve": rep["status"],
+            "alerts": len(rep["alerts"]), "sending": len(due)})
+    how = "measured" if rep["measured"] else "default"
+    for text in due:
+        msg = f"{text} [writes per ban {rep['writes_per_ban']:.0f} ({how}); now alive {rep['alive']}, spare {rep['spare']}]"
+        if dry:
+            print(f"budget alert (dry, not sent): {msg}")
+        else:
+            alert(msg)
+    if not dry:
+        BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        save({"ts": now, "sent": sent, "last": rep}, BUDGET_FILE)
+    return rep
