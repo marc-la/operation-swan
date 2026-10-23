@@ -356,7 +356,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
   {% if board %}
   <h3>Leaderboard</h3>
-  <p class="sub">Top four go to Sydney{% if board.cutoff is not none %} · {{ board.cutoff | n }} behind #4{% elif board.rank <= 4 %} · <span class="up">we are in the top four</span>{% endif %}</p>
+  <p class="sub">Top three go to Sydney{% if board.cutoff is not none %} · {{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %} · <span class="up">we are in the top three</span>{% endif %}</p>
   <table class="board">
     {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}

@@ -335,20 +335,20 @@ def conversations(actions, texts=None):
 
 
 def leaderboard_rows(portal):
-    """The leaderboard as the team reads it: the finalist places (top four, who fly to Sydney), a line, then us with
-    the team above and below. Teams already in the top four are not repeated; `gap` is set where ranks are skipped
-    between the two blocks, and `between` lists those teams for the expandable row. `cutoff` is how far we are behind fourth place (None when we are in the top four)."""
+    """The leaderboard as the team reads it: the finalist places (top three, who fly to Sydney), a line, then us with
+    the team above and below. Teams already in the top three are not repeated; `gap` is set where ranks are skipped
+    between the two blocks, and `between` lists those teams for the expandable row. `cutoff` is how far we are behind third place (None when we are in the top three)."""
     us = dict(rank=portal["rank"], team="Operation Swan (us)", score=portal["score"], us=True)
     top = portal.get("top") or ([portal["leader"]] if portal.get("leader") else [])
     shown = {r["rank"] for r in top}
     near = [dict(us=False, **r) if r is not us else r for r in (portal.get("above"), us, portal.get("below"))
             if r and r["rank"] not in shown]
-    fourth = next((r for r in top if r["rank"] == 4), None)
+    third = next((r for r in top if r["rank"] == 3), None)
     gap = bool(near) and bool(top) and near[0]["rank"] > top[-1]["rank"] + 1
     between = [r for r in portal.get("rows") or [] if gap and top[-1]["rank"] < r["rank"] < near[0]["rank"]]
     return dict(finalists=[dict(r, us=r["rank"] == us["rank"]) for r in top], near=near,
                 gap=gap, between=between,
-                cutoff=max(fourth["score"] - us["score"], 0) if fourth and us["rank"] > 4 else None)
+                cutoff=max(third["score"] - us["score"], 0) if third and us["rank"] > 3 else None)
 
 
 # ---- Score & targets: the portal's points log, split by kind (todo/29) ----

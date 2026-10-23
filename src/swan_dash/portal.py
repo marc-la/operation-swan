@@ -120,11 +120,11 @@ def account_log(events):
     return dict(counts=counts, suspended=suspended)
 
 
-FINALISTS = 4                                  # the top four teams fly to Sydney to present
+FINALISTS = 3                                  # the top three teams fly to Sydney to present
 
 
 def standing(board):
-    """Our rank, score and neighbours, the leader, the finalist places (top four), and the team count."""
+    """Our rank, score and neighbours, the leader, the finalist places (top three), and the team count."""
     us = next((r for r in board if r["team"] == TEAM_NAME), None)
     if not us:
         return dict(rank=None, score=None, teams=len(board))
