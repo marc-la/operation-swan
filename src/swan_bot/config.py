@@ -81,6 +81,15 @@ REPLY_VOTE_SHARE = 0.0
 # A post must still say it is voting No (quality's no_vote_statement), so it is the hashtag that goes: content.post_prompt asks for
 # none and a draft that adds one has it cut (quality.fix, no LLM call). False = the old posts, hashtag and "I'm voting No" together.
 POST_NO_TAG_WITH_VOTE = True
+# The bot learned a voice was suspended from a 403 on its next action, 40 min to 12 h after the portal said so (22-23 Oct), and held
+# its slot (and a wasted write) meanwhile. The dashboard poller (swan-portal.timer, 15 min) already writes the portal's suspension
+# messages to data/portal.json (account_log.suspended); the writer reads that local file (no network call) every PORTAL_SYNC_S and
+# marks a voice or booster suspended when the file names its username AND account id. A file whose own `ts` is older than
+# PORTAL_MAX_AGE_S (the poller died, or its cookie expired), missing or malformed is ignored.
+PORTAL_SYNC = True
+PORTAL_SYNC_S = 120
+PORTAL_MAX_AGE_S = 3600
+PORTAL_FILE = DATA / "portal.json"
 
 # ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
@@ -450,7 +459,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
-               "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
+               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth

@@ -14,6 +14,7 @@ import collections
 import json
 import os
 import statistics
+import time
 
 import capturethenarrative as ctn
 
@@ -42,6 +43,36 @@ def save(state, path=None):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=1))
     os.replace(tmp, path)                     # the bot reads this file: never let it see half a write
+
+
+def portal_suspended(path=None, now=None, max_age_s=None):
+    """{(username, account_id): {"ts": iso, "why": str}} of the accounts the portal says are suspended, read from the
+    dashboard poller's file (config.PORTAL_FILE, account_log.suspended; no network). {} when the file is missing, not
+    JSON, not the shape the poller writes, or older than max_age_s by its own `ts` (config.PORTAL_MAX_AGE_S): a stale
+    file is no evidence. A malformed entry is skipped on its own. The key is the pair, so a caller matches on both."""
+    now = time.time() if now is None else now
+    max_age_s = config.PORTAL_MAX_AGE_S if max_age_s is None else max_age_s
+    try:
+        doc = json.loads((path or config.PORTAL_FILE).read_text())
+        read_at = ts_of(doc["ts"])
+        rows = doc["account_log"]["suspended"]
+        if not isinstance(rows, list):
+            return {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    if now - read_at > max_age_s:
+        return {}
+    out = {}
+    for r in rows:
+        try:
+            name, ident = r["username"], r["id"]
+            if not isinstance(name, str) or not name or isinstance(ident, bool) or int(ident) != ident:
+                continue
+            ts_of(r["ts"])
+            out[(name, int(ident))] = dict(ts=r["ts"], why=str(r.get("why") or ""))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return out
 
 
 def logged_posts(rows, now):

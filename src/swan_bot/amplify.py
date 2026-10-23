@@ -418,9 +418,7 @@ class Amplifier:
             self.liked(rec["username"]).append(pid)            # never retry a failed like (failed-request budget)
             if e.status in (403, 404, 410) and not filler:
                 if "suspend" in (e.message or "").lower():
-                    rec["status"] = "suspended"
-                    rec.setdefault("suspended_at", dt.datetime.now(dt.timezone.utc).isoformat())    # todo/38 loss rate
-                    self.accounts.save()
+                    self.accounts.mark_suspended(rec)                 # todo/38 loss rate
                     self.log({"act": "suspended", "username": rec["username"]})
                 else:
                     self.drop_post(pid, f"like {e.status}")
