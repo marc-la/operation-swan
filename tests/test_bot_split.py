@@ -445,6 +445,41 @@ def test_worker_without_a_heartbeat_is_a_problem():
     w.join(1)
 
 
+def test_worker_rides_out_a_transient_network_error(monkeypatch):
+    """23 Oct: one SSLEOFError in the reader exited the whole bot. A blip costs the round; a real bug or an outage still
+    ends the thread for the watchdog."""
+    monkeypatch.setattr(bot, "NET_RETRY_S", 0)
+    stop, beats, calls = threading.Event(), {}, [0]
+
+    def step():
+        calls[0] += 1
+        if calls[0] < 3:
+            raise bot.urllib.error.URLError(bot.ssl.SSLEOFError("UNEXPECTED_EOF_WHILE_READING"))
+        if calls[0] == 5:
+            stop.set()
+
+    w = bot.Worker("reader", step, stop, beats, silent_s=10)
+    w.start()
+    w.join(2)
+    assert w.error is None and calls[0] == 5
+
+    def outage():
+        raise ConnectionResetError("down")
+
+    w = bot.Worker("reader", outage, threading.Event(), {}, silent_s=10)
+    w.start()
+    w.join(2)
+    assert isinstance(w.error, ConnectionResetError) and w.net_errors == bot.NET_MAX_IN_ROW
+
+    def bug():
+        raise KeyError("x")
+
+    w = bot.Worker("reader", bug, threading.Event(), {}, silent_s=10)
+    w.start()
+    w.join(2)
+    assert isinstance(w.error, KeyError) and w.net_errors == 0
+
+
 @pytest.mark.parametrize("thread", ["reader", "drafter"])
 def test_watchdog_stops_the_bot_when_a_thread_dies(thread, tmp_path, monkeypatch, no_network):
     world, spies = setup_world(monkeypatch, tmp_path, split=True)

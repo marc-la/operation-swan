@@ -18,6 +18,7 @@ thread and repost it (those writes come first in the order above, after reply-ba
 """
 import argparse
 import datetime as dt
+import http.client
 import json
 import os
 import pathlib
@@ -25,10 +26,13 @@ import random
 import re
 import secrets
 import signal
+import socket
+import ssl
 import subprocess
 import threading
 import time
 import traceback
+import urllib.error
 
 import openai
 import capturethenarrative as ctn
@@ -291,20 +295,39 @@ class Sessions:
         return acc
 
 
+# A dropped connection, a TLS EOF or a timeout on one request: the platform or the network blinked. The client library
+# retries only 429s, so these reach the worker. 2026-10-23: one SSLEOFError in the reader exited the whole bot, twice in
+# 50 min (01:01 and 01:49 UTC), each time a restart and a gap in writes.
+TRANSIENT_NET = (urllib.error.URLError, ssl.SSLError, socket.timeout, ConnectionError, http.client.HTTPException)
+NET_RETRY_S = 15                    # wait before the next round after a transient network error
+NET_MAX_IN_ROW = 8                  # this many failed rounds in a row (~2 min) is an outage: let the watchdog restart
+
+
 class Worker(threading.Thread):
-    """One of the split loop's threads: runs step() until stop is set, noting each round in beats (todo/22). An
-    exception ends it and is kept for the writer's watchdog, which stops the bot (problem())."""
+    """One of the split loop's threads: runs step() until stop is set, noting each round in beats (todo/22). Any other
+    exception ends it and is kept for the writer's watchdog, which stops the bot (problem()). A transient network
+    error (TRANSIENT_NET) only costs the round: it is logged, the thread waits NET_RETRY_S and goes on."""
 
     def __init__(self, name, step, stop, beats, silent_s):
         super().__init__(name=name, daemon=True)
         self.step, self.stop, self.beats, self.silent_s = step, stop, beats, silent_s
         self.error = None
+        self.net_errors = 0
 
     def run(self):
         try:
             while not self.stop.is_set():
                 self.beats[self.name] = time.time()
-                self.step()
+                try:
+                    self.step()
+                    self.net_errors = 0
+                except TRANSIENT_NET as e:
+                    self.net_errors += 1
+                    if self.net_errors >= NET_MAX_IN_ROW:
+                        raise
+                    print(f"{self.name}: network error, retrying in {NET_RETRY_S} s "
+                          f"({self.net_errors}/{NET_MAX_IN_ROW}): {type(e).__name__}: {e}"[:300])
+                    self.stop.wait(NET_RETRY_S)
         except BaseException as e:               # noqa: B036 - kept for the watchdog, which exits the process
             self.error = e
             traceback.print_exc()
