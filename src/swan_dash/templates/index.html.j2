@@ -108,6 +108,13 @@ details.pts > div { padding: 0 10px 8px; }
 details.run { border: 0; margin: 0; background: none; }
 details.run > summary { padding: 0; list-style: none; display: flex; }
 details.run > summary::-webkit-details-marker { display: none; }
+details.plan > summary { align-items: baseline; gap: 10px; padding: 4px 0; cursor: pointer; }
+details.plan .dots { flex: 0 0 auto; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted);
+  font-weight: 700; font-size: 18px; line-height: 1.2; }
+details.plan[open] > summary .dots { background: var(--line); color: var(--ink); }
+details.plan > summary .det { color: var(--ink); font-size: 14px; font-weight: 600; }
+table.plan tr.today td { font-weight: 600; } table.plan tr.future td { color: var(--muted); }
+table.plan td, table.plan th { padding-right: 6px; }
 table.ledger td { padding: 4px 8px 4px 0; }
 table.ledger td.out, details.run .out { width: 7.2em; min-width: 7.2em; flex: 0 0 7.2em; white-space: nowrap;
   font-weight: 600; }
@@ -128,6 +135,7 @@ tr.notes td { border-top: 0; padding-top: 0; }
     border-top: 1px solid var(--line); }
   table.days td { border: 0; padding: 0; text-align: left; }
   table.days td:first-child { grid-column: 1 / -1; font-weight: 600; }
+  table.days td:empty { display: none; }
   table.days td[data-l]::before { content: attr(data-l) " "; color: var(--muted); font-size: 12px; }
 }
 li .x { min-width: 0; overflow-wrap: anywhere; }
@@ -318,7 +326,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% set bot_warn = llm.degraded or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
   {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
-  {% if portal_accounts %}{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} (<span class="down">+{{ acct_days[0].new }} today</span>){% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} voices
+  {% if bans %}{{ bans.registered }} registered · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · <span class="down">+{{ acct_days[0].new }} today</span>{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} voices
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>
@@ -328,14 +336,32 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<tr><td class="sub">No status from the bot yet.</td></tr>{% endfor %}
   </table>
   <h3>Accounts</h3>
-  {% if portal_accounts %}<p><b>{{ portal_accounts.registered }} registered · {{ portal_accounts.banned }} banned · {{ portal_accounts.max_active }} active max</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} voices · {{ accounts.boosters | n }} boosters</p>
+  {% if bans %}<p><b>{{ bans.registered }} registered · {{ bans.text }}{% if portal_accounts %} · {{ portal_accounts.max_active }} active max{% endif %}</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} voices · {{ accounts.boosters | n }} boosters</p>
   {% else %}<p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} voices, {{ accounts.boosters | n }} boosters) · {{ accounts.suspended | n }} suspended</p>{% endif %}
   <details id="acct-days"><summary><b>Accounts by day</b><span class="sub">{% if acct_days %}{{ acct_days | length }} days{% endif %}</span></summary>
-  <div>{% if acct_days %}<table>
-    <tr><th>Day (9pm–9pm Perth)</th><th class="num">Registered</th><th class="num">Banned</th><th class="num">New bans</th><th>Why</th></tr>
-    {% for d in acct_days %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num">{{ d.registered }} <span class="sub">{{ '+' if d.new_reg > 0 }}{{ d.new_reg }}</span></td><td class="num">{{ d.banned }}</td><td class="num {{ 'down' if d.new > 0 else '' }}">{{ '+' if d.new > 0 }}{{ d.new }}</td><td class="sub">{{ d.why }}</td></tr>{% endfor %}
+  <div>{% if forecast %}
+  <details class="run plan" id="acct-plan"><summary><span class="dots" title="show the days">⋮</span><span class="det">{{ forecast.summary }}</span></summary>
+  <table class="days plan">
+    <tr><th>Day (9pm–9pm Perth)</th><th class="num">Registered</th><th class="num">Banned</th><th class="num">New bans</th><th class="num">Forecast</th><th class="num">Net</th><th class="num">Alive</th><th class="num">Spare</th><th class="num">vs goal</th><th>Why</th></tr>
+    {% for d in forecast.rows %}<tr class="{{ 'today' if d.today }}{{ ' future' if d.future }}"><td>{{ d.day }}{% if d.today %} (so far){% endif %}{% if d.planned %}<br><span class="sub">×{{ d.mult }} · {{ d.planned | round | int | n }} writes ({{ d.src }})</span>{% endif %}</td>
+      <td class="num" data-l="registered">{% if d.reg is not none %}{{ d.reg }} <span class="sub">{{ '+' if d.new_reg > 0 }}{{ d.new_reg }}</span>{% endif %}</td>
+      <td class="num" data-l="banned">{{ d.banned if d.banned is not none }}</td>
+      <td class="num {{ 'down' if d.actual else '' }}" data-l="new bans">{% if d.actual is not none %}{{ '+' if d.actual > 0 }}{{ d.actual }}{% endif %}</td>
+      <td class="num" data-l="forecast">{{ '%.1f' % d.forecast if d.forecast is not none }}</td>
+      <td class="num {{ d.level }}" data-l="net"{% if d.tol is not none %} title="within ±{{ d.tol }} counts as on forecast"{% endif %}>{% if d.net is not none %}{{ d.net | signed }} <span class="sub">±{{ d.tol }}</span>{% endif %}</td>
+      <td class="num" data-l="alive">{{ d.alive if d.alive is not none }}</td>
+      <td class="num" data-l="spare">{{ d.spare if d.spare is not none }}</td>
+      <td class="num {{ 'up' if d.goal_delta is not none and d.goal_delta >= 0 else 'down' if d.goal_delta is not none }}" data-l="vs goal">{% if d.goal_delta is not none %}{{ d.goal_delta | signed }} <span class="sub">of {{ forecast.goal }}</span>{% endif %}</td>
+      <td class="sub">{{ d.why }}{% if d.unnamed %}{{ ' · ' if d.why }}<span class="warn">{{ d.unnamed }} not named yet</span>{% endif %}</td></tr>{% endfor %}
   </table>
-  {% for x in banned_list %}<p class="pl"><span class="sub">{{ x.time }}</span> @{{ x.username }} <span class="sub">#{{ x.id }} · {{ x.why }}</span></p>{% endfor %}
+  <p class="sub">Forecast = planned writes ÷ {{ forecast.wpb | round | int }} writes per ban ({{ forecast.wpb_src }}); planned writes are <code>BAN_PLAN</code> in config.py (a day without one: its actual writes, or the last 3 days' average). Alive and spare are end of day: actual to yesterday, forecast from today (each ban takes a spare registration). Net is bans so far against the forecast for the part of the day gone, plus or minus 1.5 standard deviations (at least 2).</p>
+  </details>
+  {% for a in forecast.alerts %}<p class="sub warn">{{ a }}</p>{% endfor %}
+  {% elif acct_days %}<table>
+    <tr><th>Day (9pm–9pm Perth)</th><th class="num">Registered</th><th class="num">Banned</th><th class="num">New bans</th><th>Why</th></tr>
+    {% for d in acct_days %}<tr><td>{{ d.day }}{% if d.today %} (so far){% endif %}</td><td class="num">{{ d.registered }} <span class="sub">{{ '+' if d.new_reg > 0 }}{{ d.new_reg }}</span></td><td class="num">{{ d.banned }}</td><td class="num {{ 'down' if d.new > 0 else '' }}">{{ '+' if d.new > 0 }}{{ d.new }}</td><td class="sub">{{ d.why }}{% if d.unnamed %}{{ ' · ' if d.why }}<span class="warn">{{ d.unnamed }} not named yet</span>{% endif %}</td></tr>{% endfor %}
+  </table>{% endif %}
+  {% if acct_days %}{% for x in banned_list %}<p class="pl"><span class="sub">{{ x.time }}</span> @{{ x.username }} <span class="sub">#{{ x.id }} · {{ x.why }}</span></p>{% endfor %}
   {% else %}<p class="sub">No history yet: it fills at the next portal read (every 15 min).</p>{% endif %}
   </div></details>
   <h3>Last hour</h3>
@@ -357,6 +383,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if board %}
   <h3>Leaderboard</h3>
   <p class="sub">Top three go to Sydney{% if board.cutoff is not none %} · {{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %} · <span class="up">we are in the top three</span>{% endif %}</p>
+  {% if board.trend %}<p class="sub">{% if board.trend.windows %}Gap to #3:{% for w in board.trend.windows %}{{ ' ·' if not loop.first }} <span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %}</span> in {{ w.hours }} h (us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }}){% endfor %}{% else %}Gap to #3: history building, {{ board.trend.points }} hourly point{{ 's' if board.trend.points != 1 }} so far{% endif %}</p>{% endif %}
   <table class="board">
     {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}
