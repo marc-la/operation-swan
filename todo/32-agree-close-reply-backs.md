@@ -2,7 +2,7 @@
 
 **Written 2026-10-23 by Claude (todo/25 session) at Marc's request. Owner: whoever picks it up. Priority: high.**
 
-**Status 2026-10-23: built, not deployed.** `CONV_ARMS` has `agree_close` (config.py); `content.AGREE_CLOSE` /
+**Status 2026-10-23: built and committed (fb691ad), not deployed; read-out finished.** `CONV_ARMS` has `agree_close` (config.py); `content.AGREE_CLOSE` /
 `reply_back_prompt(agree_close=True)`; tests in `tests/test_conversion_arms.py`. How it decides and what it falls back to
 (Marc, 23 Oct: reply-backs get a light read like replies, and quality fixes are per-job policy, not one rule for all):
 - **Agreement, two ways.** `targeting.agrees` (keywords: `stance == "no"`, or an agreeing opening word with
@@ -74,8 +74,9 @@ A new value in the todo/25 switchback: `CONV_ARMS = ["base", "fresh_facts", "tar
 
 ## How to read it out
 
-`python scripts/conversion_report.py --by arm_conv` on the box (switchback block table), plus for `agree=True` rows:
-did the citizen answer again, did the follow-up read say `moved_no`, and portal towards in the hour after.
+`python scripts/conversion_report.py --by arm_conv,agree` on the box (switchback block table, the `agree` split of reply-backs,
+and one row per `agree=True` reply-back: agreed by keywords or read, model, follow-up label, did the citizen answer again,
+redrafted on the vote budget, and the portal's next hourly towards / away line).
 Kill/promote rules as todo/25: kill with away above base; promote with towards > 0 and stance moves above base after
 ~150 citizen writes. The agreeing reply-backs are few (~20-40 a day), so read the per-row follow-ups, not only the
 portal.

@@ -1514,7 +1514,7 @@ def main():
              **stage_times(job, target),
              "own_like": job.get("own_like"),
              "frame_in": job.get("frame_in"),
-             **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame")},
+             **{k: meta.get(k) for k in ("read_ok", "read_stance", "read_doubt", "read_frame", "agree_by", "redrafted")},
              "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
              "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
              "thread": threading.current_thread().name,                                   # todo/22: the writer

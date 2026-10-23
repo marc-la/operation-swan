@@ -34,7 +34,8 @@ DIMS = [("style", "reply style (mirror_concede vs current)"), ("read_stance", "t
         ("frame", "frame written"), ("reply_mode", "reply mode (current style)"), ("group", "todo/23 group"),
         ("source", "where the target came from (todo/23: sweep, engaged; else latest, news, thread...)"),
         ("arm", "todo/21 arm"), ("backend", "model"), ("act", "kind of write"),
-        ("arm_conv", "todo/25 conversion arm (2 h switchback blocks)")]
+        ("arm_conv", "todo/25 conversion arm (2 h switchback blocks)"),
+        ("agree", "todo/32 the citizen's answer agreed with us (reply-backs in agree_close blocks)")]
 BLOCK_LAG_S = 3600                   # todo/25: a block's portal lines are those 1 h after its writes (hourly at ~:53)
 
 
@@ -128,6 +129,8 @@ def window_report(rows, outcomes, followups, events, since, until, title, dims=D
         scope = [w for w in writes if dim != "sv_delay" or w["act"] == "second_voice"]
         if dim in ("style", "read_stance", "own_like", "read_frame", "reply_mode", "lever", "group", "arm", "source"):
             scope = [w for w in scope if w["act"] == "reply" or (dim == "style" and w["act"] == "reply_back")]
+        if dim == "agree":
+            scope = [w for w in scope if w["act"] == "reply_back" and w.get("agree") is not None]
         groups = collections.defaultdict(list)
         for w in scope:
             groups[str(w.get(dim))].append(w)
@@ -252,6 +255,28 @@ def switchback_report(rows, followups, events, since, until, dim="arm_conv"):
     return out + [""]
 
 
+def agree_report(rows, followups, events, since, until):
+    """todo/32: each agreeing reply-back (agree_close blocks), one row: how the agreement was found, the follow-up's
+    label, whether the citizen answered again, and the portal's next hourly line (towards / away)."""
+    writes = [r for r in rows if r.get("live") and r.get("act") == "reply_back" and r.get("agree") is True
+              and since <= ts_of(r["ts"]) < until]
+    if not writes:
+        return []
+    out = ["## agree_close: the agreeing reply-backs (read the rows, there are few; todo/32)", "",
+           "| UTC | citizen | agreed by | model | words | follow-up read | answered again | redrafted | portal next line "
+           "(towards / away) |", "|---|---|---|---|---|---|---|---|---|"]
+    for w in sorted(writes, key=lambda r: r["ts"]):
+        t = ts_of(w["ts"])
+        f = followups.get(w.get("post_id")) or {}
+        line = next((e for e in sorted(events, key=lambda e: e["ts"]) if t <= e["ts"] < t + 3600), None)
+        out.append(f"| {dt.datetime.fromtimestamp(t, dt.timezone.utc):%d %b %H:%M} | {w.get('target_author')} | "
+                   f"{w.get('agree_by') or '–'} | {w.get('backend') or '–'} | {len((w.get('text') or '').split())} | "
+                   f"{f.get('label') or 'unread'} | {'yes' if f.get('replied_to_this') else ('no' if f else '–')} | "
+                   f"{w.get('redrafted') or '–'} | "
+                   f"{'–' if line is None else str(line['towards']) + ' / ' + str(line['away'])} |")
+    return out + [""]
+
+
 def read_report(rows, since, until):
     """The light read: stance against the regex class, its skips by reason, and how often its JSON came back."""
     reads = [r for r in rows if r.get("act") == "reply" and r.get("live") and "read_ok" in r
@@ -342,6 +367,7 @@ def main():
         out += window_report(rows, outcomes, followups, events, since, until, title, dims)
         if not args.by or "arm_conv" in args.by.split(","):
             out += switchback_report(rows, followups, events, since, until)
+            out += agree_report(rows, followups, events, since, until)
         if widen:
             out += widen_report(rows, outcomes, followups, events, hidden, since, until)
         if not args.by:
