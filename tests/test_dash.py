@@ -575,7 +575,7 @@ def test_first_and_second_replies_are_split_not_lumped(tmp_path):
     assert build.WRITES["reply"] == "1st reply" and build.WRITES["reply_back"] == "2nd reply"
     assert ctx["history"][0]["replies"] == (2, 2) and ctx["history"][1]["replies"] is None
     assert "2 1st reply · 2 2nd reply" in rowof(ctx, "Writes, last hour")["now"]
-    assert "1st / 2nd replies" in html and "2 / 2" in html
+    assert "1st / 2nd replies" not in html
 
 
 def test_tab_title_is_a_status_word_not_a_colour(tmp_path):
