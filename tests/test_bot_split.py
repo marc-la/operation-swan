@@ -266,6 +266,8 @@ def setup_world(mp, tmp, split, amp_off=False):
                       ("NOTIF_EVERY_S", 0.3), ("REFRESH_S", 0.5), ("REGISTER_GAP_S", (3600, 3600)),
                       ("SECOND_VOICE", True),     # off live since 22 Oct (stealth); the checklist still exercises it
                       ("SECOND_VOICE_ARMS", {"fast": (0, 0.05), "slow": (0, 0.05)}), ("OWN_LIKE_DELAY_S", (0, 0.05)),
+                      ("ENG_FOLLOW_DELAY_S", (0, 0.05)), ("ENG_LIKE_DELAY_S", (0, 0.05)),
+                      ("ENG_BUDGET_MARGIN", 0),     # the fake account reports the write route (3/min) after every call
                       ("AMP_PRIORITY_S", 0), ("READER_SILENT_S", 30), ("DRAFTER_SILENT_S", 30)):
         mp.setattr(config, attr, val)
                       ("ENG_FOLLOW_DELAY_S", (0, 0.05)), ("ENG_LIKE_DELAY_S", (0, 0.05)),
@@ -341,6 +343,28 @@ def run(request, tmp_path_factory):
         world, spies = setup_world(mp, tmp, request.param)
         run_main(mp)
     return dict(split=request.param, tmp=tmp, world=world, spies=spies, acts=actions(tmp))
+
+
+# ---- todo/33: the free levers (follow, like) run through the same loops, each cell doing exactly its actions ----
+def test_engagement_levers_follow_the_citizens_cell(run):
+    from swan_bot import engage
+    acts = run["acts"]
+    replies = [a for a in acts if a["act"] in ("reply", "reply_back", "second_voice") and a.get("post_id")
+               and a.get("target_author")]
+    assert replies and all(a.get("eng_cell") == engage.cell(a["target_author"]) for a in replies)
+    levers = [a for a in acts if a.get("purpose") in ("eng_follow", "eng_like")]
+    assert {a["purpose"] for a in levers} >= {"eng_follow", "eng_like"}, "both levers ran"
+    state = json.loads((run["tmp"] / "data" / "swan_state.json").read_text())
+    assert isinstance(state["eng_queue"], list) and isinstance(state["eng_last"], dict), "the queue is saved with the state"
+    for a in levers:
+        assert a["live"] and a["eng_cell"] == engage.cell(a["citizen_id"]) and a.get("owner") and a.get("username")
+        if a["purpose"] == "eng_like":
+            assert "like" in a["eng_cell"], a
+        elif a["why"] == "first_reply":
+            assert "follow" in a["eng_cell"], a
+    follows = collections.Counter(a["username"] for a in levers if a["purpose"] == "eng_follow")
+    assert max(follows.values(), default=0) <= config.ENG_FOLLOWS_PER_DAY
+    assert {w["kind"] for w in run["world"].writes} >= {"follow"}, "the follow reached the platform"
 
 
 # ---- 1. the checklist: nothing switched off ---------------------------------------------------------------------

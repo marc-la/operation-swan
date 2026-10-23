@@ -1535,6 +1535,8 @@ def main():
             post_id = r["post_id"]
             write_rl[0] = acc.rate_limit             # the team-wide write budget, as this answer reported it
         with mu:
+            if target and mode in engage.FOLLOW_MODES + engage.LIKE_MODES:      # todo/33: the citizen's cell
+                engage.push(state, engage.plan(job, rec, target["author_id"], target["post_id"]))
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
             stealth.on_write(rec, rec["last_write"])            # todo/31: its day's writes and its next gap
             if target:
@@ -1609,6 +1611,7 @@ def main():
                                          "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
              **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
              **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
+             "eng_cell": engage.cell(target["author_id"]) if target and mode in stealth.CITIZEN_MODES else None,
              "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
              # todo/20: the reply style arm and the light read; todo/21's arm and priority, next to target_class
              "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
@@ -1683,6 +1686,7 @@ def main():
                 if targeter.refresh():
                     save_state()
                 own_likes(state, accounts, args.live)
+                engage_actions(state, accounts, args.live)
                 pulse_now = pulse.update(state, targeter, ids, gen, log)
                 if amp:
                     amp.tick()
@@ -1820,6 +1824,7 @@ def main():
                     save_state()
                 with mu:
                     own_likes(state, accounts, args.live)
+                    engage_actions(state, accounts, args.live)
                     if amp:
                         amp.tick()
                 wait = next_write - time.time()
