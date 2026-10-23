@@ -139,7 +139,7 @@ li.write details[open] > summary .lead { display: none; }
 .msg .meta b { color: var(--ink); font-weight: 600; }
 .conv details summary { color: var(--muted); font-size: 13px; }
 .conv details.clip summary { color: inherit; font-size: inherit; }
-.conv details.clip[open] > summary { display: none; }
+.conv details.clip[open] > summary, li details.clip[open] > summary { display: none; }
 .conv details.why { margin: 4px 0; }
 .conv details.why table { font-size: 13px; margin: 4px 0; }
 .conv td.k, .conv th:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
@@ -222,6 +222,8 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if r.kind == 'group' %}
   <details class="x" id="{{ r.id }}"><summary>{{ r.text }}</summary>
     {% for s in r.rows %}<div class="sub">{{ s.time }} · {{ s.text }}</div>{% endfor %}</details>
+  {% elif r.text | length > 200 %}
+  <details class="x clip"><summary>{{ r.text | short(200) }}</summary>{{ r.text }}</details>
   {% else %}
   <span class="x">{{ r.text }}{% if r.post %} <span class="id">#{{ r.post }}</span>{% endif %}</span>
   {% endif %}</li>

@@ -170,7 +170,7 @@ def bundle(rows):
         parks = [r for r in g["rows"] if r.get("model")]
         deploys = [r for r in g["rows"] if not r.get("model")]
         g["what"] = f"{'LLM parked' if not deploys else 'deploys' if not parks else 'ops'} ×{len(g['rows'])}"
-        parts = [f"{len(deploys)} deploy{'s' if len(deploys) > 1 else ''} (latest {deploys[0]['text']})"] if deploys else []
+        parts = [f"{len(deploys)} deploy{'s' if len(deploys) > 1 else ''} (latest {short(deploys[0]['text'])})"] if deploys else []
         newest = {}                             # newest park per model, models with the same reason together
         for r in parks:
             newest.setdefault(r["model"], r)
@@ -1188,13 +1188,13 @@ def gather(root, now, service):
             msg = msg.removeprefix("[swan-ec2] ")
             if msg.startswith("deployed"):
                 subject = re.sub(r"^(\w{7}) [^:]{1,60}: ", r"\1 ", msg.removeprefix("deployed "))   # drop the author
-                rows.append(dict(t=ts(t), who="", what="deploy", text=short(subject),
+                rows.append(dict(t=ts(t), who="", what="deploy", text=" ".join(subject.split()),
                                  kind="event", family="ops"))
             elif "hidden by the moderator" in msg:          # deploy/healthcheck + swan-watch: a voice lost a post
-                rows.append(dict(t=ts(t), who="", what="post hidden", text=short(msg, 200), kind="hidden"))
+                rows.append(dict(t=ts(t), who="", what="post hidden", text=" ".join(msg.split()), kind="hidden"))
             else:                                           # each alert kind its own colour (Marc, 22 Oct)
                 what, kind = next(((w, k) for rx, w, k in ALERT_KINDS if re.match(rx, msg)), ("alert", "event"))
-                rows.append(dict(t=ts(t), who="", what=what, text=short(msg, 200), kind=kind))
+                rows.append(dict(t=ts(t), who="", what=what, text=" ".join(msg.split()), kind=kind))   # the template clips it
     rows.sort(key=lambda r: r.get("last") or r["t"], reverse=True)   # a conversation moves up when it gets more
     for r in rows:
         r.setdefault("time", hm(r["t"]))
