@@ -722,6 +722,9 @@ def blue_days(days, points, now):
                  filed=a.get("filed", 0), hidden=a.get("hidden", 0), genuine=a.get("genuine", 0),
                  accounts=a.get("accounts", 0), first=p.get("first", 0), paid=paid, locked_h=a.get("locked_h", 0),
                  full=p.get("full", 0), awards=p.get("full", 0) + p.get("reduced", 0), lever=None)
+        # sent = post hidden + post genuine + accounts ruled + still waiting (a report is counted on the day it was
+        # filed, a ruling on the day it was ruled, so a late-night filing can leave this a little off: never below 0)
+        r["pending"] = max(0, r["filed"] - r["hidden"] - r["genuine"] - r["accounts"])
         r["pct"] = round(100 * r["points"] / BLUE_TARGET_DAY)
         r["level"] = "up" if r["pct"] >= 100 * BLUE_GOOD else "warn" if r["pct"] >= 100 * BLUE_POOR else "down"
         if not r["today"] and r["level"] != "up":

@@ -268,6 +268,16 @@ def test_dashboard_verdict_names_the_weakest_lever():
     assert y["lever"] == "moderator: only 67% of rulings hidden (about 90% expected)"   # filed 68 is fine, hit isn't
 
 
+def test_dashboard_day_row_adds_up_with_accounts_and_pending():
+    import datetime as dt
+    from swan_dash import build
+    now = dt.datetime(2026, 10, 23, 12, tzinfo=S.SYDNEY)
+    days = {"2026-10-23": dict(filed=79, hidden=7, genuine=1, accounts=50, locked_h=0.0)}   # 23 Oct, live
+    today = build.blue_days(days, [], now.astimezone(dt.timezone.utc))[0]
+    assert today["accounts"] == 50 and today["pending"] == 21
+    assert today["hidden"] + today["genuine"] + today["accounts"] + today["pending"] == today["filed"]
+
+
 # ---- todo/26: lock economics, more teams, wider discovery ----
 def test_p_genuine_by_evidence_class():
     like = audit(team_replies=0, reply_authors=0, run=3)
