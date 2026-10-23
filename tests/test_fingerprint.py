@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from swan_bot import bot, quality  # noqa: E402
+from swan_bot import bot, config, quality  # noqa: E402
 
 REPLY = ("My cafe runs on trust and the regulars know my face. A pass at the door with no finish date is a different "
          "shop. I'm voting No.")
@@ -19,9 +19,41 @@ def window(n_with, text=VOTE, total=99):
 
 
 # ---- phrase budgets ---------------------------------------------------------------------------------------------
-def test_vote_budget_is_15_in_100():
+def test_vote_budget_is_15_in_100_when_the_share_is_put_back(monkeypatch):
+    monkeypatch.setattr(config, "REPLY_VOTE_SHARE", 0.15)          # SWAN_REPLY_VOTE_SHARE=0.15: the pre-todo/40 budget
     assert quality.over_budget(REPLY, window(14)) == []
     assert quality.over_budget(REPLY, window(15)) == ["vote"]
+
+
+def test_vote_budget_is_zero_for_replies():
+    """todo/40 item 2: no statement of the vote in a reply, whatever the window holds."""
+    assert config.REPLY_VOTE_SHARE == 0.0 and "REPLY_VOTE_SHARE" in config.STEALTH_ENV
+    assert quality.over_budget(REPLY, []) == ["vote"]
+    assert quality.over_budget(REPLY, window(0)) == ["vote"]
+    assert quality.over_budget(REPLY.replace("I'm voting No.", "That's my view."), window(0)) == []
+    for kind in quality.PERSONAL_KINDS:                           # reply, reply_back, second_voice
+        assert quality.check(REPLY, kind, phrase_texts=window(0)) == (None, "phrase_vote")
+    assert quality.spent_phrases(window(0)) == [], "the vote is not a worn phrase the prompt lists (NO_VERDICT_RULE says it)"
+
+
+def test_the_zero_budget_does_not_reach_posts_threads_or_untracked_replies():
+    post = ("Aunty Losa rides my ferry every Tuesday for the clinic. Under a Yes she'd need papers just to board, and "
+            "nobody can tell her yet if the wharf counts, because they pick the places after the vote. She's had her jab. "
+            "That isn't the point. Sign first, read later? Not me. I'm voting No. Who in your family rides that ferry?")
+    assert quality.check(post, "post", phrase_texts=window(0))[1] != "phrase_vote"       # posts are not budgeted...
+    assert quality.check(post, "post", phrase_texts=None)[1] is None                    # ...and must still say No
+    assert quality.check(post.replace("I'm voting No. ", ""), "post")[1] == "no_vote_statement"
+    assert quality.check(REPLY, "thread", phrase_texts=window(0))[1] != "phrase_vote"
+    assert quality.check(REPLY, "reply", phrase_texts=None)[1] is None                   # not tracked: no budget
+
+
+def test_env_override_puts_the_budget_back(monkeypatch):
+    monkeypatch.setattr(config, "REPLY_VOTE_SHARE", 0.0)
+    assert config.stealth_from_env({"SWAN_REPLY_VOTE_SHARE": "0.15"}) == {"REPLY_VOTE_SHARE": 0.15}
+    assert quality.over_budget(REPLY, window(14)) == [] and quality.over_budget(REPLY, window(15)) == ["vote"]
+    for bad in ("2", "-0.1", "lots"):
+        with pytest.raises(SystemExit):
+            config.stealth_from_env({"SWAN_REPLY_VOTE_SHARE": bad})
 
 
 def test_topic_budget_is_10_in_100():
@@ -30,7 +62,8 @@ def test_topic_budget_is_10_in_100():
     assert quality.over_budget(t, window(10, "There is no end date.")) == ["end_date"]
 
 
-def test_only_the_last_100_count_and_a_short_window_counts_as_full():
+def test_only_the_last_100_count_and_a_short_window_counts_as_full(monkeypatch):
+    monkeypatch.setattr(config, "REPLY_VOTE_SHARE", 0.15)
     assert quality.over_budget(REPLY, [VOTE] * 40 + window(10)) == []
     assert quality.over_budget(REPLY, [VOTE] * 14) == []
     assert quality.over_budget(REPLY, []) == []

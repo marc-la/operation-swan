@@ -73,6 +73,9 @@ IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothi
 # voices (its replies were normal): for this many hours of voice life (stealth.voice_age_h) it makes no persona post, no
 # amplified post and no thread reply, replies only. 0 = off.
 NEW_VOICE_NO_POST_H = 24
+# The share of our last quality.PHRASE_WINDOW citizen-facing texts (replies, reply-backs, second voices) that may say "I'm voting No".
+# Was 0.15; "I'm voting No" in a reply is a hide tell (adjusted OR 2.5). 0 rejects it (quality.drop_vote cuts it, no LLM call).
+REPLY_VOTE_SHARE = 0.0
 
 # ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
@@ -442,7 +445,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
-               "NEW_VOICE_NO_POST_H")                   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
@@ -631,6 +634,13 @@ def stealth_from_env(env=None):
             if raw not in ("1", "0", "true", "false", "on", "off", "yes", "no"):
                 raise SystemExit(f"SWAN_{name}={raw!r}: expected 1/0, true/false, on/off or yes/no")
             value = raw in ("1", "true", "on", "yes")
+        elif isinstance(current, float):                  # a share (todo/40: REPLY_VOTE_SHARE), 0 to 1
+            try:
+                value = float(raw)
+            except ValueError:
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected a number from 0 to 1") from None
+            if not 0.0 <= value <= 1.0:
+                raise SystemExit(f"SWAN_{name}={raw!r}: expected a number from 0 to 1")
         else:
             try:
                 value = int(raw)
