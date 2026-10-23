@@ -546,6 +546,18 @@ def test_no_model_pauses_the_drafter(tmp_path, monkeypatch, no_network):
     assert 1 <= len(dropped) <= 6, f"{len(dropped)} no_model drops in 12 s: the drafter kept spinning"
 
 
+def test_no_model_for_minutes_alerts_once(tmp_path, monkeypatch, no_network):
+    """Drafting that finds no model for NO_MODEL_ALERT_N drafts in a row is a push alert, once per episode, not a quiet
+    banner (todo/34 item 5)."""
+    world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
+    monkeypatch.setattr(bot, "draft_checked",
+                        lambda gen, job, system, user, *a, **kw: (job.setdefault("meta", {}), (None, None, None))[1])
+    monkeypatch.setattr(bot, "NO_MODEL_PAUSE_S", 0.3)
+    run_main(monkeypatch, seconds=12)
+    said = [m for m in spies["alerts"] if "NO MODEL" in m]
+    assert len(said) == 1 and not any("recovered" in m for m in spies["alerts"]), spies["alerts"]
+
+
 def test_sigterm_stops_cleanly_with_nothing_half_sent(tmp_path, monkeypatch, no_network):
     world, spies = setup_world(monkeypatch, tmp_path, split=True, amp_off=True)
     handlers = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)

@@ -52,6 +52,7 @@ JOIN_S = 10.0                 # split loop: on a stop, how long the writer waits
 # drafter pauses this long before choosing again. 2026-10-23: without it, 27,858 jobs were lost as no_model in 3 h
 # (10,782 in one 10-minute window): next_available_in() is 0 while a paid model is skipped but not parked.
 NO_MODEL_PAUSE_S = 60
+NO_MODEL_ALERT_N, NO_MODEL_ALERT_S = 5, 600           # this many no-model drafts within 10 min: alert once, then "recovered"
 
 
 def now_iso():
@@ -729,12 +730,19 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
         tired = {m for m, n in failed.items() if n >= 2}
         use = [m for m in (models or [m for _, m in getattr(gen, "chain", ())]) if m not in tired] if tired else models
         kw = dict(max_tokens=MAX_TOKENS, temperature=TEMPERATURE.get(mode, 0.7), priority=bool(job.get("amp")))
-        if ordered:                                             # replies: the whole order is already the fallback
-            raw, backend = complete_in_order(gen, system, prompt, use or models, **kw)
-        else:
-            raw, backend = gen.complete(system, prompt, models=use or models, **kw)
-        if raw is None and use and not ordered:                 # out of quota: the usual chain
-            raw, backend = gen.complete(system, prompt, **kw)
+
+        def ask():
+            if ordered:                                         # replies: the whole order is already the fallback
+                raw, backend = complete_in_order(gen, system, prompt, use or models, **kw)
+            else:
+                raw, backend = gen.complete(system, prompt, models=use or models, **kw)
+            if raw is None and use and not ordered:             # out of quota: the usual chain
+                raw, backend = gen.complete(system, prompt, **kw)
+            return raw, backend
+        raw, backend = ask()
+        if raw is None and not kw["priority"]:                  # nothing answered: the amplified-post reserve pays for this
+            kw["priority"] = True                               # draft rather than lose it (23 Oct: no replies for hours)
+            raw, backend = ask()
         if raw is None:
             break
         meta["llm_calls"] += 1
@@ -1023,6 +1031,7 @@ def main():
     ready = []                           # drafts waiting for the writer, in the order chosen (at most DRAFT_AHEAD)
     inflight = [None]                    # the job the drafter is drafting now
     no_model_until = [0.0]               # no draft before this time: the last one found no model (NO_MODEL_PAUSE_S)
+    no_model_times, no_model_alerted = [], [0.0]      # when drafts found no model lately; when we said so (0: not now)
     beats = {}                           # thread name -> time its loop last went round (status.json, the watchdog)
     workers = []
     rate_limited = []                    # times of 429s in the last hour (dashboard)
@@ -1351,11 +1360,20 @@ def main():
             # G8: a failed draft never silently drops a citizen: requeued, or logged as lost with its reason
             if backend is None:
                 no_model_until[0] = time.time() + NO_MODEL_PAUSE_S
+                now_t = time.time()
+                no_model_times[:] = [x for x in no_model_times if now_t - x < NO_MODEL_ALERT_S] + [now_t]
+                if args.live and not no_model_alerted[0] and len(no_model_times) >= NO_MODEL_ALERT_N:
+                    no_model_alerted[0] = now_t                # once per episode: the drafter has had no model for minutes
+                    alert(f"NO MODEL: {len(no_model_times)} drafts in {NO_MODEL_ALERT_S // 60} min found no model (free ones "
+                          f"parked, paid ones over budget). Replies are paused. Dashboard 'Drafting' has the numbers.")
             with mu:
                 lose(targeter, queue, job, "no_model" if backend is None else
                      f"gate:{(job.get('meta') or {}).get('last_reject') or 'unknown'}")
             return None
         job["t_drafted"] = time.time()
+        if no_model_alerted[0]:
+            alert(f"recovered: drafts find a model again (after {(time.time() - no_model_alerted[0]) / 60:.0f} min)")
+            no_model_alerted[0], no_model_times[:] = 0.0, []
         return dict(job=job, drafted=drafted, text=text, backend=backend, repair=repair, persona=persona)
 
     def send(d):

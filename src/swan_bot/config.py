@@ -163,9 +163,9 @@ AMP_PRIORITY_S = 5 * 60
 # The amplified post is our best content: drafted on the strongest models first, the usual chain if they are out.
 # The bot's key is on the free project: 3.8 and 3.6 Flash have 20 requests a day each (deploy/llm_chain.txt).
 # 2026-10-21: Kimi K2.5 and GLM-5 on Bedrock lead (best drafts in llm_compare, paid from the AWS credits); then the
-# free Gemini Flash models and qwen-plus-character (Alibaba free quota, 1M tokens to 2027-01-20).
+# free Gemini Flash models. (qwen-plus-character, the Alibaba free quota, was last here until 23 Oct: quota spent, out.)
 # Order comes from deploy/llm_chain.txt, not from this tuple.
-AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3.6-flash", "qwen-plus-character")
+AMP_MODELS = ("moonshotai.kimi-k2.5", "zai.glm-5", "gemini-3.8-flash", "gemini-3.6-flash")
 # Where persuasion happens, drafts get strong models too: replies to citizens (a change of mind is 160 points), on
 # REPLY_MODELS since 2026-10-22 (todo/24: Kimi then flash-lite, never GLM-5). Thread one-liners and author answers try
 # the free models first and reach the paid ones only when those are out.
