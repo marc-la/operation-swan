@@ -193,7 +193,9 @@ class Amplifier:
         config.AMP_AUTHOR_EXPLORE of the time."""
         hidden = self.accounts.hidden()
         reserved = getattr(self.accounts, "reserved", ())     # a draft of theirs waits to be sent (bot.py, todo/22)
+        young = self.accounts.young()                         # todo/40: replies only in a voice's first hours
         ready = [r for r in self.accounts.voices() if self.accounts.ready(r, citizen=False) and r["persona"] not in reserved
+                 and r["persona"] not in young
                  and hidden.get(r["username"], 0) < config.HIDDEN_OFF_AMP]          # a voice with a hidden post stays off
         if not ready:
             return None
@@ -290,6 +292,8 @@ class Amplifier:
                 hidden = self.accounts.hidden()
                 busy |= {r["persona"] for r in self.accounts.voices()
                          if hidden.get(r["username"], 0) >= config.HIDDEN_OFF_AMP}
+                if th["kind"] == "thread":
+                    busy |= self.accounts.young(t)                    # todo/40: no thread reply in a voice's first hours
                 rec = self.accounts.eligible(frame, exclude={th["author"], *busy}, gap=gap)
                 if not rec:
                     continue

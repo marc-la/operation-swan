@@ -248,6 +248,13 @@ class Accounts:
         """Too many hidden posts to write again (config.HIDDEN_STOP): a person decides what happens to it."""
         return self.hidden().get(rec["username"], 0) >= config.HIDDEN_STOP
 
+    def young(self, t=None):
+        """todo/40: the personas of voices in their first config.NEW_VOICE_NO_POST_H hours of voice life (stealth.new_voice).
+        They write replies only: the callers that pick a voice for a persona post, an amplified post or a thread reply
+        leave these out (exclude=)."""
+        t = time.time() if t is None else t
+        return {r["persona"] for r in self.voices() if stealth.new_voice(r, t)}
+
     def rest(self, rec, t=None, citizen=True):
         """Why this voice keeps from writing now under todo/31's human day ("voice_asleep", "voice_capped"), or None.
         citizen: the write is to a citizen (the end of the daily budget is kept for those). Live only."""
@@ -1523,7 +1530,7 @@ def main():
         conv_arm = experiment.block("arm_conv")[1]      # todo/25 broadcast arm: a plain persona post ahead of citizens
         if (job is None and conv_arm == "broadcast" and (not amp or amp.paused())
                 and "post" not in pending and t - state.get("last_post", 0) > config.CONV_POST_GAP_S):
-            rec = accounts.eligible()
+            rec = accounts.eligible(exclude=accounts.young(t))          # todo/40: not a voice in its first hours
             if rec:
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         # batched drafting (--batch, not run live) keeps its replies after the amplifier, further down
@@ -1608,7 +1615,7 @@ def main():
             if drafted is None:
                 picked = []
                 while len(picked) < desk.size:
-                    rec = accounts.assignable(exclude=desk.busy("post", picked))
+                    rec = accounts.assignable(exclude=desk.busy("post", picked) | accounts.young(t))    # todo/40
                     if not rec:
                         break
                     picked.append(dict(mode="post", rec=rec,
@@ -1619,7 +1626,7 @@ def main():
         if drafted:
             job = drafted["job"]
         if job is None and post_ok and not desk:
-            rec = accounts.eligible()
+            rec = accounts.eligible(exclude=accounts.young(t))                       # todo/40
             if rec:
                 job = dict(mode="post", rec=rec, frame=content.pick_frame(content.PERSONA_BY_KEY[rec["persona"]]))
         if job is None:

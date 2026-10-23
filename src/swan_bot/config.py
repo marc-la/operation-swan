@@ -67,6 +67,13 @@ JOURNALIST_SAME_GAP_S = 6 * 3600    # and the same journalist at most every 6 h
 POST_EVERY_N = 4                    # persona posts: at most 1 in every 4 writes (replies come first)
 IDLE_POST_GAP_S = 30 * 60           # ...or one every 30 min when there is nothing better to write
 
+# ---- todo/40 hide-rate changes (2026-10-24, from docs/06-strategy/hide-risk-analysis-2026-10-23.md) ----
+# Each has a name here and a SWAN_<NAME> override in .env (STEALTH_ENV, read at the next restart): no deploy to roll one back.
+# A converted or newly activated voice's first top-level posts were hidden 5 of 15 times (33%) against 1 of 122 for original
+# voices (its replies were normal): for this many hours of voice life (stealth.voice_age_h) it makes no persona post, no
+# amplified post and no thread reply, replies only. 0 = off.
+NEW_VOICE_NO_POST_H = 24
+
 # ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
 # Latest. The bot is the one Latest reader (data/latest_snapshot.json for swan-blue, feeds.py), Trending every 3rd
@@ -434,7 +441,8 @@ STEALTH_LOG_S = 120                 # a "voice_asleep" / "voice_capped" skip is 
 STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE", "VOICE_HOUR_CAP", "VOICE_WRITES_PER_H",
                "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "ONE_VOICE_PER_CITIZEN",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
-               "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE")    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
+               "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
+               "NEW_VOICE_NO_POST_H")                   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth

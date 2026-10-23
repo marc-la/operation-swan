@@ -205,7 +205,8 @@ def test_thread_jobs_are_handed_back_to_the_amplifier(kind, mode, tmp_path, monk
     rec = dict(persona="p1", username="u1", role="voice", last_write=0)
     accounts = types.SimpleNamespace(
         boosters=lambda: [], voices=lambda: [rec], hidden=lambda: {}, reserved=set(),
-        by_persona=lambda p: rec, rest=lambda r, t, citizen=True: None, eligible=lambda *a, **kw: rec)
+        by_persona=lambda p: rec, rest=lambda r, t, citizen=True: None, eligible=lambda *a, **kw: rec,
+        young=lambda t=None: set())
     social = types.SimpleNamespace(get_post=lambda pid: dict(post_id=pid, author_id=7, body="b"))
     th = dict(kind=kind, post_id=900, due=time.time() - 1, author="p0", frame="F14_no_yes_but", parent=901)
     state = {"amp_threads": [th], "amp_posts": {"900": dict(text="our post")}}
