@@ -531,12 +531,50 @@ class Blue:
                                 last_post=iso(x["last_post"]) if x.get("last_post") else None, fleet=x.get("fleet"),
                                 found=iso(x["found"]), by=x["by"], filed=x["filed"]) for x in leads])
 
-    # ---- todo/43 item 5: siblings of a live lead (below) ----
+    # ---- todo/43 item 5: siblings of a live lead ----
     def queue_siblings(self, aid, t):
-        pass
+        """When one account of a live fleet has a vanished or hidden post, its fleet's other accounts are likelier to
+        have one too (neighbouring ids share a fate): queue them, those the bot's Latest snapshot saw lately first,
+        to be read before the scan's own todo list. Once per fleet per 6 h; BLUE_SIBLINGS=0 turns it off."""
+        fleet = self.fleet_map.get(int(aid))
+        sc = self.sc
+        pol = policy()
+        if fleet is None or not pol.get("siblings", 1) or pol.get("scan_every", SCAN_EVERY_S) <= 0 or \
+                t - sc["sib_done"].get(fleet, 0) < 6 * 3600:
+            return
+        mates = [i for i, k in self.fleet_map.items() if k == fleet and i != int(aid) and i not in self.ours
+                 and str(i) not in self.s["harvest"] and str(i) not in sc["sib"]]
+        mates.sort(key=lambda i: (str(i) not in self.det["posts"], -i))
+        mates = mates[:SIB_MAX]
+        sc["sib_done"][fleet] = round(t)
+        if mates:
+            sc["sib"] += [str(i) for i in mates]
+            self.log({"act": "siblings", "fleet": fleet, "of": int(aid), "queued": len(mates)})
 
     def sibling_step(self, t):
-        return 0
+        """Read up to SIB_PER_TICK queued siblings' newest pages (one read each, inside the read budget). A post the
+        bot saw the sibling write 30+ minutes ago that is missing from its page now is a vanished-post candidate, and
+        it goes through the same two-404 check as the scanner's (src 'sibling'). The page also becomes the sibling's
+        snapshot, so the next pass can diff it. Returns the reads made."""
+        sc, reads = self.sc, 0
+        while sc["sib"] and reads < SIB_PER_TICK and self.read_ok():
+            aid = sc["sib"].pop(0)
+            if aid in self.s["harvest"] or int(aid) in self.ours:
+                continue
+            reads += 1
+            if not self.scan_read(aid, t, src="sibling"):
+                continue
+            sc["stats"]["siblings"] += 1
+            snap = sc["snap"].get(aid)
+            if snap is None:
+                continue                      # not posting any more, or few posts: nothing to report on
+            seen = [pid for pid, at in self.det["posts"].get(aid, []) if t - at >= 1800][-SIB_CHECKS:]
+            gone = scan_mod.vanished(seen, snap["ids"])
+            if gone:
+                scan_mod.note(sc, aid, gone, t, "sibling")
+                sc["stats"]["vanished"] += len(gone)
+                self.log({"act": "scan", "account": int(aid), "vanished": gone, "src": "sibling"})
+        return reads
 
     # ---- todo/43 item 4: fleets, the team proxy ----
     def make_fleets(self):
@@ -705,7 +743,10 @@ class Blue:
         for _, _, aid in sorted(due)[:LIVE_REFRESH_PER_TICK]:
             if not self.read_ok():
                 break
-            self.read_live(aid, self.s["harvest"][aid])
+            h = self.s["harvest"][aid]
+            if self.read_live(aid, h) and self.live_state(h)[0] == "live" and not h.get("sib"):
+                h["sib"] = t                      # todo/43 item 5: a live lead's fleet mates are looked at too
+                self.queue_siblings(int(aid), t)
 
     def live_summary(self):
         """The ready account leads by liveness, for the dashboard: how many a report could go out on now."""
@@ -1453,7 +1494,8 @@ def policy():
             return default
     return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
                 live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S),
-                scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0))
+                scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0),
+                siblings=num("BLUE_SIBLINGS", 1))
 
 
 def rings(cands):

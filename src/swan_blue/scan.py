@@ -108,12 +108,17 @@ def compare(st, aid, page, t, src="scan"):
     prev = st["snap"].get(aid)
     st["snap"][aid] = dict(t=round(t), ids=ids[:PAGE], last=round(last), n=n, span=round(span), pace=pace(n, span))
     gone = vanished(prev["ids"], ids) if prev else []
-    for p in gone:
-        st["cand"].setdefault(aid, {}).setdefault(str(p), [round(t), 0, src])
+    note(st, aid, gone, t, src)
     if len(st["snap"]) > KEEP_ACCOUNTS:
         for k, _ in sorted(st["snap"].items(), key=lambda kv: kv[1].get("last") or 0)[:len(st["snap"]) - KEEP_ACCOUNTS]:
             del st["snap"][k]
     return gone
+
+
+def note(st, aid, pids, t, src):
+    """Record vanished-post candidates (from a diff, or a sibling check)."""
+    for p in pids:
+        st["cand"].setdefault(aid, {}).setdefault(str(p), [round(t), 0, src])
 
 
 def due(st, t, limit):
