@@ -90,6 +90,10 @@ PORTAL_SYNC = True
 PORTAL_SYNC_S = 120
 PORTAL_MAX_AGE_S = 3600
 PORTAL_FILE = DATA / "portal.json"
+# scripts/swan_watch.py looked at active voices only, so a voice suspended on its third hide (or reported) stopped being watched
+# while its last posts still awaited rulings (about 3 h after the write): hides were undercounted. It now keeps checking a voice that
+# is no longer active for this long after its last logged write, and logs those hides flagged after_suspension (no alert). 0 = off.
+WATCH_TAIL_S = 4 * 3600
 
 # ---- todo/21 targeting: reach every citizen (todo/21-reach-every-citizen.md) ----
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
@@ -466,7 +470,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
-               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
