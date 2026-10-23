@@ -21,7 +21,8 @@ from zoneinfo import ZoneInfo
 import jinja2
 
 from swan_blue.evidence import awards_by_rate, first_later
-from swan_bot import config as bot_config  # constants only (FACTDESK_AUTO): it reads no .env on import
+from swan_bot import config as bot_config
+from swan_dash.portal import FINALISTS  # constants only (FACTDESK_AUTO): it reads no .env on import
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PERTH = ZoneInfo("Australia/Perth")
@@ -339,7 +340,7 @@ def leaderboard_rows(portal):
     the team above and below. Teams already in the top three are not repeated; `gap` is set where ranks are skipped
     between the two blocks, and `between` lists those teams for the expandable row. `cutoff` is how far we are behind third place (None when we are in the top three)."""
     us = dict(rank=portal["rank"], team="Operation Swan (us)", score=portal["score"], us=True)
-    top = portal.get("top") or ([portal["leader"]] if portal.get("leader") else [])
+    top = [r for r in portal.get("top") or ([portal["leader"]] if portal.get("leader") else []) if r["rank"] <= FINALISTS]
     shown = {r["rank"] for r in top}
     near = [dict(us=False, **r) if r is not us else r for r in (portal.get("above"), us, portal.get("below"))
             if r and r["rank"] not in shown]

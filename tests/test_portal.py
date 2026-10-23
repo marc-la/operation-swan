@@ -145,3 +145,9 @@ def test_leaderboard_rows_do_not_repeat_finalists_near_the_line():
     third = build.leaderboard_rows(dict(top=top, rank=3, score=9000, above=team(2), below=team(4)))
     assert [r["rank"] for r in third["near"]] == [4] and third["cutoff"] is None
     assert [r["us"] for r in third["finalists"]] == [False, False, True]
+
+
+def test_leaderboard_rows_cap_a_stale_saved_top_at_the_finalist_places():
+    stale = [team(i, 9000) for i in (1, 2, 3, 4)]                       # portal.json written when the line was at four
+    rows = build.leaderboard_rows(dict(top=stale, rank=12, score=500, above=team(11), below=team(13)))
+    assert [r["rank"] for r in rows["finalists"]] == [1, 2, 3]
