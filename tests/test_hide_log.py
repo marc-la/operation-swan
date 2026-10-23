@@ -196,4 +196,6 @@ def test_the_watch_script_logs_the_new_fields_and_keeps_the_old_ones(tmp_path, m
     assert acc.hidden() == {"ana_fifita_rn27": 1, "josh_k_sparky36": 1}
 
     mod.main()                                                                   # a second run finds nothing new
-    assert len(watch.WATCH_LOG.read_text().splitlines()) == len(out) and len(alerts) == 1
+    again = [json.loads(l) for l in watch.WATCH_LOG.read_text().splitlines()]
+    # the account-budget job (todo/39) logs one `budget` row a run; everything else must be unchanged
+    assert [r for r in again if r["act"] != "budget"] == [r for r in out if r["act"] != "budget"] and len(alerts) == 1
