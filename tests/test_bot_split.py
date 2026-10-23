@@ -11,6 +11,7 @@ the todo/20 and todo/21 logging (requeue / lost, skip(read), the refresh funnel,
 Rules (2): only the writer posts; pacing never faster than pace_gap and a 429 backs off; the voice gaps hold; no double
 replies; each state file has one writer and is replaced atomically. Then the watchdog and the clean stop.
 """
+import collections
 import datetime as dt
 import json
 import os
@@ -267,6 +268,8 @@ def setup_world(mp, tmp, split, amp_off=False):
                       ("SECOND_VOICE_ARMS", {"fast": (0, 0.05), "slow": (0, 0.05)}), ("OWN_LIKE_DELAY_S", (0, 0.05)),
                       ("AMP_PRIORITY_S", 0), ("READER_SILENT_S", 30), ("DRAFTER_SILENT_S", 30)):
         mp.setattr(config, attr, val)
+                      ("ENG_FOLLOW_DELAY_S", (0, 0.05)), ("ENG_LIKE_DELAY_S", (0, 0.05)),
+                      ("ENG_BUDGET_MARGIN", 0),     # the fake account reports the write route (3/min) after every call
     # todo/31's human day is off here (the checklist needs second voices and many writes in 12 s); it runs end to end
     # with these worlds in tests/test_stealth.py
     for attr in STEALTH_RULES:
@@ -342,6 +345,28 @@ def run(request, tmp_path_factory):
 
 # ---- 1. the checklist: nothing switched off ---------------------------------------------------------------------
 def test_every_job_type_runs(run):
+# ---- todo/33: the free levers (follow, like) run through the same loops, each cell doing exactly its actions ----
+def test_engagement_levers_follow_the_citizens_cell(run):
+    from swan_bot import engage
+    acts = run["acts"]
+    replies = [a for a in acts if a["act"] in ("reply", "reply_back", "second_voice") and a.get("post_id")
+               and a.get("target_author")]
+    assert replies and all(a.get("eng_cell") == engage.cell(a["target_author"]) for a in replies)
+    levers = [a for a in acts if a.get("purpose") in ("eng_follow", "eng_like")]
+    assert {a["purpose"] for a in levers} >= {"eng_follow", "eng_like"}, "both levers ran"
+    state = json.loads((run["tmp"] / "data" / "swan_state.json").read_text())
+    assert isinstance(state["eng_queue"], list) and isinstance(state["eng_last"], dict), "the queue is saved with the state"
+    for a in levers:
+        assert a["live"] and a["eng_cell"] == engage.cell(a["citizen_id"]) and a.get("owner") and a.get("username")
+        if a["purpose"] == "eng_like":
+            assert "like" in a["eng_cell"], a
+        elif a["why"] == "first_reply":
+            assert "follow" in a["eng_cell"], a
+    follows = collections.Counter(a["username"] for a in levers if a["purpose"] == "eng_follow")
+    assert max(follows.values(), default=0) <= config.ENG_FOLLOWS_PER_DAY
+    assert {w["kind"] for w in run["world"].writes} >= {"follow"}, "the follow reached the platform"
+
+
     modes = {w["kind"] for w in run["world"].writes} | {a["act"] for a in run["acts"]}
     written = {a["act"] for a in run["acts"] if a.get("act") in JOB_TYPES and a.get("post_id")}
     assert JOB_TYPES <= written, f"missing: {JOB_TYPES - written} (seen {sorted(modes)})"

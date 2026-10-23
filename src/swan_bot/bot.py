@@ -37,7 +37,7 @@ import urllib.error
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, experiment, feeds, humanize, pulse, quality, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, humanize, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .llm import Generator
 from .targeting import YES_REASON, agrees, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
@@ -499,7 +499,7 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
-        "block_id", "arm_conv", "fresh", "agree")
+        "block_id", "arm_conv", "arm_eng", "fresh", "agree")
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level")
 
@@ -565,6 +565,8 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     if mode in config.CONV_MODES:                                 # todo/25: the conversion arm of this 2 h block
         block_id, arm = experiment.block("arm_conv")
         meta.update(arm_conv=arm or "base", **({"block_id": block_id} if block_id else {}))
+        block_id, arm = experiment.block("arm_eng")                # todo/33: the engagement arm of this 2 h block
+        meta.update(arm_eng=arm or "base", **({"block_id": block_id} if block_id else {}))
     if mode == "reply" and job.get("group") == "off_topic":      # todo/23: on their topic, no read, no theme
         job["style"], job["read"] = "off_topic", False
     elif mode == "reply":                # todo/20: the style arm in turn (the firm-Yes arm concedes first) and the read
@@ -859,6 +861,94 @@ def reply_job(cand, rec):
 
 
 _REST_LOGGED = {}             # todo/31: why -> [time last logged, times seen since]
+ENG_PER_TICK = 3              # follows and likes sent in one writer tick: the writer must not stall on them
+_ROUTE_RL = {}                # "follow" / "like" -> the X-RateLimit-* its last answer reported (engage.budget_wait)
+
+
+def engage_actions(state, accounts, live, now=None):
+    """todo/33: the follows and likes due in state["eng_queue"] (engage.plan queued them with a reply). Each goes from the
+    persona that replied, after the gates in engage: not asleep or parked, not followed already, at most
+    ENG_FOLLOWS_PER_DAY follows a day and ENG_FOLLOW_GAP_S between two, no like and follow for the same citizen within
+    ENG_PAIR_GAP_S, and the route's own budget (30/min, team-wide) from its last X-RateLimit-* headers, never a
+    hard-coded pace. A gap, the budget or a 429 puts the action back (ENG_RETRIES times); anything else drops it.
+    Every action is logged with the persona, its owner and the cell. Writes are off unless live."""
+    now = time.time() if now is None else now
+    queue = state.setdefault("eng_queue", [])
+    last = state.setdefault("eng_last", {})
+    for k in [k for k, v in last.items() if now - max(v.values()) > 3600]:
+        del last[k]
+    sent = 0
+    for x in [x for x in queue if x["due"] <= now]:
+        if sent >= ENG_PER_TICK:
+            break
+        queue.remove(x)
+        kind, citizen = x["kind"], x["citizen"]
+        entry = {"act": kind, "live": live, "username": x["username"], "citizen_id": citizen, "post_id": x["post_id"],
+                 "eng_cell": x["cell"], "why": x.get("why") or x["mode"], "purpose": f"eng_{kind}",
+                 "draft_id": x.get("draft_id")}
+        if kind == "follow":
+            entry.pop("post_id")
+            entry["account_id"] = citizen              # what older follow rows called it: the account followed
+        rec = next((r for r in accounts.voices() if r["username"] == x["username"]), None)
+
+        def drop(why, **kw):
+            log({"act": "eng_skip", "kind": kind, "why": why, "username": x["username"], "citizen_id": citizen,
+                 "eng_cell": x["cell"], **kw})
+
+        def later(why, wait=0.0):
+            if x.get("tries", 0) < config.ENG_RETRIES:
+                queue.append(dict(x, due=now + max(config.ENG_RETRY_S, wait), tries=x.get("tries", 0) + 1))
+            else:
+                drop(f"{why}_gave_up")
+
+        if rec is None or accounts.parked(rec):
+            drop("parked" if rec else "gone")
+            continue
+        if live and stealth.asleep(rec["persona"], now):
+            drop("asleep")                               # a person asleep does not follow anyone
+            continue
+        why = engage.follow_block(rec, citizen, last, now) if kind == "follow" else engage.like_block(citizen, last, now)
+        wait = engage.budget_wait(_ROUTE_RL.get(kind))
+        if not why and wait > 0:
+            why = "budget"
+        if why in engage.GAP_REASONS:
+            later(why, wait)
+            continue
+        if why:
+            drop(why)
+            continue
+        entry.update(voice_id=rec.get("account_id"), owner=rec.get("owner"), role=rec.get("role", "voice"))
+        if live:
+            def act(acc):
+                if kind == "like":
+                    acc.view(x["post_id"])
+                    acc.like(x["post_id"])
+                else:
+                    acc.follow(citizen)
+            try:
+                acc = accounts.session(rec)
+                try:
+                    act(acc)
+                except ctn.APIError as e:
+                    if e.status != 401:
+                        raise
+                    acc = accounts.relogin(rec)
+                    act(acc)
+            except ctn.RateLimited as e:
+                later("rate_limited", getattr(e, "retry_after", 0) or 0)
+                continue
+            except ctn.APIError as e:
+                log({**entry, "act": f"{kind}_failed", "error": e.status})
+                continue
+            _ROUTE_RL[kind] = acc.rate_limit
+            if kind == "follow":
+                engage.note_follow(rec, citizen, now)
+                accounts.save()
+        last.setdefault(str(citizen), {})[kind] = now
+        sent += 1
+        log(entry)
+
+
 
 
 def log_rest(why, **fields):
@@ -1010,7 +1100,8 @@ def main():
     targeter.load(state.pop("targeter", None))          # read position, queue and funnel survive a restart (G3)
     for key, default in (("replied_posts", []), ("contacted", {}), ("engaged", {}), ("recent_texts", []), ("second_voice", []),
                          ("journalist_last", {}), ("modes", []), ("journalist_any", 0), ("recent_shapes", []),
-                         ("theme_log", []), ("turns", {}), ("styles", {}), ("own_likes", [])):
+                         ("theme_log", []), ("turns", {}), ("styles", {}), ("own_likes", []), ("eng_queue", []),
+                         ("eng_last", {})):
         state.setdefault(key, default)
     ledger = themes.Ledger(state["theme_log"])          # the themes we sent, team-wide (saved with the state)
     if args.live:                                       # todo/31: the last day's writes count from the first minute,
@@ -1443,14 +1534,6 @@ def main():
                 r = write(acc)
             post_id = r["post_id"]
             write_rl[0] = acc.rate_limit             # the team-wide write budget, as this answer reported it
-            # a citizen who talks back to us: follow them from that persona (separate follow budget)
-            if mode == "reply_back" and target["author_id"] not in rec.setdefault("followed", []):
-                try:
-                    acc.follow(target["author_id"])
-                    rec["followed"].append(target["author_id"])
-                    log({"act": "follow", "username": rec["username"], "account_id": target["author_id"]})
-                except ctn.APIError as e:
-                    print("follow:", e.status, e.message)
         with mu:
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
             stealth.on_write(rec, rec["last_write"])            # todo/31: its day's writes and its next gap
@@ -1464,6 +1547,8 @@ def main():
             state["modes"] = (state["modes"] + [mode])[-20:]
 
             if target:
+            if target and mode in engage.FOLLOW_MODES + engage.LIKE_MODES:      # todo/33: the citizen's cell
+                engage.push(state, engage.plan(job, rec, target["author_id"], target["post_id"]))
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
                 targeter.answered(target, mode)          # the funnel (todo/21 G12)
             if mode in ("reply", "reply_back", "second_voice"):   # the session cap counts our voices (todo/21)
@@ -1536,6 +1621,7 @@ def main():
              "catchphrase": content.catchphrase_in(text), "identity": job.get("identity"),
              "messenger_match": bool(job.get("identity")) and persona["key"] in messengers(job.get("identity")),
              "thread": threading.current_thread().name,                                   # todo/22: the writer
+             "eng_cell": engage.cell(target["author_id"]) if target and mode in stealth.CITIZEN_MODES else None,
              **({k: drafted[k] for k in ("batch_id", "batch_pos", "batch_size")} if drafted else {})})
         where = ""
         if target:
@@ -1609,6 +1695,7 @@ def main():
                 if time.time() < no_model_until[0]:
                     pause(min(no_model_until[0] - time.time(), 30))
                     continue
+                engage_actions(state, accounts, args.live)
                 if gen.next_available_in() > 0 and not args.allow_qwen:
                     print(f"no Gemini model available; waiting {gen.next_available_in() / 60:.0f} min")
                     pause(min(gen.next_available_in() + 1, 600))
@@ -1745,6 +1832,7 @@ def main():
                     if d:
                         ready.remove(d)
                 if d is None:
+                    engage_actions(state, accounts, args.live)
                     pause(IDLE_S)
                     continue
                 job = d["job"]

@@ -256,7 +256,7 @@ def swarm_active():
 # ---- experiment arms (swan_bot/experiment.py). The overnight experiments stopped 2026-10-21 (too little data) ----
 PIN = {"reply_mode": "reason_first"}   # pin a dimension to one arm, e.g. {"lever": "loss"}; wins over SWITCHBACK
 # One switchback at a time: the dimension, its arms, the block length. The arm rotates per block (and shifts a day).
-SWITCHBACK = []                     # set again in the todo/25 conversion block below
+SWITCHBACK = []                     # set again in the todo/33 engagement block below
 ARM_WEIGHTS = {}                    # {dim: {arm: weight}}: reweight arms (the bandit, from night 2). Empty = as drawn
 FOLLOWUPS_LOG = LOGS / "swan_followups.jsonl"   # scripts/swan_followup.py: citizens' stance after we replied
 OUTCOMES_LOG = LOGS / "swan_outcomes.jsonl"     # ...and per-post citizen engagement at OUTCOME_AT_S
@@ -412,7 +412,38 @@ CONV_POST_GAP_S = 20 * 60
 CONV_OLD_MODELS = ("gemini-3.5-flash-lite", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")
 CONV_SKIP_STANCES = {"lean_no", "firm_no"}
 CONV_MODES = {"reply", "reply_back", "second_voice", "post"}   # arm_conv is logged on these
-SWITCHBACK = [("arm_conv", CONV_ARMS, CONV_BLOCK_S)]
+# 2026-10-23 (todo/33): the conversion arms are off the switchback (five lab rounds and every live arm: 1 change toward
+# No since 22 Oct); their code stays, and arm_conv logs "base". The switchback now runs the engagement arms below.
+# ---- todo/33 engagement per write (docs/06-strategy/engagement-per-write.md) ----
+# The portal pays ~13,700 points of 44 h for NPC likes, replies and follows and a handful for persuasion, so the arms
+# below are scored on points per write; persuasion is a guardrail (an arm whose away events beat base is killed).
+# Budget lever, 2 h switchback blocks (experiment.block("arm_eng"), logged as arm_eng on citizen-facing writes):
+#   base            today's order (todo/21 score);
+#   engagers_first  citizens who answered us before first, then unsure, then the freshest posts, then the rest.
+ENG_ARMS = ["base", "engagers_first"]
+ENG_BLOCK_S = 2 * 3600
+SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S)]
+ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
+# Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
+# picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes
+# have their own 30/min budgets. ENG_FOLLOW / ENG_LIKE switch a lever off for every cell (the cell is still logged).
+ENG_CELLS = ("none", "follow", "like", "follow+like")
+ENG_FOLLOW = True
+ENG_LIKE = True
+ENG_FOLLOW_ANSWERED = True                 # the older behaviour, in every cell: follow a citizen who answers us
+# What keeps it human (and keeps Blue reporters off us): per persona at most ENG_FOLLOWS_PER_DAY follows a day (every
+# follow counts, also reply-back and amplifier follow-backs) and ENG_FOLLOW_GAP_S between two; never a follow and a like
+# for the same citizen within ENG_PAIR_GAP_S. The follow lands seconds after our reply, the like a few minutes after.
+ENG_FOLLOWS_PER_DAY = 40
+ENG_FOLLOW_GAP_S = 60
+ENG_PAIR_GAP_S = 60
+ENG_FOLLOW_DELAY_S = (8, 40)
+ENG_LIKE_DELAY_S = (90, 300)
+ENG_BUDGET_MARGIN = 5                      # leave this many calls of the route's budget (X-RateLimit-Remaining) unused
+ENG_RETRIES = 3                            # a rate limit or a gap puts an action back this many times, then drops it
+ENG_RETRY_S = 60
+ENG_READ_AT_S = (6 * 3600, 24 * 3600)      # followers are read this long after our first reply to a citizen
+ENGAGE_LOG = LOGS / "swan_engagement.jsonl"   # followup.py: per citizen, did they follow the voice back (6 h, 24 h)
 # The NPC lab (src/swan_lab, docs/06-strategy/npc-lab.md): a stand-in citizen scores reply strategies offline.
 # The stand-in and its classifier run on LAB_MODEL only: "competitor" is the organisers' qwen2.5-3b (CompetitorLLM).
 # External models may draft the replies under test (content), never play or judge the citizen (CLAUDE.md rule 2).

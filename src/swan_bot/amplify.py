@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 
 import capturethenarrative as ctn
 
-from . import config, content, stealth
+from . import config, content, engage, stealth
 from .targeting import FIRM_NO, FIRM_YES, REFERENDUM
 
 NO_TAGS = re.compile(r"#(voteno|keepkingstoniaopen|choicenotcoercion|nomandate|protectchoice)\b", re.I)
@@ -506,9 +506,11 @@ class Amplifier:
         acc = self.accounts.session(rec)
         followed = rec.setdefault("followed", [])
         for aid in [a for a in cit_likers if a not in followed][:config.FOLLOW_BACK_MAX]:
+            if engage.follow_block(rec, aid, {}) in ("day_cap", "gap"):      # todo/33: 40 a day, one a minute
+                break
             try:
                 acc.follow(aid)
-                followed.append(aid)
+                engage.note_follow(rec, aid)
                 self.log({"act": "follow", "username": rec["username"], "account_id": aid, "why": "liked_our_post"})
             except ctn.APIError as e:
                 print("follow-back:", e.status, e.message)

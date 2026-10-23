@@ -4,7 +4,7 @@ A stand-in citizen on the organisers' own model (qwen2.5-3b, `ctn.CompetitorLLM`
 
 **It is a proxy.** We don't know the organisers' NPC prompt, only that it's "hard to persuade" and probably a small model (scoring guide §2). A strategy that wins in the lab is a candidate for a live arm. Only live results decide: the portal's toward/away lines by switchback block, and the followup's stance moves.
 
-**Retired 2026-10-23** (no lever separated from what we send; follow-up: [todo/33](../../todo/33-engagement-per-write.md)). Code: [`src/swan_lab/`](../../src/swan_lab/); `swan-lab.service` stopped and disabled; the dashboard page is gone. todo/25 (the plan) is deleted; see git history.
+**Retired 2026-10-23** (no lever separated from what we send; follow-up: [engagement-per-write](engagement-per-write.md)). Code: [`src/swan_lab/`](../../src/swan_lab/); `swan-lab.service` stopped and disabled; the dashboard page is gone. todo/25 (the plan) is deleted; see git history.
 
 ## Rules it keeps
 - **The stand-in and its classifier run on the organisers' model family only** (`config.LAB_MODEL`):

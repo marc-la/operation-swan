@@ -952,7 +952,20 @@ class Targeter:
             cls = c.get("target_class")
             return config.TARGET_ORDER.index(cls) if order and cls in config.TARGET_ORDER else len(config.TARGET_ORDER)
 
-        for pid, c in sorted(self.candidates.items(), key=lambda kv: (tier(kv[1]), rank(kv[1]), -priority(kv[1]))):
+        # todo/33's engagers_first arm: in its blocks the citizens most likely to engage go first (see engage_rank)
+        eng = experiment.block("arm_eng")[1] == "engagers_first"
+
+        def engage_rank(c):
+            if not eng:
+                return 0
+            if str(c["post"]["author_id"]) in engaged:
+                return 0                              # answered us before: they answer again
+            if c.get("target_class") in config.ENG_UNSURE:
+                return 1
+            return 2 if age_h(c["post"]) * 60 < config.FRESH_MIN else 3     # a reply within minutes of their post
+
+        for pid, c in sorted(self.candidates.items(),
+                             key=lambda kv: (tier(kv[1]), engage_rank(kv[1]), rank(kv[1]), -priority(kv[1]))):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
             post, author, source = c["post"], c["post"]["author_id"], c.get("source")

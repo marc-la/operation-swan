@@ -53,12 +53,9 @@ def test_no_switchback_means_base(monkeypatch):
     assert job["meta"]["arm_conv"] == "base" and "block_id" not in job["meta"]
 
 
-LIVE_SWITCHBACK = list(config.SWITCHBACK)          # read at import: conftest clears it for each test
-
-
-def test_blocks_rotate_through_every_arm(monkeypatch):
-    assert ("arm_conv", config.CONV_ARMS, config.CONV_BLOCK_S) in LIVE_SWITCHBACK
-    monkeypatch.setattr(config, "SWITCHBACK", LIVE_SWITCHBACK)
+def test_blocks_rotate_through_every_conversion_arm(monkeypatch):
+    """The arms' code stays, but since 2026-10-23 (todo/33) they are off the live switchback (tests/test_engage.py)."""
+    monkeypatch.setattr(config, "SWITCHBACK", [("arm_conv", config.CONV_ARMS, config.CONV_BLOCK_S)])
     seen = {experiment.block("arm_conv", t=h * 3600)[1] for h in range(0, 24, 2)}
     assert seen == set(config.CONV_ARMS)
 

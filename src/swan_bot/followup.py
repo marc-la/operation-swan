@@ -5,6 +5,8 @@ Two per-write signals, read on a schedule from the bot's own action log (never f
              403/404/410 means hidden or gone
   followup   per citizen we replied to, at +2 h and +12 h: their posts since our reply, classified with
              targeting.stance, and a label: moved_no / moved_yes / no_change / unclear / silent / private
+  engage     per citizen we replied to (todo/33), at +6 h and +24 h: did they follow the replying voice back?
+             (logs/swan_engagement.jsonl; the cohort is read from the action log's eng_cell rows, from a saved cursor)
 Plus, per run: our posts' ranks in Trending (one feed read), and every ~2 h each voice's citizen followers (H9).
 scripts/swan_followup.py runs it (systemd timer, every 30 min on EC2). Writes logs/swan_outcomes.jsonl and
 logs/swan_followups.jsonl; scripts/swan_sync_mongo.py copies them to Mongo.
@@ -15,7 +17,7 @@ import time
 
 import capturethenarrative as ctn
 
-from . import config, feeds, jsonl
+from . import config, engage, feeds, jsonl
 from .amplify import is_citizen_id
 from .analysis import ts_of
 from .targeting import stance
@@ -101,6 +103,7 @@ class Reader:
         return {**rec, "views": c.get("view_count"), "likes": c.get("like_count"), "replies": c.get("reply_count"),
                 "reposts": c.get("repost_count"),
                 "citizen_likes": sum(is_citizen_id(x.get("account_id")) for x in likers),
+                "citizen_likers": sorted({x["account_id"] for x in likers if is_citizen_id(x.get("account_id"))}),
                 "citizen_replies": len(cit_replies), "citizen_repliers": sorted({x["author_id"] for x in cit_replies})}
 
     def followup(self, r, i, now, our_ids):
@@ -132,6 +135,18 @@ class Reader:
             return {}
         return {p["post_id"]: rank for rank, p in enumerate(posts, 1) if p["post_id"] in our_ids}
 
+    def follower_ids(self, account_id, cap=1500):
+        """(ids, complete): the account ids following one voice, read a page of 50 at a time up to `cap` ids."""
+        ids, cursor = set(), None
+        while True:
+            page = self.read(self.social.followers, account_id, limit=50, cursor=cursor)
+            ids.update(a.get("account_id") for a in page)
+            cursor = page.next_cursor
+            if not cursor:
+                return ids, True
+            if len(ids) >= cap:
+                return ids, False
+
     def followers(self, voices):
         """Each voice's followers, citizen vs other (H9: Home weights followed accounts). One page per 50."""
         out = []
@@ -151,6 +166,65 @@ class Reader:
                 continue
             out.append({**v, "followers": len(ids), "citizen_followers": sum(map(is_citizen_id, ids))})
         return out
+
+
+def cohort(state, now, keep_s=3 * 86400):
+    """Add the citizens we replied to since the last run to state["engage_pending"] ({citizen: entry}), from the action
+    log's rows with an eng_cell (the bot logs it on every citizen-facing write), and drop the finished ones after
+    keep_s. Each entry: voice (the replying account id), username, cell, mode, first_post_id, t0, done (checks read)."""
+    pending = state.setdefault("engage_pending", {})
+    r = jsonl.Reader(config.ACTIONS_LOG, resume=state.get("engage_cursor"), contains='"eng_cell"')
+    new = [x for x in r if x.get("live") and x.get("act") in engage.FOLLOW_MODES]
+    state["engage_cursor"] = r.cursor
+    for key, x in engage.first_contacts(new).items():
+        if key not in pending and x.get("account_id"):
+            pending[key] = dict(voice=x["account_id"], username=x.get("username"), cell=x["eng_cell"], mode=x["act"],
+                                first_post_id=x["post_id"], t0=ts_of(x["ts"]), done=[])
+    for key in [k for k, e in pending.items() if len(e["done"]) >= len(config.ENG_READ_AT_S)
+                and now - e["t0"] > keep_s]:
+        del pending[key]
+    return pending
+
+
+def engage_due(pending, now):
+    """{voice account id: [(citizen, check, entry)]} for every follow-back check that is due."""
+    out = {}
+    for citizen, e in pending.items():
+        for i, at in enumerate(config.ENG_READ_AT_S):
+            if i not in e["done"] and now - e["t0"] >= at:
+                out.setdefault(e["voice"], []).append((citizen, i, e))
+    return out
+
+
+def engage_pass(reader, state, now, log=print):
+    """The follow-back reads (todo/33): each voice with checks due has its followers read once, then every due citizen
+    is looked up in them. followed_back is None when the read stopped at the id cap before finding them. Returns the
+    number of checks recorded."""
+    due_by_voice = engage_due(cohort(state, now), now)
+    n = 0
+    for voice, checks in sorted(due_by_voice.items(), key=lambda kv: min(e["t0"] for _, _, e in kv[1])):
+        try:
+            ids, complete = reader.follower_ids(voice)
+        except ctn.RateLimited:
+            raise
+        except ctn.APIError as e:
+            log(f"engage followers of {voice}: {e.status} {e.message}")
+            errors = state.setdefault("errors", {})
+            errors[f"engage:{voice}"] = errors.get(f"engage:{voice}", 0) + 1
+            if errors[f"engage:{voice}"] < 3:
+                continue
+            ids, complete = None, False                       # give up on these checks: recorded as unread
+        state.get("errors", {}).pop(f"engage:{voice}", None)
+        for citizen, i, e in checks:
+            back = None if ids is None else (True if int(citizen) in ids else (False if complete else None))
+            append(config.ENGAGE_LOG, {"act": "engage", "citizen_id": int(citizen), "voice_id": voice,
+                                       "username": e["username"], "cell": e["cell"], "mode": e["mode"],
+                                       "first_post_id": e["first_post_id"], "check": i,
+                                       "at_h": round((now - e["t0"]) / 3600, 2), "followed_back": back,
+                                       "followers_read": None if ids is None else len(ids)})
+            e["done"].append(i)
+            n += 1
+    return n
 
 
 ROW_FIELDS = ("ts", "act", "live", "post_id", "account_id", "username", "persona", "target_author", "target_text")
@@ -178,7 +252,7 @@ def run(social, state, now=None, max_reads=None, dry=False, log=print):
         state.setdefault(k, {})
     rows = load_rows()
     todo = due(rows, state, now)
-    n = {"due": len(todo), "outcome": 0, "followup": 0, "reads": 0}
+    n = {"due": len(todo), "outcome": 0, "followup": 0, "engage": 0, "reads": 0}
     if dry:
         for late, kind, i, r in todo[:30]:
             log(f"due {kind}#{i} {r['act']} #{r['post_id']} (late {late / 3600:.1f} h)")
@@ -186,6 +260,7 @@ def run(social, state, now=None, max_reads=None, dry=False, log=print):
     reader = Reader(social, max_reads=max_reads)
     our_ids = our_post_ids(rows)
     try:
+        n["engage"] = engage_pass(reader, state, now, log)          # todo/33: cheap (a page or two a voice), so first
         trending = reader.trending(our_ids) if todo else {}
         if trending:
             append(config.OUTCOMES_LOG, {"act": "trending", "ranks": {str(k): v for k, v in trending.items()}})
