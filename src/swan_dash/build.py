@@ -336,15 +336,17 @@ def conversations(actions, texts=None):
 def leaderboard_rows(portal):
     """The leaderboard as the team reads it: the finalist places (top four, who fly to Sydney), a line, then us with
     the team above and below. Teams already in the top four are not repeated; `gap` is set where ranks are skipped
-    between the two blocks. `cutoff` is how far we are behind fourth place (None when we are in the top four)."""
+    between the two blocks, and `between` lists those teams for the expandable row. `cutoff` is how far we are behind fourth place (None when we are in the top four)."""
     us = dict(rank=portal["rank"], team="Operation Swan (us)", score=portal["score"], us=True)
     top = portal.get("top") or ([portal["leader"]] if portal.get("leader") else [])
     shown = {r["rank"] for r in top}
     near = [dict(us=False, **r) if r is not us else r for r in (portal.get("above"), us, portal.get("below"))
             if r and r["rank"] not in shown]
     fourth = next((r for r in top if r["rank"] == 4), None)
+    gap = bool(near) and bool(top) and near[0]["rank"] > top[-1]["rank"] + 1
+    between = [r for r in portal.get("rows") or [] if gap and top[-1]["rank"] < r["rank"] < near[0]["rank"]]
     return dict(finalists=[dict(r, us=r["rank"] == us["rank"]) for r in top], near=near,
-                gap=bool(near) and bool(top) and near[0]["rank"] > top[-1]["rank"] + 1,
+                gap=gap, between=between,
                 cutoff=max(fourth["score"] - us["score"], 0) if fourth and us["rank"] > 4 else None)
 
 
@@ -792,9 +794,17 @@ REACH_BACK_MIN = 1             # a citizen answering us gets our reply within th
 VOLUME_WINDOW_MIN = 30         # posting rate is measured over this long, so a stall or a recovery shows within minutes
 VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minute: green at or above, red below AMBER
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
-STEALTH_BANS_DAY = TOTAL_CAP / 14             # new bans since 9pm Perth: 0 green, up to the 200-account allowance over 14 days amber, above red (Marc, 23 Oct)
+STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 green, 6-10 amber, 11+ red (Marc, 23 Oct; the 200 allowance over 14 days is ~14 a day)
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
+LIGHT_TIPS = dict(      # the hover text on each tile: what the colours mean (Marc, 23 Oct)
+    speed=f"Speed. Median time from a citizen's post to our reply, last hour. Green ≤ {REACH_SPEED_MIN} min for new posts "
+          f"(≤ {REACH_BACK_MIN} for citizens answering us), amber up to 3×, red above. Worst row wins.",
+    volume=f"Volume. Green: posting at {VOLUME_GREEN:.0%} or more of the team's 3 writes a minute, 10+ voices, no citizen lost. "
+           f"Amber: {VOLUME_AMBER:.0%}-{VOLUME_GREEN:.0%} of budget or few voices. Red: under {VOLUME_AMBER:.0%}, or any citizen lost in the last full hour.",
+    conversion="Conversion. Changes of mind today, toward No minus away. Green: net positive. Amber: neutral (net 0, or none yet). Red: net negative.",
+    stealth=f"Stealth. Accounts banned since 9pm Perth. Green: {STEALTH_GREEN_MAX} or fewer. Amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX}. "
+            f"Red: {STEALTH_AMBER_MAX + 1} or more. Any hidden post turns it amber.")
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
@@ -1027,7 +1037,7 @@ def reach(actions, status, points, now, day_start, notes=None):
     subs = dict(speed="to reply" if mf is not None else "no replies timed",
                 volume=f"of {budget:g} · {voices if voices is not None else '?'} voices",
                 conversion="toward / away today")
-    items = [dict(key=k, name=k.capitalize(), light=worst(k), head=heads[k], sub=subs[k],
+    items = [dict(key=k, name=k.capitalize(), light=worst(k), head=heads[k], sub=subs[k], tip=LIGHT_TIPS[k],
                   rows=[r for r in rows if r["group"] == k]) for k in ("speed", "volume", "conversion")]
     extra = []
     skipped = (f or {}).get("skipped") or {}
@@ -1257,9 +1267,9 @@ def gather(root, now, service):
     today_acct = next((d for d in acct_days if d["today"]), None)
     bans = today_acct["new"] if today_acct else 0
     hidden_today = sum(1 for r in rows if r.get("kind") == "hidden" and r["t"] >= day_start)
-    srows = [dict(group="stealth", name="New bans today", light="green" if bans == 0 else "amber" if bans <= STEALTH_BANS_DAY else "red",
+    srows = [dict(group="stealth", name="New bans today", light="green" if bans <= STEALTH_GREEN_MAX else "amber" if bans <= STEALTH_AMBER_MAX else "red",
                   now=f"{bans}" + (f" · {today_acct['why']}" if today_acct and today_acct["why"] else ""),
-                  target=f"0 (amber up to {STEALTH_BANS_DAY:.0f}: {TOTAL_CAP} accounts over 14 days)", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
+                  target=f"0-{STEALTH_GREEN_MAX} (amber to {STEALTH_AMBER_MAX})", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
              dict(group="stealth", name="Posts hidden today", light="amber" if hidden_today else "green", now=f"{hidden_today}",
                   target="0", fix="3 hidden posts suspend an account. See Activity.", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
@@ -1267,7 +1277,7 @@ def gather(root, now, service):
     rc["rows"] += srows
     rc["fixes"] += [r for r in srows if r["light"] in ("amber", "red")]
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
-    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts",
+    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts",
                              light=max((r["light"] for r in srows), key=order.get)))
     rc["light"] = max((i["light"] for i in rc["lights"]), key=order.get)
     levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"])

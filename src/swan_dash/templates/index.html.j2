@@ -40,9 +40,11 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .alerts details > summary { padding: 0; }
 .ver { margin: 8px 0; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
 table.board tr.cut td { border-bottom: 2px solid var(--ink); }
-table.board tr.near td { background: var(--green-bg); color: var(--green); }
-table.board tr.us td { font-weight: 700; color: var(--green); }
-table.board tr.gap td { color: var(--muted); padding-top: 0; padding-bottom: 0; }
+table.board tr.us td { color: var(--green); }
+table.board tr.gap > td { padding: 0; }
+table.board details { border: 0; margin: 0; background: none; }
+table.board details > summary { padding: 2px 0; color: var(--muted); font-size: 13px; }
+table.board details table { font-size: 14px; }
 td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .green { background: var(--green-bg); color: var(--green); }
 .amber { background: var(--amber-bg); color: var(--amber); }
@@ -264,7 +266,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 
 <div class="lights">
 {% for i in reach.lights %}
-  <div class="light {{ i.light }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div></div>
+  <div class="light {{ i.light }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div></div>
 {% endfor %}
 </div>
 <details class="reach" id="reach">
@@ -344,8 +346,9 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <table class="board">
     {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}
-    {% if board.gap %}<tr class="gap"><td class="rk">⋮</td><td></td><td></td></tr>{% endif %}
-    {% for r in board.near %}<tr class="near{{ ' us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% if board.gap %}<tr class="gap"><td colspan="3">{% if board.between %}<details><summary>⋮ {{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
+      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>{% endfor %}</table></details>{% else %}<span class="sub">⋮</span>{% endif %}</td></tr>{% endif %}
+    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}
   </table>
   {% endif %}

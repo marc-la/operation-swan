@@ -131,6 +131,7 @@ def standing(board):
     by_rank = {r["rank"]: r for r in board}
     return dict(rank=us["rank"], score=us["score"], teams=len(board), leader=board[0] if board else None,
                 top=[r for r in board if r["rank"] <= FINALISTS],
+                rows=board,
                 above=by_rank.get(us["rank"] - 1), below=by_rank.get(us["rank"] + 1))
 
 

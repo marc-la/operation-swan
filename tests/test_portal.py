@@ -132,6 +132,10 @@ def test_leaderboard_rows_midfield_shows_top_four_then_us_between_neighbours():
     assert [r["rank"] for r in rows["finalists"]] == [1, 2, 3, 4]
     assert [r["rank"] for r in rows["near"]] == [11, 12, 13] and rows["near"][1]["us"]
     assert rows["gap"] and rows["cutoff"] == 9000 - 4 - 500
+    assert rows["between"] == []                                         # no full board saved yet: a plain gap
+    full = top + [team(i) for i in range(5, 15)]
+    rows = build.leaderboard_rows(dict(top=top, rows=full, rank=12, score=500, above=team(11), below=team(13)))
+    assert [r["rank"] for r in rows["between"]] == [5, 6, 7, 8, 9, 10]
 
 
 def test_leaderboard_rows_do_not_repeat_finalists_near_the_line():
