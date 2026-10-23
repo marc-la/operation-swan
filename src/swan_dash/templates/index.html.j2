@@ -274,7 +274,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% for x in reach.extra %}<p class="sub">{{ x }}</p>{% endfor %}
 </details>
 
-<details id="activity"><summary><b>Activity</b><span class="sub">{{ activity | length }}{% if older %} + {{ older | length }} older{% endif %} · newest {{ activity[0].time if activity and activity[0].time }}</span></summary>
+<details id="activity"><summary><b>Activity</b><span class="sub">{{ activity | length }}{% if older %} + {{ older | length }} older critical{% endif %} · newest {{ activity[0].time if activity and activity[0].time }}</span></summary>
 <ol class="activity">
 {% for r in activity %}
   {{ item(r) }}
@@ -283,7 +283,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% endfor %}
 </ol>
 {% if older %}
-<details id="older"><summary><b>Older activity</b><span class="sub">{{ older | length }} more</span></summary>
+<details id="older"><summary><b>Older critical events</b><span class="sub">{{ older | length }}</span></summary>
 <ol>
 {% for r in older %}
   {{ item(r) }}

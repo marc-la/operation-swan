@@ -41,7 +41,20 @@ DEGRADED_FROM = 5                              # index in the LLM chain: the 6th
 STALL_S = 5 * 60                               # every LLM parked this long or longer: red
 PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15 min
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
-ACTIVITY_TOP, ACTIVITY_ALL = 12, 60          # rows always shown / rows behind "Older activity"
+ACTIVITY_TOP, ACTIVITY_OLDER = 12, 40        # rows always shown / most rows behind "Older activity"
+CRITICAL_KINDS = {"susp", "hidden", "deployfail", "bad", "blue"}   # older activity keeps these, new accounts, deploys
+CRITICAL_WHAT = {"new account", "deploy", "alert"}                  # and unclassified alerts; not writes or LLM parks
+
+
+def critical(row):
+    """Older activity is for the events worth a second look (Marc, 23 Oct): bans, hidden posts, new accounts, deploys."""
+    return row["kind"] in CRITICAL_KINDS or row.get("what") in CRITICAL_WHAT
+
+
+def older_critical(items):
+    """The critical rows behind the top of the log, back-to-back deploys bundled again once the parks are gone."""
+    rows = [r for i in items for r in (i["rows"] if i["kind"] == "group" else [i])]
+    return bundle([r for r in rows if critical(r)])[:ACTIVITY_OLDER]
 LONG_PARK_S = 600                              # per-minute parks are noise; longer ones go in the activity log
 THREAD_SHOWN = 3                               # replies in a thread shown before "… N more"
 REJECT_WINDOW_S = 15 * 60                      # old records (no draft_id): rejects this soon before a write are its own
@@ -1248,7 +1261,7 @@ def gather(root, now, service):
                  rank=ordinal(current + 1) if current is not None else None, of=len(chain), parked=parked,
                  chain=states, busiest=busiest if busiest and busiest["calls"] else None),
         errors=dict(rate_limited=status.get("rate_limited_last_hour"), rejects=rejects_hour),
-        activity=items[:ACTIVITY_TOP], older=items[ACTIVITY_TOP:ACTIVITY_ALL], running=running, pulse=pulse, facts=facts,
+        activity=items[:ACTIVITY_TOP], older=older_critical(items[ACTIVITY_TOP:]), running=running, pulse=pulse, facts=facts,
         blue=blue, reach=rc,
         rollback=ROLLBACK.format(prev=running["prev"]) if running and banner["level"] == "red" else None,
         built=perth(now).strftime("%H:%M:%S"))

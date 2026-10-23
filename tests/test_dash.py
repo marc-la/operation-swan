@@ -146,7 +146,7 @@ def test_score_rate_history_and_llm_chain(tmp_path):
     assert [m["state"] for m in ctx["llm"]["chain"]] == ["daily quota until 15:00", "ready"]
     assert [m["calls"] for m in ctx["llm"]["chain"]] == [500, 12]
     assert "flash-lite (500 calls today)" in html
-    assert len(ctx["activity"]) == build.ACTIVITY_TOP and len(ctx["older"]) == 40 - build.ACTIVITY_TOP
+    assert len(ctx["activity"]) == build.ACTIVITY_TOP and ctx["older"] == []      # plain writes are not critical
     assert '<details id="bot">' in html and "#14" in html
 
 
@@ -176,6 +176,19 @@ def test_back_to_back_parks_and_deploys_are_bundled(tmp_path):
     assert ctx["activity"][1]["text"] == ("2 deploys (latest def5678 two) · "
                                           "gemini-c, gemini-b, gemini-a: daily quota until 17:00")
     assert html.count("<details class=\"x\" id=\"g-") == 2
+
+
+def test_older_activity_keeps_only_critical_events(tmp_path):
+    acts = [{"ts": iso(500), "act": "suspended", "username": "lani_42"},
+            {"ts": iso(499), "act": "register", "username": "new_1", "persona": "lani"}]
+    acts += [write(m) for m in range(40, 0, -1)]
+    root = make_root(tmp_path, acts)
+    (root / "logs" / "alerts.log").write_text(
+        f"{iso(450)[:19]}Z [swan-ec2] deployed abc1234 Marc: one\n"
+        f"{iso(440)[:19]}Z [swan-ec2] @lani: post #9 hidden by the moderator (1 hidden)\n")
+    ctx, _ = page(root)
+    assert len(ctx["activity"]) == build.ACTIVITY_TOP
+    assert [r["what"] for r in ctx["older"]] == ["post hidden", "deploy", "new account", "SUSPENDED"]
 
 
 def rec(minutes_ago, act, post_id, persona="dan", **kw):
