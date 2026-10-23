@@ -575,7 +575,7 @@ def test_stealth_light_counts_new_bans_today(tmp_path):
     (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
     ctx, html = page(root)
     st = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert st["head"] == "3 bans" and st["light"] == "amber" and "3 posts hidden ×1" in rowof(ctx, "New bans")["now"]
+    assert st["head"] == "3 bans" and st["light"] == "green" and "3 posts hidden ×1" in rowof(ctx, "New bans")["now"]
     assert "@a_b" in html
 
 
@@ -628,8 +628,8 @@ def test_stage_times_logged_on_a_write():
     assert none["t_made"] is None and none["t_pick"] is None and none["drafted_ahead"] is None
 
 
-def test_stealth_bars_zero_green_to_allowance_per_day_amber_above_red(tmp_path):
-    for new, want in ((0, "green"), (14, "amber"), (15, "red")):
+def test_stealth_bars_0_to_5_green_6_to_10_amber_11_up_red(tmp_path):
+    for new, want in ((0, "green"), (5, "green"), (6, "amber"), (10, "amber"), (11, "red")):
         root = make_root(tmp_path / f"s{new}", [write(3)])
         log = {"counts": [{"ts": iso(1500), "registered": 50, "banned": 2}, {"ts": iso(30), "registered": 50, "banned": 2 + new}]}
         (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
@@ -702,3 +702,27 @@ def test_drafting_missing_files_degrade_quietly(tmp_path):
     (root / "logs" / "swan_actions.jsonl").unlink()
     ctx, _ = page(root)
     assert ctx["draft_banner"]["level"] == "green"
+
+
+def test_each_light_tile_says_on_hover_what_its_colours_mean(tmp_path):
+    ctx, html = page(make_root(tmp_path, [write(3)]))
+    for i in ctx["reach"]["lights"]:
+        assert i["tip"] and f'title="{i["tip"]}"' in html.replace("&#39;", "'"), i["key"]
+    assert "Green: 5 or fewer. Amber: 6-10. Red: 11 or more" in html
+
+
+def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):
+    """Posts made while we barely posted, answered late, are a backlog (23 Oct). Busy minutes keep counting."""
+    busy = [write(m, act="post") for m in range(200, 119, -1) for _ in range(2)]            # 2 a minute: not starved
+    stall = [write(m, act="post") for m in range(119, 70, -10)]                              # one per 10 min: starved
+    def timed(ago, wait_min, **kw):
+        sent = NOW.timestamp() - ago * 60
+        return dict(write(ago), act="reply", source="latest", t_made=sent - wait_min * 60, t_pick=sent - 30,
+                    t_drafted=sent - 20, t_sent=sent, **kw)
+    acts = busy + stall + [timed(30, 2), timed(25, 75), timed(20, 2)]                       # 75 min wait: made ~100 min ago, in the stall
+    ctx, _ = page(make_root(tmp_path, acts))
+    r = rowof(ctx, "Reply time, new")
+    assert "1 catch-up left out" in r["now"] and r["now"].startswith("2.") and r["light"] == "green", r
+    acts[-2] = timed(25, 140)                                                              # 140 min wait, made in a busy bucket: counts
+    ctx, _ = page(make_root(tmp_path / "b", acts))
+    assert "catch-up" not in rowof(ctx, "Reply time, new")["now"]

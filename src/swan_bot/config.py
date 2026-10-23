@@ -38,7 +38,9 @@ HIDDEN_STOP = 2                     # this many: stops writing (one more hidden 
 # in-session landed in the first ~5 min (ctn-68's reach study, 2 posts: 5 of 9 and 4 of 8 team replies answered).
 REFRESH_S = 2 * 60
 FRESH_MIN = 10                      # a citizen post this new is answered first (they may still be online)...
-FRESH_BONUS = 4.0                   # ...by this much on top of its score (scores run ~1.5-10)
+# 2026-10-23: 4.0 -> 12.0. At 4 a fresh post with an ordinary read lost to older posts with a strong one, and with ~2,000
+# queued the median wait for a reply was ~3 h (Marc: aim for under 5 min). 12 outweighs the usual spread of scores.
+FRESH_BONUS = 12.0                  # ...by this much on top of its score (scores run ~1.5-10)
 # 2026-10-21: Latest runs at ~47 posts/min, nearly all team bots (500 posts in 10.7 min, 7 by citizens), so one
 # 50-post read every 4 min saw ~1 min in 4. Each refresh now pages back to the newest post the last one saw.
 LATEST_PAGES = 3                    # at most this many 100-post reads per refresh (~6 min of Latest)

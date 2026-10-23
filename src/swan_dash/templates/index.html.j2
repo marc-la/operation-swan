@@ -39,7 +39,8 @@ header b { color: var(--ink); letter-spacing: .08em; }
 .alerts details div { margin-top: 4px; }
 .alerts details > summary { padding: 0; }
 .ver { margin: 8px 0; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
-table.board tr.cut td { border-bottom: 2px solid var(--ink); }
+table.board tr.cut > td { border-bottom: 1px solid var(--ink); }
+table.board td.rk { text-align: left; padding-right: 0; }
 table.board tr.us td { color: var(--green); }
 table.board tr.gap > td { padding: 0; }
 table.board details { border: 0; margin: 0; background: none; }
@@ -69,6 +70,8 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .light .label { color: inherit; opacity: .85; }
 .light .val { font-size: 16px; font-weight: 700; line-height: 1.2; }
 .light .label, .light .sub { font-size: 11px; }
+.light[title] { cursor: help; }
+.light .label::after { content: " ⓘ"; opacity: .6; }
 .light.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
 @media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
@@ -342,12 +345,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
   {% if board %}
   <h3>Leaderboard</h3>
-  <p class="sub">The top four fly to Sydney to present{% if board.cutoff is not none %} · we are {{ board.cutoff | n }} behind #4{% elif board.rank <= 4 %} · <span class="up">we are in the top four</span>{% endif %}</p>
+  <p class="sub">Top four go to Sydney{% if board.cutoff is not none %} · {{ board.cutoff | n }} behind #4{% elif board.rank <= 4 %} · <span class="up">we are in the top four</span>{% endif %}</p>
   <table class="board">
     {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}
-    {% if board.gap %}<tr class="gap"><td colspan="3">{% if board.between %}<details><summary>⋮ {{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
-      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>{% endfor %}</table></details>{% else %}<span class="sub">⋮</span>{% endif %}</td></tr>{% endif %}
+    {% if board.gap %}<tr class="gap"><td colspan="3">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
+      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
     {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
     {% endfor %}
   </table>

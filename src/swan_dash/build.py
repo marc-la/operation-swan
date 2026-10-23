@@ -8,6 +8,7 @@ It reads logs/ and data/ only. It never opens .env or secrets/ (the systemd unit
 needs no network. Every value on the page is picked field by field; whole records are never rendered.
 """
 import argparse
+import collections
 import datetime as dt
 import json
 import os
@@ -793,13 +794,16 @@ REACH_SPEED_MIN = 3            # a new citizen post answered within this (median
 REACH_BACK_MIN = 1             # a citizen answering us gets our reply within this (median)
 VOLUME_WINDOW_MIN = 30         # posting rate is measured over this long, so a stall or a recovery shows within minutes
 VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minute: green at or above, red below AMBER
+CATCHUP_BUCKET_S = 600         # speed leaves out catch-up: a post made in a 10 min bucket where we wrote under VOLUME_AMBER of budget
+                               # (the box stalled, drafting starved) and then answered later than the bar (Marc, 23 Oct)
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
 STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 green, 6-10 amber, 11+ red (Marc, 23 Oct; the 200 allowance over 14 days is ~14 a day)
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
 LIGHT_TIPS = dict(      # the hover text on each tile: what the colours mean (Marc, 23 Oct)
     speed=f"Speed. Median time from a citizen's post to our reply, last hour. Green ≤ {REACH_SPEED_MIN} min for new posts "
-          f"(≤ {REACH_BACK_MIN} for citizens answering us), amber up to 3×, red above. Worst row wins.",
+          f"(≤ {REACH_BACK_MIN} for citizens answering us), amber up to 3×, red above. Worst row wins. Replies to posts made while we "
+          f"were barely posting (a stall) are left out as catch-up, and counted in the row.",
     volume=f"Volume. Green: posting at {VOLUME_GREEN:.0%} or more of the team's 3 writes a minute, 10+ voices, no citizen lost. "
            f"Amber: {VOLUME_AMBER:.0%}-{VOLUME_GREEN:.0%} of budget or few voices. Red: under {VOLUME_AMBER:.0%}, or any citizen lost in the last full hour.",
     conversion="Conversion. Changes of mind today, toward No minus away. Green: net positive. Amber: neutral (net 0, or none yet). Red: net negative.",
@@ -947,6 +951,13 @@ def reach(actions, status, points, now, day_start, notes=None):
     clock = _id_clock(actions)
     fresh, back = [], []
     stages = dict(fresh=[], back=[])
+    budget_now = (status.get("write_budget") or {}).get("limit") or TEAM_CAP_PER_MIN
+    per_bucket = collections.Counter(int(a["_t"].timestamp() // CATCHUP_BUCKET_S) for a in actions
+                                     if a.get("live") is True and a.get("act") in WRITES)
+    first_bucket = int(min((a["_t"] for a in actions), default=now).timestamp() // CATCHUP_BUCKET_S) + 1
+    starved = lambda made: (first_bucket <= int(made // CATCHUP_BUCKET_S) and per_bucket[int(made // CATCHUP_BUCKET_S)]
+                            < VOLUME_AMBER * budget_now * CATCHUP_BUCKET_S / 60)
+    catchup = dict(fresh=0, back=0)
     for a in actions:
         if a.get("live") is not True or a["_t"] < hour_ago or a.get("group") not in (None, "None"):
             continue
@@ -960,16 +971,23 @@ def reach(actions, status, points, now, day_start, notes=None):
         if lag is None or lag < 0:
             continue
         if a.get("act") == "reply" and a.get("source") == "latest":
-            fresh.append(lag)
+            bar, bucket, into = REACH_SPEED_MIN, fresh, "fresh"
         elif a.get("act") == "reply_back":
-            back.append(lag)
+            bar, bucket, into = REACH_BACK_MIN, back, "back"
+        else:
+            continue
+        if lag > bar and starved(a["_t"].timestamp() - lag * 60):
+            catchup[into] += 1                  # made while we were not posting: a backlog, not slowness
+        else:
+            bucket.append(lag)
     mf, mb = _median(fresh), _median(back)
     graded = lambda v, bar: "grey" if v is None else "green" if v <= bar else "amber" if v <= 3 * bar else "red"
+    left_out = lambda k: f" · {catchup[k]} catch-up left out" if catchup[k] else ""
     row("speed", "Reply time, new citizen posts", graded(mf, REACH_SPEED_MIN),
-        f"{mf:.1f} min" if mf is not None else "none this hour", f"≤ {REACH_SPEED_MIN} min",
+        (f"{mf:.1f} min" if mf is not None else "none this hour") + left_out("fresh"), f"≤ {REACH_SPEED_MIN} min",
         "Behind the citizen's session: check the LLM line under Bot.")
     row("speed", "Reply time, citizens answering us", graded(mb, REACH_BACK_MIN),
-        f"{mb:.1f} min" if mb is not None else "none this hour", f"≤ {REACH_BACK_MIN} min",
+        (f"{mb:.1f} min" if mb is not None else "none this hour") + left_out("back"), f"≤ {REACH_BACK_MIN} min",
         "Reply-backs are slow: check Bot.")
     for kind, name in (("fresh", "1st replies"), ("back", "2nd replies")):
         row("speed", f"Where the time goes, {name}", "grey", stage_line(stages[kind]), "wait + draft + hold",
