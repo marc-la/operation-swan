@@ -32,6 +32,20 @@ checks passed), no shortage of targets.
 
 ## To do (in this order)
 
+**Status 2026-10-23 (evening):**
+- Item 2: done in code, not yet on the box. `src/swan_bot/jsonl.py` (streaming reader with a resumable cursor);
+  `scripts/swan_sync_mongo.py` is incremental (cursors in `data/swan_sync_cursors.json`, `--full` resyncs, chunks of
+  1,000); `followup.load_rows` and `scripts/swan_watch.py` stream; `swan_measure`, `swan_view` and `experiment_report
+  --local` too. Peak RSS on a 650k-line, 149 MB fixture: followup 993 -> 189 MB, sync 1,287 -> 73 MB, watch 993 -> 79 MB
+  (66 MB of each is the interpreter and imports). Still to do: rotate and compress the log.
+- Item 3: partly done. `OOMScoreAdjust=-500` on `swan-bot`; `MemoryMax=` on `swan-sync` (300M), `swan-followup` (600M),
+  `swan-watch` (300M), each at 3x or more of the measured peak. Left without limits for lack of peak data: `swan-dash`,
+  `swan-factdesk`, `swan-swarm`, `swan-blue`. Re-measure on the t3.medium (`systemd-cgtop`, `MemoryPeak` in
+  `systemctl show`) and tighten.
+- Item 4: done (dee1ff6, the lead): the writer path rides out network errors.
+- Other whole-file reads left alone: `scripts/conversion_report.py` (manual), `swan_dash.build.tail_lines` on
+  `logs/alerts.log` (slow growth), `swan_lab` (retired).
+
 1. **Hear about it off the box.** The dashboard and `alert.sh` live on the box, so a stall silences them. Add: (a) a
    dead-man ping, `HEALTHCHECK_PING_URL` in `.env` is already read by `deploy/healthcheck.sh`; (b) CloudWatch alarms to
    an SNS email or the Discord webhook on `StatusCheckFailed`, `EBSByteBalance%` < 20, `CPUSurplusCreditsCharged` > 0

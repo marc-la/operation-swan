@@ -4,19 +4,17 @@
 Citizen = account id <= CITIZEN_MAX_ID (seeded before launch); later-added citizens are missed.
 """
 import collections
-import json
 import pathlib
 import sys
 import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 import capturethenarrative as ctn  # noqa: E402
-from swan_bot import config  # noqa: E402
+from swan_bot import config, jsonl  # noqa: E402
 
 
 def main():
-    rows = [json.loads(l) for l in config.ACTIONS_LOG.read_text().splitlines()] if config.ACTIONS_LOG.exists() else []
-    posts = [r for r in rows if r.get("live") and r.get("post_id")]
+    posts = [r for r in jsonl.Reader(config.ACTIONS_LOG, contains='"live"') if r.get("live") and r.get("post_id")]
     if not posts:
         print("no live posts logged yet")
         return

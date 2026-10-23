@@ -18,6 +18,8 @@ KillSignal=SIGINT
 TimeoutStopSec=90
 Restart=always
 RestartSec=60
+# Under memory pressure the kernel kills the timer jobs (swan-sync, -followup, -watch have MemoryMax) before the bot (todo/34)
+OOMScoreAdjust=-500
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

@@ -15,7 +15,7 @@ import time
 
 import capturethenarrative as ctn
 
-from . import config, feeds
+from . import config, feeds, jsonl
 from .amplify import is_citizen_id
 from .analysis import ts_of
 from .targeting import stance
@@ -153,16 +153,16 @@ class Reader:
         return out
 
 
+ROW_FIELDS = ("ts", "act", "live", "post_id", "account_id", "username", "persona", "target_author", "target_text")
+
+
 def load_rows():
-    if not config.ACTIONS_LOG.exists():
-        return []
-    rows = []
-    for line in config.ACTIONS_LOG.read_text().splitlines():
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue                                 # a line cut short by a crash
-    return rows
+    """The live rows of the action log, streamed and cut to the fields run() uses (the whole log was 118 MB, 656k
+    lines, on 23 Oct: loading it was a 514 MB process, OOM-killed on the 913 MB box, todo/34). Everything below that
+    reads rows (due, our_post_ids, Reader.outcome and .followup, the voices' list) needs a truthy "live", and the bot
+    writes the key as "live" (json.dumps), so no other line can matter. Add to ROW_FIELDS before reading a new key."""
+    return [{k: r[k] for k in ROW_FIELDS if k in r} for r in jsonl.Reader(config.ACTIONS_LOG, contains='"live"')
+            if r.get("live")]
 
 
 def append(path, rec):

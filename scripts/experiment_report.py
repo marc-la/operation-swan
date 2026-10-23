@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from swan_bot import config, content  # noqa: E402
+from swan_bot import jsonl as jsonl_stream  # noqa: E402       # (this script has its own jsonl() for the small logs)
 from swan_bot.analysis import (arm_rows, block_window, latest_by_post, separated, ts_of,  # noqa: E402
                                wilson)
 
@@ -58,14 +59,21 @@ def jsonl(path):
 
 
 def load_local(since, dry_runs):
-    rows = jsonl(config.ACTIONS_LOG)
-    if dry_runs:
-        writes = [dict(r, mode=r["act"], post_id=f"dry{i}") for i, r in enumerate(rows)
-                  if r["act"] in ("post", "reply", "second_voice", "journalist", "reply_back") and not r.get("live")]
-    else:
-        writes = [dict(r, mode=r["act"]) for r in rows if r.get("live") and r.get("post_id") and r["act"] != "repost"]
-    outcomes = jsonl(config.OUTCOMES_LOG) + [r for r in rows if r["act"] == "amp_measure"]
-    return ([w for w in writes if ts_of(w["ts"]) >= since], jsonl(config.FOLLOWUPS_LOG), outcomes, [])
+    writes, amp_measures = [], []
+    for i, r in enumerate(jsonl_stream.Reader(config.ACTIONS_LOG)):      # streamed: the log is 100+ MB (todo/34)
+        if dry_runs:
+            if r["act"] in ("post", "reply", "second_voice", "journalist", "reply_back") and not r.get("live"):
+                w = dict(r, mode=r["act"], post_id=f"dry{i}")
+            else:
+                w = None
+        else:
+            w = dict(r, mode=r["act"]) if r.get("live") and r.get("post_id") and r["act"] != "repost" else None
+        if w and ts_of(w["ts"]) >= since:
+            writes.append(w)
+        if r["act"] == "amp_measure":
+            amp_measures.append(r)
+    outcomes = jsonl(config.OUTCOMES_LOG) + amp_measures
+    return writes, jsonl(config.FOLLOWUPS_LOG), outcomes, []
 
 
 def load_mongo(since):

@@ -5,12 +5,12 @@
     python scripts/swan_view.py --md logs/view.md   # also write a Markdown copy (gitignored logs/)
 """
 import argparse
-import json
+import collections
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
-from swan_bot import config  # noqa: E402
+from swan_bot import config, jsonl  # noqa: E402
 
 WRITES = {"post", "reply", "second_voice", "journalist", "reply_back"}
 
@@ -37,10 +37,11 @@ def main():
     if not config.ACTIONS_LOG.exists():
         print("no actions logged yet")
         return
-    rows = [json.loads(l) for l in config.ACTIONS_LOG.read_text().splitlines() if l.strip()]
-    keep = [r for r in rows if r["act"] in WRITES or (args.rejects and r["act"] == "reject")]
+    keep = collections.deque((r for r in jsonl.Reader(config.ACTIONS_LOG)
+                              if r["act"] in WRITES or (args.rejects and r["act"] == "reject")),
+                             maxlen=args.n or None)         # the last n (-n 0 = all, as keep[-0:] was)
     out = []
-    for r in keep[-args.n:]:
+    for r in keep:
         if r["act"] == "reject":
             out.append(f"{r['ts'][11:16]} UTC  REJECTED ({r['why']})  {r.get('mode')} | {r.get('persona')}\n  draft    {r.get('raw')}")
         else:

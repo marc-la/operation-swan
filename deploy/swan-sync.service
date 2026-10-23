@@ -6,3 +6,5 @@ Type=oneshot
 User=ec2-user
 WorkingDirectory=/home/ec2-user/ctn
 ExecStart=/home/ec2-user/ctn/.venv/bin/python scripts/swan_sync_mongo.py
+# Peak 73 MB on a 650k-line log read from line 0 (66 MB of it imports): 4x. A runaway dies here, not the bot (todo/34)
+MemoryMax=300M

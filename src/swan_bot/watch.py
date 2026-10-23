@@ -10,6 +10,7 @@ A moderator-hidden post answers 404 "post not found" and drops out of its author
   ring     hourly: scripts/ring_audit.py's score on our last amplified posts and on Trending (others' posts only).
            Alert when our median reaches the leaders' median: that's when Blue reporters rank us next to them.
 """
+import collections
 import json
 import os
 import statistics
@@ -55,6 +56,41 @@ def logged_posts(rows, now):
             if now - ts >= SETTLE_S:
                 out.setdefault(r["username"], set()).add(r["post_id"])
     return out
+
+
+class LogScan:
+    """What swan_watch takes from the action log, gathered in one pass over its live rows (the log was 118 MB and 656k
+    lines on 23 Oct: holding every row was a process the OOM killer took, todo/34). Feed it rows with a truthy "live";
+    others are ignored, as the three readers it replaces (logged_posts, the per-voice action count, the amp_plan list)
+    all required one."""
+
+    def __init__(self):
+        self.first_ts = {}                                    # username -> {post_id: earliest ts of a write row}
+        self.actions = collections.Counter()                  # username -> live rows
+        self.plans = collections.deque(maxlen=RING_OURS)      # post ids of the last RING_OURS live amp_plan rows
+
+    def add(self, r):
+        if not r.get("live"):
+            return
+        self.actions[r.get("username")] += 1
+        if r.get("post_id") and r.get("act") == "amp_plan":
+            self.plans.append(r["post_id"])
+        if r.get("post_id") and r.get("act") in WRITES and r.get("username"):
+            try:
+                ts = ts_of(r["ts"])
+            except (KeyError, ValueError):
+                return
+            seen = self.first_ts.setdefault(r["username"], {})
+            seen[r["post_id"]] = min(ts, seen.get(r["post_id"], ts))
+
+    def logged_posts(self, now):
+        """Same as logged_posts(rows, now): {username: {post_id, ...}} of our live writes old enough to be listed."""
+        out = {}
+        for username, seen in self.first_ts.items():
+            ids = {pid for pid, ts in seen.items() if now - ts >= SETTLE_S}
+            if ids:
+                out[username] = ids
+        return out
 
 
 def find_hidden(social, voices, logged, known):

@@ -20,19 +20,7 @@ import capturethenarrative as ctn  # noqa: E402
 
 import citizen_watch  # noqa: E402
 from ring_audit import audit_many, ring_score  # noqa: E402
-from swan_bot import config, feeds, watch  # noqa: E402
-
-
-def jsonl(path):
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text().splitlines():
-        try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return out
+from swan_bot import config, feeds, jsonl, watch  # noqa: E402
 
 
 def main():
@@ -57,13 +45,15 @@ def main():
     hidden = state.setdefault("hidden", {})
     records = json.loads(config.ACCOUNTS_FILE.read_text()) if config.ACCOUNTS_FILE.exists() else []   # ids only
     voices = [r for r in records if r.get("role", "voice") != "booster" and r.get("status", "active") == "active"]
-    rows = jsonl(config.ACTIONS_LOG)
+    scan = watch.LogScan()                           # one streamed pass: only live rows matter to anything below
+    for r in jsonl.Reader(config.ACTIONS_LOG, contains='"live"'):
+        scan.add(r)
 
     # ---- hidden posts, every run ----
-    for username, pid in watch.find_hidden(social, voices, watch.logged_posts(rows, now), hidden):
+    for username, pid in watch.find_hidden(social, voices, scan.logged_posts(now), hidden):
         hidden.setdefault(username, []).append(pid)
         n = len(hidden[username])
-        actions = sum(1 for r in rows if r.get("live") and r.get("username") == username)
+        actions = scan.actions[username]
         step = ("stops writing" if n >= config.HIDDEN_STOP else
                 "off amplified posts and threads" if n >= config.HIDDEN_OFF_AMP else "no change")
         record({"act": "hidden_post", "username": username, "post_id": pid, "hidden": n, "actions": actions,
@@ -76,14 +66,14 @@ def main():
     # ---- ring self-audit, hourly ----
     if now - state.get("ring_ts", 0) >= watch.RING_EVERY_S:
         ours_ids = {r.get("account_id") for r in records}
-        plans = [r["post_id"] for r in rows if r.get("act") == "amp_plan" and r.get("live") and r.get("post_id")]
+        plans = list(scan.plans)                     # the last watch.RING_OURS
         try:
             trend = [p["post_id"] for p in feeds.read(social, "feed_trending", "swan-watch", limit=watch.RING_TRENDING)
                      if p["author_id"] not in ours_ids]
         except ctn.APIError as e:
             print("feed_trending:", e.status, e.message)
             trend = []
-        ours, leaders = audit_many(social, plans[-watch.RING_OURS:]), audit_many(social, trend)
+        ours, leaders = audit_many(social, plans), audit_many(social, trend)
         ours_med, leaders_med = watch.ring_medians(ours, leaders, ring_score)
         record({"act": "ring_audit", "ours": [(r["post_id"], ring_score(r)) for r in ours],
                 "ours_median": ours_med, "leaders_median": leaders_med})
