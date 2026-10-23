@@ -620,3 +620,69 @@ def test_stealth_bars_zero_green_to_allowance_per_day_amber_above_red(tmp_path):
         (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
         ctx, _ = page(root)
         assert rowof(ctx, "New bans")["light"] == want, new
+
+
+# ---- drafting starved: no_model drops and the priced-model budget (23 Oct) ----
+def lost(minutes_ago, why="no_model", act="lost"):
+    return {"ts": iso(minutes_ago), "act": act, "why": why, "mode": "reply"}
+
+
+def with_budget(root, left):
+    """data/llm_spend.json so that `left` USD of today's allowance (22 Oct Sydney) remains."""
+    from swan_bot import llm
+    day = NOW.astimezone(llm.BUDGET_DAY).date().isoformat()
+    (root / "data" / "llm_spend.json").write_text(json.dumps({day: llm.allowance(day, {}) - left}))
+    return llm.day_share(day) * build.bot_config.LLM_AMP_RESERVE_SHARE      # the reserve
+
+
+def drafting(tmp_path, actions, left=None):
+    root = make_root(tmp_path, actions)
+    reserve = with_budget(root, left) if left is not None else None
+    ctx, html = page(root)
+    return ctx, html, reserve
+
+
+def test_drafting_green_and_quiet(tmp_path):
+    ctx, html, reserve = drafting(tmp_path, [write(3), lost(45)], left=20)
+    assert ctx["draft_banner"]["level"] == "green" and "Drafting" not in html
+
+
+def test_drafting_amber_on_any_drops_in_30_min(tmp_path):
+    ctx, html, _ = drafting(tmp_path, [write(1), write(2), write(3), lost(25), lost(20, "expired:no_model", "requeue")], left=20)
+    b = ctx["draft_banner"]
+    assert b["level"] == "amber" and "0 drops in 10 min, 2 in 30" in b["text"] and "0.3 writes/min" in b["text"] and "$20.00 left" in b["text"]
+    assert "<b>Drafting</b>" in html
+
+
+def test_drafting_amber_when_paid_models_held_back_or_budget_low(tmp_path):
+    reserve = with_budget(make_root(tmp_path / "r"), 0)
+    ctx, _, _ = drafting(tmp_path / "a", [write(3)], left=0.5 * reserve)
+    assert ctx["draft_banner"]["level"] == "amber" and "held back" in ctx["draft_banner"]["text"]
+    ctx, _, _ = drafting(tmp_path / "b", [write(3)], left=1.5 * reserve)             # between 1x and 2x the reserve
+    assert ctx["draft_banner"]["level"] == "amber" and "BUDGET LOW" in ctx["draft_banner"]["text"] and "held back" not in ctx["draft_banner"]["text"]
+
+
+def test_drafting_red_on_drops_and_no_writes(tmp_path):
+    ctx, html, _ = drafting(tmp_path, [lost(2)] * 400 + [lost(20)] + [write(15)], left=20)
+    b = ctx["draft_banner"]
+    assert b["level"] == "red" and "400 drops in 10 min, 401 in 30" in b["text"] and "0.0 writes/min" in b["text"]
+    assert ctx["worst"] == "red" and ctx["status_word"] == "DOWN"
+
+
+def test_drafting_drops_with_healthy_writes_stay_amber(tmp_path):
+    ctx, _, _ = drafting(tmp_path, [lost(2)] + [write(m / 3) for m in range(1, 31)], left=20)
+    assert ctx["draft_banner"]["level"] == "amber"
+
+
+def test_drafting_red_when_budget_spent(tmp_path):
+    ctx, _, _ = drafting(tmp_path, [write(3)], left=0)
+    assert ctx["draft_banner"]["level"] == "red" and ctx["draft_banner"]["text"].startswith("BUDGET SPENT") and "budget spent" in ctx["draft_banner"]["text"]
+
+
+def test_drafting_missing_files_degrade_quietly(tmp_path):
+    root = make_root(tmp_path, [lost(2)])                           # no llm_spend.json
+    ctx, _ = page(root)
+    assert ctx["draft_banner"]["level"] == "red" and "left today" not in ctx["draft_banner"]["text"]
+    (root / "logs" / "swan_actions.jsonl").unlink()
+    ctx, _ = page(root)
+    assert ctx["draft_banner"]["level"] == "green"

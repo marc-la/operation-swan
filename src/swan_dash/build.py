@@ -763,6 +763,40 @@ STEALTH_BANS_DAY = TOTAL_CAP / 14             # new bans since 9pm Perth: 0 gree
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
 
+# ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
+NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
+NOMODEL_WRITES_FLOOR = 1.0                     # writes a minute over the short window: below it, drops make it red (normal ~2.9, 23 Oct starved ~0.4)
+BUDGET_LOW_X = 2                               # priced-model budget left under this many times the amplified-post reserve: amber
+
+
+def drafting_state(actions, data, now):
+    """The 'no model' banner: dict(level, text); green (empty text) when all is well or nothing can be read. Budget maths is swan_bot.llm's own; a missing file or import means no budget signal, not a crash."""
+    short, long_ = (now - dt.timedelta(minutes=m) for m in (NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN))
+    drops = [a["_t"] for a in actions if a.get("act") in ("lost", "requeue") and a["_t"] >= long_
+             and str(a.get("why")).split(":")[-1] == "no_model"]              # "no_model" and "expired:no_model"
+    d10, d30 = sum(t >= short for t in drops), len(drops)
+    wpm = sum(a["_t"] >= short for a in actions if a.get("act") in WRITES and a.get("live") is True) / NOMODEL_SHORT_MIN
+    left = None
+    held = low = False
+    spent = read_json(data / "llm_spend.json")
+    if isinstance(spent, dict):
+        try:
+            from swan_bot import llm
+            day = now.astimezone(llm.BUDGET_DAY).date().isoformat()
+            left = llm.allowance(day, spent)
+            reserve = bot_config.LLM_AMP_RESERVE_SHARE * llm.day_share(day)
+            held, low = left <= reserve, left < BUDGET_LOW_X * reserve
+        except Exception:                      # no openai on this machine, odd file: show the drops only
+            left = None
+    gone = left is not None and left <= 0
+    if not (d30 or held or low or gone):
+        return dict(level="green", text="")
+    level = "red" if gone or (d10 and wpm < NOMODEL_WRITES_FLOOR) else "amber"
+    why = " · budget spent: paid models off" if gone else " · paid models held back for amplified posts" if held else ""
+    head = "NO MODEL" if d30 else "BUDGET SPENT" if gone else "BUDGET LOW"
+    text = f"{head} · {d10} drops in {NOMODEL_SHORT_MIN} min, {d30} in {NOMODEL_LONG_MIN} · {wpm:.1f} writes/min"
+    return dict(level=level, text=text + (f" · ${left:.2f} left today" if left is not None else "") + why)
+
 
 def _id_clock(actions):
     """(post id, unix time) of our own live writes: ids rise with time, so a citizen post's id dates it. Reposts are
@@ -1082,6 +1116,8 @@ def gather(root, now, service):
     else:
         blue_banner = dict(level="green", text="running" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))
 
+    draft_banner = drafting_state(actions, data, now)
+
     # ---- score (typed in by hand: scripts/score.sh) ----
     entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts"))]
     score = None
@@ -1192,9 +1228,9 @@ def gather(root, now, service):
     rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, head=f"{bans} bans", sub="today · " + f"{hidden_today} hidden posts",
                              light=max((r["light"] for r in srows), key=order.get)))
     rc["light"] = max((i["light"] for i in rc["lights"]), key=order.get)
-    levels = (banner["level"], blue_banner["level"], rc["light"])
+    levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"])
     return dict(
-        now=hm(now), banner=banner, blue_banner=blue_banner, acct_days=acct_days, banned_list=banned_list,
+        now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,
         worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
         status_word=STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], score=score, history=history, board=board, milestone=milestone,
         multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),

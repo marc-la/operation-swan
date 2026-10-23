@@ -234,6 +234,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 <div class="alerts">
   {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
   {% if blue_banner.level != 'green' %}<p class="{{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</p>{% endif %}
+  {% if draft_banner.level != 'green' %}<p class="{{ draft_banner.level }}"><b>Drafting</b> · {{ draft_banner.text }}</p>{% endif %}
   {% if running and running.failed %}<p class="red"><b>Deploy failed {{ running.failed }}</b>, still on v{{ running.sha }}</p>{% endif %}
 </div>
 {% if rollback %}<div class="ver red">Roll back to the last stable version (pauses auto-deploy; restart it with <code>sudo systemctl start swan-update.timer</code> after pushing a fix):<code class="cmd">{{ rollback }}</code></div>{% endif %}
