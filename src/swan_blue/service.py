@@ -584,7 +584,7 @@ class Blue:
         """Build the fleets from the cached account rows. Our own accounts are left out: they must not bridge a rival's
         fleet. The map is only ever a proxy for the target team (fleets.py)."""
         rs = [(i, t) for i, t in self.fl.get("rows", []) if i not in self.ours]
-        self.fleet_map = fleets_mod.fleets_from_rows(rs)
+        self.fleet_map = fleets_mod.fleets_from_rows(rs, gap_s=policy().get("fleet_gap_s", fleets_mod.FLEET_GAP_S))
         self.fleet_size = {}
         for k in self.fleet_map.values():
             self.fleet_size[k] = self.fleet_size.get(k, 0) + 1
@@ -1113,7 +1113,7 @@ class Blue:
                                            filed=t, status="pending", ev=c["ev"], detail=c["detail"], pf=pf, pg=pg,
                                            classes=c["classes"], ring=c.get("ring"), age_min=c.get("age_min"),
                                            side=c.get("side"), idle_h=c.get("idle_h"), live=c.get("live"),
-                                           team=c.get("team"))
+                                           team=c.get("team"), n_today=c.get("n_today"))
         self.log({"act": "report", "key": c["key"], "kind": c["kind"], "target": c["target"], "author": c["author"],
                   "label": c["label"], "team": c.get("team"), "classes": c["classes"], "ev": c["ev"], "pg": pg,
                   "n_today": c.get("n_today"),
@@ -1499,7 +1499,7 @@ def policy():
     return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
                 live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S),
                 scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0),
-                siblings=num("BLUE_SIBLINGS", 1))
+                siblings=num("BLUE_SIBLINGS", 1), fleet_gap_s=num("BLUE_FLEET_GAP_S", fleets_mod.FLEET_GAP_S))
 
 
 def rings(cands):

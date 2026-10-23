@@ -181,3 +181,12 @@ def test_fleets_off_reads_nothing(tmp_path, monkeypatch):
     monkeypatch.setenv("BLUE_FLEET_EVERY_S", "0")
     b.refresh_fleets()
     assert b.social.pages == 0 and not b.fleet_status()["on"]
+
+
+def test_the_time_gap_is_a_setting(tmp_path, monkeypatch):
+    accounts = burst(5000, 5, 0) + burst(5005, 5, 100)                    # two batches 100 s apart
+    b = fleet_blue(tmp_path, monkeypatch, accounts)
+    assert b.fleet_size == {"f5000": 5, "f5005": 5}
+    monkeypatch.setenv("BLUE_FLEET_GAP_S", "120")
+    b.make_fleets()
+    assert b.fleet_size == {"f5000": 10}                                   # a looser gap merges the batches
