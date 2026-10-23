@@ -424,13 +424,15 @@ def test_blue_timeline_collapses_runs_in_place_and_account_outcomes(tmp_path):
         ("run", "2 hidden, " + build.hm(NOW - dt.timedelta(minutes=100)) + "–" + build.hm(NOW - dt.timedelta(minutes=95))),
         ("row", "#4"),                                                           # genuine: never collapsed
         ("row", "account 8"), ("row", "account 9"),
-        ("run", "2 suspended?, " + build.hm(NOW - dt.timedelta(minutes=70)) + "–"
+        ("run", "2 unclear, " + build.hm(NOW - dt.timedelta(minutes=70)) + "–"
                 + build.hm(NOW - dt.timedelta(minutes=65))),
         ("row", "account 4")]
     assert [r["what"] for r in items[3]["rows"]] == ["#3", "#5"]                 # the run opens to the same rows
     out = {r["what"]: (r["out"], r["note"], r["css"]) for r in ctx["blue"]["rows"]}
     assert out["account 8"] == ("suspended", "+7.5", "up") and out["account 9"] == ("dismissed", "no points, no lock", "")
     assert out["account 4"] == ("ruled", "outcome not in the portal log yet", "")
+    # pending 3 + 2 hidden + genuine + 1 suspended + 1 dismissed + 2 unclear (1 of 2 suspended) + account 4 unreported
+    assert ctx["blue"]["counts"] == {"success": 4, "failed": 3, "pending": 4}
     assert out["#1"][2] == "warn" and out["#4"][2] == "down" and out["#3"][2] == "up"   # pending, genuine, hidden
     assert '<td class="out warn">pending</td><td class="det">#1 · group c100 · rules ' in html
     assert '<span class="out up">▸ 2 hidden</span>' in html

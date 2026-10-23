@@ -575,7 +575,8 @@ def account_outcomes(ledger, points):
     """{report key: (outcome, note, css)} for our ruled account reports. The API doesn't show them (a suspended account still
     reads as normal), but the portal's hourly scoring run does: "N upheld account reports". The portal names no
     account, so each ruling is matched to the first scoring run after it, and a run's upheld count is shared over the
-    rulings it covers: all suspended, all dismissed, or "k of n" when it's split."""
+    rulings it covers: all suspended, all dismissed, or "k of n" when it's split. {key: (word, note, css, up)}: up is the
+    share of that ruling counted as upheld (1, 0, k/n), None while the portal log has no outcome for it yet."""
     runs = []                                  # [time, upheld, points per upheld]
     for e in sorted(points, key=lambda e: e["_t"]):
         msg = e.get("message") or ""
@@ -592,13 +593,13 @@ def account_outcomes(ledger, points):
         if r.get("kind") != "post" and r.get("status") == "ruled" and t:
             run = next((x for x in runs if x[0] >= t), None)
             if run is None:
-                out[r.get("key")] = ("ruled", "outcome not in the portal log yet", "")
+                out[r.get("key")] = ("ruled", "outcome not in the portal log yet", "", None)
             else:
                 batches.setdefault(id(run), (run, []))[1].append(r.get("key"))
     for run, keys in batches.values():
         k, n = min(run[1], len(keys)), len(keys)
-        word = (("suspended", f"+{run[2]:g}", "up") if k == n else ("dismissed", "no points, no lock", "") if k == 0
-                else ("suspended?", f"{k} of these {n} suspended, the portal doesn't say which", ""))
+        word = (("suspended", f"+{run[2]:g}", "up", 1) if k == n else ("dismissed", "no points, no lock", "", 0) if k == 0
+                else ("unclear", f"{k} of these {n} were suspended, the rest dismissed; the portal doesn't say which", "", k / n))
         for key in keys:
             out[key] = word
     return out
@@ -617,11 +618,12 @@ def blue_timeline(ledger, points):
             continue                           # a platform refusal is plumbing, not a result (Marc, 22 Oct)
         what = f"#{r['target']}" if r.get("kind") == "post" else f"account {r['target']}"
         out, note, css = str(status), "", BLUE_CSS.get(status, "")
+        up = 1 if status == "hidden" else 0 if status == "genuine" else None      # share counted as a success
         if r.get("kind") != "post" and status == "ruled":
-            out, note, css = outcomes.get(r.get("key"), ("ruled", "", ""))
+            out, note, css, up = outcomes.get(r.get("key"), ("ruled", "", "", None))
         when = ("rules " if status == "pending" else "") + (hm(t) if t else "")
         rows.append(dict(what=what, group=f"group {r.get('team') or '?'}", at=hm(t) if t else "", t=t,
-                         status=status, out=out, note=note, css=css, key=f"{out}|{note}",
+                         status=status, out=out, note=note, css=css, up=up, key=f"{out}|{note}",
                          detail=" · ".join(x for x in (what, f"group {r.get('team') or '?'}", when, note) if x)))
     items = []
     for row in rows:
@@ -731,9 +733,12 @@ def blue_panel(data, now, points, day_start, logs=None):
         ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
         ([f"{pts:+,} pts since 9pm"] if pts else [])
     rows_all = [r for it in timeline for r in (it["rows"] if it["kind"] == "run" else [it])]
-    kind = lambda r: ("success" if r["out"] in ("hidden", "suspended") else "failed" if r["out"] in ("genuine", "dismissed")
-                      else "pending")                    # pending also holds "ruled, outcome not in the portal log yet"
-    counts = {k: sum(kind(r) == k for r in rows_all) for k in ("success", "failed", "pending")}
+    # Pending is what swan-blue still has pending (and a ruling the portal log hasn't reported yet). A ruled account
+    # report the portal can't attribute ("k of n suspended") counts k/n success and the rest failed, so the three
+    # numbers add up to the reports filed and the success and failed totals match the portal's.
+    done = [r for r in rows_all if r["up"] is not None]
+    counts = dict(success=round(sum(r["up"] for r in done)), failed=round(sum(1 - r["up"] for r in done)),
+                  pending=len(rows_all) - len(done))
     return dict(
         stale=t is None or (now - t).total_seconds() > BLUE_STALE_S, ago=ago(now - t) if t else "never",
         summary=" · ".join(bits) or "nothing to report right now", why=s.get("why"),
