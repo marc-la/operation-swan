@@ -65,6 +65,7 @@ def write_hidden(tmp_path, monkeypatch, hidden):
     path = tmp_path / "swan_watch.json"
     path.write_text(json.dumps({"hidden": hidden}))
     monkeypatch.setattr(watch, "WATCH_FILE", path)
+    monkeypatch.setattr(config, "HIDDEN_STOP", 2)        # live it is off (2026-10-23, Marc); the parked path stays tested
 
 
 def test_two_hidden_posts_stop_a_voice_writing(tmp_path, monkeypatch):
