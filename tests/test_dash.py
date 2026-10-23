@@ -726,3 +726,12 @@ def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):
     acts[-2] = timed(25, 140)                                                              # 140 min wait, made in a busy bucket: counts
     ctx, _ = page(make_root(tmp_path / "b", acts))
     assert "catch-up" not in rowof(ctx, "Reply time, new")["now"]
+
+
+def test_new_post_reply_time_bars_3_green_5_amber_over_red(tmp_path):
+    for wait, want in ((2.0, "green"), (3.0, "green"), (4.5, "amber"), (5.0, "amber"), (5.5, "red")):
+        sent = NOW.timestamp() - 600
+        a = dict(write(10), act="reply", source="latest", t_made=sent - wait * 60, t_pick=sent - 30,
+                 t_drafted=sent - 10, t_sent=sent)
+        ctx, _ = page(make_root(tmp_path / f"w{wait}", [a]))
+        assert rowof(ctx, "Reply time, new")["light"] == want, wait

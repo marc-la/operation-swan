@@ -790,7 +790,7 @@ def blue_panel(data, now, points, day_start, logs=None):
 
 # ---- reach: did we answer every citizen we could, fast, and did it convert? (Marc, 2026-10-22) ----
 CITIZEN_WRITES = {"reply", "reply_back", "second_voice", "journalist"}
-REACH_SPEED_MIN = 3            # a new citizen post answered within this (median)
+REACH_SPEED_MIN, REACH_SPEED_RED = 3, 5   # a new citizen post answered within MIN (median) is green, up to RED amber, over red (Marc, 23 Oct: reach the bots within 5 min)
 REACH_BACK_MIN = 1             # a citizen answering us gets our reply within this (median)
 VOLUME_WINDOW_MIN = 30         # posting rate is measured over this long, so a stall or a recovery shows within minutes
 VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minute: green at or above, red below AMBER
@@ -801,8 +801,8 @@ STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 gr
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
 LIGHT_TIPS = dict(      # the hover text on each tile: what the colours mean (Marc, 23 Oct)
-    speed=f"Speed. Median time from a citizen's post to our reply, last hour. Green ≤ {REACH_SPEED_MIN} min for new posts "
-          f"(≤ {REACH_BACK_MIN} for citizens answering us), amber up to 3×, red above. Worst row wins. Replies to posts made while we "
+    speed=f"Speed. Median time from a citizen's post to our reply, last hour. New posts: green ≤ {REACH_SPEED_MIN} min, "
+          f"amber {REACH_SPEED_MIN}-{REACH_SPEED_RED}, red over {REACH_SPEED_RED}. Citizens answering us: green ≤ {REACH_BACK_MIN} min, amber up to 3×, red above. Worst row wins. Replies to posts made while we "
           f"were barely posting (a stall) are left out as catch-up, and counted in the row.",
     volume=f"Volume. Green: posting at {VOLUME_GREEN:.0%} or more of the team's 3 writes a minute, 10+ voices, no citizen lost. "
            f"Amber: {VOLUME_AMBER:.0%}-{VOLUME_GREEN:.0%} of budget or few voices. Red: under {VOLUME_AMBER:.0%}, or any citizen lost in the last full hour.",
@@ -971,7 +971,7 @@ def reach(actions, status, points, now, day_start, notes=None):
         if lag is None or lag < 0:
             continue
         if a.get("act") == "reply" and a.get("source") == "latest":
-            bar, bucket, into = REACH_SPEED_MIN, fresh, "fresh"
+            bar, bucket, into = REACH_SPEED_RED, fresh, "fresh"
         elif a.get("act") == "reply_back":
             bar, bucket, into = REACH_BACK_MIN, back, "back"
         else:
@@ -981,10 +981,10 @@ def reach(actions, status, points, now, day_start, notes=None):
         else:
             bucket.append(lag)
     mf, mb = _median(fresh), _median(back)
-    graded = lambda v, bar: "grey" if v is None else "green" if v <= bar else "amber" if v <= 3 * bar else "red"
+    graded = lambda v, bar, red=None: ("grey" if v is None else "green" if v <= bar else "amber" if v <= (red or 3 * bar) else "red")
     left_out = lambda k: f" · {catchup[k]} catch-up left out" if catchup[k] else ""
-    row("speed", "Reply time, new citizen posts", graded(mf, REACH_SPEED_MIN),
-        (f"{mf:.1f} min" if mf is not None else "none this hour") + left_out("fresh"), f"≤ {REACH_SPEED_MIN} min",
+    row("speed", "Reply time, new citizen posts", graded(mf, REACH_SPEED_MIN, REACH_SPEED_RED),
+        (f"{mf:.1f} min" if mf is not None else "none this hour") + left_out("fresh"), f"≤ {REACH_SPEED_MIN} green · ≤ {REACH_SPEED_RED} amber · over red (min)",
         "Behind the citizen's session: check the LLM line under Bot.")
     row("speed", "Reply time, citizens answering us", graded(mb, REACH_BACK_MIN),
         (f"{mb:.1f} min" if mb is not None else "none this hour") + left_out("back"), f"≤ {REACH_BACK_MIN} min",
