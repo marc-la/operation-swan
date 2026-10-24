@@ -2,7 +2,7 @@
 // so scroll, selection, hover and open sections survive). Sections you opened stay open across visits (this browser only).
 // Falls back to location.reload() when fetch is unavailable or after MAXFAIL failed refreshes in a row.
 (function () {
-  var KEY = "swan-open", EVERY = 60000, MAXFAIL = 5, TIMEOUT = 30000;
+  var KEY = "swan-open", EVERY = 60000, MAXFAIL = 2, TIMEOUT = 30000;
   var open = {};
   try { open = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { open = {}; }
   if (typeof open !== "object") open = {};
