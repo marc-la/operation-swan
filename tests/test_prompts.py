@@ -460,10 +460,6 @@ def test_what_the_neighbour_post_says_happened_is_theirs_not_the_citizens():
     assert "happened to its writer" not in content.reply_prompt("a worry", "F7_livelihoods", [], PCR)    # a news item: no
 
 
-def test_a_stranger_gets_roles_not_first_names():
-    assert "first name only when the story needs it" in content.REPLY_RULES
-
-
 def test_replies_end_in_a_question_about_two_times_in_three_not_nine_in_ten():
     """Audit: 43% -> 67% of replies ended in a question after the asks were reworded; "none" now has weight 0.4."""
     none = 0

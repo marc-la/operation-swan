@@ -1,4 +1,5 @@
 """LLM spend cap, model tiering, reply-backs in amplified threads, Trending-thread targets (no network)."""
+import collections
 import datetime as dt
 import json
 import pathlib
@@ -199,6 +200,22 @@ def test_premium_routing_when_switched_on(monkeypatch):
     assert models_for(dict(mode="reply", target_class="unsure"), monkeypatch) == (config.SONNET,)
     assert models_for(dict(mode="reply", target_class="firm_yes"), monkeypatch) == (KIMI,), "bulk replies: Kimi"
     assert models_for(dict(mode="reply_back"), monkeypatch) == (config.SONNET,)
+
+
+def test_a_random_share_of_replies_is_led_by_haiku_and_the_lead_is_logged(monkeypatch):
+    monkeypatch.setattr(config, "LEAD_HAIKU_SHARE", 0.5)
+    leads = collections.Counter()
+    for _ in range(400):
+        job = dict(mode="reply", target_class="firm_yes")
+        models = bot.draft_models(job, OrderGen(up={KIMI}))[0]
+        assert models[0] == job["lead"] and {KIMI, config.HAIKU} <= set(models) and len(models) == len(set(models))
+        leads[job["lead"]] += 1
+    assert 140 < leads[config.HAIKU] < 260 and leads[KIMI] + leads[config.HAIKU] == 400
+    monkeypatch.setattr(config, "LEAD_HAIKU_SHARE", 0)
+    job = dict(mode="reply", target_class="firm_yes")
+    assert bot.draft_models(job, OrderGen(up={KIMI}))[0][0] == KIMI and "lead" not in job
+    job = dict(mode="reply", target_class="firm_yes", lead=config.HAIKU)               # a requeued job keeps its lead
+    assert bot.draft_models(job, OrderGen(up={KIMI}))[0][0] == config.HAIKU
 
 
 def test_thread_one_liners_reach_kimi_only_when_the_free_models_are_out(monkeypatch):

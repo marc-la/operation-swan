@@ -920,8 +920,7 @@ REPLY_RULES = (
     "can answer from their own life. Do not repeat their sentences back to them and don't lecture. Never open by "
     "granting their point ('that would help', 'fair ask', 'sounds sensible'), never ask whether they know anyone "
     "who moved from Yes to No, and never tell of someone who was Yes and switched. Give nobody you name a relative, "
-    "job, age or past that isn't in your profile; when unsure, name no one. A stranger doesn't know your people: say "
-    "'my sister' or 'our porter', and use a first name only when the story needs it. No hashtags."
+    "job, age or past that isn't in your profile; when unsure, name no one. No hashtags."
 )
 ANSWER_FIRST = ("First take up what they actually said or asked, in their terms; use the angle below only where it "
                 "fits that, and leave it out where it doesn't. ")

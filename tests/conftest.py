@@ -24,6 +24,7 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     test_amplify for everyone. Tests that need one of these files set their own after this."""
     from swan_bot import config
     monkeypatch.setattr(config, "AMP_OFF_FILE", tmp_path / "AMPLIFY_OFF")
+    monkeypatch.setattr(config, "LEAD_HAIKU_SHARE", 0)       # the random lead model: tests that want it set it
     monkeypatch.setattr(config, "ACCOUNTS_FILE", tmp_path / "swan_accounts.json")
     monkeypatch.setattr(config, "SWARM_ACCOUNTS_FILE", tmp_path / "swarm_accounts.json")
     monkeypatch.setattr(config, "PORTAL_FILE", tmp_path / "portal.json")      # todo/40: the box's own portal.json marks no test account

@@ -393,6 +393,11 @@ REPLY_MODELS = ("moonshotai.kimi-k2.5", "global.anthropic.claude-haiku-4-5-20251
 # 2026-10-19), so it goes where a change of mind is worth 160 points; Haiku covers bulk replies.
 # 2026-10-23: empty (off). The blind-rated round of 23 Oct found no model ahead (within noise, flipping with the rater),
 # so Sonnet is out until a test shows it pays. To use it again, put SONNET here AND add it to deploy/llm_chain.txt.
+# 2026-10-24 (48 h, 6,384 live replies): hidden-post rate Kimi 1.5% [1.3-1.8], Haiku 0.4% [0.2-0.9], flash-lite 0.9%, with the
+# same citizen-reply rate for Kimi and Haiku (5.0% vs 4.6%). Haiku only ran when Kimi failed, so the gap may be the drafts
+# that fell through, not the model: this share of replies is led by Haiku, drawn at random and logged as `lead`, until the
+# hide rates of the two leads separate (~1,000 each; compare hidden/writes by lead). 0 turns it off.
+LEAD_HAIKU_SHARE = 0.5
 PREMIUM_MODELS = ()
 PREMIUM_CLASSES = {"unsure", "unclear", "conditions", "yes_reason"}
 REPLY_NEVER = {"zai.glm-5"}

@@ -840,7 +840,13 @@ def draft_models(job, gen):
         return [m for m in dict.fromkeys(order) if m not in config.REPLY_NEVER and (m in chain)], True
     if job["mode"] in config.STRONG_MODES:                      # where minds change
         lead = list(config.PREMIUM_MODELS) if high_value(job) else []
-        order = lead + list(config.REPLY_MODELS) + [m for m in chain if m not in config.REPLY_MODELS]
+        replies = list(config.REPLY_MODELS)
+        if config.LEAD_HAIKU_SHARE and "lead" not in job:      # 24 Oct: a random lead, so hide rates compare cleanly
+            job["lead"] = config.HAIKU if random.random() < config.LEAD_HAIKU_SHARE else replies[0]
+        if job.get("lead") in replies:
+            replies.remove(job["lead"])
+            replies.insert(0, job["lead"])
+        order = lead + replies + [m for m in chain if m not in replies]
         return [m for m in dict.fromkeys(order) if m not in config.REPLY_NEVER], True
     if job["mode"] in config.CHEAP_MODES:                       # one-liners: free models first, paid ones as backup
         free = [m for m in chain if m not in config.LLM_PRICES]  # 23 Oct: the free quotas are gone by ~14:30 Sydney and
@@ -1948,7 +1954,7 @@ def main():
              **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
                                          "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
              **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
-             **{k: job.get(k) for k in ("priority", "arm", "engaged")},                   # todo/21
+             **{k: job.get(k) for k in ("priority", "arm", "engaged", "lead")},       # todo/21; lead: the model tried first
              "eng_cell": engage.cell(target["author_id"]) if target and mode in stealth.CITIZEN_MODES else None,
              "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
              # todo/20: the reply style arm and the light read; todo/21's arm and priority, next to target_class
