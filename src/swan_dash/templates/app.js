@@ -21,10 +21,18 @@
 
   list(document.querySelectorAll("details[id]")).forEach(function (d) { if (has(d.id)) d.open = open[d.id]; });
 
+  // Every <details> in root, root itself included: querySelectorAll skips the root, and most sections ARE a top-level
+  // block (Activity, Bot, Score & targets, Blue...), so without this they were reset to the server's closed default.
+  function allDetails(root) {
+    var a = list(root.querySelectorAll("details"));
+    if (root.tagName === "DETAILS") a.unshift(root);
+    return a;
+  }
+
   // Copy the open/closed state of the <details> in oldRoot onto the matching ones in newRoot (by id; ones without an id
   // by position and summary text), else the remembered state for that id, else leave the new markup's default.
   function carry(oldRoot, newRoot) {
-    var olds = list(oldRoot.querySelectorAll("details")), news = list(newRoot.querySelectorAll("details")), byId = {};
+    var olds = allDetails(oldRoot), news = allDetails(newRoot), byId = {};
     olds.forEach(function (d) { if (d.id) byId[d.id] = d; });
     news.forEach(function (d, i) {
       var o = null, st;
@@ -46,11 +54,11 @@
   function focusedDetails(block) {
     var a = document.activeElement;
     if (!a || a.tagName !== "SUMMARY" || !block.contains(a)) return -1;
-    return list(block.querySelectorAll("details")).indexOf(a.parentNode);
+    return allDetails(block).indexOf(a.parentNode);
   }
   function refocus(block, idx) {
     if (idx < 0) return;
-    var d = block.querySelectorAll("details")[idx], s = d && d.querySelector("summary");
+    var d = allDetails(block)[idx], s = d && d.querySelector("summary");
     try { if (s) s.focus({ preventScroll: true }); } catch (e) {}
   }
 
