@@ -162,6 +162,10 @@ def test_a_pool_voice_joins_the_end_of_the_roster_in_activation_order(hot):
     assert [r["username"] for r in acc.voices()] == ["early"], "the refill writes once the named ones are gone"
     h = acc.hot()
     assert h["active"] == "early" and h["spares"] == ["late"] and h["lost"] == ["ana_d94", "tui4"]
+    acc.records[4]["status"] = "suspended"
+    assert "plain" not in acc.hot()["lost"], "a voice that is not on the roster is never reported lost"
+    pooled(acc, "plain", "2026-10-25T00:00:00+00:00")
+    assert "plain" not in acc.hot()["lost"], "nor an old pool voice that never wrote hot"
 
 
 def test_hot_mode_refill_has_its_own_switch_and_target(monkeypatch):

@@ -235,9 +235,11 @@ class Accounts:
         roster = self.hot_roster()
         status = {r["username"]: r.get("status", "active") for r in self.records}
         live = [u for u in roster if status.get(u) == "active"]
+        by = {r["username"]: r for r in self.records}
+        mine = lambda u: u in config.HOT_VOICES or (by.get(u) or {}).get("hot_from")     # old pool voices that never wrote hot are not "lost"
         return dict(active=live[0] if live else None, spares=live[1:],
-                    lost=[u for u in roster if status.get(u) == "suspended"],
-                    missing=[u for u in roster if u not in status])
+                    lost=[u for u in roster if status.get(u) == "suspended" and mine(u)],
+                    missing=[u for u in config.HOT_VOICES if u not in status])
 
     def boosters(self):
         """Like-only accounts, less the one swan_blue reports from (config.blue_reporter)."""
