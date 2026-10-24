@@ -1,6 +1,7 @@
 """Settings for swan_bot. Secrets come only from .env / the environment and are never printed."""
 import os
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SECRETS = ROOT / "secrets"          # gitignored: account passwords and tokens
@@ -472,6 +473,51 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
                "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
+# ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
+# Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance
+# a voice is hit grows only about as pace^0.6, so one voice at the team's write rate should cost far fewer accounts per
+# write than 15 at ~11 an hour (171 writes per ban today; a hot voice has to outlast about an hour to beat that).
+# HOT_VOICES = usernames in order of use. Empty (the default) = off: nothing below changes. Non-empty: ONLY the first one
+# still active writes; the others wait untouched (no hidden post, so nothing for an account report to stand on) and take
+# over when it is suspended (Accounts.voices). The write rate is still the team limit (--per-min); hot_mode() turns the
+# per-voice gaps, caps, sleep, second voices, the scheduler and the pool's registering off. Roll back: unset it, restart.
+# .env: SWAN_HOT_VOICES=ana_d94,tui4,vika68   (read by load_env, so at the next restart; a comma list of usernames).
+HOT_VOICES = ()
+HOT_GAP_S = 2                       # a hot voice's own minimum gap between writes (the write budget paces the bot, not this)
+
+
+def hot_mode():
+    """True when HOT_VOICES names a voice to write through."""
+    return bool(HOT_VOICES)
+
+
+def hot_from_env(env=None):
+    """SWAN_HOT_VOICES=a,b,c -> HOT_VOICES (usernames, in order, no duplicates), then hot_mode_apply(). Returns the tuple."""
+    global HOT_VOICES
+    env = os.environ if env is None else env
+    raw = (env.get("SWAN_HOT_VOICES") or "").strip()
+    if raw:
+        names = tuple(dict.fromkeys(n.strip() for n in raw.replace(";", ",").split(",") if n.strip()))
+        bad = [n for n in names if not re.fullmatch(r"[A-Za-z0-9_.]{1,32}", n)]
+        if bad:
+            raise SystemExit(f"SWAN_HOT_VOICES: not a username: {bad[0]!r}")
+        HOT_VOICES = names
+    hot_mode_apply()
+    return HOT_VOICES
+
+
+def hot_mode_apply():
+    """With HOT_VOICES set: one voice writes, so every rule that spreads writes over many voices stands down."""
+    global ACCOUNT_MIN_GAP_S, POOL_SCHEDULER, POOL_LIVE, SECOND_VOICE, ONE_VOICE_PER_CITIZEN, ONE_VOICE_AUTO
+    global VOICE_DAY_CAP, VOICE_HOUR_CAP, VOICE_SLEEP, VOICE_JITTER, VOICE_STAGGER
+    if not HOT_VOICES:
+        return
+    ACCOUNT_MIN_GAP_S = HOT_GAP_S
+    POOL_SCHEDULER = POOL_LIVE = SECOND_VOICE = False          # POOL_LIVE: no registering or converting while it runs
+    ONE_VOICE_PER_CITIZEN = ONE_VOICE_AUTO = False
+    VOICE_DAY_CAP = VOICE_HOUR_CAP = VOICE_SLEEP = VOICE_JITTER = VOICE_STAGGER = False
+
+
 # ---- todo/38 stealth scheduler: stealth bought with voices, never at the cost of volume (stealth.py, 2026-10-23) ----
 # Each voice gets a stored life profile (sleep window, gap multiplier, session style, volume multiplier). The stealth
 # intensity L in [0, 1] is derived from N, the voices able to write: 0 up to STEALTH_N_LO, 1 from STEALTH_N_HI, and always
@@ -664,6 +710,7 @@ def load_env(path=ROOT / ".env"):
             key, value = line.split("=", 1)
             os.environ[key.strip()] = value.strip().strip('"').strip("'")
     stealth_from_env()
+    hot_from_env()
 
 
 def stealth_from_env(env=None):

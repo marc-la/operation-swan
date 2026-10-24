@@ -180,8 +180,24 @@ class Accounts:
         return [r for r in self.active() if r is not reporter]
 
     def voices(self):
-        """Persona accounts that write. Boosters (role 'booster') only view and like."""
-        return [r for r in self.active() if r.get("role", "voice") != "booster"]
+        """Persona accounts that write. Boosters (role 'booster') only view and like.
+        Hot mode (config.HOT_VOICES): just the first named voice that is still active, if any; the others wait as spares,
+        and a suspended one drops out of this list on the same call that sees its record change."""
+        voices = [r for r in self.active() if r.get("role", "voice") != "booster"]
+        if config.HOT_VOICES:
+            by_name = {r["username"]: r for r in voices}
+            return next(([by_name[u]] for u in config.HOT_VOICES if u in by_name), [])
+        return voices
+
+    def hot(self):
+        """Hot mode's live roster for the status file and logs: {active, spares, lost}, or None when it is off."""
+        if not config.HOT_VOICES:
+            return None
+        status = {r["username"]: r.get("status", "active") for r in self.records}
+        live = [u for u in config.HOT_VOICES if status.get(u) == "active"]
+        return dict(active=live[0] if live else None, spares=live[1:],
+                    lost=[u for u in config.HOT_VOICES if status.get(u) == "suspended"],
+                    missing=[u for u in config.HOT_VOICES if u not in status])
 
     def boosters(self):
         """Like-only accounts, less the one swan_blue reports from (config.blue_reporter)."""
@@ -1397,10 +1413,29 @@ def main():
         except OSError as e:                          # a full disk must not stop the writer
             print("portal sync failed:", e)
 
+    hot_last = [None]                    # hot mode: the voice that was writing at the last status write
+
+    def hot_note(t):
+        """Hot mode: one log row (act hot_switch) and one alert when the writing voice changes (the old one suspended, the
+        next spare took over) or when none is left, and once on the first look. Nothing when hot mode is off."""
+        hot = accounts.hot()
+        if hot is None or (hot["active"] or "none") == hot_last[0]:
+            return
+        first, hot_last[0] = hot_last[0] is None, hot["active"] or "none"
+        log({"act": "hot_switch", "to": hot["active"], "spares": hot["spares"], "lost": hot["lost"],
+             "missing": hot["missing"], "first": first})
+        if first and hot["active"]:
+            return
+        left = len(hot["spares"])
+        alert(f"HOT: @{hot['active']} now writes ({left} spare left; lost: {', '.join(hot['lost']) or 'none'})" if hot["active"]
+              else f"HOT: no hot voice left (lost: {', '.join(hot['lost']) or 'none'}); the bot is idle until SWAN_HOT_VOICES names a live one")
+
     def write_status():
         """data/status.json for the dashboard (todo/09), at most every 30 s. Counts and model names only, no secrets.
         The split loop adds each thread's heartbeat and the queues between them (todo/22)."""
         t = time.time()
+        if args.live:
+            hot_note(t)                  # every call: a hand-over to a spare is logged at once, not up to 30 s later
         if not args.live or t - last_status[0] < 30:
             return
         last_status[0] = t
@@ -1412,6 +1447,7 @@ def main():
                 ts=now_iso(), per_min=per_min, llm=gen.status(), rate_limited_last_hour=len(rate_limited),
                 write_budget=(dict(limit=write_rl[0].limit, remaining=write_rl[0].remaining, reset=write_rl[0].reset,
                                    margin=config.WRITE_MARGIN) if write_rl[0] else None),
+                **({"hot": accounts.hot()} if config.HOT_VOICES else {}),
                 accounts=dict(live=len(accounts.active()), voices=len(accounts.voices()),
                               boosters=len(accounts.boosters()), used=len(recs),
                               suspended=sum(r.get("status") == "suspended" for r in recs)),
@@ -1755,6 +1791,12 @@ def main():
                                                                        "persona"))
         rec, mode, target = job["rec"], job["mode"], job.get("target")
         with mu:
+            if rec.get("status", "active") != "active":    # suspended while the draft waited (hot mode switches voice): no 403
+                log({"act": "skip", "why": "voice_gone_at_send", "mode": mode, "persona": persona["key"],
+                     "target_post": target and target["post_id"], "draft_id": job["draft_id"]})
+                if job.get("cand"):
+                    targeter.requeue(job["cand"], "held")
+                return
             if accounts.parked(rec):                  # hit the hidden-post limit while the draft waited (23 Oct audit:
                 log({"act": "skip", "why": "parked_at_send", "mode": mode, "persona": persona["key"],     # 6 of 7 voices
                      "target_post": target and target["post_id"], "draft_id": job["draft_id"]})            # kept writing)
@@ -2052,7 +2094,8 @@ def main():
                     return
                 job, drafted, wait = choose(time.time(), ids)
                 if job:
-                    accounts.reserved.add(job["rec"]["persona"])        # no second draft for this voice meanwhile
+                    if not config.HOT_VOICES:                           # hot mode: one voice has several drafts at once
+                        accounts.reserved.add(job["rec"]["persona"])    # no second draft for this voice meanwhile
                     inflight.append(job)
             if job is None:
                 woken.wait(wait)                                      # or until the reader finds something
