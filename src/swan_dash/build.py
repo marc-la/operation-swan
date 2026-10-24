@@ -786,9 +786,10 @@ def blue_panel(data, now, points, day_start, logs=None):
     last = next((r for r in history if not r["today"]), None)       # the last finished day decides the verdict
     ready = s.get("ready_ok", s.get("ready")) or 0
     lock_why = short(s.get("lock_why") or "reason not recorded", 60)
+    # the lock's time is on the Blue tile only (Marc, 24 Oct); here just why
     bits = ([f"OUR OWN ACCOUNTS REPORTED: {own['hits']}"] if own and own["hits"] else []) + \
         ([f"{waiting} waiting for approval"] if waiting else []) + \
-        ([f"locked until {hm(locked)} Perth ({lock_why})", f"{ready} ready"] if locked else []) + \
+        ([f"locked ({lock_why})", f"{ready} ready"] if locked else []) + \
         ([f"{s['pending']}/{s['cap']} pending" + (f", next ruling {hm(nxt)}" if nxt and not locked else "")]
          if s.get("pending") else []) + \
         ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
@@ -1709,7 +1710,8 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
                 head=f"{left_now}" if left_now is not None else "—",
                 sub=(f"runs out in {f['runway']:.1f} d · {f['days_left']:.1f} d left" if f.get("runway") is not None
                      else f"lasts to the end · {f['days_left']:.1f} d left" if f.get("days_left") is not None and delta is not None
-                     else "no forecast yet"))
+                     else "no forecast yet")
+                + (f" · {-delta:.0f} short of {goal:g} on {f['goal_day']}" if f.get("runway") is None and delta is not None and delta < 0 else ""))
     for t, row in ((hide, 1), (life, 1), (stealth, 1), (accounts, 2), (left, 2)):
         t["row"] = row
     return [hide, life, stealth, accounts, left]

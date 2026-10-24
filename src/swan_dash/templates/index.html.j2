@@ -53,7 +53,7 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .sub { color: var(--muted); font-size: 13px; }
 .up { color: var(--green); } .down { color: var(--red); } .warn { color: var(--amber); }
-.reach { margin: 0 0 22px; }
+.reach { margin: 0 0 6px; }
 .reach > summary { padding: 10px 12px; cursor: pointer; }
 .reach .pill { display: inline-block; padding: 2px 10px; border-radius: 8px; font-weight: 600; }
 .reach table { width: 100%; border-collapse: collapse; margin: 0 12px 6px; width: calc(100% - 24px); }
@@ -64,20 +64,19 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .reach .note { display: block; color: var(--ink); }
 @media (max-width: 640px) { .reach td:last-child { display: none; } }
 .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
-@media (max-width: 640px) { .kpi .val { font-size: 22px; } }
-.lights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.lights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; }
 .light, .light.green, .light.amber, .light.red, .light.grey { background: var(--card); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 10px; padding: 8px 12px; min-width: 0; min-height: 78px; }
-.light .label { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  border-radius: 8px; padding: 6px 10px; min-width: 0; }
+.light .label { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .light .label::before { content: ""; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
 .light.green .label::before { background: var(--green); } .light.amber .label::before { background: var(--amber); }
 .light.red .label::before { background: var(--red); }
 .light .label::after { content: "ⓘ"; opacity: .5; margin-left: auto; }
-.light .val { font-size: 20px; font-weight: 700; line-height: 1.2; margin-top: 1px; }
+.light .val { font-size: 16px; font-weight: 700; line-height: 1.2; margin-top: 1px; }
 .light.amber .val { color: var(--amber); } .light.red .val { color: var(--red); }
-.light .sub { font-size: 12px; overflow-wrap: anywhere; }
+.light .sub { font-size: 11px; overflow-wrap: anywhere; }
 .light[title] { cursor: help; }
-.light .bar { height: 6px; margin-top: 6px; border-radius: 3px; position: relative; overflow: hidden; background: var(--line); }
+.light .bar { height: 4px; margin-top: 4px; border-radius: 3px; position: relative; overflow: hidden; background: var(--line); }
 .light .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--muted); }
 .light.blue-tile .bar i { background: var(--blue); }
 .light.blue-tile.amber .val, .light.blue-tile.red .val { color: var(--ink); }   /* Blue is a track, not a red alert: the dot says how it is */
@@ -88,16 +87,21 @@ details.reach .r { display: grid; grid-template-columns: 12px 1fr; gap: 0 6px; p
 details.reach .r .dot { margin-top: 5px; }
 details.reach .r b { font-weight: 600; }
 details.reach .r .why { display: block; color: var(--muted); font-size: 12px; }
-details.reach summary { padding: 6px 12px; }
+details.reach { background: none; border: 0; margin: 0 0 6px; }
+details.reach > summary { display: inline-block; padding: 2px 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--card);
+  font-size: 12px; color: var(--muted); list-style-position: inside; }
+details.reach[open] > summary { color: var(--ink); }
+details.reach[open] .cols { margin-top: 6px; padding: 8px 14px 6px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 .lb { margin: 0 0 10px; padding: 8px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 .lb .head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
 .lb table { font-size: 14px; margin-top: 2px; }
 .lb td { padding: 2px 8px 2px 0; }
 .lb tr:first-child td { border-top: 0; }
-@media (max-width: 560px) { .lights { grid-template-columns: 1fr; } .light { min-height: 0; } }
-.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+@media (max-width: 560px) { .lights { grid-template-columns: repeat(2, 1fr); } .lights > .light:last-child { grid-column: 1 / -1; } }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
-.kpi .val { font-size: 28px; font-weight: 700; line-height: 1.15; margin: 2px 0; }
+.kpi .val { font-size: 40px; font-weight: 700; line-height: 1.1; margin: 4px 0 2px; }
+.kpi .sub { font-size: 14px; }
 ol { list-style: none; margin: 8px 0 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 li { display: grid; grid-template-columns: 3.2em 6.5em 1fr; gap: 0 10px; padding: 8px 12px; border-top: 1px solid var(--line); }
 li:first-child { border-top: 0; }
@@ -194,6 +198,17 @@ code { font-size: 12px; }
 .fact .q { font-style: italic; }
 code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg); border-radius: 6px;
   user-select: all; overflow-wrap: anywhere; }
+@media (max-width: 560px) {          /* phone: Score across the top, Rank and Today under it; the Points tiles in a column; nothing wider than the screen */
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis > .kpi:first-child { grid-column: 1 / -1; }
+  .kpi .val { font-size: 28px; } .kpis > .kpi:first-child .val { font-size: 38px; }
+  .kpi { padding: 10px 12px; } .kpi .sub { font-size: 13px; }
+  .kpis.tiles { grid-template-columns: 1fr; gap: 6px; }
+  .kpis.tiles .kpi { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px 12px; }
+  .kpis.tiles .val { font-size: 18px; margin: 0; }
+  li { grid-template-columns: 3em 4.6em 1fr; gap: 0 6px; padding: 8px; }
+  li .x, li .x * { overflow-wrap: anywhere; max-width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -272,7 +287,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% endmacro %}
 
 <header><b>SWAN</b>
-  <span class="chips"><span class="chip {{ banner.level }}" title="Red track: the bot">Red</span><span class="chip {{ blue_banner.level }}" title="Blue track: reporting">Blue</span>{% if running %}<span class="chip {{ running.light }}" title="running version, deployed {{ running.when }}">v{{ running.sha }} · {{ running.when }}</span>{% endif %}</span></header>
+  <span class="chips"><span class="chip {{ banner.level }}" title="Red track: the bot">Red</span><span class="chip {{ blue_banner.level }}" title="Blue track: reporting">Blue</span>{% if running %}<span class="chip {{ running.light }}" title="running version, deployed {{ running.when }}">{{ running.sha }} · {{ running.when }}</span>{% endif %}</span></header>
 <div class="sub" style="text-align:right">as of {{ now }} Perth</div>
 <div class="alerts">
   {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
@@ -296,15 +311,13 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     {% else %}<div class="val">—</div><div class="sub">since {{ day_start }}</div>{% endif %}</div>
 </div>
 
-{% for row in (0, 1, 2) %}
 <div class="lights">
-{% for i in reach.lights if i.row == row %}
+{% for i in reach.lights %}
   <div class="light {{ i.light }}{{ ' blue-tile' if i.key == 'blue' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
 {% endfor %}
 </div>
-{% endfor %}
 <details class="reach" id="reach">
-  <summary><span class="sub">Detail behind the tiles</span></summary>
+  <summary>Details</summary>
   <div class="cols">
   {% for i in reach.lights if i.key != 'blue' and (i.rows | length) %}
     <div class="grp"><h4>{{ i.name }}</h4>
@@ -350,10 +363,9 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% endif %}
 </details>
 
-{% set bot_warn = llm.degraded or accounts.suspended or errors.rate_limited %}
-<details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
+<details id="bot"><summary><b>Bot</b><span class="sub">
   {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
-  {% if bans %}{{ bans.left }} left · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · <span class="down">+{{ acct_days[0].new }} today</span>{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}
+  {% if bans %}{{ bans.left }} left · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · +{{ acct_days[0].new }} today{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>

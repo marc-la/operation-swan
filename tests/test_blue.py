@@ -463,7 +463,7 @@ def test_dashboard_says_locked_until_perth_why_and_ready(tmp_path):
         lock_why="#155963 ruled genuine", lock_src="server", ready=43, ready_ok=30, ready_accounts=2)))
     now = dt.datetime.now(dt.timezone.utc)
     b = build.blue_panel(tmp_path, now, [], now - dt.timedelta(hours=1))
-    assert f"locked until {build.hm(until)} Perth (#155963 ruled genuine)" in b["summary"]
+    assert "locked (#155963 ruled genuine)" in b["summary"] and build.hm(until) not in b["summary"]      # the time is on the tile only
     assert "30 ready" in b["summary"] and b["ready"] == 30 and not b["lock_estimate"]
 
 
