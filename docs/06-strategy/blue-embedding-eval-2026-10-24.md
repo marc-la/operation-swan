@@ -29,4 +29,34 @@ Question (Marc, 24 Oct): can an account's posts, embedded as vectors and aggrega
 - Most accounts have only their newest 100 posts.
 
 ## Results
-(filled in below once run)
+Run 24 Oct (data to the 14:37 UTC snapshot; 196,670 posts from 6,431 accounts). A dry run on random vectors first gave embedding gain 0.00, permutation AUC 0.50 and same-fleet AUC 0.50, so the pipeline does not invent signal.
+
+### Q1: no. Embeddings add nothing to hide prediction (fails the rule)
+
+2,489 examples (261 positives). AUC under fleet-grouped 5-fold, 5 seeds:
+
+| Feature set | All negatives | Ring-cluster negatives only |
+|---|---|---|
+| Behaviour | 0.700 | 0.685 |
+| Lexical | 0.579 | 0.529 |
+| Embedding alone | 0.616 | 0.570 |
+| Behaviour + lexical | 0.726 | 0.717 |
+| Behaviour + lexical + embedding | 0.725 | 0.703 |
+| Gain from embedding (95% interval) | +0.002 (-0.012, +0.016) | -0.012 (-0.022, -0.004) |
+
+Hold-out (train on the 23 Oct harvest, test on later positives and their fleets, 145 test positives): 0.687 without embedding, 0.685 with. Permutation control 0.49. Precision at the top 100 is no better with embeddings (0.36 against 0.43 all-negatives; 0.56 against 0.55 ring-only). Embedding alone beats chance (0.62), but whatever it knows, behaviour and lexical features already know.
+
+The comparison with the current detector rules did not work: my stand-in for the fingerprint rule flagged 259 of 261 positives and also 2,036 of 2,228 negatives (91%), so it separates nothing and "positives it misses" is two accounts. Either the corpus is full of shared 6-word phrases or my version is looser than the live one (which samples 1 in 4 sequences). Not a finding about the live detector.
+
+### Q2: text does carry team identity, but not enough for the bar; its tail is strong
+
+- Same-fleet against different-fleet pairs (fleets of 5+): AUC **0.70** (mean cosine 0.28 against 0.00). **Fails the 0.8 bar.** Many fleets are not one voice.
+- Cross-fleet look-alikes (top 0.1% of pairs, cosine 0.86+; 3,880 pairs): **81%** share a Blue cluster (random 10%) and **81%** share a fate (random 52%). Top 0.01%: 83% and 85%. **Passes the +10 points bar by a wide margin.**
+- Our 30 voices against rivals: AUC **0.99**, mean pairwise cosine 0.64. **Passes.**
+- By the rule written above (all three needed) fleet-merging is **not passed**. What follows is post-hoc, with `scripts/blue_embed_links.py`: linking accounts at centroid cosine 0.86+ puts 913 of 2,798 accounts (33%) into 117 groups (median 2 fleets, up to 23; none over a team's 200; 78% same fate inside groups against 51%; 69% same Blue cluster). At 0.92: 15% of accounts, 54 groups, 86% same fate. Groups hold hidden-post accounts at the same rate as everyone (84 of 292 against 33%), so grouping finds teams, not hide risk.
+
+### What this does and does not support
+- Do not add an embedding detector for account leads (Q1).
+- A text link between fleets is a high-precision, low-recall way to say "these fleets are probably one team" for the per-team award count (blue-reporting §10: 46% of 24 Oct awards paid reduced). Whether it would have prevented those reduced awards is **untested**: it needs a replay on the award log (for each report, would the target's text group already have had 5 awards?).
+- Our voices are far more alike than a typical rival fleet (0.64 against 0.28). Not compared against rival Vote-No accounts specifically, so it may be the side's shared message; worth a side-matched check for Red.
+- Not done: award-log replay, Qwen likelihood, survival.

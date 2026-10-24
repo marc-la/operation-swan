@@ -37,3 +37,13 @@ def test_compare_marks_the_better_direction():
     out = replay.compare(a, b, ("old", "new"))
     assert "-30 pt -" in out.replace("  ", " ").replace("  ", " ") or "-30 pt" in out
     assert "n/a" in out and replay.score([]) == {"n": 0}
+
+
+def test_pick_prefers_the_candidate_that_answers_the_ask_and_does_not_repeat_the_window():
+    window = ["A pass at my bakery door adds no nurse and no bed at all, and Central has 40 empty posts."]
+    worn = dict(reply="A pass at my bakery door adds no nurse and no bed at all, and Central has 40 empty posts.", frame="F10_x")
+    echo = dict(reply="You want a sunset. Papers at the door are not the point.", frame="F14_no_yes_but")
+    good = dict(reply="The question names no end date, so the sunset you asked for is not in it.", frame="F14_no_yes_but")
+    assert replay.pick([worn, echo, good], ASK, window) is good
+    assert replay.pick([{"reply": None}], ASK, window) is None
+    assert replay.penalty(good["reply"], ASK, good["frame"], window) < replay.penalty(worn["reply"], ASK, worn["frame"], window)

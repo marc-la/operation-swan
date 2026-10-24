@@ -72,9 +72,16 @@ def run(args):
         def on_reject(why, raw, backend, repair):
             local[why.split("_")[0] if why.startswith(("phrase", "repeat", "unapproved")) else why] += 1
 
-        reply, backend, _ = draft_checked(gen, job, system, user, window[-300:], on_reject, None)
+        cands = []
+        for _ in range(max(1, args.best_of)):         # best-of-N: N gated drafts, the least worn one is kept (replay.pick)
+            reply, backend, _ = draft_checked(gen, job, system, user, window[-300:], on_reject, None)
+            meta = job.get("meta") or {}
+            cands.append({"reply": reply, "backend": backend, "frame": meta.get("read_frame") or job["frame"],
+                          "llm_calls": meta.get("llm_calls")})
         rejects.update(local)
-        meta = job.get("meta") or {}
+        best = replay.pick(cands, text, window) or cands[0]
+        reply, backend = best["reply"], best["backend"]
+        meta = {"read_frame": best["frame"], "llm_calls": sum(c["llm_calls"] or 0 for c in cands)}
         if reply:
             window.append(reply)
         done.append({"post_id": j["post_id"], "target_text": text, "reply": reply, "backend": backend,
@@ -115,6 +122,7 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("--tag", required=True)
     r.add_argument("--limit", type=int, default=0)
+    r.add_argument("--best-of", type=int, default=1, help="draft N gated candidates per job and keep replay.pick's choice")
     c = sub.add_parser("compare")
     c.add_argument("a")
     c.add_argument("b")

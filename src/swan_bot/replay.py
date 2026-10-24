@@ -107,6 +107,32 @@ def score(items, window=()):
     return out
 
 
+# What best-of-N weighs (lower is better): the stream (overlap with what the account already said) first, then the
+# habits the audits keep finding, then whether the reply took up what the citizen asked for.
+WEIGHTS = dict(clash=3.0, motif=0.3, echo_open=0.5, concedes=0.5, bare_they=0.5, unanswered=0.7, off_point=0.3)
+WORN = ("door", "papers", "certificate", "nursing_40", "who_in_your", "half_four", "spaced_dash")
+
+
+def penalty(reply, target_text="", frame=None, window=()):
+    """How much worse a candidate is than a clean one: a weighted sum of its overlap with the window (the largest
+    5-word-shingle share it has with any recent text), its worn motifs and the faults one() flags. 0 is clean."""
+    f = one(reply, target_text, frame)
+    mine = quality._shingles(quality.strip_tag((reply or "").strip()))
+    clash = max((len(mine & quality._shingles(quality.strip_tag(w.strip()))) / max(1, len(mine))
+                 for w in list(window)[-300:]), default=0.0)
+    return (WEIGHTS["clash"] * clash + WEIGHTS["motif"] * sum(f[f"motif_{k}"] for k in WORN)
+            + WEIGHTS["echo_open"] * f["echo_open"] + WEIGHTS["concedes"] * f["concedes"]
+            + WEIGHTS["bare_they"] * f["bare_they"] + WEIGHTS["off_point"] * f["off_point"]
+            + WEIGHTS["unanswered"] * (f["has_condition"] and not f["answers_condition"]))
+
+
+def pick(candidates, target_text="", window=()):
+    """The best of several candidates {reply, frame, ...} (the lowest penalty; the first on a tie), or None when none has a
+    reply. Every candidate has already passed the hard gates: this only chooses between acceptable ones."""
+    live = [c for c in candidates if c.get("reply")]
+    return min(live, key=lambda c: penalty(c["reply"], target_text, c.get("frame"), window), default=None)
+
+
 def compare(a, b, names=("A", "B")):
     """A text table of two score() dicts, with b - a. Lower is better for every row except distinct_open, asks_answered and
     f14_when_asked."""

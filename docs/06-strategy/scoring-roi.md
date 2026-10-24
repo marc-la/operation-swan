@@ -1,5 +1,7 @@
 # Scoring ROI: "gaming the game" inside the rules
 
+> **Corrected 2026-10-25:** prizes and thresholds below use the 20 Oct recalibration (polls 6,000, referendum 20,000 + 100,000 pool, thresholds 7,000 / 7,500). The Red multiplier is x2 from 26 Oct and x4 from 1 Nov and applies to negatives alike, so an "away" hit costs -160 and then -320 (the 2:1 reward-to-penalty ratio in section 4 is unchanged; the stakes per event are not). What persuasion actually delivered so far: [hide-risk-analysis](hide-risk-analysis-2026-10-23.md) (about 2% of points, netting roughly zero; engagement 88%).
+>
 > Analysis 2026-10-19, derived from the [scoring guide](../03-scoring/scoring-guide.md) and [rules](../02-rules/competition-rules.md). Numbers are base points before the Red multiplier unless stated. Organisers can change scoring: re-check Discord.
 
 ## 1. Where the points actually are
@@ -10,8 +12,8 @@
 | Likes / reposts / replies / follows | 5 / 10 / 15 / 20 | No | Replies (15) and follows (20) are the best engagement events |
 | **Change of mind toward No** | **160** (+ share of 80) | No | ×4 at the end = **640 per citizen** |
 | Change away from No | −80 (−40 pool share) | No | Penalty is **half** the reward (see §4) |
-| Polls 1–3 | 1,000 each if No leads (500 if ≤52–48) | Needs score ≥1 / ≥2,500 / ≥2,500 at count time | **Cheap to qualify, expensive to miss** |
-| Referendum | **5,000 base + share of 50,000** | No side wins → only the winning side's teams get anything | **The biggest single prize**, counted by persuasion events (change = 1, contribution = 0.5/N) |
+| Polls 1–3 | 6,000 each if No leads (3,000 if ≤52–48) | Needs score ≥1 / ≥7,000 / ≥7,000 at count time | **Cheap to qualify, expensive to miss** |
+| Referendum | **20,000 base + share of 100,000** | No side wins → only the winning side's teams get anything | **The biggest single prize**, counted by persuasion events (change = 1, contribution = 0.5/N) |
 | Blue reports | 25 first / 5 later / 15 account suspension | Diminishing per target team per day; 6 h ban on a "genuine" ruling | ×1 always, so worth relatively more early |
 
 **Exchange rate:** 1 change of mind = 32 likes = 8 follows = a third of a day's views (at ×1).
@@ -20,10 +22,10 @@
 
 | When (Sydney / Perth) | Need | Prize at stake |
 |---|---|---|
-| **Before Poll 1 is counted, 21 Oct** (be safe: by 20 Oct 9pm Perth) | Score **≥ 1** | 1,000 (or 500) |
-| **Before Poll 2, 25 Oct** | Score **≥ 2,500** | 1,000 + also locks in referendum base eligibility |
-| Poll 3, 29 Oct | Stay ≥ 2,500 | 1,000 |
-| 2 Nov count | ≥ 2,500 **or** ≥1 qualifying persuasion | 5,000 base + pool share |
+| **Before Poll 1 is counted, 21 Oct** (be safe: by 20 Oct 9pm Perth) | Score **≥ 1** | 6,000 (3,000 if too close; paid 3,000) |
+| **Before Poll 2, 25 Oct** | Score **≥ 7,000** | 6,000 (3,000 if too close) + also locks in referendum base eligibility (≥ 7,500) |
+| Poll 3, 29 Oct | Stay ≥ 7,000 | 6,000 (3,000 if too close) |
+| 2 Nov count | ≥ 7,500 **or** ≥1 qualifying persuasion | 20,000 base + pool share of 100,000 |
 
 2,500 by 25 Oct ≈ 6 days × ~420 points/day. That is achievable from views (500/day) + engagement alone, even before we persuade anyone.
 
@@ -39,7 +41,7 @@
 Expected value of a post (one citizen) ≈ 160·P(moves toward) − 80·P(moves away) + engagement.
 
 - The per-citizen penalty is half the reward, so **slightly polarising content is not automatically negative in points**.
-- **But** every citizen pushed toward Yes also lowers P(No wins), and the referendum is worth 5,000 + a share of 50,000 to every No team. **Net effect: backfire is more expensive than the −80 suggests.** Prefer the low-variance frames (F1–F3, F10).
+- **But** every citizen pushed toward Yes also lowers P(No wins), and the referendum is worth 20,000 + a share of 100,000 to every winning No team. **Net effect: backfire is more expensive than the −80 suggests.** Prefer the low-variance frames (F1–F3, F10).
 - **Echo has low value:** "repeating what a citizen already believes … unlikely to get persuasion points". Our own base gives engagement and follows (useful for reach), not persuasion.
 - **Contributions stack.** When a citizen changes their mind, every post of ours that addressed that view in the session gets a share of 80. So **2–3 of our personas hitting the same doubt in one session** (complex contagion) earns more and persuades better than one. *Limit (scoring §2, clarified 2026-10-19):* once a citizen has changed that view in the session, they're much harder to move on it again before signing out. Stacking pays **before** the change, not after. Don't keep sending the same frame to a citizen who has just shifted.
 
