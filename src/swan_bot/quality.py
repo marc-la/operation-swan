@@ -275,7 +275,7 @@ NAME_CHECKED = ("reply", "reply_back", "second_voice", "journalist")
 # similarity (near_duplicate) lets a shared clause through, so a run of RUN_WORDS words that one of our last
 # RUN_WINDOW citizen-facing texts already holds is rejected. Not a run the citizen wrote, and not one holding a number
 # (a fact's own figure, "40 empty nursing posts", is allowed to repeat).
-RUN_WORDS = 6
+RUN_WORDS = 8              # replayed on 24 h of live replies (3,985): 6 words would reject 24%, 7 12%, 8 6.7%
 RUN_WINDOW = 60
 
 

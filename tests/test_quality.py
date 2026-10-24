@@ -588,20 +588,23 @@ def test_names_the_prompt_the_citizen_or_the_character_data_hold_pass():
 
 
 # ---- repeated runs (2026-10-24 audit of six rows) --------------------------------------------------------------------
-SENT = "A pass at the bakery door won't add a single nurse. Which job in your house would need papers?"
+SENT = ("A pass at the bakery door won't add a single nurse. Which job in your house would need papers just to "
+        "clock on at four, with the ovens already hot and the queue out into the dark street?")
 
 
-def test_a_run_of_six_words_one_of_our_texts_already_holds_is_rejected():
-    other = "Honestly, a pass at the bakery door wont bring a nurse to the ward either."
+def test_a_run_of_eight_words_one_of_our_texts_already_holds_is_rejected():
+    other = ("We were told a pass at the bakery door won't add a single nurse, and Sateki laughed so hard he dropped the "
+             "flour scoop twice on the floor again.")
     why = bad(SENT, "reply", recent_texts=[other])
-    assert why == "repeat_run_a_pass_at_the_bakery_door"
+    assert why == "repeat_run_a_pass_at_the_bakery_door_wont_add"
     note = quality.repair_note(why, SENT, "reply")
-    assert "a pass at the bakery door" in note and "different words" in note
+    assert "a pass at the bakery door wont add" in note and "different words" in note
 
 
 def test_a_repeated_run_is_allowed_when_the_citizen_wrote_it_holds_a_number_or_is_short():
-    other = "Honestly, a pass at the bakery door wont bring a nurse to the ward either."
-    assert quality.repeated_run(SENT, [other], target_text="You think a pass at the bakery door is silly?") is None
+    other = ("We were told a pass at the bakery door won't add a single nurse, and Sateki laughed so hard he dropped the "
+             "flour scoop twice on the floor again.")
+    assert quality.repeated_run(SENT, [other], target_text="You think a pass at the bakery door won't add a single nurse? Silly.") is None
     assert quality.repeated_run("Posts 40 nurses short at Central", ["Posts 40 nurses short at Central today"]) is None
-    assert quality.repeated_run("A pass at the door adds no nurse.", [other]) is None      # five words only
+    assert quality.repeated_run("A pass at the door adds no nurse.", [other]) is None      # five words only, under RUN_WORDS
     assert quality.repeated_run(SENT, [other][:0]) is None
