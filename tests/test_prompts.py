@@ -453,6 +453,27 @@ def test_context_is_called_a_news_item_only_when_it_is_one():
         assert "news item" not in post and "by another neighbour" in post and PCR[:40] in post
 
 
+def test_what_the_neighbour_post_says_happened_is_theirs_not_the_citizens():
+    """2026-10-24 audit: "I know what you saw in the ward" to a citizen who had only answered the post's writer."""
+    post = content.reply_prompt("having seen that struggle must be heavy", "F10_staff_and_livelihoods", [], PCR, news=False)
+    assert "happened to its writer, never to the person you answer" in post
+    assert "happened to its writer" not in content.reply_prompt("a worry", "F7_livelihoods", [], PCR)    # a news item: no
+
+
+def test_a_stranger_gets_roles_not_first_names():
+    assert "first name only when the story needs it" in content.REPLY_RULES
+
+
+def test_replies_end_in_a_question_about_two_times_in_three_not_nine_in_ten():
+    """Audit: 43% -> 67% of replies ended in a question after the asks were reworded; "none" now has weight 0.4."""
+    none = 0
+    for _ in range(600):
+        meta = {}
+        content.reply_prompt("only if they publish the list", "F14_no_yes_but", ["list"], meta=meta, persona=content.PERSONAS[0])
+        none += meta["ask_kind"] == "none"
+    assert 0.28 < none / 600 < 0.44
+
+
 def test_a_reply_is_not_told_to_state_its_vote_but_a_post_is():
     for key in ("lani", "ana", "esther", "dan"):
         persona = P[key]

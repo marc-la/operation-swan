@@ -858,7 +858,8 @@ def context_line(context, news=True, where="in reply to"):
     neighbour's post is said to be one, so the model doesn't take it for the news (2026-10-24 audit)."""
     if not context:
         return ""
-    what = "this news item" if news else "this post by another neighbour (not you, and not what they wrote; don't thank or agree with them for anything in it)"
+    what = "this news item" if news else ("this post by another neighbour (not you, and not what they wrote; don't thank or agree "
+                                           "with them for anything in it; what it says happened to its writer, never to the person you answer)")
     return f"It was posted {where} {what}: <<<{context[:200]}>>>\n"
 
 
@@ -919,7 +920,8 @@ REPLY_RULES = (
     "can answer from their own life. Do not repeat their sentences back to them and don't lecture. Never open by "
     "granting their point ('that would help', 'fair ask', 'sounds sensible'), never ask whether they know anyone "
     "who moved from Yes to No, and never tell of someone who was Yes and switched. Give nobody you name a relative, "
-    "job, age or past that isn't in your profile; when unsure, name no one. No hashtags."
+    "job, age or past that isn't in your profile; when unsure, name no one. A stranger doesn't know your people: say "
+    "'my sister' or 'our porter', and use a first name only when the story needs it. No hashtags."
 )
 ANSWER_FIRST = ("First take up what they actually said or asked, in their terms; use the angle below only where it "
                 "fits that, and leave it out where it doesn't. ")
@@ -1159,7 +1161,8 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
     # with their reason known, it replaces the frame's angle (one instruction, not two that pull apart)
     lever = experiment.draw("lever", lever_weights(exclude={"fear_answer"} if reb and reason_first else ()), arms)
     # an ally is not asked to defend the status quo: a question back to someone who agrees reads as a challenge
-    ask_weights = {"none": 1.0} if ally else {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"}
+    ask_weights = {"none": 1.0} if ally else {**{k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"},
+                                              "none": experiment.REPLY_NO_ASK_WEIGHT}
     ask_kind = experiment.draw("ask_kind", ask_weights, arms)
     sentences, lo, hi = experiment.length_line("reply", arms)
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), style=style,

@@ -34,6 +34,9 @@ ASK_KINDS = {
 }
 # 2026-10-23: switching 0 (its closer was in 28% of the hidden posts, 9% of the rest); its weight to the three other questions
 ASK_WEIGHTS = {"frame": 0.18, "people": 0.24, "loss": 0.24, "switching": 0.0, "status_quo": 0.24, "none": 0.10}
+# Replies only (2026-10-24 audit): the reworded asks work too well. Replies ending in a question went from 43% of 3988 to
+# 67% of 178 after d00487c; at 0.4 "none" is about 1 reply in 3 and the rate comes back near 45%.
+REPLY_NO_ASK_WEIGHT = 0.4
 
 # Target length per mode: (sentences, lo, hi) in WORDS (todo/14: flash-lite ignores character counts, so posts ran
 # 554-657 characters against the 495 cap; it keeps to sentences and words). At WORDS_TO_CHARS (about 5.4 characters a
