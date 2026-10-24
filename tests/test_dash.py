@@ -403,7 +403,7 @@ def test_points_by_kind_under_score_not_in_activity(tmp_path):
 
 
 # ---- Blue: pending summarised by group, reports by outcome, account outcomes, own-account check (todo/29) ----
-def blue_root(tmp_path, own_ids=None, reports=()):
+def blue_root(tmp_path, own_ids=None, reports=(), status=None, events=()):
     root = make_root(tmp_path, [write(3)])
     at = lambda m: iso(m)
     ledger = [dict(key="p1", target=1, kind="post", team="c100", status="pending", at=at(-30)),
@@ -420,12 +420,13 @@ def blue_root(tmp_path, own_ids=None, reports=()):
     st = dict(ts=iso(1), mode="auto", why="x", pending=3, cap=30, today={"filed": 9}, waiting=[], rings=[], ledger=ledger)
     if own_ids is not None:
         st["own_ids"] = own_ids
+    st.update(status or {})
     (root / "data" / "blue_status.json").write_text(json.dumps(st))
     (root / "logs" / "blue_reports.jsonl").write_text("".join(json.dumps(r) + "\n" for r in reports))
     ev = [{"ts": iso(180), "points": 7, "message": "Moderation (×0.5 points): 1 upheld account report"},
           {"ts": iso(120), "points": 50, "message": "NPC engagement: 10 likes"},
           {"ts": iso(60), "points": 15, "message": "NPC engagement and moderation: 1 upheld account report"}]
-    (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "events": ev}))
+    (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "events": ev + list(events)}))
     return root
 
 
@@ -453,6 +454,42 @@ def test_blue_timeline_collapses_runs_in_place_and_account_outcomes(tmp_path):
     assert "Own accounts reported: not checked" in html                         # no ids published by swan-blue yet
     assert '<details id="blue">' in html and '<details class="reach" id="reach">' in html   # collapsed by default
     assert 'id="blue-risk"' not in html and "Since 9pm:" not in html            # Marc: less on the page
+
+
+def test_blue_spread_caps_line(tmp_path):
+    spread = dict(held=dict(thread=3, label_pending=2, label_day=3), thread_max=1, label_pending_max=4, label_day_max=10)
+    ctx, html = page(blue_root(tmp_path, status=dict(spread=spread)))
+    line = "spread caps: 1 per thread, 4 pending and 10 a day per cluster; held back now: thread 3, cluster 5"
+    assert ctx["blue"]["spread"] == line and f'<p class="sub">{line}</p>' in html
+    # a cap of 0 is off, whatever the others say; nothing held is shown as 0
+    off = dict(thread_max=0, label_pending_max=0, label_day_max=10)
+    ctx, html = page(blue_root(tmp_path / "off", status=dict(spread=off)))
+    assert ctx["blue"]["spread"] == ("spread caps: thread off, pending off and 10 a day per cluster; "
+                                     "held back now: thread 0, cluster 0") and "pending off and 10 a day" in html
+    # an older status file has no spread block: no line at all
+    ctx, html = page(blue_root(tmp_path / "old"))
+    assert ctx["blue"]["spread"] is None and "spread caps" not in html
+
+
+def test_blue_days_show_the_share_of_awards_paid_reduced(tmp_path):
+    day = lambda d, h, msg: {"ts": f"2026-10-{d}T{h}:00:00+00:00", "type": "SCORE_NARRATIVE", "points": 50, "message": msg}
+    ev = [day(20, "10", "Moderation: 4 first inauthentic reports"),                              # 4 of 4 full, 0% reduced
+          day(21, "10", "Moderation: 3 first inauthentic reports"),
+          day(21, "11", "Moderation (×0.1 points): 3 upheld account reports"),                    # reduced
+          day(21, "12", "Moderation (×0.5 points): 1 inauthentic report")]                        # the day: 3 of 7 full, 57% reduced
+    ctx, html = page(blue_root(tmp_path, events=ev))
+    rows = {r["awards"]: r for r in ctx["blue"]["history"] if r["awards"]}
+    assert (rows[4]["full"], rows[4]["reduced"], rows[4]["reduced_level"]) == (4, 0, "up")
+    assert (rows[7]["full"], rows[7]["reduced"], rows[7]["reduced_level"]) == (3, 57, "warn")
+    assert '<th class="num">Reduced</th>' in html and 'class="num warn" data-l="paid reduced">57%</td>' in html
+    assert 'class="num up" data-l="paid reduced">0%</td>' in html
+
+
+def test_blue_days_reduced_share_is_blank_with_no_awards():
+    now = dt.datetime(2026, 10, 24, 12, tzinfo=build.SYDNEY).astimezone(dt.timezone.utc)
+    days = {"2026-10-23": dict(filed=5, hidden=1, genuine=0, accounts=0, locked_h=0.0)}
+    y = build.blue_days(days, [], now)[-1]
+    assert (y["awards"], y["reduced"], y["reduced_level"]) == (0, None, "")
 
 
 def test_blue_own_account_check(tmp_path):

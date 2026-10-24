@@ -29,7 +29,8 @@ TEAM_PAGE = "/user/teams/170"
 ACTIVITY_CSV = "/user/teams/170/activity.csv"
 TEAM_NAME = "Operation Swan"
 USER_AGENT = "OperationSwan-dashboard/1.0 (team 170)"
-KEEP_EVENTS_H = 48
+KEEP_EVENTS_H = 24 * 16                        # the whole competition (19 Oct - 2 Nov): the Blue days table sums a day's
+                                               # points from this log, and a 48 h window zeroed every day older than that
 LEADERBOARD_LOG = "leaderboard.jsonl"
 LEADERBOARD_KEEP = 24 * 14                     # hourly lines kept (two weeks): the file never grows past this
 

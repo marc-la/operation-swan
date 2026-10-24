@@ -595,6 +595,7 @@ BLUE_BARS = (("filed", 50, "slots: only {v} reports filed (about 70 fit in a day
              ("first", 0.6, "speed: only {v:.0%} paid as first reporter (aim for 80%)"))
 BLUE_LOCKED_H = 14                             # more hours locked than this: genuine rulings cost the day
 BLUE_PER_AWARD = 20                            # under this per paid award: the per-team daily rates are cutting in
+BLUE_REDUCED_WARN = 1 / 3                      # a third or more of a finished day's awards paid reduced: amber (blue-reporting.md §10's trigger; 24 Oct was 46%)
 BLUE_MSG = re.compile(r"moderat|inauthentic|suspen", re.I)
 
 
@@ -731,6 +732,10 @@ def blue_days(days, points, now):
         # sent = post hidden + post genuine + accounts ruled + still waiting (a report is counted on the day it was
         # filed, a ruling on the day it was ruled, so a late-night filing can leave this a little off: never below 0)
         r["pending"] = max(0, r["filed"] - r["hidden"] - r["genuine"] - r["accounts"])
+        # the share of awards paid at a reduced rate (the per-team daily rates cutting in); None when nothing was paid
+        r["reduced"] = round(100 * (r["awards"] - r["full"]) / r["awards"]) if r["awards"] else None
+        r["reduced_level"] = "" if r["today"] or r["reduced"] is None else \
+            "warn" if r["reduced"] >= 100 * BLUE_REDUCED_WARN else "up"
         r["pct"] = round(100 * r["points"] / BLUE_TARGET_DAY)
         r["level"] = "up" if r["pct"] >= 100 * BLUE_GOOD else "warn" if r["pct"] >= 100 * BLUE_POOR else "down"
         if not r["today"] and r["level"] != "up":
@@ -744,6 +749,21 @@ def blue_days(days, points, now):
                 "no single lever is below its bar"
         rows.append(r)
     return rows
+
+
+def spread_line(spread):
+    """One line for the spread caps swan-blue publishes in blue_status.json ('spread'): the caps (0 is off) and how
+    many candidates they kept back in the latest ranking. None for an older status file without the field."""
+    if not isinstance(spread, dict):
+        return None
+    cap = lambda k: spread.get(k) or 0
+    held = spread.get("held") or {}
+    thread, pending, day = cap("thread_max"), cap("label_pending_max"), cap("label_day_max")
+    caps = ", ".join((f"{thread} per thread" if thread else "thread off",
+                      " and ".join((f"{pending} pending" if pending else "pending off",
+                                    f"{day} a day" if day else "a day off")) + " per cluster"))
+    cluster = (held.get("label_pending") or 0) + (held.get("label_day") or 0)
+    return f"spread caps: {caps}; held back now: thread {held.get('thread') or 0}, cluster {cluster}"
 
 
 def blue_panel(data, now, points, day_start, logs=None):
@@ -785,7 +805,7 @@ def blue_panel(data, now, points, day_start, logs=None):
         locked=hm(locked) if locked else None, lock_why=s.get("lock_why"), pending=s.get("pending"), cap=s.get("cap"),
         lock_estimate=s.get("lock_src") == "estimate", ready=ready, ready_accounts=s.get("ready_accounts") or 0,
         pg_max=s.get("pg_max"), pg_check={"n": 0, **(s.get("pg_check") or {})},
-        clusters={"today": 0, "full": 0, **(s.get("clusters") or {})},
+        clusters={"today": 0, "full": 0, **(s.get("clusters") or {})}, spread=spread_line(s.get("spread")),
         next_ruling=hm(nxt) if nxt else None, waiting=waiting, rings=rings,
         teams=len({r.get("team") for r in s.get("rings") or []}),
         ev=round(sum(r.get("ev") or 0 for r in s.get("rings") or [])), approve=BLUE_APPROVE,

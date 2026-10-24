@@ -54,9 +54,17 @@ def test_run_writes_standing_accounts_and_recent_score_events(tmp_path):
     assert (r["rank"], r["score"], r["teams"]) == (3, 31200, 4)
     assert r["above"]["team"] == "Vertex_CTN" and r["below"]["team"] == "swag & co"
     assert r["accounts"] == {"registered": 47, "banned": 1, "max_total": 200, "max_active": 50}
-    assert [e["points"] for e in r["events"]] == [-2, 220, 100]          # newest first, SCORE_* only, last 48 h
+    assert [e["points"] for e in r["events"]] == [-2, 220, 100]          # newest first, SCORE_* only
     written = (root / "data" / "portal.json").read_text()
     assert CODE not in written and "cookievalue123" not in written
+
+
+def test_events_older_than_two_days_are_kept_for_the_blue_days_table(tmp_path):
+    # the days table sums each Sydney day's points from this log: a 48 h window zeroed every day older than that
+    old = "2026-10-19 18:30:00,SCORE_NARRATIVE,+13 points: Moderation: 1 first inauthentic report\n"
+    pages = {**PAGES, portal.ACTIVITY_CSV: CSV + old}
+    r = portal.run(make_root(tmp_path), NOW, get=fake(pages), pause=0)
+    assert [e["points"] for e in r["events"]][-1] == 13
 
 
 def test_score_history_appends_only_on_change(tmp_path):
