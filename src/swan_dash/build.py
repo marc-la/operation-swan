@@ -579,6 +579,7 @@ def fact_desk(root, now=None):
 
 
 # ---- Blue (todo/07, src/swan_blue): only what the team needs to decide ----
+BLUE_FILL_GREEN, BLUE_FILL_AMBER = 0.8, 0.5     # pending reports / the cap: every slot is a ruling coming in 3 h, so empty slots are lost points (Marc, 24 Oct)
 BLUE_STALE_S = 10 * 60                         # swan-blue writes its status every minute
 # Red is down: back to the commit before the running one. swan-update.timer would pull origin/main again within 2 min,
 # so it is paused first; start it again once a fix is pushed.
@@ -860,13 +861,25 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
            f"Drafts passing first time is shown, not graded.",
     conversion="Conversion: are our replies moving people toward No? Net = changes of mind toward us minus away, today.\n"
                "Green: net above 0 · amber: net 0 · red: net below 0.",
-    stealth=f"Stealth: accounts banned today (since 9pm Perth).\n"
-            f"Green: 0-{STEALTH_GREEN_MAX} · amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX} · red: {STEALTH_AMBER_MAX + 1} or more.\n"
-            f"The count of hidden posts is shown but does not change the colour: they already count as bans.\n"
-            f"Hide rate (hidden text posts / text writes, last {HIDE_WINDOW_H} h, writes at least {HIDE_CENSOR_H:g} h old, 95% interval): "
-            f"green when the interval is under {HIDE_TARGET:.1%}, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.\n"
-            f"Writes per ban, runway and the bans-against-plan line are grey: the forecast is under Bot > Accounts by day.\n"
-            f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. Shown under the tile, not counted in its colour (Marc, 24 Oct).")
+    stealth=f"Stealth: accounts the moderator has banned. Big number: all banned so far (the portal's count; its list of names can lag). "
+            f"Small: new bans since 9pm Perth, against today's forecast.\n"
+            f"The colour is today's bans. Green: 0-{STEALTH_GREEN_MAX} · amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX} · red: {STEALTH_AMBER_MAX + 1} or more.\n"
+            f"Hidden posts are shown in the detail but do not change the colour: they already count as bans.\n"
+            f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. In the detail, not counted in the colour (Marc, 24 Oct).",
+    hide=f"Hide rate: hidden text posts / text writes, last {HIDE_WINDOW_H} h, counting writes at least {HIDE_CENSOR_H:g} h old (a hide takes about 3.3 h to show), 95% interval.\n"
+         f"Green when the interval is under the {HIDE_TARGET:.1%} target, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.",
+    life="Writes per ban: how many text writes an account makes before the moderator bans it (median over the last "
+         f"{KM_WINDOW_H} h; accounts still alive count as 'not banned yet'). The bans forecast divides planned writes by this. Not graded.",
+    accounts=f"Accounts: voices writing now, then accounts alive (at most {LIVE_CAP} at once) and registered (at most {TOTAL_CAP} in all).\n"
+             f"Amber: fewer than {VOICES_MIN} voices, or the pool is sagging. Red: the pool is low. A dry-run pool never colours it.\n"
+             f"Hot mode (SWAN_HOT_VOICES): one voice writes on purpose, so the count is not graded. Green: one writing and a spare waiting · amber: no spare left · red: none left, the bot is idle.",
+    blue=f"Blue: reports waiting for a ruling, out of the {{cap}} the team may have pending. Each full slot is a ruling due about 3 h after filing, so the aim is to keep them full.\n"
+         f"Green: {BLUE_FILL_GREEN:.0%} or more full · amber: {BLUE_FILL_AMBER:.0%}-{BLUE_FILL_GREEN:.0%}, or locked for 6 h after a 'genuine' ruling · red: under {BLUE_FILL_AMBER:.0%}, or swan-blue silent.\n"
+         f"Successful and failed are the reports ruled since 9pm Perth (the ledger under Blue). This tile does not change the page's RUNNING / ALERT / DOWN word: the Blue chip does.",
+    spare=f"Spare accounts: registrations left of {TOTAL_CAP}. Runway = spare / the bans a day we plan for today, against the days left "
+          f"(to the end of 2 Nov Sydney = 9pm Perth).\n"
+          f"Also shown: the spare we will have at the end of 31 Oct against the goal for the x4 days.\n"
+          f"Red: runway shorter than the days left. Amber: under {RUNWAY_AMBER_X:g}x the days left, or off track for the goal.")
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
@@ -1081,8 +1094,15 @@ def reach(actions, status, points, now, day_start, notes=None):
         f"≥ {VOLUME_GREEN:.0%} of budget",
         "Below the team budget: is the bot up and are the LLMs answering? Check Bot.")
     voices = (status.get("accounts") or {}).get("voices")
-    if voices is not None:
-        row("volume", "Voices in rotation", "amber" if voices < VOICES_MIN else "green", f"{voices}",
+    hot = hot_roster(status)
+    if hot:                    # hot mode (todo/45): one voice writes at a time on purpose, so the count is not graded against VOICES_MIN
+        spares, lost = len(hot["spares"]), len(hot["lost"])
+        row("accounts", "Hot voice", "red" if not hot["active"] else "amber" if not spares else "green",
+            (f"@{hot['active']} writing" if hot["active"] else "none left: the bot is idle") + f" · {spares} {plural(spares, 'spare')} · {lost} lost",
+            "one live, at least one spare", "No hot voice left: name live ones in SWAN_HOT_VOICES and restart." if not hot["active"]
+            else "Last hot voice: add spares to SWAN_HOT_VOICES before it goes.")
+    elif voices is not None:
+        row("accounts", "Voices in rotation", "amber" if voices < VOICES_MIN else "green", f"{voices}",
             f"≥ {VOICES_MIN} (our guess)", "Few voices: each posts more often and the rate drops. Add accounts.")
     n_lost = sum((f or {}).get("lost", {}).values()) if f else 0
     gate_lost = sum(1 for a in actions if a.get("act") == "lost" and str(a.get("why", "")).startswith("gate:")
@@ -1123,9 +1143,9 @@ def reach(actions, status, points, now, day_start, notes=None):
     heads = dict(speed=f"{mf:.1f} min" if mf is not None else "—",
                  volume=f"{rate:.1f}/min", conversion=f"+{minds['toward']} / −{minds['away']}")
     subs = dict(speed="to reply" if mf is not None else "no replies timed",
-                volume=f"of {budget:g} · {voices if voices is not None else '?'} voices",
-                conversion="toward / away today")
-    items = [dict(key=k, name=k.capitalize(), light=worst(k), head=heads[k], sub=subs[k], tip=LIGHT_TIPS[k],
+                volume=f"of {budget:g} a minute",
+                conversion=f"toward / away today · {minds['neither']} neither")
+    items = [dict(key=k, name=k.capitalize(), light=worst(k), head=heads[k], sub=subs[k], tip=LIGHT_TIPS[k], row=0,
                   rows=[r for r in rows if r["group"] == k]) for k in ("speed", "volume", "conversion")]
     extra = []
     skipped = (f or {}).get("skipped") or {}
@@ -1421,8 +1441,8 @@ def ban_forecast(days, writes_by_day, km, log, now):
 
 
 def stealth_rates(logs, log, acct_days, now):
-    """(rows for the Stealth tile, the ban_forecast dict or None): hide rate with its interval, hides per banned voice,
-    writes per ban, runway, and the bans-against-plan line. "Hidden posts never colour stealth" (Marc, 23 Oct) holds for
+    """(rows for the hide, life and spare tiles, the ban_forecast dict or None, the hide-rate and Kaplan-Meier figures the
+    tiles print): hide rate with its interval, hides per banned voice, writes per ban, runway, and the bans-against-plan line. "Hidden posts never colour stealth" (Marc, 23 Oct) holds for
     the count row; the hide RATE may colour it (a rate with an interval, 24 Oct). The rest is grey: the Pool line and the
     forecast alert carry the account-budget alarm."""
     life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=HIDE_WINDOW_H + 1))
@@ -1432,15 +1452,15 @@ def stealth_rates(logs, log, acct_days, now):
         t = ts(x.get("ts"))
         if t and x.get("username"):
             banned_at[x["username"]] = min(t, banned_at.get(x["username"], t))
-    grey = lambda name, text, target="": dict(group="stealth", name=name, light="grey", now=text, target=target, fix="", note="")
+    grey = lambda name, text, target="", group="stealth": dict(group=group, name=name, light="grey", now=text, target=target, fix="", note="")
     rows = []
     hr = hide_rate(life, hidden, now)
     if hr["rate"] is None:
-        rows.append(grey("Hide rate, last 24 h", "no text writes old enough yet", f"under {HIDE_TARGET:.1%}"))
+        rows.append(grey("Hide rate, last 24 h", "no text writes old enough yet", f"under {HIDE_TARGET:.1%}", "hide"))
     else:
         few = hr["n"] < HIDE_MIN_N
         light = "grey" if few else "green" if hr["hi"] < HIDE_TARGET else "red" if hr["lo"] > HIDE_TARGET else "amber"
-        rows.append(dict(group="stealth", name="Hide rate, last 24 h", light=light, note="",
+        rows.append(dict(group="hide", name="Hide rate, last 24 h", light=light, note="",
                          now=f"{hr['rate']:.2%} [{hr['lo']:.2%}–{hr['hi']:.2%}] · {hr['k']} hidden of {hr['n']} text writes"
                          + (f" · n = {hr['n']}, under {HIDE_MIN_N}: too few to colour" if few else ""),
                          target=f"under {HIDE_TARGET:.1%} (green: the interval is below it · red: above)",
@@ -1448,7 +1468,7 @@ def stealth_rates(logs, log, acct_days, now):
     hp = hides_per_voice(hidden, list(banned_at))
     if hp:
         rows.append(grey("Hides before a ban", f"median {hp['median']:g} per banned voice · {hp['with_hide']} of {hp['n']} had one",
-                         "a lower bound: the watch stops once a voice is suspended"))
+                         "a lower bound: the watch stops once a voice is suspended", "hide"))
     km = None
     if budget is not None:
         try:
@@ -1461,14 +1481,29 @@ def stealth_rates(logs, log, acct_days, now):
         rows.append(grey("Writes per ban", (f"{km['median']:.0f}{ci} text writes" if km.get("median") is not None
                                             else f"too few bans for an estimate (the forecast uses {forecast['wpb']:.0f})" if forecast
                                             else "too few bans for an estimate"),
-                         f"{km['n_banned']} banned, {km['n_alive']} alive in {KM_WINDOW_H} h (alive ones censored); the forecast divides by this"))
+                         f"{km['n_banned']} banned, {km['n_alive']} alive in {KM_WINDOW_H} h (alive ones censored); the forecast divides by this", "life"))
     if forecast and forecast["runway"] is not None:
         rows.append(grey("Runway", f"{forecast['runway']:.1f} d of spare accounts · {forecast['days_left']:.1f} d left",
                          f"{forecast['spare']} spare ÷ {forecast['per_day']:.1f} bans a day "
-                         f"({forecast['planned_today']:.0f} planned writes ÷ {forecast['wpb']:.0f} per ban, {forecast['wpb_src']})"))
+                         f"({forecast['planned_today']:.0f} planned writes ÷ {forecast['wpb']:.0f} per ban, {forecast['wpb_src']})", "spare"))
     if forecast and forecast["summary"]:
-        rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov"))
-    return rows, forecast
+        rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov", "spare"))
+    return rows, forecast, dict(hide=hr, km=km, writes={u: len(ids) for u, ids in life["voice_posts"].items()}, banned=set(banned_at))
+
+
+def plural(n, one, many=None):
+    """'1 spare', '2 spares': the word for n."""
+    return one if n == 1 else many or one + "s"
+
+
+def hot_roster(status):
+    """status.json["hot"] (hot mode, todo/45: one voice writes at a time, the others wait as spares) as
+    {active, spares, lost}, or None when hot mode is off or the field is odd."""
+    h = status.get("hot")
+    if not isinstance(h, dict):
+        return None
+    names = lambda k: [x for x in h.get(k) or [] if isinstance(x, str)] if isinstance(h.get(k), list) else []
+    return dict(active=h["active"] if isinstance(h.get("active"), str) else None, spares=names("spares"), lost=names("lost"))
 
 
 def _num(v):
@@ -1551,6 +1586,126 @@ def audit_rows(audit, now):
         rows.append(dict(group="stealth", name="Worst voices", light="grey", target="", fix="", note="",
                          now=", ".join(f"{short(str(o['voice']), 24)} ({o.get('score')})" for o in offenders)))
     return rows
+
+
+def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool, status, now):
+    """The five tiles for what the writing costs us (Marc, 24 Oct), in the order the cost flows: STEALTH (bans, the total
+    big and today's small; coloured by today's), HIDE RATE (hidden posts per write), WRITES PER BAN (how long an account
+    lives), ACCOUNTS (how many are writing, alive, registered) and SPARE (registrations left, and whether they last).
+    Each is dict(key, name, head, sub, light, tip, rows). The rows are the detail dropdown's; a tile is the worst light of
+    its rows, except Accounts and Spare, which grade their own figures. A dry-run pool never colours a tile."""
+    order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
+    worst = lambda rows: max((r["light"] for r in rows), key=order.get, default="grey")
+    by = lambda g: [r for r in extra_rows if r["group"] == g]
+    hot = hot_roster(status)
+    # ---- stealth: all bans, then today's against the forecast ----
+    today_fc = forecast["per_day"] if forecast and forecast["per_day"] is not None else None
+    stealth = dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], light=worst(srows),
+                   head=f"{ban_no['banned']} banned" if ban_no else f"{bans} bans",
+                   sub=f"{bans} today" + (f" · forecast {today_fc:.0f}" if today_fc is not None else "")
+                   + (f" · list shows {ban_no['listed']}" if ban_no and ban_no["lag"] else ""))
+    # ---- hide rate ----
+    hr = figs["hide"]
+    hide_rows = by("hide")
+    hide = dict(key="hide", name="Hide rate", rows=hide_rows, tip=LIGHT_TIPS["hide"], light=worst(hide_rows[:1]),
+                head=f"{hr['rate']:.2%}" if hr["rate"] is not None else "—",
+                sub=(f"target {HIDE_TARGET:.1%} · {hr['k']} of {hr['n']}" + (f" (n under {HIDE_MIN_N})" if hr["n"] < HIDE_MIN_N else "")) if hr["n"]
+                else f"target {HIDE_TARGET:.1%} · no writes old enough")
+    # ---- writes per ban ----
+    km = figs["km"] or {}
+    med, lo, hi = km.get("median"), km.get("lo"), km.get("hi")
+    life_rows = by("life")
+    hot_lives = []
+    if hot:
+        for u in hot["lost"] + ([hot["active"]] if hot["active"] else []):
+            n = figs["writes"].get(u, 0)
+            hot_lives.append(f"@{u} " + (f"banned after {n}" if u in hot["lost"] else f"{n} so far"))
+        if hot_lives:
+            life_rows = life_rows + [dict(group="life", name="Hot voices", light="grey", now=" · ".join(hot_lives), note="", fix="",
+                                          target="text writes; the median above and the forecast still count every voice")]
+    life = dict(key="life", name="Writes per ban", rows=life_rows, tip=LIGHT_TIPS["life"], light="grey",
+                head=f"{med:.0f}" if med is not None else "—",
+                sub=(f"[{lo:.0f}–{hi:.0f}] · " if lo is not None and hi is not None else "")
+                + (f"hot @{hot['active']}: {figs['writes'].get(hot['active'], 0)} so far" if hot and hot["active"] else
+                   f"plan {forecast['wpb']:.0f}" if forecast and med is None else "text writes before a ban" if med is not None else "too few bans yet"))
+    # ---- accounts: how many are writing out of how many are alive out of how many are registered ----
+    acc = status.get("accounts") or {}
+    voices, boosters = acc.get("voices"), acc.get("boosters")
+    p = pool if pool and not pool["dry_run"] else None
+    pdict = status.get("pool") if isinstance(status.get("pool"), dict) else {}
+    pn = lambda k: _num(pdict.get(k))
+    reg = ban_no["registered"] if ban_no else pn("total_used") if p else acc.get("used")
+    alive = ban_no["registered"] - ban_no["banned"] if ban_no else acc.get("live")
+    target = pn("writers_target")
+    state = pdict.get("state")
+    state_light = dict(healthy="green", sagging="amber", low="red").get(state) if p else None
+    a_rows = [r for r in reach_rows if r["group"] == "accounts"]
+    if reg is not None:
+        spare_n = TOTAL_CAP - reg
+        a_rows.append(dict(group="accounts", name="Registered → alive → writing", light="grey", target="", fix="", note="",
+                           now=f"{reg} registered ({spare_n} spare of {TOTAL_CAP})"
+                           + (f" · {ban_no['text']}" if ban_no else "")
+                           + (f" · {alive} alive (max {LIVE_CAP})" if alive is not None else "")
+                           + (f" · {voices} writing + {boosters} {plural(boosters, 'booster')}" if voices is not None and boosters is not None else "")))
+    if state_light:
+        a_rows.append(dict(group="accounts", name="Pool", light=state_light, target="healthy · sagging (amber) · low (red)", note="",
+                           fix="The pool is short of writers: it registers and warms accounts on its own; check the pool actions below.",
+                           now=f"{state}: {target:g} writers wanted" if target is not None else state))
+    acc_light = max([r["light"] for r in a_rows if r["name"] != "Registered → alive → writing"] or ["grey"], key=order.get)
+    accounts = dict(key="accounts", name="Accounts", rows=a_rows, tip=LIGHT_TIPS["accounts"], light=acc_light,
+                    head=(f"hot @{hot['active']}" if hot["active"] else "none writing") if hot else f"{voices} writing" if voices is not None else "—",
+                    sub=" · ".join(x for x in ((f"{len(hot['spares'])} {plural(len(hot['spares']), 'spare')} · {len(hot['lost'])} lost" if hot else None),
+                                               f"of {target:g} wanted" if p and target is not None and not hot else None,
+                                               f"{alive} alive" if alive is not None else None,
+                                               f"{reg} of {TOTAL_CAP} registered" if reg is not None else None) if x))
+    # ---- spare: registrations left, and whether they last to the end ----
+    spare_n = TOTAL_CAP - reg if reg is not None else forecast["spare"] if forecast and forecast["spare"] is not None else pn("spare_total")
+    runway = forecast["runway"] if forecast and forecast["runway"] is not None else (pn("runway_days") if p else None)
+    left = forecast["days_left"] if forecast and forecast["runway"] is not None else (pn("days_left") if p else None)
+    st = forecast["status"] if forecast else {}
+    ok = st.get("on_track") if st else None
+    goal_txt = None
+    if forecast and st and st.get("delta") is not None:
+        goal_txt = f"{signed(st['delta'])} on the {dt.date.fromisoformat(str(_cfg('RESERVE_DAY', '2026-10-31'))).strftime('%-d %b')} goal of {forecast['goal']}"
+    spare_light = "grey"
+    if runway is not None and left is not None:
+        spare_light = "red" if runway < left else "amber" if runway < RUNWAY_AMBER_X * left or ok is False else "green"
+    elif ok is not None:
+        spare_light = "amber" if ok is False else "green"
+    s_rows = by("spare")
+    if spare_light in ("amber", "red") and s_rows:
+        s_rows[0] = dict(s_rows[0], light=spare_light, fix="Accounts are being lost faster than the spare supply allows: cut writes by hand (runbook, Account budget) or slow the voices.")
+    spare = dict(key="spare", name="Spare accounts", rows=s_rows, tip=LIGHT_TIPS["spare"], light=spare_light,
+                 head=f"{spare_n}" if spare_n is not None else "—",
+                 sub=" · ".join(x for x in ((f"runway {runway:.0f} d of {left:.1f} d left" if runway is not None and left is not None else None), goal_txt) if x))
+    for t, row in ((stealth, 0), (hide, 1), (life, 1), (accounts, 1), (spare, 1)):
+        t["row"] = row
+    return [stealth, hide, life, accounts, spare]
+
+
+def blue_tile(blue):
+    """The Blue tile (Marc, 24 Oct): pending slots filled out of the cap, the number to keep full, with the reports ruled
+    successful and failed since 9pm beside it. Light: fill (BLUE_FILL_GREEN / BLUE_FILL_AMBER); a 6 h lock caps it at amber
+    (the slots cannot refill), a silent swan-blue is red. Grey when swan-blue has no status. Not counted in the page word."""
+    tip = LIGHT_TIPS["blue"]
+    if not blue or blue.get("pending") is None or not blue.get("cap"):
+        row = dict(group="blue", name="Pending slots", light="grey", now="swan-blue has not written a status", target="", fix="", note="")
+        return dict(key="blue", name="Blue", head="—", sub="not running", light="grey", tip=tip.format(cap=30), rows=[row], row=2, fill=None)
+    pend, cap = blue["pending"], blue["cap"]
+    fill = pend / cap
+    light = "green" if fill >= BLUE_FILL_GREEN else "amber" if fill >= BLUE_FILL_AMBER else "red"
+    why = f"{pend} of {cap} slots filled"
+    if blue["locked"]:
+        light, why = ("amber" if light == "green" else light), f"{why}; locked until {blue['locked']}"
+    if blue["stale"]:
+        light, why = "red", f"no status for {blue['ago'].replace(' ago', '')}"
+    c = blue["counts"]
+    row = dict(group="blue", name="Pending slots", light=light, now=why, target=f"{BLUE_FILL_GREEN:.0%}+ full", note="",
+               fix="Slots are empty: " + ("locked, they refill when the lock ends." if blue["locked"] else
+                                          f"{blue['ready']} reports ready; see Blue below for why the rest are not filed."))
+    return dict(key="blue", name="Blue", light=light, tip=tip.format(cap=cap), rows=[row], row=2, fill=fill,
+                head=f"{pend}/{cap} pending",
+                sub=f"{c['success']} successful · {c['failed']} failed" + (f" · locked until {blue['locked']}" if blue["locked"] else ""))
 
 
 def gather(root, now, service):
@@ -1762,22 +1917,19 @@ def gather(root, now, service):
                   target="shown only: hidden posts already show up as bans", fix="", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
                   now=f"{ban_no['text']} of {ban_no['registered']} registered" if ban_no else "—", target="the portal's count; names follow it", fix="", note="")]
-    extra_rows, forecast = stealth_rates(logs, log, acct_days, now)       # todo/42: rates, writes per ban, runway, the plan
-    srows += extra_rows
+    extra_rows, forecast, figs = stealth_rates(logs, log, acct_days, now)       # todo/42: rates, writes per ban, runway, the plan
     pattern = audit_rows(read_json(data / "pattern_audit.json"), now)      # todo/38: how much our writes read like a rota; [] until the audit has run
-    srows += pattern
     for r in pattern:      # shown, never graded (Marc, 24 Oct: bans, hide rate and writes per ban are the stealth numbers)
         r["target"] = (r["target"] + " · " if r.get("target") else "") + f"graded {r['light']}, not counted in the tile"
         r["light"] = "grey"
-    first = lambda name: next((r["now"].split(" · ")[0].split(" [")[0] for r in extra_rows if r["name"] == name), None)
-    hide_txt, wpb_txt = first("Hide rate, last 24 h"), first("Writes per ban")
-    sub = "today" + (f" · {hidden_today} hidden" if hidden_today else "") + (f" · hide rate {hide_txt}" if hide_txt and "%" in hide_txt else "") \
-        + (f" · {wpb_txt.removesuffix(' text writes')} writes a ban" if wpb_txt and wpb_txt[0].isdigit() else "")
-    rc["rows"] += srows
-    rc["fixes"] += [r for r in srows if r["light"] in ("amber", "red")]
+    srows += pattern
+    pool = pool_view(status.get("pool"), now)          # todo/38: None until the pool worker writes status.json["pool"]
+    tiles = cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, rc["rows"], pool, status, now)
+    rc["lights"] += tiles
+    rc["lights"].append(blue_tile(blue))
+    rc["rows"] += srows + extra_rows
+    rc["fixes"] += [r for r in srows + extra_rows if r["light"] in ("amber", "red")]
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
-    rc["lights"].append(dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], head=f"{bans} bans", sub=sub,
-                             light=max((r["light"] for r in srows), key=order.get)))
     for i in rc["lights"]:      # the hover: the rule, then the amber and red rows with their figure and any note (Marc, 23 Oct)
         bad = [f"{r['light'].upper()} {r['name']}: {r['now']}" + (f" (in hand: {r['note']})" if r.get("note") else "")
                for r in i["rows"] if r["light"] in ("amber", "red")]
@@ -1785,12 +1937,10 @@ def gather(root, now, service):
         if i["key"] == "speed":
             split = [f"{r['name'].removeprefix('Where the time goes, ')}: {r['now']}" for r in i["rows"] if r["name"].startswith("Where the time goes")]
             i["tip"] += "\n\nWhere the time goes (median minutes):\n" + "\n".join(split)
-    rc["light"] = max((i["light"] for i in rc["lights"]), key=order.get)
-    pool = pool_view(status.get("pool"), now)          # todo/38: None until the pool worker writes status.json["pool"]
-    levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"]) \
-        + ((pool["light"],) if pool and not pool["dry_run"] else ())      # a dry-run pool is shown, never alarms
+    rc["light"] = max((i["light"] for i in rc["lights"] if i["key"] != "blue"), key=order.get)    # slots are an aim, not an incident
+    levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"])
     return dict(
-        pool=pool,
+        pool=pool, hot=hot_roster(status),
         now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,
         bans=ban_no, forecast=forecast,
         worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
@@ -1815,7 +1965,7 @@ def render(ctx, template="index.html.j2"):
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent / "templates"),
                              autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
-    env.filters["short"], env.filters["hm"], env.filters["signed"] = short, hm, signed
+    env.filters["short"], env.filters["hm"], env.filters["signed"], env.filters["pl"] = short, hm, signed, plural
     return env.get_template(template).render(ctx)
 
 

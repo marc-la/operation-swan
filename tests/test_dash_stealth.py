@@ -141,7 +141,7 @@ def test_hide_rate_row_colours_by_whether_the_interval_clears_the_target(tmp_pat
 def test_hidden_count_row_stays_green_but_the_rate_row_may_colour_the_tile(tmp_path):
     row, ctx = hide_tile(tmp_path, 400, 40)
     assert stealth_row(ctx, "Posts hidden")["light"] == "green"                 # Marc, 23 Oct: the count never colours
-    assert td.light(ctx, "stealth") == "red"                                     # the rate (a rate with an interval) may
+    assert td.light(ctx, "stealth") == "green" and td.light(ctx, "hide") == "red"    # the rate (a rate with an interval) has its own tile (24 Oct)
 
 
 def test_hidden_posts_are_found_in_the_watch_log_and_the_alert_log(tmp_path):
@@ -209,7 +209,8 @@ def test_a_day_with_a_counts_row_but_no_suspended_rows_yet(tmp_path):
     assert (today["new"], today["why"], today["unnamed"], listed) == (3, "", 3, [])
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
     assert "28 banned (list shows 0)" in html and "3 not named yet" in html
-    assert ctx["reach"]["lights"][-1]["head"] == "3 bans"                        # the tile still counts from the counts row
+    stealth = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
+    assert stealth["head"] == "28 banned" and stealth["sub"].startswith("3 today") and "list shows 0" in stealth["sub"]   # all bans big, today's small
     assert stealth_row(ctx, "Banned in total")["now"] == "28 banned (list shows 0) of 75 registered"
     partly = build.account_days(dict(log, suspended=[dict(ts="2026-10-24T03:00:00+00:00", username="a", id=1, why="3 posts hidden")]), T24)[0][0]
     assert partly["unnamed"] == 2 and partly["why"] == "3 posts hidden ×1"
@@ -218,8 +219,10 @@ def test_a_day_with_a_counts_row_but_no_suspended_rows_yet(tmp_path):
 def test_bot_header_stealth_tile_and_accounts_line_say_the_same_number(tmp_path):
     names = [dict(ts="2026-10-24T01:00:00+00:00", username=f"u{i}", id=i, why="reported as a bot") for i in range(21)]
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24(), names), T24)
-    assert html.count("28 banned (list shows 21)") >= 3                          # header, Accounts line, Stealth tile
-    assert "28 banned ·" not in html and "28 banned<" not in html
+    assert html.count("28 banned (list shows 21)") >= 3                          # header, Accounts line, the detail row
+    assert "28 banned ·" not in html                                             # the Stealth tile's big number is the count, its lag is in the small line
+    stealth = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
+    assert stealth["head"] == "28 banned" and "list shows 21" in stealth["sub"]
 
 
 # ---- the forecast: x1, x2 and x4 days ----
@@ -370,17 +373,19 @@ def test_leaderboard_area_shows_the_gap_and_whether_it_is_closing(tmp_path):
     ctx, html = gather(root, NOW)
     assert ctx["board"]["cutoff"] == 40_000 and [w["hours"] for w in ctx["board"]["trend"]["windows"]] == [6, 24]
     text = plain(html)
-    assert "40,000 behind #3" in text and "closing 500 in 6 h (us +3,000, #3 +2,500)" in text
-    assert "widening 4,000 in 24 h (us +10,000, #3 +14,000)" in text
+    assert "40,000 behind #3" in text and "closing 500 in 6 h" in text and "widening 4,000 in 24 h" in text
+    assert "us +3,000, #3 +2,500 in 6 h" in html and "us +10,000, #3 +14,000 in 24 h" in html      # the detail is the hover
+    assert html.index('id="leaderboard"') < html.index('id="activity"')            # between the tiles and Activity (Marc, 24 Oct)
+    assert 'id="leaderboard"' not in html.split('<details id="score">')[1]         # and no longer under Score & targets
     assert [r["rank"] for r in ctx["board"]["finalists"]] == [1, 2, 3]            # the layout is unchanged: top three, a gap, us
 
 
 def test_leaderboard_gap_with_no_history_says_so_and_in_the_top_three_shows_nothing(tmp_path):
     ctx, html = gather(build_root(tmp_path, NOW, [td.write(3)], extra_portal=leaderboard_portal()), NOW)
-    assert ctx["board"]["trend"]["windows"] == [] and "Gap to #3: history building, 0 hourly points so far" in html
+    assert ctx["board"]["trend"]["windows"] == [] and "gap history building (0 points)" in html
     top3 = dict(leaderboard_portal(), rank=3, score=72_000)
     ctx, html = gather(build_root(tmp_path / "b", NOW, [td.write(3)], extra_portal=top3), NOW)
-    assert ctx["board"]["trend"] is None and "we are in the top three" in html
+    assert ctx["board"]["trend"] is None and "in the top three" in html
 
 
 # ---- secrets and missing files ----
@@ -392,7 +397,7 @@ def test_nothing_secret_reaches_the_new_rows_and_missing_files_are_fine(tmp_path
     (root / "data" / "leaderboard.jsonl").write_text(json.dumps(dict(ts=at(T24, 6), score=1, third=2)) + "\n")
     ctx, html = gather(root, T24)
     assert td.CANARY not in html and td.CANARY not in json.dumps(ctx, default=str)
-    assert 'id="acct-plan"' in html and "Hide rate" in html and "Gap to #3" in html
+    assert 'id="acct-plan"' in html and "Hide rate" in html and "behind #3" in html
     # an empty checkout: no logs, no portal file, no history
     empty = tmp_path / "empty"
     for sub in ("logs", "data"):

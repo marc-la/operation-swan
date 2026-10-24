@@ -62,7 +62,7 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); } .reach .dot.grey { background: var(--line); }
 .reach p { margin: 4px 12px; } .reach .fix { color: var(--amber); font-size: 13px; }
 .reach .note { display: block; color: var(--ink); }
-@media (max-width: 640px) { .reach td:last-child { display: none; } }
+@media (max-width: 640px) { .reach td:last-child { display: none; } .light.wide { grid-column: span 2; } }
 .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
 @media (max-width: 640px) { .kpi .val { font-size: 22px; } }
 .lights { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
@@ -73,10 +73,24 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .light[title] { cursor: help; }
 .light .label::after { content: " ⓘ"; opacity: .6; }
 .light.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
-details.poolrow { margin: 0 0 8px; border: 0; border-radius: 8px; font-size: 12px; }
-details.poolrow.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
-details.poolrow summary { padding: 4px 10px; } details.poolrow summary b { margin-right: 4px; }
-details.poolrow div { padding: 0 10px 6px; }
+.light.wide { grid-column: span 2; }
+.light .bar { height: 6px; margin-top: 5px; border-radius: 3px; position: relative; overflow: hidden;
+  background: color-mix(in srgb, currentColor 22%, transparent); }
+.light .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: currentColor; }
+.light .sub { overflow-wrap: anywhere; }
+details.reach .grp { break-inside: avoid; margin: 0 0 8px; }
+details.reach .cols { column-width: 22em; column-gap: 24px; padding: 0 12px 8px; }
+details.reach h4 { margin: 6px 0 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
+details.reach .r { display: grid; grid-template-columns: 12px 1fr; gap: 0 6px; padding: 2px 0; font-size: 13px; }
+details.reach .r .dot { margin-top: 5px; }
+details.reach .r b { font-weight: 600; }
+details.reach .r .why { display: block; color: var(--muted); font-size: 12px; }
+details.reach summary { padding: 6px 12px; }
+.lb { margin: 0 0 10px; padding: 8px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.lb .head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.lb table { font-size: 14px; margin-top: 2px; }
+.lb td { padding: 2px 8px 2px 0; }
+.lb tr:first-child td { border-top: 0; }
 @media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
@@ -279,31 +293,41 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     {% else %}<div class="val">—</div><div class="sub">since {{ day_start }}</div>{% endif %}</div>
 </div>
 
+{% for row in (0, 1, 2) %}
 <div class="lights">
-{% for i in reach.lights %}
-  <div class="light {{ i.light }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div></div>
+{% for i in reach.lights if i.row == row %}
+  <div class="light {{ i.light }}{{ ' wide' if i.key == 'blue' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
 {% endfor %}
 </div>
-{% if pool %}
-<details class="poolrow {{ pool.light }}" id="pool" title="{{ pool.tip }}"><summary><b>{{ pool.head }}</b> {{ pool.sub }}</summary>
-{% for a in pool.acts %}<div>{{ a.when }} · {{ a.act }}{% if a.username %} · @{{ a.username }}{% endif %}</div>
-{% else %}<div>No pool actions yet.</div>
 {% endfor %}
-</details>
-{% endif %}
 <details class="reach" id="reach">
-  <summary><span class="sub">Speed · Volume · Conversion · Stealth: what each light is made of</span></summary>
-  <table>
-  {% for i in reach.lights %}
-    <tr><td colspan="4"><b>{{ i.name }}</b></td></tr>
+  <summary><span class="sub">Detail behind the tiles</span></summary>
+  <div class="cols">
+  {% for i in reach.lights if i.key != 'blue' and (i.rows | length) %}
+    <div class="grp"><h4>{{ i.name }}</h4>
     {% for r in i.rows %}
-    <tr><td><span class="dot {{ r.light }}"></span></td><td>{{ r.name }}</td><td><b>{{ r.now }}</b></td><td class="sub">{{ r.target }}</td></tr>
-    {% endfor %}
+      <div class="r" title="{{ r.target }}"><span class="dot {{ r.light }}"></span><span>{{ r.name }}: <b>{{ r.now }}</b>{% if r.light in ('amber', 'red') %}<span class="why">{% if r.target %}aim: {{ r.target }}{% endif %}{% if r.fix %}{{ ' · ' if r.target }}{{ r.fix }}{% endif %}{% if r.note %} · in hand: {{ r.note }}{% endif %}</span>{% endif %}</span></div>
+    {% endfor %}</div>
   {% endfor %}
-  </table>
-  {% for r in reach.fixes %}<p class="fix">→ {{ r.name }}: {{ r.fix }}{% if r.note %} <span class="note">In hand: {{ r.note }}</span>{% endif %}</p>{% endfor %}
-  {% for x in reach.extra %}<p class="sub">{{ x }}</p>{% endfor %}
+  {% if pool and pool.acts %}<div class="grp"><h4>Pool, last actions</h4>{% for a in pool.acts %}<div class="r"><span></span><span class="sub">{{ a.when }} · {{ a.act }}{% if a.username %} · @{{ a.username }}{% endif %}</span></div>{% endfor %}</div>{% endif %}
+  </div>
+  {% for x in reach.extra %}<p class="sub" style="margin:0 12px 8px">{{ x }}</p>{% endfor %}
 </details>
+
+{% if board %}
+<div class="lb" id="leaderboard">
+  <div class="head"><span class="label">Leaderboard</span>
+    <span class="sub">{% if board.cutoff is not none %}{{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %}<span class="up">in the top three</span>{% endif %} · top 3 go to Sydney{% if board.trend %} · {% if board.trend.windows %}{% for w in board.trend.windows %}{{ ' · ' if not loop.first }}<span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}" title="us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }} in {{ w.hours }} h">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %} in {{ w.hours }} h</span>{% endfor %}{% else %}gap history building ({{ board.trend.points }} point{{ 's' if board.trend.points != 1 }}){% endif %}{% endif %}</span></div>
+  <table class="board">
+    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% endfor %}
+    {% if board.gap %}<tr class="gap"><td colspan="3">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
+      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
+    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
 
 <details id="activity"><summary><b>Activity</b><span class="sub">{{ activity | length }}{% if older %} + {{ older | length }} older critical{% endif %} · newest {{ activity[0].time if activity and activity[0].time }}</span></summary>
 <ol class="activity">
@@ -326,7 +350,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% set bot_warn = llm.degraded or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
   {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
-  {% if bans %}{{ bans.registered }} registered · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · <span class="down">+{{ acct_days[0].new }} today</span>{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} voices
+  {% if bans %}{{ bans.registered }} registered · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · <span class="down">+{{ acct_days[0].new }} today</span>{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>
@@ -336,8 +360,8 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<tr><td class="sub">No status from the bot yet.</td></tr>{% endfor %}
   </table>
   <h3>Accounts</h3>
-  {% if bans %}<p><b>{{ bans.registered }} registered · {{ bans.text }}{% if portal_accounts %} · {{ portal_accounts.max_active }} active max{% endif %}</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} voices · {{ accounts.boosters | n }} boosters</p>
-  {% else %}<p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} voices, {{ accounts.boosters | n }} boosters) · {{ accounts.suspended | n }} suspended</p>{% endif %}
+  {% if bans %}<p><b>{{ bans.registered }} registered · {{ bans.text }}{% if portal_accounts %} · {{ portal_accounts.max_active }} active max{% endif %}</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %} · {{ accounts.boosters | n }} {{ accounts.boosters | pl('booster') }}</p>
+  {% else %}<p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}, {{ accounts.boosters | n }} {{ accounts.boosters | pl('booster') }}) · {{ accounts.suspended | n }} suspended</p>{% endif %}
   <details id="acct-days"><summary><b>Accounts by day</b><span class="sub">{% if acct_days %}{{ acct_days | length }} days{% endif %}</span></summary>
   <div>{% if forecast %}
   <details class="run plan" id="acct-plan"><summary><span class="dots" title="show the days">⋮</span><span class="det">{{ forecast.summary }}</span></summary>
@@ -380,19 +404,6 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if score_lines.rows %}<p class="sub">Total {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }}, from the portal's log. It gives one total an hour; where an hour mixes kinds the split (≈) is ours: Blue by its report counts, the rest by the scoring guide's values.</p>{% endif %}
   {% if milestone %}<p>{{ milestone.name }} ({{ milestone.date }}): leading-side teams with at least {{ milestone.need | n }} points get the award.</p>{% endif %}
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
-  {% if board %}
-  <h3>Leaderboard</h3>
-  <p class="sub">Top three go to Sydney{% if board.cutoff is not none %} · {{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %} · <span class="up">we are in the top three</span>{% endif %}</p>
-  {% if board.trend %}<p class="sub">{% if board.trend.windows %}Gap to #3:{% for w in board.trend.windows %}{{ ' ·' if not loop.first }} <span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %}</span> in {{ w.hours }} h (us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }}){% endfor %}{% else %}Gap to #3: history building, {{ board.trend.points }} hourly point{{ 's' if board.trend.points != 1 }} so far{% endif %}</p>{% endif %}
-  <table class="board">
-    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
-    {% endfor %}
-    {% if board.gap %}<tr class="gap"><td colspan="3">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
-      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
-    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
-    {% endfor %}
-  </table>
-  {% endif %}
   {% if history %}
   <h3>Our score over time</h3>
   <table>
