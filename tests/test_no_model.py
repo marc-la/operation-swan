@@ -91,8 +91,10 @@ def test_old_check_said_available_new_one_does_not(tmp_path, monkeypatch):
 def test_models_restriction_and_empty_chain(tmp_path, monkeypatch):
     gen = make_gen(tmp_path, monkeypatch, spent=10.0)
     park_free(gen, 120)
-    assert gen.no_model_wait(models=("free-a",)) > 100 and gen.no_model_wait(models=(KIMI,)) > 3600
-    assert gen.no_model_wait(priority=True, models=(KIMI,)) > 3600
+    midnight = llm._to_budget_midnight()                        # Kimi is held back by the spent allowance until Sydney midnight: not "over an hour"
+    assert gen.no_model_wait(models=("free-a",)) > 100                   # (in the last hour of the Sydney day midnight is under 3,600 s away)
+    assert abs(gen.no_model_wait(models=(KIMI,)) - midnight) < 5
+    assert abs(gen.no_model_wait(priority=True, models=(KIMI,)) - midnight) < 5
     gen.chain = []
     assert gen.no_model_wait() == 3600.0 and gen.next_available_in() == 3600.0
 
