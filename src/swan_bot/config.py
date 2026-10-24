@@ -588,8 +588,13 @@ BAN_PLAN = {
     "2026-11-01": 4320, "2026-11-02": 4320,
 }
 WRITES_PER_BAN_DEFAULT = 145        # a voice dies at ~145 text writes (bootstrap 127-178; hide-risk-analysis-2026-10-23)
-RESERVE_GOAL = 60                   # spare registrations wanted at the END of RESERVE_DAY: 2 x 4,320 / 145 for the x4 days
-RESERVE_DAY = "2026-10-31"
+# THE BENCHMARK (Marc, 24 Oct): ACCOUNTS LEFT = accounts not banned = alive + not yet registered = 200 - banned. Every account number
+# (dashboard, swan_watch alerts, docs) is in these terms. 60 left at the END of 31 Oct carries the x4 days (2 x 4,320 / 145 = 60 bans).
+LEFT_GOAL = 60
+LEFT_DAY = "2026-10-31"
+# The path Marc steers by: cumulative accounts banned at the END of each Sydney day (140 banned = 60 left). The days between are
+# interpolated (27 Oct 70, 29 Oct 100, 30 Oct 120: our fill, edit freely). Losses to cut: about 10 a day to 28 Oct, 20 a day after.
+BAN_PATH = {"2026-10-24": 40, "2026-10-25": 50, "2026-10-26": 60, "2026-10-28": 80, "2026-10-31": 140}
 BUDGET_END_DAY = "2026-11-02"       # the forecast runs to here (polling day, Sydney)
 BUDGET_KM_MIN_BANS = 10             # fewer measured bans than this: use WRITES_PER_BAN_DEFAULT, not the Kaplan-Meier median
 BUDGET_ALERT_GAP_S = 6 * 3600       # the same alert is not sent again within this

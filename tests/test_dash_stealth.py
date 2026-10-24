@@ -25,8 +25,8 @@ PLAN.update({"2026-11-01": 4320, "2026-11-02": 4320})                      # x1:
 def pinned_budget(monkeypatch):
     monkeypatch.setattr(build, "budget", _budget_stub.MODULE)
     monkeypatch.setattr(build.bot_config, "BAN_PLAN", PLAN, raising=False)
-    monkeypatch.setattr(build.bot_config, "RESERVE_GOAL", 60, raising=False)
-    monkeypatch.setattr(build.bot_config, "RESERVE_DAY", "2026-10-31", raising=False)
+    monkeypatch.setattr(build.bot_config, "LEFT_GOAL", 60, raising=False)
+    monkeypatch.setattr(build.bot_config, "LEFT_DAY", "2026-10-31", raising=False)
     monkeypatch.setattr(build.bot_config, "WRITES_PER_BAN_DEFAULT", 145, raising=False)
     monkeypatch.setattr(build.bot_config, "BUDGET_END_DAY", "2026-11-02", raising=False)
 
@@ -66,6 +66,10 @@ def counts_24(**over):
 
 def plain(html):
     return re.sub(r"\s+([,.·)])", r"\1", " ".join(re.sub(r"<[^>]+>", " ", html).split()))
+
+
+def tile(ctx, key):
+    return next(i for i in ctx["reach"]["lights"] if i["key"] == key)
 
 
 def stealth_row(ctx, name):
@@ -141,7 +145,7 @@ def test_hide_rate_row_colours_by_whether_the_interval_clears_the_target(tmp_pat
 def test_hidden_count_row_stays_green_but_the_rate_row_may_colour_the_tile(tmp_path):
     row, ctx = hide_tile(tmp_path, 400, 40)
     assert stealth_row(ctx, "Posts hidden")["light"] == "green"                 # Marc, 23 Oct: the count never colours
-    assert td.light(ctx, "stealth") == "green" and td.light(ctx, "hide") == "red"    # the rate (a rate with an interval) has its own tile (24 Oct)
+    assert td.light(ctx, "stealth") == "grey" and td.light(ctx, "hide") == "red"    # the rate (a rate with an interval) has its own tile; no path on 22 Oct
 
 
 def test_hidden_posts_are_found_in_the_watch_log_and_the_alert_log(tmp_path):
@@ -210,7 +214,8 @@ def test_a_day_with_a_counts_row_but_no_suspended_rows_yet(tmp_path):
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
     assert "28 banned (list shows 0)" in html and "3 not named yet" in html
     stealth = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert stealth["head"] == "28 banned" and stealth["sub"].startswith("3 today") and "list shows 0" in stealth["sub"]   # all bans big, today's small
+    assert stealth["head"] == "28 banned" and stealth["sub"] == "3 today · path 36 now (−8)"                              # all bans big, today's and the path (prorated to now) small
+    assert "list shows 0" in stealth_row(ctx, "Banned in total")["now"]                                              # the lag is in the detail
     assert stealth_row(ctx, "Banned in total")["now"] == "28 banned (list shows 0) of 75 registered"
     partly = build.account_days(dict(log, suspended=[dict(ts="2026-10-24T03:00:00+00:00", username="a", id=1, why="3 posts hidden")]), T24)[0][0]
     assert partly["unnamed"] == 2 and partly["why"] == "3 posts hidden ×1"
@@ -219,10 +224,10 @@ def test_a_day_with_a_counts_row_but_no_suspended_rows_yet(tmp_path):
 def test_bot_header_stealth_tile_and_accounts_line_say_the_same_number(tmp_path):
     names = [dict(ts="2026-10-24T01:00:00+00:00", username=f"u{i}", id=i, why="reported as a bot") for i in range(21)]
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24(), names), T24)
-    assert html.count("28 banned (list shows 21)") >= 3                          # header, Accounts line, the detail row
-    assert "28 banned ·" not in html                                             # the Stealth tile's big number is the count, its lag is in the small line
+    assert html.count("28 banned (list shows 21)") >= 3                          # header, Accounts line, the detail rows
+    assert "28 banned ·" not in html                                             # one number: wherever it is written it carries its lag
     stealth = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert stealth["head"] == "28 banned" and "list shows 21" in stealth["sub"]
+    assert stealth["head"] == "28 banned" and "list shows" not in stealth["sub"]    # the tile stays short; the lag is in the detail
 
 
 # ---- the forecast: x1, x2 and x4 days ----
@@ -239,12 +244,15 @@ def test_forecast_rows_for_the_x1_x2_and_x4_days(tmp_path):
     assert rows["2026-10-26"]["forecast"] == pytest.approx(24.0)
     assert rows["2026-11-01"]["forecast"] == pytest.approx(4320 / 145)
     assert all(rows[d]["src"] == "plan" and rows[d]["planned"] for d in rows if d >= "2026-10-24")
-    assert rows["2026-10-23"]["forecast"] is None and rows["2026-10-23"]["spare"] == 127        # history: actual balance, no forecast
-    # the balance chain starts from the counts at the START of today (48 alive, 127 spare) and each ban takes a spare registration
-    assert (rows["2026-10-24"]["alive"], rows["2026-10-24"]["spare"]) == (48, 111)
-    assert rows["2026-10-25"]["spare"] == 95 and rows["2026-10-26"]["spare"] == 71
-    assert rows["2026-10-29"]["spare"] == 0 and rows["2026-10-31"]["alive"] < 48     # the spares run out: alive starts to fall
-    assert rows["2026-10-31"]["goal_delta"] == -60 and rows["2026-10-30"]["goal_delta"] is None
+    assert rows["2026-10-23"]["forecast"] is None and (rows["2026-10-23"]["banned"], rows["2026-10-23"]["left"]) == (25, 175)   # history: actual
+    # the chain starts from the counts NOW (28 banned, 172 left at 17:00 Sydney) and today's plan cut to the 7/24 of the day left
+    today_bans = 2320 * (1 - 17 / 24) / 145                                            # 4.67 more bans tonight
+    assert (rows["2026-10-24"]["left"], rows["2026-10-24"]["banned"], rows["2026-10-24"]["est"]) == (167, 33, True)
+    assert rows["2026-10-25"]["left"] == round(172 - today_bans - 16) == 151 and rows["2026-10-26"]["left"] == 127
+    assert rows["2026-10-29"]["left"] == 55 and rows["2026-10-31"]["left"] == 7
+    assert [rows[d]["path"] for d in ("2026-10-24", "2026-10-27", "2026-10-31", "2026-11-01")] == [40, 70, 140, None]      # BAN_PATH, interpolated, then none
+    assert rows["2026-10-24"]["over"] == -7
+    assert rows["2026-10-31"]["goal_delta"] == pytest.approx(172 - today_bans - 16 - 6 * 24 - 60) and rows["2026-10-30"]["goal_delta"] is None
     assert ctx["forecast"]["status"]["on_track"] is False
 
 
@@ -255,7 +263,7 @@ def test_today_compares_bans_so_far_with_the_forecast_for_the_part_of_the_day_go
     due = 16.0 * 17 / 24                                                          # 17:00 Sydney
     assert today["net"] == pytest.approx(3 - due) and today["tol"] == 5 and today["level"] == "up"     # well under: green
     s = ctx["forecast"]["summary"]
-    assert s.startswith("bans today 3 · forecast 16 · net −8 · spare 125 · off track for 31 Oct: −60")
+    assert s.startswith("bans today 3 · forecast 16 · net −8 · left 172 · 31 Oct: 7 left vs 60 wanted (−53)")
     assert "acct-plan" in html and "⋮" in html and s in html
 
 
@@ -283,8 +291,8 @@ def test_on_track_when_the_plan_leaves_the_reserve(tmp_path, monkeypatch):
     monkeypatch.setattr(build.bot_config, "BAN_PLAN", light, raising=False)
     ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
     f = ctx["forecast"]
-    assert f["status"]["on_track"] is True and f["status"]["delta"] == pytest.approx(127 - 8 * 6 - 60)
-    assert "on track for 31 Oct: +19" in f["summary"] and not any("off track" in a for a in f["alerts"])
+    assert f["status"]["on_track"] is True and f["status"]["delta"] == pytest.approx(172 - 6 * (1 - 17 / 24) - 7 * 6 - 60)
+    assert "31 Oct: 128 left vs 60 wanted (+68)" in f["summary"] and not any("off track" in a for a in f["alerts"])
 
 
 def test_alert_when_bans_run_over_the_forecast(tmp_path):
@@ -292,7 +300,7 @@ def test_alert_when_bans_run_over_the_forecast(tmp_path):
     counts[-1] = dict(counts[-1], banned=25 + 30)                                   # 30 bans in a day against 16
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts), T24)
     assert any("running over forecast" in a for a in ctx["forecast"]["alerts"])
-    assert any("off track" in a for a in ctx["forecast"]["alerts"]) and "running over forecast" in html
+    assert any("is off track" in a for a in ctx["forecast"]["alerts"]) and "running over forecast" in html
 
 
 def test_a_day_without_a_plan_uses_actual_writes_then_the_three_day_average(tmp_path, monkeypatch):
@@ -317,13 +325,14 @@ def test_without_the_budget_module_the_old_table_stays(tmp_path, monkeypatch):
     assert "Writes per ban" not in [r["name"] for r in ctx["reach"]["rows"]]
 
 
-def test_runway_and_the_summary_row_on_the_stealth_tile(tmp_path):
+def test_time_left_plan_and_the_summary_row_on_the_accounts_left_tile(tmp_path):
     ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
-    runway = stealth_row(ctx, "Runway")
-    assert runway["light"] == "grey"                                                # informational: the Pool line carries the alarm
-    assert runway["now"].startswith(f"{125 / 16:.1f} d of spare accounts · ") and " d left" in runway["now"]
-    assert "125 spare ÷ 16.0 bans a day (2320 planned writes ÷ 145 per ban, default)" in runway["target"]
+    left = tile(ctx, "left")
+    assert left["head"] == "172" and left["light"] == "red" and left["sub"].startswith("runs out in 7.5 d")
+    assert stealth_row(ctx, "Time left")["target"] == "to the end of 2 Nov Sydney = 9pm Perth, Mon 2 Nov" and stealth_row(ctx, "Time left")["now"].endswith(" d")
+    assert stealth_row(ctx, "Plan today")["now"].startswith("2320 writes ÷ 145 per ban (default) = 16.0 bans")
     assert stealth_row(ctx, "Bans against the plan")["now"].startswith("bans today 3 · forecast 16")
+    assert tile(ctx, "stealth")["light"] == "green"            # 28 banned against a path of 36 so far: under it
 
 
 # ---- hides per voice before a ban ----
@@ -404,3 +413,57 @@ def test_nothing_secret_reaches_the_new_rows_and_missing_files_are_fine(tmp_path
         (empty / sub).mkdir(parents=True)
     ctx, html = gather(empty, T24)
     assert ctx["forecast"] is None and ctx["bans"] is None and "Swan" in html
+
+
+# ---- accounts LEFT: the one term (Marc, 24 Oct) = not banned = alive + not yet registered = 200 - banned ----
+def with_banned(banned, registered=75):
+    counts = counts_24()
+    counts[-1] = dict(counts[-1], banned=banned, registered=registered)
+    return counts
+
+
+def test_stealth_tile_colours_by_the_gap_to_the_ban_path(tmp_path):
+    # 17:00 Sydney: the path runs 25 (end of 23 Oct) to 40 (tonight), so 35.6 by now; green up to 3 over, amber up to 8, red beyond
+    for banned, want in ((28, "green"), (38, "green"), (39, "amber"), (43, "amber"), (44, "red")):
+        ctx, _ = gather(build_root(tmp_path / str(banned), T24, [text_write(T24, 6, 1)], with_banned(banned)), T24)
+        t = tile(ctx, "stealth")
+        assert t["light"] == want and t["head"] == f"{banned} banned", banned
+    assert "path 36 now (+" in t["sub"] and "Banned against the path" in [r["name"] for r in t["rows"]]
+    ctx, _ = gather(build_root(tmp_path / "late", T24 + dt.timedelta(days=9), [text_write(T24, 6, 1)], with_banned(44)), T24 + dt.timedelta(days=9))
+    assert tile(ctx, "stealth")["light"] == "grey"                                    # no path after 31 Oct: nothing to colour by
+
+
+def test_accounts_left_tile_is_200_minus_banned_against_the_goal_on_31_oct(tmp_path):
+    ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
+    t = tile(ctx, "left")
+    assert t["head"] == "172" and t["light"] == "red" and t["sub"] == "runs out in 7.5 d · 9.3 d left"       # the forecast is the runway: no goal text on the tile
+    assert "31 Oct" in t["tip"] and ctx["forecast"]["runway"] == pytest.approx(0.2917 + 7 + 7.333 / (4320 / 145), abs=0.01)
+    assert "7 forecast against 60 wanted (−53)" in stealth_row(ctx, "Accounts left on 31 Oct")["now"]       # the goal is in the detail, not on the tile
+    assert ctx["forecast"]["left_now"] == 200 - 28 and ctx["bans"]["left"] == 172
+
+
+def test_accounts_left_amber_when_a_little_short_and_green_when_on_the_goal(tmp_path, monkeypatch):
+    for per_day_writes, want in ((870, "green"), (2320, "amber"), (2800, "red")):
+        monkeypatch.setattr(build.bot_config, "BAN_PLAN", {k: per_day_writes for k in PLAN}, raising=False)
+        ctx, _ = gather(build_root(tmp_path / str(per_day_writes), T24, [text_write(T24, 6, 1)], counts_24()), T24)
+        assert tile(ctx, "left")["light"] == want, (per_day_writes, ctx["forecast"]["status"])
+
+
+def test_a_pool_of_twenty_accounts_is_read_in_the_same_terms(tmp_path):
+    counts = counts_24()
+    counts[-1] = dict(counts[-1], registered=25, banned=5)                          # 20 alive, 175 not yet registered
+    ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts), T24)
+    assert tile(ctx, "left")["head"] == "195" and tile(ctx, "stealth")["light"] == "green"        # well under the path
+    acc = tile(ctx, "accounts")
+    assert "20 alive" in acc["sub"] and "Swan" in html
+    assert stealth_row(ctx, "Accounts left")["now"].startswith("195 left = 20 alive + 175 not yet registered")
+
+
+def test_runway_is_the_days_until_accounts_left_runs_out_on_the_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr(build.bot_config, "BAN_PLAN", {k: 870 for k in PLAN}, raising=False)      # 6 bans a day: 172 last past 2 Nov
+    ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
+    t = tile(ctx, "left")
+    assert ctx["forecast"]["runway"] is None and t["sub"] == "lasts to the end · 9.3 d left" and t["light"] == "green"
+    monkeypatch.setattr(build.bot_config, "BAN_PLAN", {k: 145 * 43 for k in PLAN}, raising=False)  # 43 bans a day: 172 gone in 4 days
+    ctx, _ = gather(build_root(tmp_path / "b", T24, [text_write(T24, 6, 1)], counts_24()), T24)
+    assert ctx["forecast"]["runway"] == pytest.approx(172 / 43, abs=0.05) and tile(ctx, "left")["sub"].startswith("runs out in 4.0 d")

@@ -13,7 +13,7 @@ A moderator-hidden post answers 404 "post not found" and drops out of its author
   ring     hourly: scripts/ring_audit.py's score on our last amplified posts and on Trending (others' posts only).
            Alert when our median reaches the leaders' median: that's when Blue reporters rank us next to them.
   budget   every run: the account forecast (swan_bot/budget.py, todo/39) to config.BUDGET_END_DAY and an alert when the
-           spare registrations on config.RESERVE_DAY fall under config.RESERVE_GOAL or bans run over the forecast. It
+           accounts left (not banned) on config.LEFT_DAY fall under config.LEFT_GOAL or bans run over the forecast. It
            changes nothing; Marc cuts writes by hand (runbook "Account budget").
 """
 import collections
@@ -302,7 +302,7 @@ def budget_report(now, writes, records, portal):
     if today in plan:
         plan[today] = full_today * budget.day_left_fraction(now)
     days = budget.forecast_days(plan, wpb, alive, spare, first, last) if span else []
-    status = budget.reserve_status(days, config.RESERVE_GOAL, config.RESERVE_DAY)
+    status = budget.reserve_status(days, config.LEFT_GOAL, config.LEFT_DAY)
     stamps = {u: t for u, t in names.items() if t is not None}
     for r in records:                                  # a suspension the portal's names have not shown yet
         t = budget.epoch(r.get("suspended_at"))
@@ -312,7 +312,7 @@ def budget_report(now, writes, records, portal):
     forecast24 = full_today / wpb
     return dict(ts=now, day=today, alive=alive, spare=spare, writes_per_ban=wpb, measured=measured, km=km, days=days,
                 status=status, actual_bans_24h=actual, forecast_bans_24h=forecast24,
-                alerts=budget.ban_alert(actual, forecast24, status, config.RESERVE_DAY))
+                alerts=budget.ban_alert(actual, forecast24, status, config.LEFT_DAY))
 
 
 def budget_run(now, writes, records, *, alert, record, dry=False):

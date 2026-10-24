@@ -62,22 +62,25 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .reach .dot.amber { background: var(--amber); } .reach .dot.red { background: var(--red); } .reach .dot.grey { background: var(--line); }
 .reach p { margin: 4px 12px; } .reach .fix { color: var(--amber); font-size: 13px; }
 .reach .note { display: block; color: var(--ink); }
-@media (max-width: 640px) { .reach td:last-child { display: none; } .light.wide { grid-column: span 2; } }
+@media (max-width: 640px) { .reach td:last-child { display: none; } }
 .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
 @media (max-width: 640px) { .kpi .val { font-size: 22px; } }
-.lights { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
-.light { border-radius: 8px; padding: 6px 10px; min-width: 0; }
-.light .label { color: inherit; opacity: .85; }
-.light .val { font-size: 16px; font-weight: 700; line-height: 1.2; }
-.light .label, .light .sub { font-size: 11px; }
+.lights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.light, .light.green, .light.amber, .light.red, .light.grey { background: var(--card); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 12px; min-width: 0; min-height: 78px; }
+.light .label { display: flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.light .label::before { content: ""; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.light.green .label::before { background: var(--green); } .light.amber .label::before { background: var(--amber); }
+.light.red .label::before { background: var(--red); }
+.light .label::after { content: "ⓘ"; opacity: .5; margin-left: auto; }
+.light .val { font-size: 20px; font-weight: 700; line-height: 1.2; margin-top: 1px; }
+.light.amber .val { color: var(--amber); } .light.red .val { color: var(--red); }
+.light .sub { font-size: 12px; overflow-wrap: anywhere; }
 .light[title] { cursor: help; }
-.light .label::after { content: " ⓘ"; opacity: .6; }
-.light.grey { background: var(--card); color: var(--muted); border: 1px solid var(--line); }
-.light.wide { grid-column: span 2; }
-.light .bar { height: 6px; margin-top: 5px; border-radius: 3px; position: relative; overflow: hidden;
-  background: color-mix(in srgb, currentColor 22%, transparent); }
-.light .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: currentColor; }
-.light .sub { overflow-wrap: anywhere; }
+.light .bar { height: 6px; margin-top: 6px; border-radius: 3px; position: relative; overflow: hidden; background: var(--line); }
+.light .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--muted); }
+.light.blue-tile .bar i { background: var(--blue); }
+.light.blue-tile.amber .val, .light.blue-tile.red .val { color: var(--ink); }   /* Blue is a track, not a red alert: the dot says how it is */
 details.reach .grp { break-inside: avoid; margin: 0 0 8px; }
 details.reach .cols { column-width: 22em; column-gap: 24px; padding: 0 12px 8px; }
 details.reach h4 { margin: 6px 0 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
@@ -91,7 +94,7 @@ details.reach summary { padding: 6px 12px; }
 .lb table { font-size: 14px; margin-top: 2px; }
 .lb td { padding: 2px 8px 2px 0; }
 .lb tr:first-child td { border-top: 0; }
-@media (max-width: 640px) { .lights { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .lights { grid-template-columns: 1fr; } .light { min-height: 0; } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
 .kpi .val { font-size: 28px; font-weight: 700; line-height: 1.15; margin: 2px 0; }
@@ -296,7 +299,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% for row in (0, 1, 2) %}
 <div class="lights">
 {% for i in reach.lights if i.row == row %}
-  <div class="light {{ i.light }}{{ ' wide' if i.key == 'blue' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
+  <div class="light {{ i.light }}{{ ' blue-tile' if i.key == 'blue' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
 {% endfor %}
 </div>
 {% endfor %}
@@ -350,7 +353,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% set bot_warn = llm.degraded or accounts.suspended or errors.rate_limited %}
 <details id="bot"><summary><b>Bot</b><span class="sub {{ 'warn' if bot_warn else '' }}">
   {% if llm.busiest %}{{ llm.busiest.model }} ({{ llm.busiest.calls | n }} calls today){% else %}{{ llm.model or 'no LLM' }}{% endif %} ·
-  {% if bans %}{{ bans.registered }} registered · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · <span class="down">+{{ acct_days[0].new }} today</span>{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}
+  {% if bans %}{{ bans.left }} left · {{ bans.text }}{% if acct_days and acct_days[0].today and acct_days[0].new > 0 %} · <span class="down">+{{ acct_days[0].new }} today</span>{% endif %}{% else %}{{ accounts.live | n }}/{{ accounts.live_cap }} accounts{% endif %} · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}
   {% if errors.rate_limited %} · {{ errors.rate_limited }} rate-limited{% endif %}</span></summary>
 <div>
   <h3>LLMs</h3>
@@ -360,25 +363,24 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% else %}<tr><td class="sub">No status from the bot yet.</td></tr>{% endfor %}
   </table>
   <h3>Accounts</h3>
-  {% if bans %}<p><b>{{ bans.registered }} registered · {{ bans.text }}{% if portal_accounts %} · {{ portal_accounts.max_active }} active max{% endif %}</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %} · {{ accounts.boosters | n }} {{ accounts.boosters | pl('booster') }}</p>
+  {% if bans %}<p><b>{{ bans.left }} left · {{ bans.text }} · {{ bans.registered }} registered{% if portal_accounts %} · {{ portal_accounts.max_active }} active max{% endif %}</b> <span class="sub">(the portal)</span> · {{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %} · {{ accounts.boosters | n }} {{ accounts.boosters | pl('booster') }}</p>
   {% else %}<p>{{ accounts.live | n }} live of {{ accounts.live_cap }} ({{ accounts.voices | n }} {{ accounts.voices | pl('voice') }}{% if hot %} (hot){% endif %}, {{ accounts.boosters | n }} {{ accounts.boosters | pl('booster') }}) · {{ accounts.suspended | n }} suspended</p>{% endif %}
   <details id="acct-days"><summary><b>Accounts by day</b><span class="sub">{% if acct_days %}{{ acct_days | length }} days{% endif %}</span></summary>
   <div>{% if forecast %}
   <details class="run plan" id="acct-plan"><summary><span class="dots" title="show the days">⋮</span><span class="det">{{ forecast.summary }}</span></summary>
   <table class="days plan">
-    <tr><th>Day (9pm–9pm Perth)</th><th class="num">Registered</th><th class="num">Banned</th><th class="num">New bans</th><th class="num">Forecast</th><th class="num">Net</th><th class="num">Alive</th><th class="num">Spare</th><th class="num">vs goal</th><th>Why</th></tr>
+    <tr><th>Day (9pm–9pm Perth)</th><th class="num">New bans</th><th class="num">Forecast</th><th class="num">Net</th><th class="num">Banned</th><th class="num">Path</th><th class="num">vs path</th><th class="num">Left</th><th>Why</th></tr>
     {% for d in forecast.rows %}<tr class="{{ 'today' if d.today }}{{ ' future' if d.future }}"><td>{{ d.day }}{% if d.today %} (so far){% endif %}{% if d.planned %}<br><span class="sub">×{{ d.mult }} · {{ d.planned | round | int | n }} writes ({{ d.src }})</span>{% endif %}</td>
-      <td class="num" data-l="registered">{% if d.reg is not none %}{{ d.reg }} <span class="sub">{{ '+' if d.new_reg > 0 }}{{ d.new_reg }}</span>{% endif %}</td>
-      <td class="num" data-l="banned">{{ d.banned if d.banned is not none }}</td>
       <td class="num {{ 'down' if d.actual else '' }}" data-l="new bans">{% if d.actual is not none %}{{ '+' if d.actual > 0 }}{{ d.actual }}{% endif %}</td>
       <td class="num" data-l="forecast">{{ '%.1f' % d.forecast if d.forecast is not none }}</td>
       <td class="num {{ d.level }}" data-l="net"{% if d.tol is not none %} title="within ±{{ d.tol }} counts as on forecast"{% endif %}>{% if d.net is not none %}{{ d.net | signed }} <span class="sub">±{{ d.tol }}</span>{% endif %}</td>
-      <td class="num" data-l="alive">{{ d.alive if d.alive is not none }}</td>
-      <td class="num" data-l="spare">{{ d.spare if d.spare is not none }}</td>
-      <td class="num {{ 'up' if d.goal_delta is not none and d.goal_delta >= 0 else 'down' if d.goal_delta is not none }}" data-l="vs goal">{% if d.goal_delta is not none %}{{ d.goal_delta | signed }} <span class="sub">of {{ forecast.goal }}</span>{% endif %}</td>
+      <td class="num" data-l="banned">{% if d.banned is not none %}{{ '≈' if d.est }}{{ d.banned }}{% endif %}</td>
+      <td class="num" data-l="path">{{ d.path | round | int if d.path is not none }}</td>
+      <td class="num {{ 'down' if d.over is not none and d.over > 0 else 'up' if d.over is not none and d.over < 0 }}" data-l="vs path">{% if d.over is not none %}{{ d.over | signed }}{% endif %}</td>
+      <td class="num" data-l="left">{% if d.left is not none %}{{ '≈' if d.est }}{{ d.left }}{% if d.goal_delta is not none %} <span class="{{ 'up' if d.goal_delta >= 0 else 'down' }}">{{ d.goal_delta | signed }} <span class="sub">of {{ forecast.goal | round | int }}</span></span>{% endif %}{% endif %}</td>
       <td class="sub">{{ d.why }}{% if d.unnamed %}{{ ' · ' if d.why }}<span class="warn">{{ d.unnamed }} not named yet</span>{% endif %}</td></tr>{% endfor %}
   </table>
-  <p class="sub">Forecast = planned writes ÷ {{ forecast.wpb | round | int }} writes per ban ({{ forecast.wpb_src }}); planned writes are <code>BAN_PLAN</code> in config.py (a day without one: its actual writes, or the last 3 days' average). Alive and spare are end of day: actual to yesterday, forecast from today (each ban takes a spare registration). Net is bans so far against the forecast for the part of the day gone, plus or minus 1.5 standard deviations (at least 2).</p>
+  <p class="sub">Accounts left = not banned = alive + not yet registered = 200 − banned; the benchmark is {{ forecast.goal | round | int }} left at the end of {{ forecast.goal_day }}. Forecast = planned writes ÷ {{ forecast.wpb | round | int }} writes per ban ({{ forecast.wpb_src }}); planned writes are <code>BAN_PLAN</code> in config.py (a day without one: its actual writes, or the last 3 days' average). Path is <code>BAN_PATH</code>, the banned total to steer by (days between its entries are in a straight line). Banned and left are end of day: actual to yesterday, forecast from today (≈), starting from the count now so today's overshoot carries on. Net is bans so far against the forecast for the part of the day gone, plus or minus 1.5 standard deviations (at least 2).</p>
   </details>
   {% for a in forecast.alerts %}<p class="sub warn">{{ a }}</p>{% endfor %}
   {% elif acct_days %}<table>

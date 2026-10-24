@@ -1,15 +1,17 @@
 """Account budget (todo/39, 2026-10-24): how many accounts the planned writing will cost, and whether the reserve for the
 x4 days (1-2 Nov) survives. A FORECAST and an ALERT only: nothing here throttles or blocks the pool. Marc cuts writes by
 hand (POOL_WRITERS / SWAN_VOICE_WRITES_PER_DAY, runbook "Account budget"). PURE: no I/O, no clock, no globals; the
-caller passes the voices, the plan and the time. swan_bot/config.py holds the numbers (BAN_PLAN, RESERVE_GOAL...),
+caller passes the voices, the plan and the time. swan_bot/config.py holds the numbers (BAN_PLAN, LEFT_GOAL, BAN_PATH...),
 scripts/swan_watch.py runs it every 20 min, the dashboard (todo/42) shows it.
 
   km_writes_per_ban   the life of a voice in writes: Kaplan-Meier median of writes at ban (a ban is the event, a voice
                       still alive is censored at its writes so far) with a seeded bootstrap interval. 23 Oct: ~145 [127, 178]
   forecast_days       per Sydney day: planned writes / writes-per-ban = bans; each ban takes one spare registration to
                       replace it while spare lasts, so alive stays at its cap until spare is 0
-  reserve_status      spare at the end of the reserve day against the goal
-  ban_alert           plain sentences when the reserve is off track or the last 24 h ran well over the forecast
+  reserve_status      accounts LEFT at the end of the goal day against the goal. "Left" is the one term for the account
+                      budget (Marc, 24 Oct): accounts not banned = alive + not yet registered = allowance - banned
+  ban_path            the cumulative-bans path Marc steers by (config.BAN_PATH), interpolated between its given days
+  ban_alert           plain sentences when accounts left is off track or the last 24 h ran well over the forecast
 """
 import datetime as dt
 import math
@@ -86,7 +88,7 @@ def plan_for_day(plan, day):
 
 def forecast_days(plan, writes_per_ban, alive, spare, first_day, last_day):
     """One row per Sydney day, first_day to last_day inclusive: {"day", "planned_writes", "forecast_bans" (planned writes /
-    writes_per_ban, a float), "alive_end", "spare_end"}. alive and spare are the counts at the start of first_day. Each
+    writes_per_ban, a float), "alive_end", "spare_end", "left_end" (alive_end + spare_end: accounts not banned)}. alive and spare are the counts at the start of first_day. Each
     forecast ban is replaced by one spare registration while spare > 0 (the pool holds alive at its cap), so alive only
     falls once spare is 0. Days missing from plan use plan_for_day's fallback. Days are 'YYYY-MM-DD' strings or dates."""
     if not writes_per_ban or writes_per_ban <= 0:
@@ -100,41 +102,54 @@ def forecast_days(plan, writes_per_ban, alive, spare, first_day, last_day):
         spare -= replaced
         alive = max(0.0, alive - (bans - replaced))
         rows.append({"day": day.isoformat(), "planned_writes": planned, "forecast_bans": bans,
-                     "alive_end": alive, "spare_end": spare})
+                     "alive_end": alive, "spare_end": spare, "left_end": alive + spare})
         day += dt.timedelta(days=1)
     return rows
 
 
-def reserve_status(days, reserve_goal, reserve_day):
-    """{"spare_on_reserve_day", "goal", "delta" (spare - goal), "on_track" (delta >= 0)} from the row of reserve_day (spare
-    at the END of that day). A reserve_day not in days gives None for spare, delta and on_track."""
-    row = next((r for r in days if str(r["day"]) == str(_date(reserve_day).isoformat())), None)
+def reserve_status(days, left_goal, goal_day):
+    """{"left_on_day", "goal", "delta" (left - goal), "on_track" (delta >= 0)} from the row of goal_day: accounts left (not
+    banned: alive plus not yet registered) at the END of that day. A goal_day not in days gives None for left, delta
+    and on_track."""
+    row = next((r for r in days if str(r["day"]) == str(_date(goal_day).isoformat())), None)
     if row is None:
-        return {"spare_on_reserve_day": None, "goal": reserve_goal, "delta": None, "on_track": None}
-    spare = row["spare_end"]
-    return {"spare_on_reserve_day": spare, "goal": reserve_goal, "delta": spare - reserve_goal,
-            "on_track": spare - reserve_goal >= 0}
+        return {"left_on_day": None, "goal": left_goal, "delta": None, "on_track": None}
+    left = row["left_end"]
+    return {"left_on_day": left, "goal": left_goal, "delta": left - left_goal, "on_track": left - left_goal >= 0}
+
+
+def ban_path(path, day):
+    """Cumulative bans Marc steers by at the END of a Sydney day: path is {'YYYY-MM-DD': bans}, a few given days with the
+    days between interpolated in a straight line. None before the first given day or after the last (no path there)."""
+    pts = sorted((_date(k), float(v)) for k, v in (path or {}).items())
+    d = _date(day)
+    if not pts or d < pts[0][0] or d > pts[-1][0]:
+        return None
+    for (d0, v0), (d1, v1) in zip(pts, pts[1:] + [pts[-1]]):
+        if d0 <= d <= d1:
+            return v0 if d1 == d0 else v0 + (v1 - v0) * (d - d0).days / (d1 - d0).days
+    return None
 
 
 def _n(x):
     return f"{x:.0f}"
 
 
-def ban_alert(actual_bans_24h, forecast_bans_24h, status, reserve_day=None):
-    """Plain sentences, [] when there is nothing to say. One when the reserve is off track (status["on_track"] is False),
-    one when the last 24 h of bans is over OVER_FACTOR x the forecast and at least OVER_MIN_BANS. reserve_day (optional,
+def ban_alert(actual_bans_24h, forecast_bans_24h, status, goal_day=None):
+    """Plain sentences, [] when there is nothing to say. One when accounts left is off track (status["on_track"] is False),
+    one when the last 24 h of bans is over OVER_FACTOR x the forecast and at least OVER_MIN_BANS. goal_day (optional,
     a 'YYYY-MM-DD') only names the date in the text."""
     out = []
     if status and status.get("on_track") is False:
-        when = f" on {_date(reserve_day).strftime('%d %b')}" if reserve_day else " on the reserve day"
-        out.append(f"Account reserve is off track: forecast {_n(status['spare_on_reserve_day'])} spare registrations"
+        when = f" on {_date(goal_day).strftime('%d %b')}" if goal_day else " on the goal day"
+        out.append(f"Accounts left is off track: forecast {_n(status['left_on_day'])} not banned (alive plus not yet registered)"
                    f"{when} against the goal of {_n(status['goal'])} ({_n(-status['delta'])} short). "
                    f"To close it, cut planned writes by hand (runbook 'Account budget': POOL_WRITERS, SWAN_VOICE_WRITES_PER_DAY) "
                    f"and update config.BAN_PLAN.")
     if actual_bans_24h >= OVER_MIN_BANS and actual_bans_24h > OVER_FACTOR * forecast_bans_24h:
         out.append(f"Bans are running over forecast: {_n(actual_bans_24h)} accounts banned in the last 24 h against "
                    f"{_n(forecast_bans_24h)} forecast (alert at more than {OVER_FACTOR}x). "
-                   f"The spare count falls faster than the plan assumes.")
+                   f"Accounts left falls faster than the plan assumes.")
     return out
 
 

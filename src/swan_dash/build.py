@@ -828,8 +828,10 @@ VOLUME_GREEN, VOLUME_AMBER = 0.7, 0.35     # share of the team's 3 writes a minu
 CATCHUP_BUCKET_S = 600         # speed leaves out catch-up: a post made in a 10 min bucket where we wrote under VOLUME_AMBER of budget
                                # (the box stalled, drafting starved) and then answered later than the bar (Marc, 23 Oct)
 REACH_SHARE = 0.9              # answered / answerable, and drafts passing on the first LLM call
-STEALTH_GREEN_MAX, STEALTH_AMBER_MAX = 5, 10  # new bans since 9pm Perth: 0-5 green, 6-10 amber, 11+ red (Marc, 23 Oct; the 200 allowance over 14 days is ~14 a day)
 # ---- stealth as rates, and the bans forecast against a plan (todo/42, Marc 24 Oct) ----
+PATH_GREEN_X, PATH_GREEN_MIN = 0.08, 3      # bans over the path now: green up to max(MIN, X of the path so far)...
+PATH_AMBER_X, PATH_AMBER_MIN = 0.20, 8      # ...amber up to max(MIN, X), red beyond (a share of the path, so it holds for any pool size)
+LEFT_AMBER_SHORT = 10                       # accounts left forecast on the goal day short of the goal by up to this: amber; more: red
 HIDE_TARGET = getattr(bot_config, "HIDE_RATE_TARGET", 0.014)   # hidden text posts / text writes: 1.4% now, 1.0% after todo/40
 HIDE_WINDOW_H = 24             # trailing window of writes for the hide rate
 HIDE_CENSOR_H = 3.6            # a hide takes ~3.3 h to show: only writes at least this old are counted (hide-risk analysis)
@@ -842,6 +844,7 @@ TEXT_WRITES = frozenset(WRITES) - {"repost"}   # replies, posts, threads: what a
 LIFE_ACTS = frozenset(a.encode() for a in (*WRITES, "suspended"))
 AUDIT_STALE_S = 4 * 3600       # data/pattern_audit.json (scripts/pattern_audit.py): older than this the pattern rows go grey
 RUNWAY_AMBER_X = 1.5           # pool runway (days of spare accounts at today's loss rate) under days left: red; under 1.5x: amber
+BUDGET_END_PERTH = "9pm Perth, Mon 2 Nov"      # the end of 2 Nov Sydney (midnight Sydney = 9pm Perth), for the days-left rows
 POOL_ACTS = 5                  # the pool worker's last actions shown behind the Pool line
 VOICES_MIN = 10                # a guess: fewer writers than this and throughput drops
 MIND = re.compile(r"(\d+) (.*)")
@@ -862,9 +865,9 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
     conversion="Conversion: are our replies moving people toward No? Net = changes of mind toward us minus away, today.\n"
                "Green: net above 0 · amber: net 0 · red: net below 0.",
     stealth=f"Stealth: accounts the moderator has banned. Big number: all banned so far (the portal's count; its list of names can lag). "
-            f"Small: new bans since 9pm Perth, against today's forecast.\n"
-            f"The colour is today's bans. Green: 0-{STEALTH_GREEN_MAX} · amber: {STEALTH_GREEN_MAX + 1}-{STEALTH_AMBER_MAX} · red: {STEALTH_AMBER_MAX + 1} or more.\n"
-            f"Hidden posts are shown in the detail but do not change the colour: they already count as bans.\n"
+            f"Small: new bans since 9pm Perth, then the path we steer by (config.BAN_PATH: 40 banned by tonight, 50, 60, 80 on 28 Oct, 140 on 31 Oct) and how far over or under it we are.\n"
+            f"The colour is the gap to the path now: green up to {PATH_GREEN_X:.0%} of it (at least {PATH_GREEN_MIN}) over · amber up to {PATH_AMBER_X:.0%} (at least {PATH_AMBER_MIN}) · red beyond. Grey when there is no path for the day.\n"
+            f"Hidden posts and today's bans are shown in the detail but do not change the colour.\n"
             f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. In the detail, not counted in the colour (Marc, 24 Oct).",
     hide=f"Hide rate: hidden text posts / text writes, last {HIDE_WINDOW_H} h, counting writes at least {HIDE_CENSOR_H:g} h old (a hide takes about 3.3 h to show), 95% interval.\n"
          f"Green when the interval is under the {HIDE_TARGET:.1%} target, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.",
@@ -874,12 +877,14 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
              f"Amber: fewer than {VOICES_MIN} voices, or the pool is sagging. Red: the pool is low. A dry-run pool never colours it.\n"
              f"Hot mode (SWAN_HOT_VOICES): one voice writes on purpose, so the count is not graded. Green: one writing and a spare waiting · amber: no spare left · red: none left, the bot is idle.",
     blue=f"Blue: reports waiting for a ruling, out of the {{cap}} the team may have pending. Each full slot is a ruling due about 3 h after filing, so the aim is to keep them full.\n"
-         f"Green: {BLUE_FILL_GREEN:.0%} or more full · amber: {BLUE_FILL_AMBER:.0%}-{BLUE_FILL_GREEN:.0%}, or locked for 6 h after a 'genuine' ruling · red: under {BLUE_FILL_AMBER:.0%}, or swan-blue silent.\n"
-         f"Successful and failed are the reports ruled since 9pm Perth (the ledger under Blue). This tile does not change the page's RUNNING / ALERT / DOWN word: the Blue chip does.",
-    spare=f"Spare accounts: registrations left of {TOTAL_CAP}. Runway = spare / the bans a day we plan for today, against the days left "
-          f"(to the end of 2 Nov Sydney = 9pm Perth).\n"
-          f"Also shown: the spare we will have at the end of 31 Oct against the goal for the x4 days.\n"
-          f"Red: runway shorter than the days left. Amber: under {RUNWAY_AMBER_X:g}x the days left, or off track for the goal.")
+         f"Green: {BLUE_FILL_GREEN:.0%} or more full · amber: {BLUE_FILL_AMBER:.0%}-{BLUE_FILL_GREEN:.0%} · red: under {BLUE_FILL_AMBER:.0%}, or swan-blue silent · grey: locked for 6 h after a 'genuine' ruling (nothing to do).\n"
+         f"Successful and failed are the reports ruled since 9pm Perth (the ledger under Blue). No tile changes the page's RUNNING / ALERT / DOWN word; the banners do.",
+    left=f"Accounts left: accounts not banned = alive + not yet registered = {TOTAL_CAP} - banned. The one term for the account budget.\n"
+         f"Big number: left now. Small: how long they last on the plan (planned writes / writes per ban, from the count now), against the days left.\n"
+         f"The colour is the benchmark: forecast left at the end of 31 Oct against the goal of 60, which carries the x4 days.\n"
+         f"Days left run to the end of 2 Nov Sydney = 9pm Perth.\n"
+         f"Green: on or above the goal · amber: short by up to {LEFT_AMBER_SHORT} · red: short by more.")
+
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
 NOMODEL_SHORT_MIN, NOMODEL_LONG_MIN = 10, 30   # windows for no_model drops and live writes
@@ -1098,7 +1103,7 @@ def reach(actions, status, points, now, day_start, notes=None):
     if hot:                    # hot mode (todo/45): one voice writes at a time on purpose, so the count is not graded against VOICES_MIN
         spares, lost = len(hot["spares"]), len(hot["lost"])
         row("accounts", "Hot voice", "red" if not hot["active"] else "amber" if not spares else "green",
-            (f"@{hot['active']} writing" if hot["active"] else "none left: the bot is idle") + f" · {spares} {plural(spares, 'spare')} · {lost} lost",
+            (f"@{hot['active']} writing" if hot["active"] else "none left: the bot is idle") + f" · {spares} standby · {lost} lost",
             "one live, at least one spare", "No hot voice left: name live ones in SWAN_HOT_VOICES and restart." if not hot["active"]
             else "Last hot voice: add spares to SWAN_HOT_VOICES before it goes.")
     elif voices is not None:
@@ -1195,7 +1200,7 @@ def ban_figures(log, accounts):
         return None
     listed = len({x.get("id") or x.get("username") for x in (log or {}).get("suspended") or []}) if rows else None
     lag = max(src["banned"] - listed, 0) if listed is not None else 0       # no activity log: nothing to compare with
-    return dict(registered=src["registered"], banned=src["banned"], listed=listed, lag=lag,
+    return dict(registered=src["registered"], banned=src["banned"], listed=listed, lag=lag, left=TOTAL_CAP - src["banned"],
                 text=f"{src['banned']} banned" + (f" (list shows {listed})" if lag else ""))
 
 
@@ -1348,18 +1353,21 @@ def _cfg(name, default):
 
 
 def ban_forecast(days, writes_by_day, km, log, now):
-    """The bans forecast against the plan (todo/39, todo/42), from account_days' rows. Per Sydney day from the first day
-    on the portal to the end of the budget (config.BUDGET_END_DAY): planned writes (config.BAN_PLAN; a day not in it
-    takes that day's actual writes if it is over, else the average of the last 3 complete days), forecast bans =
-    planned / writes per ban, the actual, the net with its tolerance, and the balance (alive, spare registrations) at
-    the end of the day: actual for past days, forecast for today and after, the forecast starting from the counts at
-    the start of today. budget.py (pure) does the maths; None when it is not there or nothing can be planned.
-    Today's net compares the bans so far with the forecast for the share of the day gone."""
+    """The bans forecast against the plan (todo/39, todo/42), from account_days' rows, in the one account term: ACCOUNTS LEFT
+    = not banned = alive + not yet registered = allowance - banned (Marc, 24 Oct). Per Sydney day from the first day on
+    the portal to the end of the budget (config.BUDGET_END_DAY): planned writes (config.BAN_PLAN; a day not in it takes
+    that day's actual writes if it is over, else the average of the last 3 complete days), forecast bans = planned / writes
+    per ban, the actual, the net with its tolerance, then banned (cumulative), the path (config.BAN_PATH) and left at
+    the end of the day: actual for past days, forecast for today and after. The forecast starts from the counts NOW with
+    today's plan cut to the part of the day left, as swan_watch does, so the day's overshoot carries on. budget.py (pure)
+    does the maths; None when it is not there or nothing can be planned. Today's net compares the bans so far with the
+    forecast for the share of the day gone."""
     if budget is None or not days:
         return None
     today = now.astimezone(SYDNEY).date()
     end = dt.date.fromisoformat(str(_cfg("BUDGET_END_DAY", "2026-11-02")))
-    goal, rday = _cfg("RESERVE_GOAL", 60), str(_cfg("RESERVE_DAY", "2026-10-31"))
+    goal, gday = _cfg("LEFT_GOAL", 60), str(_cfg("LEFT_DAY", "2026-10-31"))
+    path = _cfg("BAN_PATH", {}) or {}
     by_date, first = {d["date"]: d for d in days}, dt.date.fromisoformat(days[-1]["date"])
     start, one = min(FORECAST_FROM, today), dt.timedelta(days=1)
     med = (km or {}).get("median") if ((km or {}).get("n_banned") or 0) >= KM_MIN_BANS else None
@@ -1381,63 +1389,85 @@ def ban_forecast(days, writes_by_day, km, log, now):
         k = (start + i * one).isoformat()
         if k not in plan:                         # a day with nothing planned or known takes the last given value
             plan[k], src[k] = plan[max((p for p in plan if p < k), default=min(plan))], "carried"
+    elapsed = min((now - sydney_midnight(today)).total_seconds() / 86400, 1.0)
+    latest = by_date.get(today.isoformat())
     def at(day):                                  # (alive, spare) at the start of `day`, from the end of the day before
         row = by_date.get((day - one).isoformat())
         return (row["registered"] - row["banned"], TOTAL_CAP - row["registered"]) if row else (0, TOTAL_CAP)
+    now_counts = (latest["registered"] - latest["banned"], TOTAL_CAP - latest["registered"]) if latest else at(today)
     try:
         rows = {}
         if start < today:
             rows.update({str(r["day"]): r for r in budget.forecast_days(plan, wpb, *at(start), start.isoformat(), (today - one).isoformat())})
-        fut = budget.forecast_days(plan, wpb, *at(today), today.isoformat(), max(end, today).isoformat())
-        rows.update({str(r["day"]): r for r in fut})
-        status = budget.reserve_status(fut, goal, rday)
+        day_fc = {str(r["day"]): r for r in budget.forecast_days(plan, wpb, *at(today), today.isoformat(), max(end, today).isoformat())}
+        rows.update(day_fc)                       # forecast bans a day, and today's net, from the day's start
+        plan_now = dict(plan, **{today.isoformat(): plan[today.isoformat()] * max(1 - elapsed, 0.0)})
+        ahead = {str(r["day"]): r for r in budget.forecast_days(plan_now, wpb, *now_counts, today.isoformat(), max(end, today).isoformat())}
+        status = budget.reserve_status(list(ahead.values()), goal, gday)
     except (ValueError, KeyError, TypeError):
         return None
-    elapsed = min((now - sydney_midnight(today)).total_seconds() / 86400, 1.0)
     out, d = [], first
     while d <= max(end, today):
         k, a, f = d.isoformat(), by_date.get(d.isoformat()), rows.get(d.isoformat())
         row = dict(date=k, day=perth_span(d), today=d == today, future=d > today, actual=a["new"] if a else None,
-                   reg=a["registered"] if a else None, banned=a["banned"] if a else None,
-                   new_reg=a["new_reg"] if a else 0, why=a["why"] if a else "", unnamed=a["unnamed"] if a else 0,
+                   why=a["why"] if a else "", unnamed=a["unnamed"] if a else 0,
                    mult=next((m for md, m in reversed(MULTIPLIERS) if md <= d), 1), planned=None, src="", forecast=None,
-                   net=None, tol=None, level="", alive=None, spare=None, goal_delta=None)
+                   net=None, tol=None, level="", banned=None, est=False, left=None, path=budget.ban_path(path, d),
+                   over=None, goal_delta=None)
         if a and d < today:
-            row.update(alive=a["registered"] - a["banned"], spare=TOTAL_CAP - a["registered"])
+            row.update(banned=a["banned"], left=TOTAL_CAP - a["banned"])
+        elif d >= today and k in ahead:
+            left = max(round(ahead[k]["left_end"]), 0)
+            row.update(banned=TOTAL_CAP - left, left=left, est=True)
         if f:
             row.update(planned=f["planned_writes"], src=src.get(k, ""), forecast=f["forecast_bans"])
-            if d >= today:
-                row.update(alive=max(round(f["alive_end"]), 0), spare=max(round(f["spare_end"]), 0))
             if a and d <= today:
                 due = f["forecast_bans"] * (elapsed if d == today else 1)
                 row.update(net=a["new"] - due, tol=max(2, round(BAN_TOL_SIGMA * math.sqrt(due))))
                 row["level"] = "down" if row["net"] > row["tol"] else "up" if row["net"] < -row["tol"] else ""
-        if k == rday and d >= today and status.get("delta") is not None:
+        if row["path"] is not None and row["banned"] is not None:
+            row["over"] = row["banned"] - row["path"]
+        if k == gday and d >= today and status.get("delta") is not None:
             row["goal_delta"] = status["delta"]
         out.append(row)
         d += one
     now_row = next((r for r in out if r["today"]), None)
-    latest = by_date.get(today.isoformat())
-    spare_now = TOTAL_CAP - latest["registered"] if latest else None
+    runway, prev, passed = None, float(sum(now_counts)), 0.0       # days from now until accounts left reaches 0 on the plan
+    for k in sorted(ahead):
+        frac = (1 - elapsed) if k == today.isoformat() else 1.0
+        end_left = ahead[k]["left_end"]
+        if end_left <= 0 and prev > 0:
+            runway = passed + frac * prev / (prev - end_left)
+            break
+        prev, passed = end_left, passed + frac
+    banned_now = latest["banned"] if latest else None
+    left_now = TOTAL_CAP - banned_now if banned_now is not None else None
     per_day = (now_row["forecast"] if now_row else None)
-    left = (sydney_midnight(end + one) - now).total_seconds() / 86400
-    runway = spare_now / per_day if spare_now is not None and per_day else None
+    left_days = (sydney_midnight(end + one) - now).total_seconds() / 86400
+    # steering: bans so far against the path, the path prorated from the start of the day to its end value tonight
+    path_end = now_row["path"] if now_row else None
+    start_banned = by_date[(today - one).isoformat()]["banned"] if (today - one).isoformat() in by_date else (
+        banned_now - latest["new"] if latest else None)
+    path_now = (start_banned + (path_end - start_banned) * elapsed
+                if path_end is not None and start_banned is not None else None)
+    over_now = banned_now - path_now if banned_now is not None and path_now is not None else None
     try:
-        alerts = budget.ban_alert(bans_since(log, now), per_day or 0, status)
+        alerts = budget.ban_alert(bans_since(log, now), per_day or 0, status, gday)
     except (ValueError, KeyError, TypeError):
         alerts = []
     ok = status.get("on_track")
-    label = dt.date.fromisoformat(rday).strftime("%-d %b")
+    label = dt.date.fromisoformat(gday).strftime("%-d %b")
     summary = " · ".join(x for x in (
         f"bans today {now_row['actual']}" if now_row and now_row["actual"] is not None else None,
         f"forecast {now_row['forecast']:.0f}" if per_day is not None else None,
         f"net {signed(now_row['net'])}" if now_row and now_row["net"] is not None else None,
-        f"spare {spare_now}" if spare_now is not None else None,
-        (f"{'on' if ok else 'off'} track for {label}: {signed(status['delta'])}" if ok is not None
-         else f"{label} reserve: day passed" if dt.date.fromisoformat(rday) < today else None)) if x)
+        f"left {left_now}" if left_now is not None else None,
+        (f"{label}: {status['left_on_day']:.0f} left vs {goal:g} wanted ({signed(status['delta'])})" if ok is not None
+         else f"{label} goal: day passed" if dt.date.fromisoformat(gday) < today else None)) if x)
     return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src="Kaplan-Meier" if med else "default",
-                goal=goal, status=status, runway=runway, days_left=left, per_day=per_day,
-                planned_today=now_row["planned"] if now_row else None, spare=spare_now)
+                goal=goal, goal_day=label, status=status, days_left=left_days, runway=runway, per_day=per_day,
+                planned_today=now_row["planned"] if now_row else None, left_now=left_now, banned_now=banned_now,
+                spare=TOTAL_CAP - latest["registered"] if latest else None, path_end=path_end, path_now=path_now, over_now=over_now)
 
 
 def stealth_rates(logs, log, acct_days, now):
@@ -1482,13 +1512,14 @@ def stealth_rates(logs, log, acct_days, now):
                                             else f"too few bans for an estimate (the forecast uses {forecast['wpb']:.0f})" if forecast
                                             else "too few bans for an estimate"),
                          f"{km['n_banned']} banned, {km['n_alive']} alive in {KM_WINDOW_H} h (alive ones censored); the forecast divides by this", "life"))
-    if forecast and forecast["runway"] is not None:
-        rows.append(grey("Runway", f"{forecast['runway']:.1f} d of spare accounts · {forecast['days_left']:.1f} d left",
-                         f"{forecast['spare']} spare ÷ {forecast['per_day']:.1f} bans a day "
-                         f"({forecast['planned_today']:.0f} planned writes ÷ {forecast['wpb']:.0f} per ban, {forecast['wpb_src']})", "spare"))
+    if forecast:
+        rows.append(grey("Time left", f"{forecast['days_left']:.1f} d", f"to the end of 2 Nov Sydney = {BUDGET_END_PERTH}", "left"))
+        if forecast["per_day"] is not None:
+            rows.append(grey("Plan today", f"{forecast['planned_today']:.0f} writes ÷ {forecast['wpb']:.0f} per ban ({forecast['wpb_src']}) = {forecast['per_day']:.1f} bans",
+                             "config.BAN_PLAN and the measured writes per ban", "left"))
     if forecast and forecast["summary"]:
-        rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov", "spare"))
-    return rows, forecast, dict(hide=hr, km=km, writes={u: len(ids) for u, ids in life["voice_posts"].items()}, banned=set(banned_at))
+        rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov", "left"))
+    return rows, forecast, dict(hide=hr, km=km)
 
 
 def plural(n, one, many=None):
@@ -1589,21 +1620,33 @@ def audit_rows(audit, now):
 
 
 def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool, status, now):
-    """The five tiles for what the writing costs us (Marc, 24 Oct), in the order the cost flows: STEALTH (bans, the total
-    big and today's small; coloured by today's), HIDE RATE (hidden posts per write), WRITES PER BAN (how long an account
-    lives), ACCOUNTS (how many are writing, alive, registered) and SPARE (registrations left, and whether they last).
-    Each is dict(key, name, head, sub, light, tip, rows). The rows are the detail dropdown's; a tile is the worst light of
-    its rows, except Accounts and Spare, which grade their own figures. A dry-run pool never colours a tile."""
+    """The tiles for what the writing costs us (Marc, 24 Oct), one account term throughout: ACCOUNTS LEFT = not banned =
+    alive + not yet registered = 200 - banned. Rows of three: HIDE RATE -> WRITES PER BAN -> STEALTH (bans against the
+    path), then ACCOUNTS (writing, standby, alive) and ACCOUNTS LEFT (against the goal on 31 Oct); Blue follows in
+    blue_tile. Each is dict(key, name, head, sub, light, tip, rows, row). A dot carries the light, not the tile's fill. A
+    dry-run pool never colours a tile."""
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
     worst = lambda rows: max((r["light"] for r in rows), key=order.get, default="grey")
     by = lambda g: [r for r in extra_rows if r["group"] == g]
     hot = hot_roster(status)
-    # ---- stealth: all bans, then today's against the forecast ----
-    today_fc = forecast["per_day"] if forecast and forecast["per_day"] is not None else None
-    stealth = dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], light=worst(srows),
+    f = forecast or {}
+    # ---- stealth: all bans, against the path Marc steers by ----
+    over, path_now, path_end = f.get("over_now"), f.get("path_now"), f.get("path_end")
+    if over is None:
+        path_light = "grey"
+    else:
+        path_light = ("green" if over <= max(PATH_GREEN_MIN, PATH_GREEN_X * path_now) else
+                      "amber" if over <= max(PATH_AMBER_MIN, PATH_AMBER_X * path_now) else "red")
+    if over is not None:
+        path_row = dict(group="stealth", name="Banned against the path", light=path_light, note="",
+                        now=f"{ban_no['text'] if ban_no else str(f['banned_now']) + ' banned'} · the path is {path_now:.0f} by now ({signed(over)}), {path_end:.0f} by tonight",
+                        target=f"within {max(PATH_GREEN_MIN, PATH_GREEN_X * path_now):.0f} green · {max(PATH_AMBER_MIN, PATH_AMBER_X * path_now):.0f} amber (config.BAN_PATH)",
+                        fix="Losing accounts faster than the path allows: the levers are fewer writes a voice and a lower hide rate (todo/39, todo/40).")
+        srows = [path_row] + srows
+    stealth = dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], light=path_light if over is not None else "grey",
                    head=f"{ban_no['banned']} banned" if ban_no else f"{bans} bans",
-                   sub=f"{bans} today" + (f" · forecast {today_fc:.0f}" if today_fc is not None else "")
-                   + (f" · list shows {ban_no['listed']}" if ban_no and ban_no["lag"] else ""))
+                   sub=f"{bans} today" + (f" · path {path_now:.0f} now ({signed(over)})" if over is not None
+                                          else f" · forecast {f['per_day']:.0f} a day" if f.get("per_day") is not None else ""))
     # ---- hide rate ----
     hr = figs["hide"]
     hide_rows = by("hide")
@@ -1615,72 +1658,61 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
     km = figs["km"] or {}
     med, lo, hi = km.get("median"), km.get("lo"), km.get("hi")
     life_rows = by("life")
-    hot_lives = []
-    if hot:
-        for u in hot["lost"] + ([hot["active"]] if hot["active"] else []):
-            n = figs["writes"].get(u, 0)
-            hot_lives.append(f"@{u} " + (f"banned after {n}" if u in hot["lost"] else f"{n} so far"))
-        if hot_lives:
-            life_rows = life_rows + [dict(group="life", name="Hot voices", light="grey", now=" · ".join(hot_lives), note="", fix="",
-                                          target="text writes; the median above and the forecast still count every voice")]
     life = dict(key="life", name="Writes per ban", rows=life_rows, tip=LIGHT_TIPS["life"], light="grey",
                 head=f"{med:.0f}" if med is not None else "—",
-                sub=(f"[{lo:.0f}–{hi:.0f}] · " if lo is not None and hi is not None else "")
-                + (f"hot @{hot['active']}: {figs['writes'].get(hot['active'], 0)} so far" if hot and hot["active"] else
-                   f"plan {forecast['wpb']:.0f}" if forecast and med is None else "text writes before a ban" if med is not None else "too few bans yet"))
-    # ---- accounts: how many are writing out of how many are alive out of how many are registered ----
+                sub=((f"[{lo:.0f}–{hi:.0f}] · " if lo is not None and hi is not None else "") + "median, text writes") if med is not None
+                else f"too few bans · the plan assumes {f['wpb']:.0f}" if f else "too few bans yet")
+    # ---- accounts: how many are writing ----
     acc = status.get("accounts") or {}
-    voices, boosters = acc.get("voices"), acc.get("boosters")
+    voices = acc.get("voices")
     p = pool if pool and not pool["dry_run"] else None
     pdict = status.get("pool") if isinstance(status.get("pool"), dict) else {}
     pn = lambda k: _num(pdict.get(k))
+    banned = ban_no["banned"] if ban_no else None
     reg = ban_no["registered"] if ban_no else pn("total_used") if p else acc.get("used")
     alive = ban_no["registered"] - ban_no["banned"] if ban_no else acc.get("live")
     target = pn("writers_target")
-    state = pdict.get("state")
-    state_light = dict(healthy="green", sagging="amber", low="red").get(state) if p else None
+    state_light = dict(healthy="green", sagging="amber", low="red").get(pdict.get("state")) if p else None
     a_rows = [r for r in reach_rows if r["group"] == "accounts"]
     if reg is not None:
-        spare_n = TOTAL_CAP - reg
-        a_rows.append(dict(group="accounts", name="Registered → alive → writing", light="grey", target="", fix="", note="",
-                           now=f"{reg} registered ({spare_n} spare of {TOTAL_CAP})"
-                           + (f" · {ban_no['text']}" if ban_no else "")
-                           + (f" · {alive} alive (max {LIVE_CAP})" if alive is not None else "")
-                           + (f" · {voices} writing + {boosters} {plural(boosters, 'booster')}" if voices is not None and boosters is not None else "")))
+        left_n = TOTAL_CAP - banned if banned is not None else None
+        a_rows.append(dict(group="accounts", name="Accounts left = alive + not yet registered", light="grey", target="", fix="", note="",
+                           now=(f"{left_n} left" if left_n is not None else "—")
+                           + (f" = {alive} alive + {TOTAL_CAP - reg} not yet registered" if alive is not None else "")
+                           + (f" · {ban_no['text']} of {TOTAL_CAP}" if ban_no else f" · {reg} registered of {TOTAL_CAP}")))
+        a_rows.append(dict(group="accounts", name="Alive", light="grey", target="", fix="", note="",
+                           now=(f"{alive} alive (max {LIVE_CAP})" if alive is not None else "—")
+                           + (f" = {voices} writing + {acc.get('boosters')} {plural(acc.get('boosters') or 0, 'booster')}" if voices is not None and acc.get("boosters") is not None else "")))
     if state_light:
         a_rows.append(dict(group="accounts", name="Pool", light=state_light, target="healthy · sagging (amber) · low (red)", note="",
                            fix="The pool is short of writers: it registers and warms accounts on its own; check the pool actions below.",
-                           now=f"{state}: {target:g} writers wanted" if target is not None else state))
-    acc_light = max([r["light"] for r in a_rows if r["name"] != "Registered → alive → writing"] or ["grey"], key=order.get)
-    accounts = dict(key="accounts", name="Accounts", rows=a_rows, tip=LIGHT_TIPS["accounts"], light=acc_light,
-                    head=(f"hot @{hot['active']}" if hot["active"] else "none writing") if hot else f"{voices} writing" if voices is not None else "—",
-                    sub=" · ".join(x for x in ((f"{len(hot['spares'])} {plural(len(hot['spares']), 'spare')} · {len(hot['lost'])} lost" if hot else None),
-                                               f"of {target:g} wanted" if p and target is not None and not hot else None,
-                                               f"{alive} alive" if alive is not None else None,
-                                               f"{reg} of {TOTAL_CAP} registered" if reg is not None else None) if x))
-    # ---- spare: registrations left, and whether they last to the end ----
-    spare_n = TOTAL_CAP - reg if reg is not None else forecast["spare"] if forecast and forecast["spare"] is not None else pn("spare_total")
-    runway = forecast["runway"] if forecast and forecast["runway"] is not None else (pn("runway_days") if p else None)
-    left = forecast["days_left"] if forecast and forecast["runway"] is not None else (pn("days_left") if p else None)
-    st = forecast["status"] if forecast else {}
-    ok = st.get("on_track") if st else None
-    goal_txt = None
-    if forecast and st and st.get("delta") is not None:
-        goal_txt = f"{signed(st['delta'])} on the {dt.date.fromisoformat(str(_cfg('RESERVE_DAY', '2026-10-31'))).strftime('%-d %b')} goal of {forecast['goal']}"
-    spare_light = "grey"
-    if runway is not None and left is not None:
-        spare_light = "red" if runway < left else "amber" if runway < RUNWAY_AMBER_X * left or ok is False else "green"
-    elif ok is not None:
-        spare_light = "amber" if ok is False else "green"
-    s_rows = by("spare")
-    if spare_light in ("amber", "red") and s_rows:
-        s_rows[0] = dict(s_rows[0], light=spare_light, fix="Accounts are being lost faster than the spare supply allows: cut writes by hand (runbook, Account budget) or slow the voices.")
-    spare = dict(key="spare", name="Spare accounts", rows=s_rows, tip=LIGHT_TIPS["spare"], light=spare_light,
-                 head=f"{spare_n}" if spare_n is not None else "—",
-                 sub=" · ".join(x for x in ((f"runway {runway:.0f} d of {left:.1f} d left" if runway is not None and left is not None else None), goal_txt) if x))
-    for t, row in ((stealth, 0), (hide, 1), (life, 1), (accounts, 1), (spare, 1)):
+                           now=f"{pdict.get('state')}: {target:g} writers wanted" if target is not None else str(pdict.get("state"))))
+    acc_light = max([r["light"] for r in a_rows if r["group"] == "accounts" and r["now"] and r["light"] != "grey"] or ["grey"], key=order.get)
+    standby = len(hot["spares"]) if hot else None
+    accounts = dict(key="accounts", name="Accounts writing", rows=a_rows, tip=LIGHT_TIPS["accounts"], light=acc_light,
+                    head=(f"{1 if hot['active'] else 0} writing" if hot else f"{voices} writing" if voices is not None else "—"),
+                    sub=" · ".join(x for x in ((f"{standby} standby · {len(hot['lost'])} lost" if hot else
+                                                f"of {target:g} wanted" if p and target is not None else None),
+                                               f"{alive} alive" if alive is not None else None) if x))
+    # ---- accounts left: not banned, against the goal on 31 Oct ----
+    st = f.get("status") or {}
+    left_now = f.get("left_now") if f.get("left_now") is not None else (TOTAL_CAP - banned if banned is not None else None)
+    delta, goal = st.get("delta"), f.get("goal")
+    left_light = "grey" if delta is None else "green" if delta >= 0 else "amber" if delta >= -LEFT_AMBER_SHORT else "red"
+    l_rows = by("left")
+    if delta is not None:
+        l_rows = [dict(group="left", name=f"Accounts left on {f['goal_day']}", light=left_light, note="",
+                       now=f"{st['left_on_day']:.0f} forecast against {goal:g} wanted ({signed(delta)})",
+                       target=f"{goal:g} or more; amber if short by up to {LEFT_AMBER_SHORT}",
+                       fix="Forecast on the goal day is short: cut planned writes by hand (runbook, Account budget) and update config.BAN_PLAN.")] + l_rows
+    left = dict(key="left", name="Accounts left", rows=l_rows, tip=LIGHT_TIPS["left"], light=left_light,
+                head=f"{left_now}" if left_now is not None else "—",
+                sub=(f"runs out in {f['runway']:.1f} d · {f['days_left']:.1f} d left" if f.get("runway") is not None
+                     else f"lasts to the end · {f['days_left']:.1f} d left" if f.get("days_left") is not None and delta is not None
+                     else "no forecast yet"))
+    for t, row in ((hide, 1), (life, 1), (stealth, 1), (accounts, 2), (left, 2)):
         t["row"] = row
-    return [stealth, hide, life, accounts, spare]
+    return [hide, life, stealth, accounts, left]
 
 
 def blue_tile(blue):
@@ -1695,15 +1727,15 @@ def blue_tile(blue):
     fill = pend / cap
     light = "green" if fill >= BLUE_FILL_GREEN else "amber" if fill >= BLUE_FILL_AMBER else "red"
     why = f"{pend} of {cap} slots filled"
-    if blue["locked"]:
-        light, why = ("amber" if light == "green" else light), f"{why}; locked until {blue['locked']}"
+    if blue["locked"]:             # a 6 h lock after a "genuine" ruling: nothing to act on, so the dot is grey (Marc, 24 Oct)
+        light, why = "grey", f"{why}; locked until {blue['locked']}"
     if blue["stale"]:
         light, why = "red", f"no status for {blue['ago'].replace(' ago', '')}"
     c = blue["counts"]
     row = dict(group="blue", name="Pending slots", light=light, now=why, target=f"{BLUE_FILL_GREEN:.0%}+ full", note="",
                fix="Slots are empty: " + ("locked, they refill when the lock ends." if blue["locked"] else
                                           f"{blue['ready']} reports ready; see Blue below for why the rest are not filed."))
-    return dict(key="blue", name="Blue", light=light, tip=tip.format(cap=cap), rows=[row], row=2, fill=fill,
+    return dict(key="blue", name="Blue reports", light=light, tip=tip.format(cap=cap), rows=[row], row=2, fill=fill,
                 head=f"{pend}/{cap} pending",
                 sub=f"{c['success']} successful · {c['failed']} failed" + (f" · locked until {blue['locked']}" if blue["locked"] else ""))
 
@@ -1801,7 +1833,7 @@ def gather(root, now, service):
     elif blue["waiting"]:
         blue_banner = dict(level="amber", text=f"{blue['waiting']} reports wait for your approval")
     elif blue["locked"]:
-        blue_banner = dict(level="amber", text=f"locked until {blue['locked']}" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))
+        blue_banner = dict(level="green", text=f"locked until {blue['locked']}" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))   # a lock is shown on the Blue tile, not as an alert (Marc, 24 Oct)
     else:
         blue_banner = dict(level="green", text="running" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))
 
@@ -1910,9 +1942,9 @@ def gather(root, now, service):
     today_acct = next((d for d in acct_days if d["today"]), None)
     bans = today_acct["new"] if today_acct else 0
     hidden_today = sum(1 for r in rows if r.get("kind") == "hidden" and r["t"] >= day_start)
-    srows = [dict(group="stealth", name="New bans today", light="green" if bans <= STEALTH_GREEN_MAX else "amber" if bans <= STEALTH_AMBER_MAX else "red",
+    srows = [dict(group="stealth", name="New bans today", light="grey",
                   now=f"{bans}" + (f" · {today_acct['why']}" if today_acct and today_acct["why"] else ""),
-                  target=f"0-{STEALTH_GREEN_MAX} (amber to {STEALTH_AMBER_MAX})", fix="Accounts are being caught: see the list under Bot > Accounts by day and todo/31.", note=""),
+                  target="shown only: the path colours Stealth", fix="", note=""),
              dict(group="stealth", name="Posts hidden today", light="green", now=f"{hidden_today}",
                   target="shown only: hidden posts already show up as bans", fix="", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
@@ -1927,8 +1959,10 @@ def gather(root, now, service):
     tiles = cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, rc["rows"], pool, status, now)
     rc["lights"] += tiles
     rc["lights"].append(blue_tile(blue))
-    rc["rows"] += srows + extra_rows
-    rc["fixes"] += [r for r in srows + extra_rows if r["light"] in ("amber", "red")]
+    seen = {id(r) for r in rc["rows"]}
+    new_rows = [r for t in tiles for r in t["rows"] if id(r) not in seen] + [r for r in extra_rows if id(r) not in seen]
+    rc["rows"] += list({id(r): r for r in new_rows}.values())
+    rc["fixes"] += [r for r in rc["rows"] if r["light"] in ("amber", "red") and r not in rc["fixes"]]
     order = {"red": 3, "amber": 2, "green": 1, "grey": 0}
     for i in rc["lights"]:      # the hover: the rule, then the amber and red rows with their figure and any note (Marc, 23 Oct)
         bad = [f"{r['light'].upper()} {r['name']}: {r['now']}" + (f" (in hand: {r['note']})" if r.get("note") else "")
@@ -1938,7 +1972,7 @@ def gather(root, now, service):
             split = [f"{r['name'].removeprefix('Where the time goes, ')}: {r['now']}" for r in i["rows"] if r["name"].startswith("Where the time goes")]
             i["tip"] += "\n\nWhere the time goes (median minutes):\n" + "\n".join(split)
     rc["light"] = max((i["light"] for i in rc["lights"] if i["key"] != "blue"), key=order.get)    # slots are an aim, not an incident
-    levels = (banner["level"], blue_banner["level"], draft_banner["level"], rc["light"])
+    levels = (banner["level"], blue_banner["level"], draft_banner["level"])      # the page word is the bot's health; red tiles are performance (Marc, 24 Oct)
     return dict(
         pool=pool, hot=hot_roster(status),
         now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,

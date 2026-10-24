@@ -288,10 +288,10 @@ def light(ctx, key):
 def test_reach_is_nine_tiles_and_zero_posting_is_red_not_green(tmp_path):
     f = {"2026-10-22T05": {"seen": 3, "answered": 3, "skipped": {}, "lost": {}, "pending": {}}}
     ctx, html = page(make_root(tmp_path, [refresh(1, f), write(90)]))       # everything we saw was answered, then silence
-    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "stealth", "hide", "life", "accounts", "spare", "blue"]
-    assert [i["row"] for i in ctx["reach"]["lights"]] == [0, 0, 0, 0, 1, 1, 1, 1, 2]       # outcomes, what they cost, Blue
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "left", "blue"]
+    assert [i["row"] for i in ctx["reach"]["lights"]] == [0, 0, 0, 1, 1, 1, 2, 2, 2]       # reach; hide rate to writes per ban to bans; accounts, accounts left, Blue
     assert light(ctx, "volume") == "red" and "last post 1 h" in rowof(ctx, "Posting")["now"]
-    assert ctx["worst"] == "red" and html.count('class="light ') == 9 and "Citizens answered" not in html
+    assert ctx["worst"] != "red" and html.count('class="light ') == 9 and "Citizens answered" not in html    # a red tile is performance, not an outage
     assert light(ctx, "speed") == "grey"                                     # nothing timed: never green by default
 
 
@@ -585,7 +585,7 @@ def test_activity_alert_colours_repost_text_and_portal_accounts(tmp_path):
     texts = [r["text"] for r in ctx["activity"] if r.get("act") == "repost"]
     assert texts == ["reposted #61 by account 8 (text not in our logs)",
                      "reposted #60 by account 9: “Keep the ferries running, all of them, please.”"]
-    assert "61 registered · 13 banned · 50 active max" in html and 'id="bot-own-accounts"' not in html
+    assert "187 left · 13 banned · 61 registered · 50 active max" in html and 'id="bot-own-accounts"' not in html
 
 
 def test_combined_portal_lines_split_blue_by_its_counts():
@@ -613,7 +613,7 @@ def test_stealth_light_counts_new_bans_today(tmp_path):
     (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
     ctx, html = page(root)
     st = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert st["head"] == "5 banned" and st["sub"].startswith("3 today") and st["light"] == "green" and "3 posts hidden ×1" in rowof(ctx, "New bans")["now"]
+    assert st["head"] == "5 banned" and st["sub"].startswith("3 today") and st["light"] == "grey"      # no path on 22 Oct: nothing to colour by and "3 posts hidden ×1" in rowof(ctx, "New bans")["now"]
     assert "@a_b" in html
 
 
@@ -664,15 +664,6 @@ def test_stage_times_logged_on_a_write():
     assert got["t_sent"] > 1.7e9 and got["drafted_ahead"] is True
     none = bot.stage_times({}, None)
     assert none["t_made"] is None and none["t_pick"] is None and none["drafted_ahead"] is None
-
-
-def test_stealth_bars_0_to_5_green_6_to_10_amber_11_up_red(tmp_path):
-    for new, want in ((0, "green"), (5, "green"), (6, "amber"), (10, "amber"), (11, "red")):
-        root = make_root(tmp_path / f"s{new}", [write(3)])
-        log = {"counts": [{"ts": iso(1500), "registered": 50, "banned": 2}, {"ts": iso(30), "registered": 50, "banned": 2 + new}]}
-        (root / "data" / "portal.json").write_text(json.dumps({"ts": iso(1), "account_log": log}))
-        ctx, _ = page(root)
-        assert rowof(ctx, "New bans")["light"] == want, new
 
 
 # ---- drafting starved: no_model drops and the priced-model budget (23 Oct) ----
@@ -746,7 +737,7 @@ def test_each_light_tile_says_on_hover_what_its_colours_mean(tmp_path):
     ctx, html = page(make_root(tmp_path, [write(3)]))
     for i in ctx["reach"]["lights"]:
         assert i["tip"] and ("Needs a look:" in i["tip"] or "Nothing amber or red." in i["tip"]) and "title=" in html, i["key"]
-    assert "Green: 0-5 · amber: 6-10 · red: 11 or more." in html
+    assert "The colour is the gap to the path now" in html and "Green: on or above the goal" in html
 
 
 def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):
@@ -796,7 +787,7 @@ def test_hidden_posts_are_shown_but_never_colour_stealth(tmp_path):
     ctx, _ = page(root)
     assert rowof(ctx, "Posts hidden")["light"] == "green"
     st = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert st["light"] == "green" and "Nothing amber or red." in st["tip"]
+    assert st["light"] == "grey" and "Nothing amber or red." in st["tip"]
 
 
 def test_hover_lists_the_amber_and_red_rows_with_their_note(tmp_path):
@@ -809,7 +800,7 @@ def test_hover_lists_the_amber_and_red_rows_with_their_note(tmp_path):
 
 # ---- todo/38: the Pool line (status.json["pool"]) and the pattern audit rows on the stealth tile (23 Oct) ----
 FULL = [write(0.3 * i + 0.1) for i in range(100)]            # 3.3 writes a minute: volume green
-BASE = "amber"                                                     # ... and Conversion amber (no change of mind yet): the page level without a pool
+BASE = "amber"                                                     # the page word without a pool: Blue "not running" is amber; no tile moves it (Marc, 24 Oct)
 
 POOL = {"dry_run": False, "state": "healthy", "writers_target": 31, "writers": 29, "ramping": 2, "warming": 4, "alive": 47,
         "alive_cap": 49, "total_used": 71, "total_cap": 200, "spare_total": 129, "loss_per_day": 4.0, "runway_days": 32.0,
@@ -826,43 +817,35 @@ def test_no_pool_and_no_audit_render_as_before(tmp_path):
     ctx, html = page(make_root(tmp_path, FULL))
     assert ctx["pool"] is None and 'id="pool"' not in html and "poolrow" not in html
     assert not any(r["name"].startswith("Pattern") for r in ctx["reach"]["rows"])
-    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "stealth", "hide", "life", "accounts", "spare", "blue"]
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "left", "blue"]
     assert html.count('class="light ') == 9 and ctx["worst"] == BASE
-    assert tile(ctx, "accounts")["head"] == "12 writing" and tile(ctx, "spare")["light"] == "grey"      # no pool, no portal: nothing to grade
+    assert tile(ctx, "accounts")["head"] == "12 writing" and tile(ctx, "left")["light"] == "grey"      # no pool, no portal: nothing to grade
 
 
 def tile(ctx, key):
     return next(i for i in ctx["reach"]["lights"] if i["key"] == key)
 
 
-def test_pool_folds_into_the_accounts_and_spare_tiles(tmp_path):
+def test_pool_folds_into_the_accounts_tile(tmp_path):
     ctx, html = pool_page(tmp_path)
-    acc, spare = tile(ctx, "accounts"), tile(ctx, "spare")
-    assert acc["light"] == "green" and acc["head"] == "12 writing" and acc["sub"].startswith("of 31 wanted")
-    assert (spare["head"], spare["light"]) == ("129", "green") and spare["sub"] == "runway 32 d of 10.0 d left"
+    acc = tile(ctx, "accounts")
+    assert acc["light"] == "green" and acc["head"] == "12 writing" and acc["sub"] == "of 31 wanted · 46 alive"
     assert "poolrow" not in html and html.count('class="light ') == 9
     assert "pool_convert" in html and "&lt;script&gt;x&lt;/script&gt;" in html and "<script>x" not in html     # newest first, escaped
     assert [a["act"] for a in ctx["pool"]["acts"]] == ["pool_convert", "pool_register"] and ctx["worst"] == BASE
 
 
-def test_spare_tile_amber_and_red_by_runway_against_days_left(tmp_path):
-    for runway, want in ((15.0, "green"), (14.9, "amber"), (10.0, "amber"), (9.9, "red")):               # days_left 10: bars at 15 and 10
-        assert tile(pool_page(tmp_path / f"r{runway}", runway_days=runway)[0], "spare")["light"] == want, runway
-    ctx, html = pool_page(tmp_path / "rw", runway_days=3.1)
-    assert tile(ctx, "spare")["light"] == "red" and ctx["worst"] == "red" and "<title>Swan · DOWN</title>" in build.render(ctx)
-
-
 def test_accounts_tile_follows_the_pool_state(tmp_path):
     assert tile(pool_page(tmp_path / "s", state="sagging")[0], "accounts")["light"] == "amber"
     ctx, html = pool_page(tmp_path / "l", state="low")
-    assert tile(ctx, "accounts")["light"] == "red" and ctx["worst"] == "red"
+    assert tile(ctx, "accounts")["light"] == "red" and ctx["worst"] == BASE       # a red tile is performance, not an outage: the page word stays
     assert "Pool: <b>low: 31 writers wanted</b>" in html
 
 
 def test_dry_run_pool_is_shown_but_never_alarms(tmp_path):
     ctx, html = pool_page(tmp_path, dry_run=True, state="low", runway_days=1.0)
     assert ctx["pool"]["light"] == "red" and "dry run" in ctx["pool"]["head"] and ctx["worst"] == BASE
-    assert tile(ctx, "accounts")["light"] == "green" and tile(ctx, "spare")["light"] == "grey"
+    assert tile(ctx, "accounts")["light"] == "green" and tile(ctx, "left")["light"] == "grey"
 
 
 def test_odd_pool_fields_do_not_break_the_page(tmp_path):
@@ -886,9 +869,10 @@ def test_blue_tile_is_green_when_the_slots_are_full_and_red_when_empty(tmp_path)
     assert t["fill"] == 0.9 and "successful" in t["sub"] and "failed" in t["sub"] and 'class="bar"' in html
 
 
-def test_blue_tile_locked_is_amber_at_best_and_silent_is_red_and_it_never_moves_the_page_word(tmp_path):
-    t, _, _ = blue_tile_of(tmp_path / "a", pending=30, locked_until=(NOW + dt.timedelta(hours=2)).isoformat())
-    assert t["light"] == "amber" and "locked until" in t["sub"]
+def test_blue_tile_locked_is_grey_and_silent_is_red_and_it_never_moves_the_page_word(tmp_path):
+    t, ctx, html = blue_tile_of(tmp_path / "a", pending=1, locked_until=(NOW + dt.timedelta(hours=2)).isoformat())
+    assert t["light"] == "grey" and "locked until" in t["sub"]              # a 6 h lock is nothing to act on: no red, and no yellow banner
+    assert ctx["blue_banner"]["level"] == "green" and "locked until" not in html.split('<div class="alerts">')[1].split("</div>")[0]
     t, ctx, _ = blue_tile_of(tmp_path / "b", pending=30, ts=iso(30))
     assert t["light"] == "red"
     t, ctx, _ = blue_tile_of(tmp_path / "c", pending=2)
@@ -919,7 +903,7 @@ def test_pattern_audit_rows_on_the_stealth_tile(tmp_path):
     (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report("red", 31, worst=("gap_cv", "modal_gap"), voices=(("ana_t", 12), ("bo_k", 20)))))
     ctx, html = page(root)
     st = stealth_of(ctx)
-    assert st["light"] == "green" and st["head"] == "0 bans" and "pattern" not in st["sub"]       # shown, never graded (Marc, 24 Oct)
+    assert st["light"] == "grey" and st["head"] == "0 bans" and "pattern" not in st["sub"]       # shown, never graded (Marc, 24 Oct)
     assert rowof(ctx, "Pattern score")["now"] == "31/100" and rowof(ctx, "Pattern score")["light"] == "grey"
     assert rowof(ctx, "Pattern: Gap variation")["target"].startswith("≥ 0.5 green · ≥ 0.25 amber")
     assert rowof(ctx, "Pattern: Gaps within")["light"] == "grey" and rowof(ctx, "Pattern: Gaps within")["target"].startswith("≤ 0.25")
@@ -933,12 +917,12 @@ def test_pattern_audit_green_amber_and_stale(tmp_path):
         root = make_root(tmp_path / grade, FULL)
         (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report(grade, score, worst=())))
         ctx, _ = page(root)
-        assert stealth_of(ctx)["light"] == "green" and rowof(ctx, "Pattern score")["light"] == "grey"      # never colours the tile
+        assert stealth_of(ctx)["light"] == "grey" and rowof(ctx, "Pattern score")["light"] == "grey"      # never colours the tile
     root = make_root(tmp_path / "stale", FULL)
     (root / "data" / "pattern_audit.json").write_text(json.dumps(audit_report("red", 20, ago_min=5 * 60)))      # 5 h old
     ctx, _ = page(root)
     assert rowof(ctx, "Pattern score")["light"] == "grey" and "(stale)" in rowof(ctx, "Pattern score")["now"]
-    assert stealth_of(ctx)["light"] == "green" and "pattern" not in stealth_of(ctx)["sub"]                   # a stale audit never colours the tile
+    assert stealth_of(ctx)["light"] == "grey" and "pattern" not in stealth_of(ctx)["sub"]                   # a stale audit never colours the tile
 
 
 def test_pattern_audit_garbage_is_ignored(tmp_path):
@@ -946,7 +930,7 @@ def test_pattern_audit_garbage_is_ignored(tmp_path):
         root = make_root(tmp_path / f"g{i}", FULL)
         (root / "data" / "pattern_audit.json").write_text(junk)
         ctx, html = page(root)
-        assert stealth_of(ctx)["light"] in ("green", "grey") and "Swan" in html
+        assert stealth_of(ctx)["light"] == "grey" and "Swan" in html
 
 
 def test_real_audit_of_the_two_simulated_pools_is_shown_not_graded_on_the_tile(tmp_path):
@@ -959,7 +943,7 @@ def test_real_audit_of_the_two_simulated_pools_is_shown_not_graded_on_the_tile(t
         (root / "data" / "pattern_audit.json").write_text(json.dumps(rep))
         ctx, _ = page(root)
         assert rowof(ctx, "Pattern score")["target"].startswith("green 70+") and f"graded {want}" in rowof(ctx, "Pattern score")["target"], sched
-        assert rowof(ctx, "Pattern score")["light"] == "grey" and stealth_of(ctx)["light"] == "green", sched
+        assert rowof(ctx, "Pattern score")["light"] == "grey" and stealth_of(ctx)["light"] == "grey", sched
 
 
 # ---- hot mode (todo/45): one voice writes on purpose; status.json["hot"] is {active, spares, lost, missing} ----
@@ -972,8 +956,8 @@ def hot_page(tmp_path, **hot):
 def test_hot_mode_one_voice_is_not_a_fault_and_reads_in_the_singular(tmp_path):
     ctx, html = hot_page(tmp_path)
     acc = tile(ctx, "accounts")
-    assert acc["light"] == "green" and acc["head"] == "hot @ana_d94" and acc["sub"].startswith("2 spares · 0 lost")
-    assert rowof(ctx, "Hot voice")["now"] == "@ana_d94 writing · 2 spares · 0 lost" and not any(r["name"] == "Voices in rotation" for r in ctx["reach"]["rows"])
+    assert acc["light"] == "green" and acc["head"] == "1 writing" and acc["sub"].startswith("2 standby · 0 lost")      # the mode is not a headline, the name is in the detail
+    assert rowof(ctx, "Hot voice")["now"] == "@ana_d94 writing · 2 standby · 0 lost" and not any(r["name"] == "Voices in rotation" for r in ctx["reach"]["rows"])
     assert "1 voice (hot)" in html and "1 voices" not in html and "1 boosters" not in html and "1 booster" in html
     ctx, _ = page(make_root(tmp_path / "off", FULL, status={"accounts": {"live": 46, "voices": 4, "boosters": 2, "used": 46, "suspended": 0}}))
     assert rowof(ctx, "Voices in rotation")["light"] == "amber" and "hot" not in tile(ctx, "accounts")["head"]      # off: as before
@@ -981,10 +965,10 @@ def test_hot_mode_one_voice_is_not_a_fault_and_reads_in_the_singular(tmp_path):
 
 def test_hot_mode_runs_out_of_spares_and_then_of_voices(tmp_path):
     ctx, _ = hot_page(tmp_path / "a", spares=[], lost=["tui4"])
-    assert tile(ctx, "accounts")["light"] == "amber" and "0 spares · 1 lost" in tile(ctx, "accounts")["sub"]
+    assert tile(ctx, "accounts")["light"] == "amber" and "0 standby · 1 lost" in tile(ctx, "accounts")["sub"]
     ctx, html = hot_page(tmp_path / "b", active=None, spares=[], lost=["ana_d94", "tui4"])
     acc = tile(ctx, "accounts")
-    assert acc["light"] == "red" and acc["head"] == "none writing" and "the bot is idle" in rowof(ctx, "Hot voice")["now"] and ctx["worst"] == "red"
+    assert acc["light"] == "red" and acc["head"] == "0 writing" and "the bot is idle" in rowof(ctx, "Hot voice")["now"]
 
 
 def test_hot_status_odd_values_do_not_break_the_page(tmp_path):

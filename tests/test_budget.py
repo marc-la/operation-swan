@@ -113,33 +113,44 @@ def test_forecast_accepts_dates_and_rejects_a_bad_rate():
 
 
 def test_default_plan_costs_about_what_the_todo_says():
-    """127 spare and 2,400 writes a day at 145 a ban is 16.6 bans a day: spare is gone on 31 Oct, 60 short of the goal (the
-    todo's 'about 25 spare' assumed 12-16 deaths a day, the observed 22-23 Oct rate)."""
+    """48 alive + 127 spare = 175 left; 2,400 writes a day at 145 a ban is 16.6 bans a day for the 8 days to 31 Oct: 42.6 left,
+    17.4 short of the goal of 60 (Marc, 24 Oct: the goal is accounts LEFT, not spare registrations)."""
     rows = budget.forecast_days(config.BAN_PLAN, config.WRITES_PER_BAN_DEFAULT, 48, 127, "2026-10-24", config.BUDGET_END_DAY)
     by_day = {r["day"]: r for r in rows}
     assert by_day["2026-10-30"]["spare_end"] == pytest.approx(127 - 7 * 2400 / 145)
-    st = budget.reserve_status(rows, config.RESERVE_GOAL, config.RESERVE_DAY)
-    assert st["spare_on_reserve_day"] == 0 and st["delta"] == -60 and st["on_track"] is False
+    assert by_day["2026-10-30"]["left_end"] == pytest.approx(by_day["2026-10-30"]["alive_end"] + by_day["2026-10-30"]["spare_end"])
+    st = budget.reserve_status(rows, config.LEFT_GOAL, config.LEFT_DAY)
+    assert st["left_on_day"] == pytest.approx(175 - 8 * 2400 / 145) and st["delta"] == pytest.approx(175 - 8 * 2400 / 145 - 60)
+    assert st["on_track"] is False
     assert by_day["2026-11-02"]["alive_end"] < 48 - 8, "the x4 days then cost live accounts"
     at_12_a_day = budget.forecast_days({"2026-10-24": 12 * 145}, 145, 48, 127, "2026-10-24", "2026-10-31")
     assert at_12_a_day[-1]["spare_end"] == 127 - 8 * 12 == 31
 
 
 # ---- reserve_status ---------------------------------------------------------------------------------------------------
-def test_reserve_status_reads_the_end_of_the_reserve_day():
-    rows = [{"day": "2026-10-30", "spare_end": 90.0}, {"day": "2026-10-31", "spare_end": 61.5},
-            {"day": "2026-11-01", "spare_end": 10.0}]
+def test_reserve_status_reads_the_end_of_the_goal_day():
+    rows = [{"day": "2026-10-30", "left_end": 90.0}, {"day": "2026-10-31", "left_end": 61.5},
+            {"day": "2026-11-01", "left_end": 10.0}]
     assert budget.reserve_status(rows, 60, "2026-10-31") == {
-        "spare_on_reserve_day": 61.5, "goal": 60, "delta": 1.5, "on_track": True}
+        "left_on_day": 61.5, "goal": 60, "delta": 1.5, "on_track": True}
     assert budget.reserve_status(rows, 60, "2026-11-01")["on_track"] is False
     assert budget.reserve_status(rows, 61.5, "2026-10-31")["on_track"] is True, "delta 0 is on track"
     miss = budget.reserve_status(rows, 60, "2026-11-05")
-    assert miss["on_track"] is None and miss["spare_on_reserve_day"] is None and miss["goal"] == 60
+    assert miss["on_track"] is None and miss["left_on_day"] is None and miss["goal"] == 60
+
+
+def test_ban_path_is_interpolated_between_the_given_days_and_absent_outside_them():
+    path = {"2026-10-24": 40, "2026-10-25": 50, "2026-10-26": 60, "2026-10-28": 80, "2026-10-31": 140}
+    got = {d: budget.ban_path(path, d) for d in ("2026-10-24", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31")}
+    assert got == {"2026-10-24": 40, "2026-10-27": 70, "2026-10-28": 80, "2026-10-29": 100, "2026-10-30": 120, "2026-10-31": 140}
+    assert budget.ban_path(path, "2026-10-23") is None and budget.ban_path(path, "2026-11-01") is None
+    assert budget.ban_path({}, "2026-10-24") is None and budget.ban_path({"2026-10-24": 5}, dt.date(2026, 10, 24)) == 5
+    assert budget.ban_path(config.BAN_PATH, config.LEFT_DAY) == 200 - config.LEFT_GOAL, "the path ends on the goal: 140 banned = 60 left"
 
 
 # ---- alerts -----------------------------------------------------------------------------------------------------------
-OFF = {"spare_on_reserve_day": 41.2, "goal": 60, "delta": -18.8, "on_track": False}
-ON = {"spare_on_reserve_day": 70.0, "goal": 60, "delta": 10.0, "on_track": True}
+OFF = {"left_on_day": 41.2, "goal": 60, "delta": -18.8, "on_track": False}
+ON = {"left_on_day": 70.0, "goal": 60, "delta": 10.0, "on_track": True}
 
 
 def test_alert_when_the_reserve_is_off_track():
@@ -164,7 +175,7 @@ def test_alerts_are_deduplicated_for_six_hours():
     a1 = budget.ban_alert(2, 12, OFF)
     due, sent = budget.due_alerts(a1, {}, t0, gap)
     assert due == a1
-    a2 = budget.ban_alert(2, 12, {**OFF, "spare_on_reserve_day": 40.7, "delta": -19.3})      # same alert, new numbers
+    a2 = budget.ban_alert(2, 12, {**OFF, "left_on_day": 40.7, "delta": -19.3})      # same alert, new numbers
     assert budget.alert_key(a1[0]) == budget.alert_key(a2[0])
     assert budget.due_alerts(a2, sent, t0 + 20 * 60, gap)[0] == []
     assert budget.due_alerts(a2, sent, t0 + gap - 1, gap)[0] == []
@@ -326,7 +337,7 @@ def test_report_bans_over_forecast(monkeypatch):
 
 def test_report_after_the_reserve_day_has_no_reserve_alert():
     rep = watch.budget_report(ts("2026-11-01T01:00:00+00:00"), {}, records(), portal_data())
-    assert rep["status"]["on_track"] is None and rep["status"]["spare_on_reserve_day"] is None
+    assert rep["status"]["on_track"] is None and rep["status"]["left_on_day"] is None
     assert not any("reserve" in a for a in rep["alerts"])
 
 

@@ -47,7 +47,7 @@ def forecast_days(plan, writes_per_ban, alive, spare, first_day, last_day):
         spare -= replaced
         alive -= bans - replaced
         rows.append({"day": day.isoformat(), "planned_writes": planned, "forecast_bans": bans,
-                     "alive_end": alive, "spare_end": spare})
+                     "alive_end": alive, "spare_end": spare, "left_end": alive + spare})
         day += dt.timedelta(days=1)
     return rows
 
@@ -55,22 +55,32 @@ def forecast_days(plan, writes_per_ban, alive, spare, first_day, last_day):
 def reserve_status(days, reserve_goal, reserve_day):
     row = next((r for r in days if str(r["day"]) == _day(reserve_day).isoformat()), None)
     if row is None:
-        return {"spare_on_reserve_day": None, "goal": reserve_goal, "delta": None, "on_track": None}
-    delta = row["spare_end"] - reserve_goal
-    return {"spare_on_reserve_day": row["spare_end"], "goal": reserve_goal, "delta": delta, "on_track": delta >= 0}
+        return {"left_on_day": None, "goal": reserve_goal, "delta": None, "on_track": None}
+    delta = row["left_end"] - reserve_goal
+    return {"left_on_day": row["left_end"], "goal": reserve_goal, "delta": delta, "on_track": delta >= 0}
 
 
-def ban_alert(actual_bans_24h, forecast_bans_24h, status):
+def ban_path(path, day):
+    pts = sorted((_day(k), float(v)) for k, v in (path or {}).items())
+    d = _day(day)
+    if not pts or d < pts[0][0] or d > pts[-1][0]:
+        return None
+    for (d0, v0), (d1, v1) in zip(pts, pts[1:] + [pts[-1]]):
+        if d0 <= d <= d1:
+            return v0 if d1 == d0 else v0 + (v1 - v0) * (d - d0).days / (d1 - d0).days
+
+
+def ban_alert(actual_bans_24h, forecast_bans_24h, status, goal_day=None):
     out = []
     if status and status.get("on_track") is False:
-        out.append(f"Account reserve is off track: {-status['delta']:.0f} short of {status['goal']:.0f}.")
+        out.append(f"Accounts left is off track: {-status['delta']:.0f} short of {status['goal']:.0f}.")
     if actual_bans_24h >= 4 and actual_bans_24h > 1.5 * forecast_bans_24h:
         out.append(f"Bans are running over forecast: {actual_bans_24h:.0f} in 24 h against {forecast_bans_24h:.0f}.")
     return out
 
 
 MODULE = types.ModuleType("swan_bot.budget")
-for _f in (km_writes_per_ban, forecast_days, reserve_status, ban_alert):
+for _f in (km_writes_per_ban, forecast_days, reserve_status, ban_path, ban_alert):
     setattr(MODULE, _f.__name__, _f)
 
 
