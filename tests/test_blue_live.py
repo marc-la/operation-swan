@@ -111,6 +111,7 @@ def test_a_live_account_is_priced_at_point_nine_and_unknown_at_point_five():
 
 
 def test_live_lead_outranks_a_half_rate_post_and_an_unknown_one_does_not(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLUE_LABEL_PENDING_MAX", "0")                     # pricing only: the label caps are test_blue_spread.py's
     b = blue(tmp_path, monkeypatch)
     t = time.time()
     b.s["reports"] = {f"p{i}": dict(kind="post", status="pending", filed=t, label="cA") for i in range(5)}

@@ -297,3 +297,21 @@ When a lead is read live and its fleet is known (or the scanner confirms one), t
 | Teams (fleets) paid; awards at full rate; hours locked; genuine per post ruling | see §9 | | |
 
 Turn `BLUE_SCAN_FILE=1` on only after the scan leads have been checked by hand and the offline run on the 24 Oct ~16:00 UTC census snapshot looks right.
+
+## 11. Spread caps after the 24 Oct genuine streak (Marc, 24 Oct 2026)
+
+**What happened.** The 05:48–05:57 UTC batch (31 reports, filed as the previous lock ended) had 10 genuine of 23 post rulings, all in one sweep at about 08:55 UTC. The other 157 post rulings had 12 genuine (7.6%), so the moderator and our evidence did not drift: at 10% a run of 10 in 23 has odds of about 1 in 10,000, which points to errors that come in runs. Identical detail text on one thread got opposite rulings (root and 2 replies genuine, 6 replies hidden), and the genuine posts read like people (a teacher's ferry, a baker in Kingstonia City); the moderator probably judges the post's wording, not our like and reply numbers (a guess). Ten genuines cost one 6 h lock (overlapping locks run at once, until 14:55 UTC); pending reports still paid.
+
+**The waste.** 12 of the batch's 23 post reports were on cluster c8701 and 13 on two threads (8 on #360587). Fleet counting priced each as a fresh team (about 21), but 46% of 24 Oct's awards paid reduced and 7 of the 14 post awards at the 09:19 run paid ×0.1 (the §10 trigger for the cluster fallback: "a third or more").
+
+**Changes** (`service.ranked`, `Blue.spread_cap`; 0 turns a cap off; settings in `.env` on the box, read at start):
+
+| Cap | Default | Setting |
+|---|---|---|
+| Reports per ring thread (root or replies), pending or filed today | 1 | `BLUE_THREAD_MAX` |
+| Reports pending against one cluster label | 4 | `BLUE_LABEL_PENDING_MAX` |
+| Awards (paid + pending) a cluster label has today | 10 | `BLUE_LABEL_DAY_MAX` |
+
+A candidate over a cap is dropped from that ranking, so the slot goes to the next team's ring or to a live account report. `blue_status.json` → `spread` has the caps and `held` (candidates kept back, by cap). Tests: `tests/test_blue_spread.py`.
+
+**To check on 25 Oct:** reports per cluster per batch (expect ≤ 4), share of awards paid reduced (was 46%), awards a day at full rate, genuine per post ruling (expect about 8%, and not in runs), points a day against 24 Oct's 1,255.

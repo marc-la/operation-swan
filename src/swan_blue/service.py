@@ -113,6 +113,17 @@ LOCK_COST = 150               # points a 6 h lock costs: only the fills we can't
 # against it lowers its next report's rank by this share, so new clusters go first and fresh ring posts of the busy
 # ones still find a full-rate award later in the day
 SPREAD = 0.04
+# 24 Oct spread caps (Marc): 12 of the 23 post reports in the 05:48 batch were on cluster c8701 and 13 on two ring threads
+# (8 on one). Fleets counted each c8701 report as a fresh team (priced ~21), but 7 of that day's 14 post awards paid x0.1,
+# and the moderator's errors come in runs (10 genuine of 23 in one sweep, 12 of 157 in all the others). So, per ranking:
+#  - THREAD_MAX: reports on one ring (its root or its replies) pending or filed today, 0 = no cap. The root and its first
+#    replies are one ring, one team: only the first 5 awards a team pays in full anyway;
+#  - LABEL_PENDING_MAX: reports pending against one cluster label (the over-merging label backs up the fleet count);
+#  - LABEL_DAY_MAX: awards a cluster label has today (paid + pending), the cluster fallback of blue-reporting section 10.
+# Freed slots go to the next team in the ranking, account reports included.
+THREAD_MAX = 1
+LABEL_PENDING_MAX = 4
+LABEL_DAY_MAX = 10
 # todo/26, wider discovery from what the bot already read (data/latest_snapshot.json; never an extra feed read): a
 # post that collects this many team replies or reposts inside the snapshot gets (re)audited...
 WIDEN_MIN_ACTORS = 4
@@ -647,15 +658,22 @@ class Blue:
     def pending(self):
         return {k: r for k, r in self.s["reports"].items() if r["status"] == "pending"}
 
-    def counts_today(self):
+    def counts_today(self, by="team"):
         """{target team (fleet, or cluster label): awards on the Sydney day a report filed now would be ruled} (paid +
-        still pending). Posts and accounts count together (scoring section 3)."""
+        still pending). Posts and accounts count together (scoring section 3). by="label" counts per cluster label,
+        by="ring" per ring (the root post's id; reports without one are left out)."""
         day, out = sydney_day(now() + RULE_S), {}
         for r in self.s["reports"].values():
             if (r["status"] in ("hidden", "ruled") and r.get("ruled_day") == day) or \
                     (r["status"] == "pending" and sydney_day(r["filed"] + RULE_S) == day):
-                k = self.team_key(r["author"], r["label"]) if r.get("author") else r["label"]
-                out[k] = out.get(k, 0) + 1
+                if by == "label":
+                    k = r["label"]
+                elif by == "ring":
+                    k = r.get("ring")
+                else:
+                    k = self.team_key(r["author"], r["label"]) if r.get("author") else r["label"]
+                if k is not None:
+                    out[k] = out.get(k, 0) + 1
         return out
 
     def precision(self):
@@ -847,7 +865,21 @@ class Blue:
         reporting ranks higher by ACCOUNT_CO_BOOST (not in its expected points): its ruling comes in half the time or
         less, so the slot turns over twice as fast, and an upheld report pays every team that reported."""
         cands, counts, picked = self.candidates(), self.counts_today(), []
+        pol, held = policy(), {}
+        rings, labels, label_day = self.counts_today("ring"), {}, self.counts_today("label")
+        for r in self.pending().values():
+            labels[r["label"]] = labels.get(r["label"], 0) + 1
         while cands and len(picked) < 2 * CAP:
+            kept = []
+            for c in cands:
+                why = self.spread_cap(c, pol, rings, labels, label_day)
+                if why:
+                    held.setdefault(why, set()).add(c["key"])
+                else:
+                    kept.append(c)
+            cands = kept
+            if not cands:
+                break
             for c in cands:
                 n = counts.get(c["team"], 0)
                 c["n_today"] = n
@@ -861,7 +893,28 @@ class Blue:
             cands.remove(best)
             picked.append(best)
             counts[best["team"]] = counts.get(best["team"], 0) + 1
+            if best.get("ring") is not None:
+                rings[best["ring"]] = rings.get(best["ring"], 0) + 1
+            labels[best["label"]] = labels.get(best["label"], 0) + 1
+            label_day[best["label"]] = label_day.get(best["label"], 0) + 1
+        self.held = {k: len(v) for k, v in held.items()}       # candidates the caps kept back in this ranking
         return picked
+
+    @staticmethod
+    def spread_cap(c, pol, rings, labels, label_day):
+        """Which of the 24 Oct spread caps (THREAD_MAX, LABEL_PENDING_MAX, LABEL_DAY_MAX; 0 = off) holds this candidate
+        back, given the reports already pending or filed today plus those picked so far in this ranking: "thread",
+        "label_pending", "label_day", or None."""
+        thread, pending, day = (pol.get(k, d) for k, d in (("thread_max", THREAD_MAX),
+                                                           ("label_pending_max", LABEL_PENDING_MAX),
+                                                           ("label_day_max", LABEL_DAY_MAX)))
+        if thread > 0 and c.get("ring") is not None and rings.get(c["ring"], 0) >= thread:
+            return "thread"
+        if pending > 0 and labels.get(c["label"], 0) >= pending:
+            return "label_pending"
+        if day > 0 and label_day.get(c["label"], 0) >= day:
+            return "label_day"
+        return None
 
     # ---- approvals ----
     def approved(self):
@@ -1353,6 +1406,9 @@ class Blue:
             pending=len(pend), cap=CAP,
             # todo/26, todo/28: what would file now (accounts, and posts the no-lock mode allows)
             ready_ok=len(accounts) + len(posts), ready_accounts=len(accounts),
+            # 24 Oct: candidates held back by the spread caps in the latest ranking, and the caps (0 = off)
+            spread=dict(held=getattr(self, "held", {}), thread_max=pol.get("thread_max", THREAD_MAX),
+                        label_pending_max=pol.get("label_pending_max", LABEL_PENDING_MAX), label_day_max=pol.get("label_day_max", LABEL_DAY_MAX)),
             pg_max=pol["pg_max"], pg_check=self.pg_check(), pg_by_class=self.pg_by_class(),
             # todo/28: the risk bucket: expected genuine rulings post reports may still take on now, its refill a day
             risk=dict(level=round(self.bucket()["level"], 3), per_day=pol["per_day"],
@@ -1503,7 +1559,10 @@ def policy():
     return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
                 live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S),
                 scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0),
-                siblings=num("BLUE_SIBLINGS", 1), fleet_gap_s=num("BLUE_FLEET_GAP_S", fleets_mod.FLEET_GAP_S))
+                siblings=num("BLUE_SIBLINGS", 1), fleet_gap_s=num("BLUE_FLEET_GAP_S", fleets_mod.FLEET_GAP_S),
+                thread_max=int(num("BLUE_THREAD_MAX", THREAD_MAX)),
+                label_pending_max=int(num("BLUE_LABEL_PENDING_MAX", LABEL_PENDING_MAX)),
+                label_day_max=int(num("BLUE_LABEL_DAY_MAX", LABEL_DAY_MAX)))
 
 
 def rings(cands):

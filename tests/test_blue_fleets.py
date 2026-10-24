@@ -114,6 +114,8 @@ def test_team_key_is_the_fleet_then_the_cluster_label(tmp_path, monkeypatch):
 
 
 def test_one_big_cluster_no_longer_says_saturated_when_it_holds_several_teams(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLUE_LABEL_PENDING_MAX", "0")                     # this test is about fleets alone: the label caps
+    monkeypatch.setenv("BLUE_LABEL_DAY_MAX", "0")                         # (test_blue_spread.py) would hide f6000's post
     accounts = burst(5000, 20, 0) + burst(6000, 20, 5000) + burst(7000, 20, 9000)    # three fleets
     b = fleet_blue(tmp_path, monkeypatch, accounts)
     t = time.time()
