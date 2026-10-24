@@ -633,3 +633,12 @@ def test_the_door_and_papers_motifs_have_budgets_and_labels():
     window = ["A pass at the door adds no nurse."] * 25
     assert quality.over_budget("Who checks the door?", window) == ["door"]
     assert quality.over_budget("Who checks the door?", window, echo=("door",)) == []
+
+
+def test_a_conceding_opener_in_the_workable_or_good_things_to_want_wording_is_a_tell():
+    rx = quality.PHRASE_BUDGETS["concede_open"][0]
+    for t in ("Cheers for that, it sounds workable. Trouble is, nothing is promised.",
+              "Those are good things to want, but the ballot doesn't say any of it.",
+              "Tight safeguards sound right, but they aren't in the question."):
+        assert rx.search(t), t
+    assert not rx.search("A pass at the shop adds no nurse. That sounds right to nobody on my street, honestly.")

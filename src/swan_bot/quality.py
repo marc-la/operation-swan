@@ -505,7 +505,8 @@ PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
                                 r"[^.?!]{0,20}\b(?:no|yes)\b|\bfrom (?:yes|unsure)[^.?!]{0,15}to no\b", re.I), 0.0),
     "concede_open": (re.compile(r"^[^.!?]{0,80}(?:would help|sounds (?:fair|sensible|good|reasonable)|fair "
                                 r"(?:ask|enough|worry|point|question)|reasonable ask|makes sense|is fair|comfort"
-                                r"|fair to want|good to want)", re.I), 0.0),
+                                r"|fair to want|good to want|good things? to want|worth wanting|sounds? (?:workable|right|solid)|sound right"
+                                r"|(?:it|that|this) is workable|(?:it|that|this)'s workable)", re.I), 0.0),
 }
 TELL_KEYS = ("switch_close", "switch_story", "concede_open")      # share 0: never, whatever the window holds
 PHRASE_PREFIX = "phrase_"
