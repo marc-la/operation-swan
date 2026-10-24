@@ -48,11 +48,13 @@ main() {
 apply_changes() {
   local hit
   if grep -qE '^deploy/.*\.(service|timer)$' <<< "$1"; then sudo deploy/install.sh --units-only; fi
-  hit=$(grep -vE '^content/lab/' <<< "$1" | grep -E '^(src/|scripts/|deploy/|content/|requirements\.txt)')   # no -q: pipefail + SIGPIPE
+  hit=$(grep -vE '^(content/lab/|src/swan_dash/)' <<< "$1" | grep -E '^(src/|scripts/|deploy/|content/|requirements\.txt)')   # no -q: pipefail + SIGPIPE
   if [ -n "$hit" ] && { [ "${2:-}" != late ] || bot_older_than_tree; }; then
     sudo systemctl try-restart swan-bot swan-blue   # only if running: a deliberate stop stays stopped
   fi                                        # docs/todo-only pushes don't restart the bot (content/facts.toml does);
 }                                           # content/lab/ (the lab's strategies, cards) is reread by the lab itself
+# src/swan_dash/ runs from its own once-a-minute timer and nothing in the bot or Blue imports it (checked 24 Oct):
+# a dashboard-only push needs no restart.
 
 # True when swan-bot started before the live tree last moved (the reflog of HEAD), i.e. it runs older code than the tree.
 # False when it is stopped or the time can't be read: a deliberate stop stays stopped.

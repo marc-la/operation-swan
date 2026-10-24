@@ -176,7 +176,8 @@ def test_docs_and_lab_only_pushes_do_not_restart(rig):
     rig.write("docs/a.md", "b\n")
     rig.write("todo/1.md", "t\n")
     rig.write("content/lab/s.toml", "x = 1\n")
-    new = rig.push("docs and lab")
+    rig.write("src/swan_dash/build.py", "x = 1\n")        # the dashboard runs from its own timer
+    new = rig.push("docs, lab and dashboard")
     assert rig.run().returncode == 0
     assert rig.head() == new and rig.records()[-1]["result"] == "ok"
     assert restarts(rig) == [] and alerts(rig)    # deployed, but the bot was not restarted

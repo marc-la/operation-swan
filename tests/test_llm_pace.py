@@ -52,3 +52,30 @@ def test_park_records_why_and_status_hides_expired():
     assert st["a"]["why"] == "daily quota" and st["a"]["parked_until"] > time.time()
     assert st["b"]["parked_until"] is None and st["b"]["why"] is None and st["c"]["parked_until"] is None
     assert seen == [("a", "daily quota"), ("b", "per-minute limit")]
+
+
+def test_quota_parks_survive_a_restart_but_error_parks_do_not(tmp_path):
+    def gen():
+        g = llm.Generator.__new__(llm.Generator)
+        g.chain = [("gemini", "a"), ("groq", "b"), ("groq", "c"), ("groq", "gone")]
+        g.parked, g.park_why, g.on_park = {}, {}, None
+        g.park_file = tmp_path / "llm_parks.json"
+        return g
+    first = gen()
+    first._park("a", 3600, "daily quota")
+    first._park("b", 300, "bad request")                  # a deploy may be the fix: probed again
+    first._park("c", -1, "daily quota")                   # already over
+    second = gen()
+    second.load_parks()
+    assert list(second.parked) == ["a"] and second.park_why == {"a": "daily quota"}
+    assert second.status()[0]["parked_until"] > time.time()
+    second.chain = [("groq", "b")]                        # a model dropped from the chain is not brought back
+    third = gen()
+    third.chain = [("groq", "b")]
+    third.load_parks()
+    assert third.parked == {}
+    plain = gen()
+    plain.park_file = None                                # not opted in (scripts, tests): nothing read or written
+    plain.load_parks()
+    plain._park("a", 3600, "daily quota")
+    assert plain.parked["a"] and not (tmp_path / "llm_parks.tmp").exists()

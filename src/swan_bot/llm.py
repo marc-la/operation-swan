@@ -64,6 +64,8 @@ CHAIN_FILE = config.ROOT / "deploy" / "llm_chain.txt"
 USAGE_FILE = config.DATA / "llm_usage.json"
 QUOTA_DAY = ZoneInfo("America/Los_Angeles")      # Gemini and Groq daily quotas reset at midnight Pacific
 SPEND_FILE = config.DATA / "llm_spend.json"
+KEPT_PARKS = {"daily quota", "daily budget"}      # parks that outlive a restart; an error park is probed again (a deploy may be the fix)
+_parks_lock = threading.Lock()
 BUDGET_DAY = ZoneInfo(config.LOCAL_TZ)           # competition days roll over at midnight Sydney
 
 
@@ -174,6 +176,8 @@ def chain_from_env():
 
 
 class Generator:
+    park_file = None                      # set by the bot: where quota parks are kept so a restart doesn't probe them again
+
     def __init__(self, team_code, allow_qwen=False):
         self.allow_qwen = allow_qwen
         self.qwen = ctn.CompetitorLLM(team_code=team_code, max_retries=2) if allow_qwen else None
@@ -324,6 +328,38 @@ class Generator:
         self.park_why[model] = why
         if self.on_park:
             self.on_park(model, self.parked[model], why)
+        self._save_parks()
+
+    def _save_parks(self):
+        """park_file: {model: {until, why}} for the quota parks still running. Never raises."""
+        if not self.park_file:
+            return
+        now = time.time()
+        keep = {m: dict(until=t, why=self.park_why.get(m)) for m, t in self.parked.items()
+                if t > now and self.park_why.get(m) in KEPT_PARKS}
+        with _parks_lock:
+            try:
+                tmp = self.park_file.with_suffix(".tmp")
+                self.park_file.parent.mkdir(exist_ok=True)
+                tmp.write_text(json.dumps(keep))
+                os.replace(tmp, self.park_file)
+            except OSError:
+                pass
+
+    def load_parks(self):
+        """Take back the quota parks a restart interrupted (park_file), those still running and for a model in the chain.
+        Not logged as new parks: the log already has them."""
+        if not self.park_file:
+            return
+        try:
+            saved = json.loads(self.park_file.read_text())
+        except (OSError, ValueError):
+            return
+        now = time.time()
+        for m in {m for _, m in self.chain}:
+            v = saved.get(m) if isinstance(saved, dict) else None
+            if isinstance(v, dict) and v.get("why") in KEPT_PARKS and isinstance(v.get("until"), (int, float)) and v["until"] > now:
+                self.parked[m], self.park_why[m] = v["until"], v["why"]
 
     def status(self):
         """The chain in order, with each model's park time and reason (for data/status.json; no keys)."""

@@ -1289,6 +1289,8 @@ def main():
     social = ctn.LegitSocial()
     rsocial = ctn.LegitSocial() if split else social    # the reader's own client: X-RateLimit-* is per client
     gen = Generator(code, allow_qwen=args.allow_qwen)
+    gen.park_file = config.DATA / "llm_parks.json"          # quota parks survive a deploy's restart
+    gen.load_parks()
     gen.on_park = lambda model, until, why: log({"act": "llm_park", "model": model, "why": why,
                                                  "until": dt.datetime.fromtimestamp(until, dt.timezone.utc).isoformat()})
     # the live bot is the one Latest reader and shares what it read (feeds.py); a dry run reads a saved fixture
