@@ -521,3 +521,11 @@ def test_no_ask_hands_the_model_a_sentence_to_copy():
         assert "as they are today" not in line, kind
     assert not any("connects directly" in o for o in content.OPENERS)
     assert "relative, job, age or past that isn't in your profile" in content.REPLY_RULES
+
+
+def test_the_read_is_told_to_stay_on_f14_when_the_keywords_say_it_and_the_rest_are_still_suggestions():
+    f14 = content.read_block("F14_no_yes_but")
+    assert "pick F14_no_yes_but" in f14 and "Hospitals coming up" in f14
+    other = content.read_block("F10_staff_and_livelihoods")
+    assert "A keyword match suggests F10_staff_and_livelihoods; pick another" in other and "pick F14" not in other
+    assert "keyword match" not in content.read_block(None) and "pick F14" not in content.read_block(None)

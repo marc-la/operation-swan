@@ -269,7 +269,7 @@ def test_read_and_mirror_prompts():
     meta = {}
     u = content.reply_prompt("only if there's an end date", "F14_no_yes_but", ["end date"], meta=meta, read=True,
                              hint="F14_no_yes_but")
-    assert '"stance"' in u and "- F1_blank_cheque:" in u and "keyword match suggests F14_no_yes_but" in u
+    assert '"stance"' in u and "- F1_blank_cheque:" in u and "pick F14_no_yes_but" in u
     assert "They haven't fully decided" not in u and meta["style"] == "current"
     assert "They haven't fully decided" in content.reply_prompt("x", "F14_no_yes_but", [])
     meta = {}

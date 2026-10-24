@@ -1055,8 +1055,17 @@ def read_block(hint=None, rng=random):
     """The light read's instruction: read the post, then answer as JSON (or skip). `hint`: the frame a keyword match
     picked, offered as a suggestion only."""
     menu, _ = frame_menu(rng)
-    hint = (f"A keyword match suggests {hint}; pick another if one fits their doubt better.\n"
-            if hint in FRAMES else "")
+    # 25 Oct audit: six of six replies in two minutes took F10 (nurses, a certificate at the bakery door) for citizens whose
+    # words asked for a sunset, review or exemptions, because "hospital" came up in the same comment. Among yes_reason
+    # targets that named a condition, F14 drew a citizen reply 12.1% [8.6-16.7] of the time, F10 9.1% [7.7-10.8]
+    # (931 vs 174 replies, 24 h): when the keywords say F14, the read is told to stay with what they asked for.
+    if hint == "F14_no_yes_but":
+        hint = ("They named what they want written in (an end date, a review, exemptions or safeguards): pick "
+                "F14_no_yes_but, which answers exactly that, unless their doubt is clearly about something else. "
+                "Hospitals coming up in the same comment is not that.\n")
+    else:
+        hint = (f"A keyword match suggests {hint}; pick another if one fits their doubt better.\n"
+                if hint in FRAMES else "")
     return (
         f"\n\nFirst read them, then write. Output one JSON object and nothing else (this replaces 'output only the "
         f"text'): {{\"stance\": one of {'|'.join(READ_STANCES)}, \"doubt\": their concern in 10 words or fewer, "
