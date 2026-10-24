@@ -148,7 +148,7 @@ class Amplifier:
     # ---- boosters ----------------------------------------------------------------------------
     def maybe_register_booster(self):
         acc = self.accounts
-        if self.live and config.POOL_LIVE:          # todo/38: the pool worker is the only registrar while it is live
+        if self.live and (config.POOL_LIVE or config.HOT_VOICES):    # todo/38: the pool worker is the only registrar while it is live (hot mode: always)
             return
         if (len(acc.boosters()) >= self.boosters_target or len(acc.active()) + config.swarm_active() >= config.MAX_ACTIVE
                 or len([r for r in acc.records if r.get("role") == "booster"]) >= config.MAX_BOOSTERS

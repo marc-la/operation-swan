@@ -29,7 +29,8 @@ def accounts(*names, extra=()):
 def hot(monkeypatch):
     """Hot mode on for the roster NAMES, everything hot_mode_apply touches restored afterwards."""
     for name in ("ACCOUNT_MIN_GAP_S", "REPOST_MIN_GAP_S", "POOL_SCHEDULER", "POOL_LIVE", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN", "ONE_VOICE_AUTO",
-                 "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "HOT_VOICES"):
+                 "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "HOT_VOICES", "POOL_WRITERS",
+                 "POOL_PIPELINE"):
         monkeypatch.setattr(config, name, getattr(config, name))
     return lambda names=NAMES: config.hot_from_env({"SWAN_HOT_VOICES": ",".join(names)})
 
@@ -140,3 +141,73 @@ def test_one_voice_writes_everything_and_the_next_takes_over_when_it_is_suspende
     switches = [a for a in actions(tmp_path) if a.get("act") == "hot_switch"]
     assert [s["to"] for s in switches] == ["u1", "u2"] and switches[0]["first"] is True
     assert any(m.startswith("HOT: @u2 now writes (1 spare left") for m in spies["alerts"]), spies["alerts"]
+
+
+# ---- the refill: the pool orchestrator keeps the reserve topped up (25 Oct, Marc) -----------------------------------------
+def pooled(acc, name, at, act="activate"):
+    rec = next(r for r in acc.records if r["username"] == name)
+    rec["pool"] = dict(by="pool", act=act, at=at)
+    return rec
+
+
+def test_a_pool_voice_joins_the_end_of_the_roster_in_activation_order(hot):
+    hot(("ana_d94", "tui4"))
+    acc = accounts("ana_d94", "tui4", "late", "early", "plain")
+    pooled(acc, "late", "2026-10-25T09:00:00+00:00")
+    pooled(acc, "early", "2026-10-25T01:00:00+00:00", act="convert")
+    assert acc.hot_roster() == ["ana_d94", "tui4", "early", "late"], "named first, then the pool's, oldest first; a plain voice is not in it"
+    assert [r["username"] for r in acc.voices()] == ["ana_d94"]
+    for r in acc.records[:2]:
+        acc.mark_suspended(r)
+    assert [r["username"] for r in acc.voices()] == ["early"], "the refill writes once the named ones are gone"
+    h = acc.hot()
+    assert h["active"] == "early" and h["spares"] == ["late"] and h["lost"] == ["ana_d94", "tui4"]
+
+
+def test_hot_mode_refill_has_its_own_switch_and_target(monkeypatch):
+    for name in ("POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",
+                 "ACCOUNT_MIN_GAP_S", "REPOST_MIN_GAP_S", "POOL_SCHEDULER", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN", "ONE_VOICE_AUTO",
+                 "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "HOT_VOICES"):
+        monkeypatch.setattr(config, name, getattr(config, name))
+    monkeypatch.setattr(config, "POOL_LIVE", True)                        # the box's SWAN_POOL_LIVE=1, for the many-voice pool
+    config.hot_from_env({"SWAN_HOT_VOICES": "a1,a2"})
+    assert config.POOL_LIVE is False, "hot mode does not inherit SWAN_POOL_LIVE: registering needs SWAN_HOT_POOL_LIVE"
+    assert (config.POOL_WRITERS, config.POOL_PIPELINE) == (config.HOT_POOL_WRITERS, config.HOT_POOL_PIPELINE) == (8, 3)
+    monkeypatch.setattr(config, "HOT_POOL_LIVE", True)
+    config.hot_mode_apply()
+    assert config.POOL_LIVE is True
+    assert config.stealth_from_env({"SWAN_HOT_POOL_LIVE": "0", "SWAN_HOT_POOL_WRITERS": "6"}) == dict(HOT_POOL_LIVE=False, HOT_POOL_WRITERS=6)
+
+
+def test_the_old_registrars_stand_down_in_hot_mode(hot, monkeypatch):
+    from swan_bot import amplify
+    hot()
+    acc = accounts(*NAMES)
+    registered = []
+    acc.social = type("S", (), {"register": lambda *a, **k: registered.append(a)})()
+    acc.next_register = 0
+    acc.maybe_register(16, "code", "owner")
+    amp = amplify.Amplifier.__new__(amplify.Amplifier)
+    amp.accounts, amp.live, amp.boosters_target, amp.next_register, amp.owner = acc, True, 22, 0, "owner"
+    amp.maybe_register_booster()
+    assert registered == [] and len(acc.records) == 3, "only the pool registers while hot mode runs"
+
+
+def test_stop_rule_counts_hot_writers_and_alerts_only_on_a_short_average(hot):
+    hot(("w1", "w2", "w3", "w4"))
+    acc = accounts("w1", "w2", "w3", "w4")
+    acc.live = False                                                      # accounts.save() is then a no-op
+    texts = []
+    for i, (name, writes) in enumerate((("w1", 100), ("w2", 200), ("w3", 120), ("w4", 600))):
+        rec = acc.records[i]
+        h = acc.hot()
+        assert h["active"] == name
+        bot.hot_track(acc, h)
+        assert rec["hot_from"]["w0"] == 0 and "w" not in rec["hot_from"], "a running writer only gets its start recorded"
+        rec["writes"] = writes
+        acc.mark_suspended(rec)
+        texts.append(bot.hot_track(acc, acc.hot()))
+    assert [r["hot_from"]["w"] for r in acc.records] == [100, 200, 120, 600]
+    assert texts[:2] == [None, None], "fewer than three finished writers: no rule yet"
+    assert texts[2] and "100, 200, 120" in texts[2] and "mean 140" in texts[2] and "Nothing was changed" in texts[2]
+    assert texts[3] is None, "the last three (200, 120, 600) average 307: back above the line, no alert"

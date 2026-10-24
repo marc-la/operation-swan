@@ -484,7 +484,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
                "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S",
-               "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance
@@ -497,6 +497,20 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
 # .env: SWAN_HOT_VOICES=ana_d94,tui4,vika68   (read by load_env, so at the next restart; a comma list of usernames).
 HOT_VOICES = ()
 HOT_GAP_S = 2                       # a hot voice's own minimum gap between writes (the write budget paces the bot, not this)
+# The refill (25 Oct, Marc): the pool orchestrator (todo/38) keeps the reserve topped up while hot mode runs, so there is always a
+# next writer. It plans for HOT_POOL_WRITERS voices (1 writing + the rest in reserve) and HOT_POOL_PIPELINE warming accounts on
+# top, instead of the 31 + 4 of the many-voice pool; registration, warm-up, paced delays, variants and cards are the pool's own.
+# A voice the pool activates or converts joins the END of the roster (Accounts.hot_roster), in activation order, so the names
+# in SWAN_HOT_VOICES stay first. HOT_POOL_LIVE is its own go-live switch: hot mode ignores SWAN_POOL_LIVE (it may be set for the
+# many-voice pool), and with HOT_POOL_LIVE False the pool only logs `pool_shadow` rows. Go-live: SWAN_HOT_POOL_LIVE=1 + restart;
+# stop: touch POOL_OFF (no restart).
+HOT_POOL_LIVE = False
+HOT_POOL_WRITERS = 8
+HOT_POOL_PIPELINE = 3
+# Stop rule (todo/45): the last HOT_STOP_N hot writers lasted fewer than HOT_STOP_WRITES writes each on average = alert (the
+# account budget needs about 250 writes per ban at 3 a minute). It only alerts: going back to the many-voice pool is a restart.
+HOT_STOP_N = 3
+HOT_STOP_WRITES = 250
 
 
 def hot_mode():
@@ -522,11 +536,13 @@ def hot_from_env(env=None):
 def hot_mode_apply():
     """With HOT_VOICES set: one voice writes, so every rule that spreads writes over many voices stands down."""
     global ACCOUNT_MIN_GAP_S, REPOST_MIN_GAP_S, POOL_SCHEDULER, POOL_LIVE, SECOND_VOICE, ONE_VOICE_PER_CITIZEN, ONE_VOICE_AUTO
-    global VOICE_DAY_CAP, VOICE_HOUR_CAP, VOICE_SLEEP, VOICE_JITTER, VOICE_STAGGER
+    global VOICE_DAY_CAP, VOICE_HOUR_CAP, VOICE_SLEEP, VOICE_JITTER, VOICE_STAGGER, POOL_WRITERS, POOL_PIPELINE
     if not HOT_VOICES:
         return
     ACCOUNT_MIN_GAP_S = REPOST_MIN_GAP_S = HOT_GAP_S          # reposts and thread answers keep their own 60 s: same starvation
-    POOL_SCHEDULER = POOL_LIVE = SECOND_VOICE = False          # POOL_LIVE: no registering or converting while it runs
+    POOL_SCHEDULER = SECOND_VOICE = False
+    POOL_LIVE = HOT_POOL_LIVE                                  # not SWAN_POOL_LIVE: registering needs its own switch in hot mode
+    POOL_WRITERS, POOL_PIPELINE = HOT_POOL_WRITERS, HOT_POOL_PIPELINE
     ONE_VOICE_PER_CITIZEN = ONE_VOICE_AUTO = False
     VOICE_DAY_CAP = VOICE_HOUR_CAP = VOICE_SLEEP = VOICE_JITTER = VOICE_STAGGER = False
 

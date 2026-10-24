@@ -790,8 +790,8 @@ def test_only_the_pool_and_the_old_registrars_call_register():
             callers[path.name] = n
     assert set(callers) == {"bot.py", "amplify.py", "swarm.py", "pool_runner.py"}, callers
     bot_src = (ROOT / "src" / "swan_bot" / "bot.py").read_text()
-    assert bot_src.count("if self.live and config.POOL_LIVE:") == 1 and \
-        "if self.live and config.POOL_LIVE:" in (ROOT / "src" / "swan_bot" / "amplify.py").read_text()
+    guard = "if self.live and (config.POOL_LIVE or config.HOT_VOICES):"      # hot mode: only the pool refills
+    assert bot_src.count(guard) == 1 and guard in (ROOT / "src" / "swan_bot" / "amplify.py").read_text()
     writers = [p.name for p in (ROOT / "src" / "swan_bot").glob("*.py") if "config.ACCOUNTS_FILE" in p.read_text()
                and re.search(r"save_json\(config\.ACCOUNTS_FILE|ACCOUNTS_FILE\.write_text", p.read_text())]
     assert writers == ["bot.py"], writers

@@ -49,6 +49,29 @@ REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3
 REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's last write (not the 4-min gap)
 
 
+def hot_track(accounts, hot):
+    """Hot-writer bookkeeping on the records (the caller holds mu): rec["hot_from"] = {at, w0} when a voice becomes the writer, and "w"
+    (its writes as the hot writer) once it is suspended. Returns the stop-rule alert text when the last HOT_STOP_N hot
+    writers averaged under HOT_STOP_WRITES, else None. A voice with no hot_from (the writer before this) is not counted."""
+    by, changed = {r["username"]: r for r in accounts.records}, False
+    rec = by.get(hot["active"]) if hot["active"] else None
+    if rec is not None and not rec.get("hot_from"):
+        rec["hot_from"], changed = dict(at=now_iso(), w0=rec.get("writes", 0)), True
+    for u in hot["lost"]:
+        r = by.get(u)
+        if r and r.get("hot_from") and "w" not in r["hot_from"]:
+            r["hot_from"]["w"], changed = max(0, r.get("writes", 0) - r["hot_from"].get("w0", 0)), True
+    if changed:
+        accounts.save()
+    done = sorted((r["hot_from"] for r in accounts.records if "w" in (r.get("hot_from") or {})), key=lambda h: h["at"])
+    last = [h["w"] for h in done[-config.HOT_STOP_N:]]
+    if len(last) == config.HOT_STOP_N and sum(last) / len(last) < config.HOT_STOP_WRITES:
+        return (f"HOT STOP RULE: the last {len(last)} hot writers lasted {', '.join(map(str, last))} writes (mean "
+                f"{sum(last) / len(last):.0f}, under the {config.HOT_STOP_WRITES} the account budget needs at 3 a minute). "
+                f"Nothing was changed. To go back to the many-voice pool: unset SWAN_HOT_VOICES and restart.")
+    return None
+
+
 def reply_back_gap():
     """REPLY_BACK_GAP_S, except in hot mode: the one voice writes every ~20 s, so a 60 s rule would starve every reply-back
     (24 Oct: 19 queued and none sent in 5 h of hot mode, against 4 to 11 an hour before)."""
@@ -193,18 +216,28 @@ class Accounts:
         voices = [r for r in self.active() if r.get("role", "voice") != "booster"]
         if config.HOT_VOICES:
             by_name = {r["username"]: r for r in voices}
-            return next(([by_name[u]] for u in config.HOT_VOICES if u in by_name), [])
+            return next(([by_name[u]] for u in self.hot_roster() if u in by_name), [])
         return voices
+
+    def hot_roster(self):
+        """Hot mode's order of use: the names in config.HOT_VOICES, then the voices the pool activated or converted since,
+        oldest activation first (so the refill joins the end and never jumps the queue). Suspended names stay in the list."""
+        named = set(config.HOT_VOICES)
+        auto = sorted((r for r in self.records if r.get("role", "voice") != "booster" and r.get("username") not in named
+                       and (r.get("pool") or {}).get("act") in ("activate", "convert")),
+                      key=lambda r: (r["pool"].get("at") or "", r.get("username")))
+        return list(config.HOT_VOICES) + [r["username"] for r in auto]
 
     def hot(self):
         """Hot mode's live roster for the status file and logs: {active, spares, lost}, or None when it is off."""
         if not config.HOT_VOICES:
             return None
+        roster = self.hot_roster()
         status = {r["username"]: r.get("status", "active") for r in self.records}
-        live = [u for u in config.HOT_VOICES if status.get(u) == "active"]
+        live = [u for u in roster if status.get(u) == "active"]
         return dict(active=live[0] if live else None, spares=live[1:],
-                    lost=[u for u in config.HOT_VOICES if status.get(u) == "suspended"],
-                    missing=[u for u in config.HOT_VOICES if u not in status])
+                    lost=[u for u in roster if status.get(u) == "suspended"],
+                    missing=[u for u in roster if u not in status])
 
     def boosters(self):
         """Like-only accounts, less the one swan_blue reports from (config.blue_reporter)."""
@@ -214,7 +247,7 @@ class Accounts:
     def maybe_register(self, k, code, owner):
         """Drip registration: at most one new account per call, 20-40 min apart, never more than MAX_ACCOUNTS.
         todo/38: not at all while config.POOL_LIVE (the pool worker is then the only registrar)."""
-        if self.live and config.POOL_LIVE:
+        if self.live and (config.POOL_LIVE or config.HOT_VOICES):     # hot mode: only the pool refills (SWAN_HOT_POOL_LIVE)
             return
         voices_ever = [r for r in self.records if r.get("role", "voice") != "booster"]
         if (len(self.voices()) >= k or len(voices_ever) >= config.MAX_ACCOUNTS
@@ -1461,7 +1494,11 @@ def main():
         """Hot mode: one log row (act hot_switch) and one alert when the writing voice changes (the old one suspended, the
         next spare took over) or when none is left, and once on the first look. Nothing when hot mode is off."""
         hot = accounts.hot()
-        if hot is None or (hot["active"] or "none") == hot_last[0]:
+        if hot is None:
+            return
+        with mu:
+            stop = hot_track(accounts, hot)
+        if (hot["active"] or "none") == hot_last[0]:
             return
         first, hot_last[0] = hot_last[0] is None, hot["active"] or "none"
         log({"act": "hot_switch", "to": hot["active"], "spares": hot["spares"], "lost": hot["lost"],
@@ -1471,6 +1508,8 @@ def main():
         left = len(hot["spares"])
         alert(f"HOT: @{hot['active']} now writes ({left} spare left; lost: {', '.join(hot['lost']) or 'none'})" if hot["active"]
               else f"HOT: no hot voice left (lost: {', '.join(hot['lost']) or 'none'}); the bot is idle until SWAN_HOT_VOICES names a live one")
+        if stop:
+            alert(stop)
 
     def write_status():
         """data/status.json for the dashboard (todo/09), at most every 30 s. Counts and model names only, no secrets.
