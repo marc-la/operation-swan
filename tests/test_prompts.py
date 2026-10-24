@@ -407,3 +407,97 @@ def test_build_prompt_passes_recent_openings_to_replies_and_second_voices():
         assert "Don't open the way our latest replies did" in user, mode
         _, _, plain = bot.build_prompt(dict(job, meta=None), tg)
         assert "Don't open the way our latest replies did" not in plain, mode
+
+
+# ---- 2026-10-24 audit: a reply as Esther argued hospitals with a citizen who already opposed the pass ----------------
+ALLY = ("Appreciate the hospital angle, but gating access isn't the fix. Vaccination should stay voluntary; we need "
+        "testing and targeted protections plus better hospital support to keep Kingstonia safe.")
+PCR = "The launch briefing put PCR capacity at a few hundred tests a day, so I wouldn't rely on the official numbers."
+
+
+@pytest.mark.parametrize("mode", experiment.REPLY_MODES)
+def test_a_citizen_who_opposes_the_pass_is_not_answered_as_a_yes_leaner(monkeypatch, mode):
+    monkeypatch.setattr(config, "PIN", {"reply_mode": mode})
+    meta = {}
+    out = content.reply_prompt(ALLY, "F10_staff_and_livelihoods", [], PCR, meta=meta, persona=P["esther"], read=True,
+                               hint="F10_staff_and_livelihoods")
+    assert "fear for the hospitals" not in out and "Answer WHY they lean Yes" not in out
+    assert "They haven't fully decided" not in out and content.ALLY_WHY in out
+    assert meta["ally"] is True and meta["rebuttal"] is False
+    other = {}
+    yes = content.reply_prompt("I'm unsure, the hospitals were swamped last time.", "F10_staff_and_livelihoods", [],
+                               meta=other, persona=P["esther"])
+    assert "ally" not in other and content.ALLY_WHY not in yes
+
+
+def test_the_mirror_reply_drops_the_fear_rebuttal_for_an_ally_and_keeps_it_for_the_rest():
+    ally = content.mirror_prompt(ALLY, "F10_staff_and_livelihoods", [])
+    other = content.mirror_prompt("I'm leaning Yes, the hospitals were swamped last time.", "F10_staff_and_livelihoods", [])
+    assert "their reason is fear" not in ally and "their reason is fear" in other
+
+
+@pytest.mark.parametrize("text,ally", [
+    (ALLY, True), ("Nobody shouldn't be required to show papers for a bus ride.", True),
+    ("I'm against the pass.", True), ("The choice stays yours, so a certificate is fine.", False),
+    ("Vaccination is voluntary anyway, so I'm fine with it.", False), ("We need better hospitals.", False)])
+def test_opposes_pass(text, ally):
+    assert content.opposes_pass(text) is ally
+
+
+def test_context_is_called_a_news_item_only_when_it_is_one():
+    for build in (lambda **kw: content.reply_prompt("a worry about jobs", "F7_livelihoods", [], PCR, **kw),
+                  lambda **kw: content.mirror_prompt("a worry about jobs", "F7_livelihoods", [], PCR, **kw),
+                  lambda **kw: content.second_voice_prompt("a worry about jobs", "F7_livelihoods", [], PCR, **kw)):
+        assert "this news item: <<<The launch briefing" in build()                 # the default: as before
+        post = build(news=False)
+        assert "news item" not in post and "by another neighbour" in post and PCR[:40] in post
+
+
+def test_a_reply_is_not_told_to_state_its_vote_but_a_post_is():
+    for key in ("lani", "ana", "esther", "dan"):
+        persona = P[key]
+        post = content.system_prompt(persona, persona["frames"][0], mode="post")
+        assert content.VOTE_SENTENCE.search(post)                            # a post still states its vote
+        for mode in content.NO_VERDICT_MODES:
+            reply = content.system_prompt(persona, persona["frames"][0], mode=mode)
+            assert "as a settled fact" not in reply and "Say plainly that you're voting No" not in reply
+    for register, voice in content.VOICES.items():
+        assert content.VOTE_SENTENCE.search(voice["instruction"]), register       # every register has it to strip
+        assert "voting No" not in content.VOTE_SENTENCE.sub("", voice["instruction"]), register
+
+
+# ---- the reply answers the citizen first (2026-10-24 audit of six rows) -------------------------------------------
+def _reply(target, **kw):
+    meta = {}
+    return content.reply_prompt(target, "F10_staff_and_livelihoods", [], meta=meta, persona=P["esther"], **kw), meta
+
+
+def test_a_reply_is_told_to_take_up_the_citizens_point_before_its_angle():
+    user, _ = _reply("I'd want the plan to show how access and safeguards work together.")
+    assert content.ANSWER_FIRST in user and user.index(content.ANSWER_FIRST) > user.index("<<<")
+
+
+def test_the_answer_why_line_needs_a_reason_to_answer():
+    for _ in range(20):                                       # reply_mode is drawn: look at the reason_first draws
+        plain, meta = _reply("I want the plan published before the vote.")
+        if meta.get("reply_mode") == "reason_first":
+            assert "Answer WHY they lean Yes" not in plain
+            break
+    for _ in range(40):
+        fear, meta = _reply("I'm leaning Yes, the hospitals were swamped last time.")
+        if meta.get("reply_mode") == "reason_first":
+            assert "Answer WHY they lean Yes" in fear
+            break
+
+
+def test_an_ally_is_never_asked_a_closing_question():
+    for _ in range(30):
+        user, meta = _reply(ALLY)
+        assert meta["ask_kind"] == "none" and content.REPLY_ASK_NONE in user
+
+
+def test_no_ask_hands_the_model_a_sentence_to_copy():
+    for kind, line in content.experiment.ASK_KINDS.items():
+        assert "as they are today" not in line, kind
+    assert not any("connects directly" in o for o in content.OPENERS)
+    assert "relative, job, age or past that isn't in your profile" in content.REPLY_RULES

@@ -557,3 +557,51 @@ def test_live_reject_fixes():
     assert quality.check(early, "post")[1] == "no_closing_question"
     assert quality.repair_note("no_closing_question", early, "post").startswith("Move your question to the very end")
     assert "«Fair point»" in quality.repair_note("consoling_phrase", "Fair point, but there's no end date.", "reply")
+
+
+# ---- invented names (2026-10-24 audit) ------------------------------------------------------------------------------
+INVENTED = ("Central is 40 nurses short and Leigh is already short three porters tomorrow, so a door check fills "
+            "neither post. Which job in your house would need papers just to clock on?")
+
+
+def test_a_name_nobody_gave_the_voice_is_rejected_in_a_reply():
+    assert bad(INVENTED, "reply") == "invented_name_Leigh"
+    assert bad(INVENTED.replace("Leigh is", "Leigh's"), "reply") == "invented_name_Leigh"      # at the sentence start
+    start = INVENTED.replace("Central is 40 nurses short and Leigh is", "Leigh's")
+    assert bad(start, "reply") == "invented_name_Leigh"
+    assert bad("Mrs Patel's shop told me the list isn't written, and the question names no places or review date "
+               "anywhere. Which shop in your street would need papers?", "reply") == "invented_name_Patel"
+    note = quality.repair_note("invented_name_Leigh", INVENTED, "reply")
+    assert "Leigh" in note and "profile" in note
+
+
+def test_names_the_prompt_the_citizen_or_the_character_data_hold_pass():
+    ok(INVENTED, "reply", target_text="My mate Leigh says the porters are short.")
+    ok(INVENTED, "reply", prompt_text="People in your life: Leigh, a porter.")
+    ok(INVENTED, "reply", known_caps=quality.caps_in("You are Ana. People in your life: Leigh, a porter."))
+    ok(INVENTED.replace("Leigh", "Ravi"), "reply")                      # Ravi Chand: Esther's porter foreman
+    ok("Today's rota says Central is 40 nurses short. Tomorrow's is worse, and a door check fills neither post. Which "
+       "job in your house would need papers just to clock on?", "reply")   # sentence-initial common words are no names
+    ok("Nobody's saying which doors count yet, and Kingstonia Central has 40 empty nursing posts as it is. Which door "
+       "in New Haven would you want checked?", "reply")
+    assert quality.check(INVENTED, "post")[1] != "invented_name_Leigh"     # posts name people on purpose
+
+
+# ---- repeated runs (2026-10-24 audit of six rows) --------------------------------------------------------------------
+SENT = "A pass at the bakery door won't add a single nurse. Which job in your house would need papers?"
+
+
+def test_a_run_of_six_words_one_of_our_texts_already_holds_is_rejected():
+    other = "Honestly, a pass at the bakery door wont bring a nurse to the ward either."
+    why = bad(SENT, "reply", recent_texts=[other])
+    assert why == "repeat_run_a_pass_at_the_bakery_door"
+    note = quality.repair_note(why, SENT, "reply")
+    assert "a pass at the bakery door" in note and "different words" in note
+
+
+def test_a_repeated_run_is_allowed_when_the_citizen_wrote_it_holds_a_number_or_is_short():
+    other = "Honestly, a pass at the bakery door wont bring a nurse to the ward either."
+    assert quality.repeated_run(SENT, [other], target_text="You think a pass at the bakery door is silly?") is None
+    assert quality.repeated_run("Posts 40 nurses short at Central", ["Posts 40 nurses short at Central today"]) is None
+    assert quality.repeated_run("A pass at the door adds no nurse.", [other]) is None      # five words only
+    assert quality.repeated_run(SENT, [other][:0]) is None

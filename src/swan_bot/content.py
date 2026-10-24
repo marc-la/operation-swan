@@ -612,9 +612,16 @@ def pulse_block(pulse, parts=PULSE_PARTS):
                 f"mention other posts): {said}", PULSE_BUDGET)
 
 
-def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_PARTS):
+# The voices' "say you're voting No" sentence. A reply, second voice or reply-back carries NO_VERDICT_RULE ("don't
+# state your own vote"), so there the system prompt must not ask for it (2026-10-24 audit: the two lines fought).
+VOTE_SENTENCE = re.compile(r"\s*Say (?:you're voting No as a settled fact|plainly that you're voting No)\.")
+NO_VERDICT_MODES = ("reply", "second_voice", "reply_back")
+
+
+def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_PARTS, mode=None):
     """Who is speaking (character + voice), the facts they may use, and the rules. With a pulse, the pulse_block
-    of `pulse_parts` goes right after WORLD."""
+    of `pulse_parts` goes right after WORLD. `mode`: the job's kind; the replies in NO_VERDICT_MODES are not told to
+    state their vote."""
     f, register = FRAMES[frame_key], register_of(persona)
     off = (meta or {}).get("style") == "off_topic"
     facts = "; ".join(FACT_NOTES[k] for k in fact_store.active(f["facts"])[:3])
@@ -629,7 +636,10 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
     heat = f.get("heat") if register == "fed_up" and not fact_store.paused_in(f.get("heat")) and not off else None
     touch = touches.draft_pick(persona, random) if config.TOUCHES_ON and not off else None   # todo/37; flag first
     heat = None if touch and register == "fed_up" else heat          # a touch replaces the frame's heat line, never both
-    voice = VOICES[register]["instruction"] + (f" Your sharpest take on today's point, in your own words: {heat}"
+    instruction = VOICES[register]["instruction"]
+    if mode in NO_VERDICT_MODES:
+        instruction = VOTE_SENTENCE.sub("", instruction)
+    voice = instruction + (f" Your sharpest take on today's point, in your own words: {heat}"
                                                if heat else "")
     doses = fact_store.ok(["first_doses"])
     jab = JAB_FIRST_LOT if persona["key"] in HEALTH_WORKERS and doses else JAB_WAIT
@@ -843,6 +853,15 @@ THREAD_STYLES = {
 }
 
 
+def context_line(context, news=True, where="in reply to"):
+    """The line that shows what a post sat under. It is a news item only when a paper or organiser wrote it; a
+    neighbour's post is said to be one, so the model doesn't take it for the news (2026-10-24 audit)."""
+    if not context:
+        return ""
+    what = "this news item" if news else "this post by another neighbour (not you, and not what they wrote; don't thank or agree with them for anything in it)"
+    return f"It was posted {where} {what}: <<<{context[:200]}>>>\n"
+
+
 def thread_reply_prompt(post_text, frame_key, style):
     task = THREAD_STYLES[style].format(angle=FRAMES[frame_key]["gist"])
     return (f"A neighbour posted:\n<<<{post_text[:600]}>>>\nYou're replying under their post. {task} "
@@ -858,8 +877,29 @@ def thread_answer_prompt(our_text, their_text):
     )
 
 
+# A citizen already against the pass ("gating access isn't the fix", "should stay voluntary"): the hospital/COVID
+# rebuttals and "answer WHY they lean Yes" are for Yes-leaners. "voluntary" alone is not here: a Yes-leaner says
+# "the choice stays yours" (REBUTTALS 3). 2026-10-24 audit: a reply argued hospitals with someone who had said that.
+OPPOSES_PASS = re.compile(
+    r"\bgating\b|(isn'?t|ain'?t|not) the (fix|answer|solution)|\bforcing (people|ppl|folks|everyone)\b|\b(should|must|needs? to) (stay|remain|be) voluntary|"
+    r"\b(keep|keeping|leave|leaving) (it|vaccination|the jab|the vaccine) voluntary|"
+    r"\b(shouldn'?t|should not|mustn'?t|must not) (be )?(required|forced|mandatory|compulsory)|"
+    r"\bagainst (the |a )?(pass|passes|mandate|mandates|certificate|certificates|checkpoints?)\b|"
+    r"\bno (to )?(mandates?|passes|vaccine passports?)\b", re.I)
+
+
+def opposes_pass(text):
+    return bool(OPPOSES_PASS.search(text or ""))
+
+
+ALLY_WHY = ("They already oppose the pass. Don't argue with them or treat them as unsure: take up their own point in "
+            "their terms, then add one reason that matters on the day. ")      # (the voices' replies say 'no agreeing')
+
+
 def rebuttal_for(text):
-    """The first matching rebuttal that states no paused fact, or None."""
+    """The first matching rebuttal that states no paused fact, or None. None for a citizen who opposes the pass."""
+    if opposes_pass(text):
+        return None
     return next((line for pattern, line, req in REBUTTALS if pattern.search(text or "") and fact_store.ok(req)), None)
 
 
@@ -868,7 +908,7 @@ OPENERS = [
     "Open with their own words for what they raised, 6 words or fewer.",
     "Open by naming the exact thing they asked for, in a few words.",
     "Open with the fact itself, plainly.",
-    "Open with a short line from your own experience that connects directly to their point.",
+    "If a moment from your own life really bears on their point, open with one short line of it; otherwise open with their point.",
 ]
 CORE_FRAMES = {"F14_no_yes_but", "F1_blank_cheque", "F2_no_end", "F8_powers"}
 REPLY_RULES = (
@@ -878,8 +918,11 @@ REPLY_RULES = (
     "only if it connects directly to their point; no small talk. No rhetorical questions: any question is one they "
     "can answer from their own life. Do not repeat their sentences back to them and don't lecture. Never open by "
     "granting their point ('that would help', 'fair ask', 'sounds sensible'), never ask whether they know anyone "
-    "who moved from Yes to No, and never tell of someone who was Yes and switched. No hashtags."
+    "who moved from Yes to No, and never tell of someone who was Yes and switched. Give nobody you name a relative, "
+    "job, age or past that isn't in your profile; when unsure, name no one. No hashtags."
 )
+ANSWER_FIRST = ("First take up what they actually said or asked, in their terms; use the angle below only where it "
+                "fits that, and leave it out where it doesn't. ")
 
 
 # todo/20 G9 (2026-10-22): the cap in characters as well as words. Kimi K2.5 keeps to characters, not word counts: 47
@@ -1091,45 +1134,51 @@ def off_topic_prompt(target_text, context=None, persona=None):
 
 
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,
-                 style="current", read=False, hint=None, recent=(), spent=()):
+                 style="current", read=False, hint=None, recent=(), spent=(), news=True):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A
     `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life.
     todo/20: style "mirror_concede" is the other arm (mirror_prompt). read=True asks for the light read: the reply
     comes back inside JSON with the citizen's stance, doubt and the frame the model picked (parse_read); `hint` is
-    the frame a keyword match picked."""
+    the frame a keyword match picked. `news`: the context is a news item, not a neighbour's post (context_line)."""
     if style == "mirror_concede":
-        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent, spent)
-    ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
+        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent, spent, news)
+    ctx = context_line(context, news)
+    ally = opposes_pass(target_text)
     arms = {}
     # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
     # only got them to restate a conditional Yes (the "neither side" changes in the 2026-10-20 activity log).
     # conditions_first is the pre-20-Oct reply (the frame's point, in their terms), kept as the switchback's control.
     reason_first = experiment.draw("reply_mode", experiment.REPLY_MODES, arms) == "reason_first"
-    if reason_first:
+    if reason_first and not ally:
         reb = rebuttal_for(target_text)
         asks = f"The conditions they mention: {', '.join(wants)}. Don't argue about these.\n" if wants else ""
     else:
-        reb = None if frame_key in CORE_FRAMES else rebuttal_for(target_text)
+        reb = None if frame_key in CORE_FRAMES else rebuttal_for(target_text)       # (None for an ally)
         asks = f"The specific thing they raised: {', '.join(wants)}. Use their terms.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
     # with their reason known, it replaces the frame's angle (one instruction, not two that pull apart)
     lever = experiment.draw("lever", lever_weights(exclude={"fear_answer"} if reb and reason_first else ()), arms)
-    ask_kind = experiment.draw("ask_kind", {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"}, arms)
+    # an ally is not asked to defend the status quo: a question back to someone who agrees reads as a challenge
+    ask_weights = {"none": 1.0} if ally else {k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"}
+    ask_kind = experiment.draw("ask_kind", ask_weights, arms)
     sentences, lo, hi = experiment.length_line("reply", arms)
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), style=style,
-          **arms)
+          **arms, **({"ally": True} if ally else {}))       # ally: not a reason_first draw, whatever reply_mode says
     gist = "the angle you pick below" if read else FRAMES[frame_key]["gist"]
-    undecided = "" if read else "They haven't fully decided. "        # the light read finds out instead
-    if reason_first:
+    undecided = "" if read or ally else "They haven't fully decided. "   # the light read finds out instead
+    if ally:                                    # already on our side: no Yes-leaner's reason to answer
+        point, why = gist, ALLY_WHY
+        reb = f"Note: {reb}\n" if reb else ""
+    elif reason_first:
         point = "answer the reason above" if reb else gist
-        why = "Answer WHY they lean Yes (the fear or hope underneath, not the conditions they list). "
+        why = "Answer WHY they lean Yes (the fear or hope underneath, not the conditions they list). " if reb else ""
         reb = f"{reb}\n" if reb else ""
     else:
         point, why = gist, ""
         reb = f"Note: {reb}\n" if reb else ""
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
-        f"{undecided}{why}Reply in {sentences} short sentences, between {lo} "
+        f"{ANSWER_FIRST}{undecided}{why}Reply in {sentences} short sentences, between {lo} "
         f"and {hi} words, {CHAR_CAP['reply']} characters at most in all. "
         f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
         f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}"
@@ -1139,12 +1188,13 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
     )
 
 
-def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=(), spent=()):
+def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=(), spent=(),
+                  news=True):
     """todo/20 step 4, the mirror_concede arm: what citizens answered in another team's replies (research D §8):
     mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact) to end on
     (since 2026-10-22 no closing "I'm voting No": NO_VERDICT_RULE); 150-280 characters and no question. No lever, theme
     or opener: three beats only."""
-    ctx = f"It was posted in reply to this news item: <<<{context[:200]}>>>\n" if context else ""
+    ctx = context_line(context, news)
     asks = f"What they raised: {', '.join(wants)}.\n" if wants else ""
     reb = rebuttal_for(target_text)
     point = ("the angle you pick below" if read else FRAMES[frame_key]["gist"]) + (
@@ -1164,8 +1214,8 @@ def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=F
 
 
 def second_voice_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, recent=(),
-                        spent=()):
-    ctx = f"It was posted under this news item: <<<{context[:200]}>>>\n" if context else ""
+                        spent=(), news=True):
+    ctx = context_line(context, news, where="under")
     asks = f"What they care about: {', '.join(wants)}.\n" if wants else ""
     opener = opener or random.choice(OPENERS)
     arms = {}

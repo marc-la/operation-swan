@@ -124,7 +124,9 @@ says = ['\b(age|aged|ages) 12\b', '\b12 and (over|up|older)\b', '\bfrom (age )?1
 
 [nurses]
 text = "Kingstonia Central Hospital: 40 unfilled nursing posts. Nurses earn about double in Australia/NZ."
-note = "Central: 40 nursing posts unfilled; pay about double in Australia or NZ"
+# 2026-10-24: the note said "...unfilled; pay about double in Australia or NZ" and a draft read it as "nobody's coming back
+# from Australia". The cause stays in the note: nurses LEAVE for Australia/NZ, which is why the posts are empty.
+note = "Central: 40 nursing posts unfilled because nurses leave for Australia or NZ, where pay is about double"
 status = "active"
 source = "setting.md"
 checked = 2026-10-21

@@ -260,6 +260,84 @@ def _local_names(characters, personas):
 LOCAL_NAMES = _local_names(_characters, content.PERSONAS) | {"Central", "Mango & Spice"}
 LOCAL_NAME = re.compile(r"\b(" + "|".join(sorted(map(re.escape, LOCAL_NAMES), key=len, reverse=True)) + r")\b") \
     if LOCAL_NAMES else None
+# ---- invented names (2026-10-24 audit). The prompts say "invent no names"; this is the check. It only means anything
+# against the system prompt that was really sent: a variant account renames the card's people (Esther's porter
+# foreman Ravi Chand is "Leigh Ravuvu" on one account), so judge a name against `job["system_caps"]`, never against
+# the base card. A capitalised word is a
+# name we know if the character data, the facts or the world text hold it, or the prompt or the citizen's post does.
+# Anything else mid-sentence is invented; at a sentence start only a given name from variants' pools counts (so
+# "Today's" or "Nobody's" never do).
+_CAP = re.compile(r"\b[A-Z][a-z][\w'-]*")
+NAME_CHECKED = ("reply", "reply_back", "second_voice", "journalist")
+
+# ---- repeated runs (2026-10-24 audit of six replies): "a pass at the bakery door won't add a single nurse" went out from
+# two voices a minute apart and "what's wrong with keeping things as they are today?" closed four of six. Whole-text
+# similarity (near_duplicate) lets a shared clause through, so a run of RUN_WORDS words that one of our last
+# RUN_WINDOW citizen-facing texts already holds is rejected. Not a run the citizen wrote, and not one holding a number
+# (a fact's own figure, "40 empty nursing posts", is allowed to repeat).
+RUN_WORDS = 6
+RUN_WINDOW = 60
+
+
+def repeated_run(body, recent_texts, target_text=""):
+    """The first RUN_WORDS-word run of body that is in one of our last RUN_WINDOW texts, or None."""
+    words = re.findall(r"[a-z']+|\d+", body.lower())
+    old = set()
+    for o in list(recent_texts)[-RUN_WINDOW:]:
+        old |= _shingles(strip_tag(o.strip()), RUN_WORDS)
+    own = _shingles(target_text or "", RUN_WORDS)
+    for i in range(len(words) - RUN_WORDS + 1):
+        run = words[i:i + RUN_WORDS]
+        if any(w.isdigit() for w in run):
+            continue
+        run = " ".join(run)
+        if run in old and run not in own:
+            return run
+    return None
+
+
+def _strings(x):
+    if isinstance(x, str):
+        yield x
+    elif isinstance(x, dict):
+        for v in x.values():
+            yield from _strings(v)
+    elif isinstance(x, (list, tuple)):
+        for v in x:
+            yield from _strings(v)
+
+
+def caps_in(text):
+    """The capitalised words of text, without a possessive 's."""
+    return frozenset(re.sub(r"'s$", "", m.group(0)) for m in _CAP.finditer(text or ""))
+
+
+def _known_caps():
+    from . import variants
+    text = list(_strings(getattr(_characters, "CHARACTERS", None) or {})) + list(_strings(content.PERSONAS)) + \
+        list(content.FACT_NOTES.values()) + list(content.FACTS.values()) + [content.WORLD, content.QUESTION] + \
+        list(content.FIRST_NAMES.values())
+    known = set().union(*(caps_in(t) for t in text)) | {w for n in LOCAL_NAMES for w in n.split()} | _NOT_LOCAL
+    return frozenset(known), frozenset(variants.FIRST_F) | frozenset(variants.FIRST_M) | frozenset(variants.FIRST_U)
+
+
+KNOWN_CAPS, GIVEN_NAMES = _known_caps()
+
+
+def invented_name(text, known=()):
+    """The first name in text that is nowhere in the character data, the facts, the world text or `known` (the caps of
+    the prompt and the citizen's post), or None."""
+    t = strip_tag(normalise(text))
+    for m in _CAP.finditer(t):
+        w = re.sub(r"'s$", "", m.group(0))
+        if w in KNOWN_CAPS or w in known:
+            continue
+        starts = not re.search(r"[A-Za-z,;]\s$", t[:m.start()])     # first word of a sentence
+        if not starts or w in GIVEN_NAMES:
+            return w
+    return None
+
+
 LENGTHS = {"post": (200, 495), "reply": (80, 290), "second_voice": (60, 270), "reply_back": (25, 240),
            "journalist": (90, 290), "thread": (18, 250), "thread_answer": (50, 250)}
 SHORT_OK = 60               # a reply under its kind's floor still passes from here when it states our No (todo/20 G9)
@@ -543,14 +621,15 @@ def drop_vote(text, kind):
 
 
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
-          same=(), phrase_texts=None, phrase_exempt=()):
+          same=(), phrase_texts=None, phrase_exempt=(), known_caps=()):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
     same: our texts to this citizen or in this thread (todo/24), held to the strict near-duplicate threshold.
     phrase_texts: our latest citizen-facing texts (todo/27): a citizen-facing draft is held to PHRASE_BUDGETS over
     them. None: no budget (posts, threads, journalists, and callers that don't track them).
     closing_question=False lets a post end on its verdict instead (a draft told to end without a question).
     specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
-    of the vote (VOTE_TALK) unless the citizen's own post has some."""
+    of the vote (VOTE_TALK) unless the citizen's own post has some.
+    known_caps: the capitalised words of the system prompt (the voice's own people), for invented_name."""
     t = normalise(text)
     if kind != "post":
         t = TRAILING_TAGS.sub("", t).strip()
@@ -603,6 +682,10 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     num = unapproved_number(t)
     if num:
         return None, f"unapproved_number_{num}"
+    if kind in NAME_CHECKED:
+        name = invented_name(t, caps_in(prompt_text) | caps_in(target_text) | frozenset(known_caps))
+        if name:
+            return None, f"invented_name_{name}"
     if kind in ("reply", "journalist") and specific:   # second voices carry a set angle; off-topic replies (todo/23) none
         if not (FACT_ANCHORS.search(t) or FACT_PARAPHRASES.search(t) or any(w.lower() in t.lower() for w in wants)
                 or touches_target(t, target_text)):
@@ -629,6 +712,10 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     if near_duplicate(body, kind, recent_texts, same):
         return None, "near_duplicate"
+    if kind in PERSONAL_KINDS:
+        run = repeated_run(body, recent_texts, target_text)
+        if run:
+            return None, "repeat_run_" + run.replace(" ", "_").replace("'", "")
     over = (over_budget(t, phrase_texts, phrase_exempt, echoed(target_text))
             if phrase_texts is not None and kind in PERSONAL_KINDS else [])
     if over:
@@ -868,6 +955,13 @@ def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), s
     if why.startswith("unapproved_number_"):
         return (f"Remove the number {why[len('unapproved_number_'):].rstrip(',.')}: use no number except the ones you "
                 f"were given, as digits.")
+    if why.startswith("repeat_run_"):
+        run = why[len("repeat_run_"):].replace("_", " ")
+        return (f"The words «{run}» are in something we already posted, so a reader sees one script. Make the same "
+                f"point in different words, or make a different one; keep the rest.")
+    if why.startswith("invented_name_"):
+        return (f"Cut the name {why[len('invented_name_'):]}: you don't know anyone by that name. Name only the people "
+                f"in your profile, or no one (say 'a neighbour' or 'my colleague'). Keep the rest.")
     if why == "not_specific":
         spent = {k for k, _ in spent_phrases(phrase_texts, target_text)}
         ask = [w for w in wants if w and not any(PHRASE_BUDGETS[k][0].search(w) for k in spent)][:2]

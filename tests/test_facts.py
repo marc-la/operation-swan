@@ -312,3 +312,10 @@ def test_an_auto_accepted_fact_reaches_a_frame_prompt_without_a_restart(tmp_path
         monkeypatch.undo()
         fact_store.refresh(force=True)
         assert "harbour_clinic_hours" not in content.FRAMES["F2_no_end"]["facts"]
+
+
+def test_the_nurses_note_keeps_the_cause():
+    """2026-10-24: a draft read "pay about double in Australia or NZ" as "nobody's coming back from Australia". The
+    note says nurses LEAVE for Australia/NZ, which is why the posts are empty."""
+    note = fact_store.NOTES["nurses"]
+    assert "because nurses leave for Australia or NZ" in note and "double" in note

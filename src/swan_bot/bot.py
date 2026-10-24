@@ -677,6 +677,14 @@ def pick_theme(job, ledger, meta):
     return job["theme"]
 
 
+def context_is_news(job):
+    """True when the context a job carries was written by a paper or an organiser (ids up to config.OFFICIAL_MAX_ID);
+    a neighbour's or another team's post is not news (content.context_line). Without the parent's author: only the
+    papers' own threads (source "news") are."""
+    author = job.get("parent_author")
+    return job.get("source") == "news" if author is None else author <= config.OFFICIAL_MAX_ID
+
+
 def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, recent_texts=()):
     """(persona, system, user). The choices made (shape, voice, tag, theme, event...) land in job["meta"].
     recent_texts: our latest drafts, so replies and second voices don't open the way they did (todo/20).
@@ -730,7 +738,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
         user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
                                     theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"],
-                                    recent=recent_texts, spent=spent)
+                                    recent=recent_texts, spent=spent, news=context_is_news(job))
         if meta.get("arm_conv") == "fresh_facts" and job["style"] != "off_topic":     # todo/25: news first
             fresh = content.fresh_line(body, meta)
             user = user.replace("\n\nFirst read them", f" {fresh}\n\nFirst read them", 1) \
@@ -740,7 +748,8 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
                 if job["read"] else f"{user} {content.group_style(job)}"
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
-                                           persona=persona, recent=recent_texts, spent=spent)
+                                           persona=persona, recent=recent_texts, spent=spent,
+                                           news=job.get("news", True))
     elif mode == "journalist":
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
@@ -758,7 +767,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
             user = f"{user} {content.fresh_line(body, meta)}".rstrip()
     return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
-                                          pulse_parts=parts), user
+                                          pulse_parts=parts, mode=mode), user
 
 
 # Drafts at 0.7 keep to their shape and length better; own-thread reactions keep 0.9 for variety (todo/14)
@@ -787,7 +796,8 @@ def gate(raw, job, user, recent_texts, ledger=None):
     """(text, why, fixes): quality.check, the code fixes for what it rejects (quality.fix, at most 3, no LLM call),
     then the theme check. text is None when the draft still fails; fixes names the fixes that were applied."""
     mode, meta = job["mode"], job.get("meta") or {}
-    kw = dict(prompt_text=user, target_text=(job.get("target") or {}).get("body") or "",
+    kw = dict(prompt_text=user, known_caps=job.get("system_caps") or (),
+              target_text=(job.get("target") or {}).get("body") or "",
               wants=job.get("wants") or (), closing_question=meta.get("closing_question", True),
               specific=job.get("group") != "off_topic", same=job.get("same_texts") or (),
               phrase_texts=job.get("phrase_texts"),
@@ -870,6 +880,7 @@ def draft_checked(gen, job, system, user, recent_texts, on_reject=None, ledger=N
     llm_calls, repairs and fixes."""
     mode = job["mode"]
     meta = job.setdefault("meta", {})
+    job["system_caps"] = quality.caps_in(system)               # the voice's own people are not invented names
     prompt, repair, backend = user, None, None
     models, ordered = draft_models(job, gen)
     if meta.get("arm_conv") == "old_models" and mode in config.STRONG_MODES:
@@ -1649,7 +1660,8 @@ def main():
                 if target_class(target.get("body") or "") == "off_topic":
                     continue                                     # no vote pitch into a thread about something else
                 job = dict(mode="second_voice", rec=rec, target=target, frame=sv["frame"],
-                           wants=sv.get("wants"), context=sv.get("context"), sv_delay=sv.get("sv_delay"),
+                           wants=sv.get("wants"), context=sv.get("context"), news=sv.get("news", True),
+                           sv_delay=sv.get("sv_delay"),
                            defer=lambda sv=sv: sv in state["second_voice"] or state["second_voice"].append(sv))   # no model: kept
                 if not desk:
                     break
@@ -1893,7 +1905,7 @@ def main():
                                                   post_id=target["post_id"], author=target["author_id"],
                                                   frame=second_frame(job["frame"]),
                                                   first_persona=persona["key"], wants=job.get("wants"),
-                                                  context=job.get("context")))
+                                                  context=job.get("context"), news=context_is_news(job)))
             if mode == "reply" and config.OWN_LIKE_ARM:            # todo/20 step 8: one own like, alternate replies
                 job["own_like"] = experiment.alternate("own_like", config.OWN_LIKE_VARIANTS)
                 if job["own_like"]:

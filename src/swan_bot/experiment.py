@@ -17,16 +17,18 @@ from zoneinfo import ZoneInfo
 
 from . import config
 
-VERSION = 3             # bump when the arms or their wording change, so reports don't pool unlike drafts
+VERSION = 4             # bump when the arms or their wording change, so reports don't pool unlike drafts
                         # 2: lengths in words, one post beat (todo/14)
                         # 3: the light read, reply styles, levers reweighted, no vaccine advocacy (todo/20)
+                        # 4: ask wording no longer a sentence to copy; an ally's reply never ends on a question (24 Oct)
 
 # How each draft ends (H7). `frame` (posts only) is the curated question from the frame's craft `asks`.
 ASK_KINDS = {
     "people": "End with one real question about who in the reader's own life it would touch.",
-    "loss": "End with one real question about what the reader would lose or miss themselves.",
+    "loss": "End with one real question, in your own words, about what the reader themselves would lose or miss.",
     "switching": "End with one real question about whether they know anyone who has gone from Yes or unsure to No.",
-    "status_quo": "End with one real question about what's wrong, for them, with keeping things as they are today.",
+    "status_quo": "End with one real question, in your own words, about what they would want a Yes to change for them "
+                  "that isn't already open to them. Don't reuse these words.",
     "none": "End on a plain statement of your No, with no question at all (this replaces any instruction above "
             "to finish on a question).",
 }

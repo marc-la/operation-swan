@@ -29,6 +29,7 @@ Official rules/scoring prevail over our docs. If the live site or Discord disagr
 source .venv/bin/activate          # Python 3.13, capturethenarrative==0.5.1 (+ openai)
 pip install -r requirements.txt    # reproduce env
 python scripts/smoke_test.py       # read-only: feed lock, trending posts, news headlines
+scripts/t.sh [changed|slow|full]   # tests on all cores: fast suite ~40 s, `changed` ~4 s (plain serial pytest takes 10 min)
 ```
 - Package source for reference: `src/pypi-capturethenarrative/src/capturethenarrative/` (`legitsocial.py`, `competitorllm.py`, `newssites.py`, `_http.py`). It is a separate git clone — don't edit it; we install the PyPI release.
 - Convention: `import capturethenarrative as ctn`. Classes: `ctn.LegitSocial`, `ctn.Account`, `ctn.NewsSites`, `ctn.CompetitorLLM`. Reading feeds needs no account; writes need `register`/`login` (needs team code; competition must be open).
