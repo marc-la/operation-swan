@@ -408,7 +408,11 @@ def unapproved_number(t):
 def normalise(text):
     t = (text or "").strip().strip('"“”').strip()
     t = t.replace("—", " - ").replace("–", "-").replace("’", "'").replace("‘", "'")
-    return re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    # 24 Oct (Marc): " - " as a dash was in 33% of 1,019 writes in 6 h and the models write it because the prompts ban the em
+    # dash: one fingerprint on a profile. A dash between words becomes a comma (or just a space after a full stop).
+    t = re.sub(r"(?<=[.!?]) - (?=\S)", " ", t)
+    return re.sub(r"(?<=\w) - (?=[A-Za-z])", ", ", t)
 
 
 def shape_ok(shape, recent_shapes, window=10, max_uses=2):
@@ -449,6 +453,12 @@ def strip_tag(t):
 NEAR_DUP_SAME = 0.25
 NEAR_DUP_OTHER = 0.3
 PERSONAL_KINDS = ("reply", "reply_back", "second_voice")
+# 24 Oct audit: after a repeat_run repair a reply began "They're choosing the places after we decide." with nobody for "they"
+# (the repair had cut the sentence that said who). A reply opening on They/Them/Those is fine only where the citizen's own
+# comment has a group for it to mean.
+BARE_OPEN = re.compile(r"(?:they|them|those)\b", re.I)
+GROUP_WORDS = re.compile(r"\b(?:they|them|their|those|government|govt|gov|assembly|ministers?|ministry|council|politicians?|"
+                         r"authorities|officials?|people|folks|everyone|businesses|shops|venues|employers|bosses|staff)\b", re.I)
 
 
 def near_duplicate(body, kind, recent_texts=(), same=()):
@@ -477,6 +487,12 @@ PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
     "venue_list": (re.compile(r"\bvenue lists?\b", re.I), 0.10),
     "sunset": (re.compile(r"\bsunset\b", re.I), 0.10),
     "after_the_vote": (re.compile(r"\bafter the vote\b", re.I), 0.10),
+    # 24 Oct (Marc): one hot voice wrote these in 6 h (1,019 writes): "door" 47%, "papers" 30%, "who in your..?" 10%, "half four" 6%.
+    # On a single profile that is one script. Budgets at about half of that; the citizen's own word still counts as an echo.
+    "door": (re.compile(r"\bdoors?\b|\bdoormen\b|\bdoorman\b", re.I), 0.25),
+    "papers": (re.compile(r"\bpapers\b", re.I), 0.18),
+    "half_four": (re.compile(r"\bhalf (?:past )?four\b|\b4[:.]?30\b", re.I), 0.03),
+    "who_in_your": (re.compile(r"\bwho in your\b", re.I), 0.05),
     # 23 Oct hidden-post audit (docs/06-strategy/hidden-post-audit-2026-10-23.md): posts with one of these were hidden
     # 3-5x as often as the rest (since 21 Oct 12:00 UTC: closing "know anyone who moved from Yes" 7 of 131, a story of
     # someone who was Yes and is now No 9 of 264, a conceding opener 11 of 280; the other 2,116 writes 25). No share.
@@ -572,7 +588,8 @@ def spent_phrases(window, target_text=""):
 
 
 PHRASE_LABELS = {"binds_us": "binds us", "no_review": "no review", "end_date": "end date",
-                 "venue_list": "venue list", "sunset": "sunset", "after_the_vote": "after the vote"}
+                 "venue_list": "venue list", "sunset": "sunset", "after_the_vote": "after the vote",
+                 "door": "the door", "papers": "papers", "half_four": "half past four", "who_in_your": "who in your"}
 
 
 _VOTE_FILLER = set("that's thats that this it it's its why so which is and but then well yes yeah i i'm im i am will "
@@ -712,6 +729,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
             return None, f"repeat_stock_{phrase.replace(' ', '_')}"
     if near_duplicate(body, kind, recent_texts, same):
         return None, "near_duplicate"
+    if kind in PERSONAL_KINDS and BARE_OPEN.match(t) and not GROUP_WORDS.search(target_text or ""):
+        return None, "bare_they_open"
     if kind in PERSONAL_KINDS:
         run = repeated_run(body, recent_texts, target_text)
         if run:
@@ -958,7 +977,11 @@ def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), s
     if why.startswith("repeat_run_"):
         run = why[len("repeat_run_"):].replace("_", " ")
         return (f"The words «{run}» are in something we already posted, so a reader sees one script. Make the same "
-                f"point in different words, or make a different one; keep the rest.")
+                f"point in different words, or make a different one; keep the rest. Say who or what you mean in the "
+                f"first sentence (the government, the plan, the list): never start on They, Them or Those.")
+    if why == "bare_they_open":
+        return ("The reply starts on They, Them or Those with nobody for it to mean. Start again from the citizen's "
+                "own point, naming who or what you mean (the government, the plan, the list). Keep the rest.")
     if why.startswith("invented_name_"):
         return (f"Cut the name {why[len('invented_name_'):]}: you don't know anyone by that name. Name only the people "
                 f"in your profile, or no one (say 'a neighbour' or 'my colleague'). Keep the rest.")

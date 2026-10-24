@@ -46,6 +46,12 @@ from .targeting import YES_REASON, agrees, Targeter, classify, contact, messenge
 AGREE_STANCES = ("lean_no", "firm_no")      # todo/32: a light read that says they lean or stand No agrees with us
 REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3)
 REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's last write (not the 4-min gap)
+
+
+def reply_back_gap():
+    """REPLY_BACK_GAP_S, except in hot mode: the one voice writes every ~20 s, so a 60 s rule would starve every reply-back
+    (24 Oct: 19 queued and none sent in 5 h of hot mode, against 4 to 11 an hour before)."""
+    return config.HOT_GAP_S if config.HOT_VOICES else REPLY_BACK_GAP_S
 WAIT_S = dict(no_voice=30, nothing=45, priority=15)   # a loop with nothing to do waits this long (s)
 IDLE_S = 1.0                  # split loop: the writer looks for a ready draft this often (s)
 PULSE_POLL_S = 30.0           # split loop: the pulse thread looks whether a refresh is due at least this often (s)
@@ -472,7 +478,7 @@ def voice_wait(job, accounts, live, t=None):
     if not live:
         return 0.0
     mode, t = job["mode"], time.time() if t is None else t
-    gap = (REPLY_BACK_GAP_S if mode == "reply_back" else config.REPOST_MIN_GAP_S if mode in ("repost", "thread_answer")
+    gap = (reply_back_gap() if mode == "reply_back" else config.REPOST_MIN_GAP_S if mode in ("repost", "thread_answer")
            else config.ACCOUNT_MIN_GAP_S)
     wait = job["rec"].get("last_write", 0) + gap - t
     if gap == config.ACCOUNT_MIN_GAP_S and stealth.gap_on():          # todo/31: an ordinary write's jittered gap
@@ -1609,10 +1615,10 @@ def main():
             cit_contacted.setdefault(a, set()).update(f"<drafting {i}>" for i in range(config.SESSION_VOICES))
         pending = [j["mode"] for j in held()]               # chosen but not sent yet: counted as written (todo/22)
         job = None
-        # the first reply-back whose voice may write: not within REPLY_BACK_GAP_S of its last write (don't double-post
+        # the first reply-back whose voice may write: not within reply_back_gap() of its last write (don't double-post
         # from one account), and awake and under its caps (todo/31: it answers when it wakes; the rest go meanwhile)
         for j in queue:
-            if j["rec"].get("last_write", 0) + REPLY_BACK_GAP_S > t:
+            if j["rec"].get("last_write", 0) + reply_back_gap() > t:
                 continue
             if j["rec"]["persona"] in accounts.reserved or str(j["target"].get("author_id")) in busy:
                 continue                  # its voice or citizen is being drafted for by another drafter: next round

@@ -608,3 +608,28 @@ def test_a_repeated_run_is_allowed_when_the_citizen_wrote_it_holds_a_number_or_i
     assert quality.repeated_run("Posts 40 nurses short at Central", ["Posts 40 nurses short at Central today"]) is None
     assert quality.repeated_run("A pass at the door adds no nurse.", [other]) is None      # five words only, under RUN_WORDS
     assert quality.repeated_run(SENT, [other][:0]) is None
+
+
+def test_a_dash_between_words_becomes_a_comma_but_a_range_and_a_hyphen_stay():
+    assert quality.normalise("Half past four - nobody knows.") == "Half past four, nobody knows."
+    assert quality.normalise("That's the thing — they're not.") == "That's the thing, they're not."
+    assert quality.normalise("It ended. - Then it began.") == "It ended. Then it began."
+    assert quality.normalise("Pages 10 - 20 and a two-chair shop.") == "Pages 10 - 20 and a two-chair shop."
+
+
+def test_a_reply_starting_on_they_with_no_group_in_the_citizen_comment_is_rejected():
+    t = "They're choosing the places after we decide. My bakery might need a doorman from half past four. Nobody knows which."
+    target = "'No loss of choice' is a bit of a stretch if you can't get into your workplace or the gym."
+    assert quality.check(t, "reply", target_text=target, specific=False)[1] == "bare_they_open"
+    assert quality.check(t, "reply", target_text="The government won't say which places.", specific=False)[1] != "bare_they_open"
+    assert "never start on They" in quality.repair_note("repeat_run_a_b", t, "reply")
+    assert "nobody for it to mean" in quality.repair_note("bare_they_open", t, "reply")
+
+
+def test_the_door_and_papers_motifs_have_budgets_and_labels():
+    for k in ("door", "papers", "half_four", "who_in_your"):
+        assert quality.PHRASE_BUDGETS[k][1] > 0 and k in quality.PHRASE_LABELS and k in quality.ECHO_KEYS
+    assert quality.phrases_in("a doorman from half past four checking papers") == ["door", "papers", "half_four"]
+    window = ["A pass at the door adds no nurse."] * 25
+    assert quality.over_budget("Who checks the door?", window) == ["door"]
+    assert quality.over_budget("Who checks the door?", window, echo=("door",)) == []

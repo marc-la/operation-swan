@@ -71,7 +71,7 @@ def test_only_the_last_100_count_and_a_short_window_counts_as_full(monkeypatch):
 
 def test_the_template_phrases_are_found():
     t = ("The venue list comes out after the vote, and the question sets no end date or review, with no sunset. "
-         "A Yes binds us. I'm a No.")
+         "A Yes binds us. I'm a No. Papers at the door from half past four: who in your street does that?")
     assert set(quality.phrases_in(t)) == set(quality.PHRASE_BUDGETS) - set(quality.TELL_KEYS)
 
 

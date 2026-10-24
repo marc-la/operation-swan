@@ -28,7 +28,7 @@ def accounts(*names, extra=()):
 @pytest.fixture
 def hot(monkeypatch):
     """Hot mode on for the roster NAMES, everything hot_mode_apply touches restored afterwards."""
-    for name in ("ACCOUNT_MIN_GAP_S", "POOL_SCHEDULER", "POOL_LIVE", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN", "ONE_VOICE_AUTO",
+    for name in ("ACCOUNT_MIN_GAP_S", "REPOST_MIN_GAP_S", "POOL_SCHEDULER", "POOL_LIVE", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN", "ONE_VOICE_AUTO",
                  "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER", "HOT_VOICES"):
         monkeypatch.setattr(config, name, getattr(config, name))
     return lambda names=NAMES: config.hot_from_env({"SWAN_HOT_VOICES": ",".join(names)})
@@ -96,6 +96,16 @@ def test_a_ramping_voice_writes_at_the_full_rate_in_hot_mode(hot, monkeypatch):
     assert not acc.ramp_ok(rec, 1.0), "off: the ramp holds the voice back"
     hot()
     assert all(acc.ramp_ok(rec, 1.0) for _ in range(50)), "hot mode: the one voice is not rolled against its ramp"
+
+
+def test_reply_backs_and_reposts_are_not_starved_by_the_one_voice_writing_every_20_s(hot):
+    """24 Oct: the 60 s rule after a voice's last write starved all reply-backs in hot mode (19 queued, none sent in 5 h)."""
+    assert bot.reply_back_gap() == bot.REPLY_BACK_GAP_S == 60 and config.REPOST_MIN_GAP_S == 60
+    hot()
+    assert bot.reply_back_gap() == config.HOT_GAP_S < 20 and config.REPOST_MIN_GAP_S == config.HOT_GAP_S
+    rec = dict(last_write=1_000.0 - 20)                        # the hot voice wrote 20 s ago
+    job = dict(mode="reply_back", rec=rec)
+    assert bot.voice_wait(job, None, True, t=1_000.0) == 0.0, "the writer sends it at once"
 
 
 # ---- end to end: the split loop on the fake world --------------------------------------------------------------------

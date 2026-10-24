@@ -19,14 +19,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 from swan_bot import bot, content, quality  # noqa: E402
 
 SUNSET_ASK = "I'd back a Yes if there is a clear sunset and a published list, and the exemptions are real."
-ECHO = ("You want a sunset, and the question on the ballot has none. A Yes leaves the shop door checks running for "
+ECHO = ("You want a sunset, and the question on the ballot has none. A Yes leaves the shop checks running for "
         "good, and my cafe would be the one doing them.")
 NO_SUNSET_ASK = "Hospitals are stretched and I think a pass could help us through the winter."
 
 
 def window(n_sunset, size=99):
     """The last `size` texts we sent, n_sunset of them saying "sunset"."""
-    return ["A sunset clause is missing."] * n_sunset + ["Plain text about the door check."] * (size - n_sunset)
+    return ["A sunset clause is missing."] * n_sunset + ["Plain text about the ovens."] * (size - n_sunset)
 
 
 def check(text, target, win, **kw):

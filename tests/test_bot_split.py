@@ -200,6 +200,9 @@ class FakeGen:
     def describe(self):
         return "fake"
 
+    def load_parks(self):                 # c46fed6: the bot reloads LLM quota parks at start
+        pass
+
     def status(self):
         return []
 

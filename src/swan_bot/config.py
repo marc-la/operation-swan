@@ -513,11 +513,11 @@ def hot_from_env(env=None):
 
 def hot_mode_apply():
     """With HOT_VOICES set: one voice writes, so every rule that spreads writes over many voices stands down."""
-    global ACCOUNT_MIN_GAP_S, POOL_SCHEDULER, POOL_LIVE, SECOND_VOICE, ONE_VOICE_PER_CITIZEN, ONE_VOICE_AUTO
+    global ACCOUNT_MIN_GAP_S, REPOST_MIN_GAP_S, POOL_SCHEDULER, POOL_LIVE, SECOND_VOICE, ONE_VOICE_PER_CITIZEN, ONE_VOICE_AUTO
     global VOICE_DAY_CAP, VOICE_HOUR_CAP, VOICE_SLEEP, VOICE_JITTER, VOICE_STAGGER
     if not HOT_VOICES:
         return
-    ACCOUNT_MIN_GAP_S = HOT_GAP_S
+    ACCOUNT_MIN_GAP_S = REPOST_MIN_GAP_S = HOT_GAP_S          # reposts and thread answers keep their own 60 s: same starvation
     POOL_SCHEDULER = POOL_LIVE = SECOND_VOICE = False          # POOL_LIVE: no registering or converting while it runs
     ONE_VOICE_PER_CITIZEN = ONE_VOICE_AUTO = False
     VOICE_DAY_CAP = VOICE_HOUR_CAP = VOICE_SLEEP = VOICE_JITTER = VOICE_STAGGER = False

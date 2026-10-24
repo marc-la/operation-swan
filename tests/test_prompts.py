@@ -439,6 +439,9 @@ def test_the_mirror_reply_drops_the_fear_rebuttal_for_an_ally_and_keeps_it_for_t
 @pytest.mark.parametrize("text,ally", [
     (ALLY, True), ("Nobody shouldn't be required to show papers for a bus ride.", True),
     ("I'm against the pass.", True), ("The choice stays yours, so a certificate is fine.", False),
+    ("'No loss of choice' is a stretch if you can't get into your workplace or the gym.", True),
+    ("We can't base policy on hypothetical benefits while ignoring the concrete costs.", True),
+    ("I'm worried people get locked out of shops before the jabs arrive.", False),
     ("Vaccination is voluntary anyway, so I'm fine with it.", False), ("We need better hospitals.", False)])
 def test_opposes_pass(text, ally):
     assert content.opposes_pass(text) is ally

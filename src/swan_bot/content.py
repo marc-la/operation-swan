@@ -886,7 +886,11 @@ OPPOSES_PASS = re.compile(
     r"\b(keep|keeping|leave|leaving) (it|vaccination|the jab|the vaccine) voluntary|"
     r"\b(shouldn'?t|should not|mustn'?t|must not) (be )?(required|forced|mandatory|compulsory)|"
     r"\bagainst (the |a )?(pass|passes|mandate|mandates|certificate|certificates|checkpoints?)\b|"
-    r"\bno (to )?(mandates?|passes|vaccine passports?)\b", re.I)
+    r"\bno (to )?(mandates?|passes|vaccine passports?)\b|"
+    # 24 Oct audit: a citizen who said 'no loss of choice' is a stretch 'if you can't get into your workplace or the gym' was
+    # answered with a blank-cheque rebuttal; 'hypothetical benefits ... ignoring the concrete costs' likewise.
+    r"\b(can'?t|cannot|couldn'?t|unable to) get (in|into)\b|\bignor\w+ the (concrete |real |actual )?costs?\b|"
+    r"\bhypothetical benefits?\b", re.I)
 
 
 def opposes_pass(text):
