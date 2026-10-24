@@ -1029,3 +1029,24 @@ def test_a_conversion_ramps_faster_than_an_activation_in_every_state():
             got = pool._hours(P.convert_ramp_h, state, random.Random(seed))
             assert lo <= got <= hi, (state, got)
     assert P.convert_ramp_h["low"][1] < P.ramp_h["low"][0], "the conversion band sits wholly under the activation band"
+
+
+def test_alerts_already_sent_are_not_sent_again_after_a_restart(tmp_path):
+    """Every deploy restarts the bot and the in-memory flags with it: sent_file keeps the runway line from going out again."""
+    lost = [suspended(i, at=T0 - i * 600) for i in range(30)]
+    records = [voice(i) for i in range(14)] + lost
+    sent = tmp_path / "pool_alerts.json"
+    n = lambda rig: len([a for a in rig.alerts if "RUNWAY" in a])
+    first = Rig(tmp_path, records, swarm=170, live=False)
+    first.runner.sent_file = sent
+    first.tick(advance=60)
+    assert n(first) == 1 and sent.exists()
+    again = Rig(tmp_path, records, swarm=170, live=False)             # a fresh runner: the flags are empty again
+    again.runner.sent_file = sent
+    again.clock[0] = first.clock[0] + 600
+    again.tick(advance=60)
+    assert n(again) == 0, "the same line within the gap stays quiet"
+    again.clock[0] += config.BUDGET_ALERT_GAP_S
+    again.runner.st.flags.clear()
+    again.tick(advance=60)
+    assert n(again) == 1, "after the gap it may be said again"

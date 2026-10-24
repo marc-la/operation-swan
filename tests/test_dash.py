@@ -188,7 +188,38 @@ def test_older_activity_keeps_only_critical_events(tmp_path):
         f"{iso(440)[:19]}Z [swan-ec2] @lani: post #9 hidden by the moderator (1 hidden)\n")
     ctx, _ = page(root)
     assert len(ctx["activity"]) == build.ACTIVITY_TOP
-    assert [r["what"] for r in ctx["older"]] == ["post hidden", "deploy", "new account", "SUSPENDED"]
+    assert [r["what"] for r in ctx["older"]] == ["post hidden", "SUSPENDED"]      # a good deploy and a new account are not critical
+
+
+def test_activity_log_collapses_repeats_and_merges_blue_rulings(tmp_path):
+    pool = ("POOL (dry run) RUNWAY: {n} spare accounts last 7.{n} d at 16.3 lost/day, 9.0 d left. Content is the lever.")
+    hide = ("@rosa_v20: post #378075 hidden by the moderator (2 hidden, 489 actions; 3 hidden suspend it, and with 1+ hidden "
+            "and 100+ actions one upheld account report does; posts of the last ~3 h are still awaiting rulings). "
+            "Bot: no change. Decide whether this voice keeps writing.")
+    lines = [f"{iso(300 - 40 * i)[:19]}Z [swan-ec2] {pool.format(n=i)}" for i in range(4)]
+    lines += [f"{iso(200 - 5 * i)[:19]}Z [swan-ec2] BLUE: #36{i} ruled genuine after 3.0 h. Evidence: reply_ring" for i in range(3)]
+    lines += [f"{iso(100)[:19]}Z [swan-ec2] BLUE: #99 ruled genuine after 3.0 h.", f"{iso(90)[:19]}Z [swan-ec2] {hide}"]
+    acts = [write(m) for m in range(40, 0, -1)]
+    root = make_root(tmp_path, acts)
+    (root / "logs" / "alerts.log").write_text("\n".join(lines) + "\n")
+    ctx, html = page(root)
+    older = ctx["older"]
+    assert [(r["what"], r["kind"]) for r in older] == [("post hidden", "hidden"), ("Blue", "blue"), ("Blue", "blue")]
+    assert older[0]["who"] == "@rosa_v20" and older[0]["text"] == (
+        "post #378075 · hide 2 of 3 · 489 actions · one upheld report would suspend it")
+    merged = next(r for r in older if r.get("detail"))
+    assert len(merged["detail"]) == 3 and merged["text"] == "3 reports ruled genuine (#362, #361, #360)"
+    assert not any(r["what"] == "pool" for r in older), "the pool's status is not a critical event"
+
+
+def test_collapse_folds_repeated_alerts_into_one_row_with_a_count():
+    t = lambda m: dt.datetime(2026, 10, 24, 12, 0, tzinfo=dt.timezone.utc) - dt.timedelta(minutes=m)
+    row = lambda m, n: dict(t=t(m), who="", what="pool", kind="pool", text=f"POOL RUNWAY: {n} spare accounts last 7.{n} d")
+    other = dict(t=t(5), who="", what="alert", kind="event", text="ring self-audit: 62.5 against 61.5")
+    out = build.collapse([row(60, 1), row(20, 2), other, row(0, 3)])
+    pools = [r for r in out if r["what"] == "pool"]
+    assert len(out) == 2 and pools[0]["n"] == 3 and pools[0]["text"].endswith("×3 since 19:00")
+    assert pools[0]["t"] == t(0), "the row sits at the newest time"
 
 
 def rec(minutes_ago, act, post_id, persona="dan", **kw):

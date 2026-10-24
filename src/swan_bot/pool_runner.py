@@ -26,7 +26,7 @@ import urllib.error
 
 import capturethenarrative as ctn
 
-from . import config, content, pool, stealth, variants
+from . import budget, config, content, pool, stealth, variants
 
 VARIANT_TRIES = 3                 # make_variant calls per account when the best one still fails distinct()
 RECONCILE_MIN_AGE_S = 120         # a pending record younger than this is never judged "failed" (a late answer may be on its way)
@@ -59,7 +59,7 @@ def default_cards():
 
 class PoolRunner:
     def __init__(self, accounts, social, mu, log, alert, code, owner, *, clock=time.time, rng=None, cards=None,
-                 swarm=None, params=None, live=None, off=None, say=print):
+                 swarm=None, params=None, live=None, off=None, say=print, sent_file=None):
         self.accounts, self.social, self.mu, self.log, self.alert = accounts, social, mu, log, alert
         self._code, self.owner = code, owner                      # the team code is only ever passed to social.register
         self.clock = clock
@@ -70,6 +70,7 @@ class PoolRunner:
         self.live_fn = live or (lambda: bool(config.POOL_LIVE))
         self.off_fn = off or config.POOL_OFF_FILE.exists
         self.say = say
+        self.sent_file = sent_file                                # alerts already sent, kept across restarts (None: not kept)
         self.st = pool.PoolState(z=pool.draw_z(self.rng))
         self.shadow, self.shadow_new = {}, []                     # the shadow's private copy: {username: record}, [records]
         self.suspended_ts = {}                                    # {username: epoch} for suspensions with no suspended_at
@@ -125,7 +126,7 @@ class PoolRunner:
             if not off:
                 plan = pool.plan_step(snap, now, self.rng, self.p)
             alerts += self._alert_flags(snap, now, plan)
-        for text in alerts:
+        for text in self._due(alerts):
             self.alert(text if live_mode else text.replace("POOL", "POOL (dry run)", 1))
         if plan:
             if live_mode:
@@ -200,6 +201,23 @@ class PoolRunner:
         else:
             self.st.want_since = None
             snap["want_since"] = None
+
+    def _due(self, texts):
+        """The alerts not sent within config.BUDGET_ALERT_GAP_S. The flags in _alert_flags live in memory, so every restart
+        (each deploy) re-armed them and the team channel got the same runway line again; sent_file survives a restart."""
+        if not texts or not self.sent_file:
+            return texts
+        try:
+            sent = json.loads(self.sent_file.read_text())
+        except (OSError, ValueError):
+            sent = {}
+        due, sent = budget.due_alerts(texts, sent if isinstance(sent, dict) else {}, self.clock(), config.BUDGET_ALERT_GAP_S)
+        try:
+            self.sent_file.parent.mkdir(parents=True, exist_ok=True)
+            self.sent_file.write_text(json.dumps(sent))
+        except OSError as e:
+            self.say("pool alerts: sent state not saved:", e)
+        return due
 
     def _alert_flags(self, snap, now, plan):
         """Alert texts due now, each once (re-armed when the condition clears). The caller holds mu; it sends them after."""

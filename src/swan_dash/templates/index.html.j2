@@ -278,6 +278,9 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% if r.kind == 'group' %}
   <details class="x" id="{{ r.id }}"><summary>{{ r.text }}</summary>
     {% for s in r.rows %}<div class="sub">{{ s.time }} · {{ s.text }}</div>{% endfor %}</details>
+  {% elif r.detail %}
+  <details class="x" id="{{ r.id }}"><summary>{{ r.text }}</summary>
+    {% for t, x in r.detail %}<div class="sub">{{ t }} · {{ x }}</div>{% endfor %}</details>
   {% elif r.text | length > 200 %}
   <details class="x clip"><summary>{{ r.text | short(200) }}</summary>{{ r.text }}</details>
   {% else %}

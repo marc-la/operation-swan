@@ -49,12 +49,15 @@ STALL_S = 5 * 60                               # every LLM parked this long or l
 PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15 min
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
 ACTIVITY_TOP, ACTIVITY_OLDER = 12, 40        # rows always shown / most rows behind "Older activity"
-CRITICAL_KINDS = {"susp", "hidden", "deployfail", "bad", "blue"}   # older activity keeps these, new accounts, deploys
-CRITICAL_WHAT = {"new account", "deploy", "alert"}                  # and unclassified alerts; not writes or LLM parks
+CRITICAL_KINDS = {"susp", "hidden", "deployfail", "bad", "blue"}   # older activity keeps these and the budget / ring alerts
+CRITICAL_WHAT = {"alert"}                                           # (what no pattern in ALERT_KINDS claimed); not writes,
+                                                                    # LLM parks, deploys, new accounts or the pool's repeated status
 
 
 def critical(row):
-    """Older activity is for the events worth a second look (Marc, 23 Oct): bans, hidden posts, new accounts, deploys."""
+    """Older activity is for the events worth a second look (Marc, 24 Oct): bans, hidden posts, failed deploys, service
+    down, Blue rulings and the budget / ring alerts. A good deploy is the version chip's job, the pool's runway and
+    card lines are tiles, so none of those take a place here."""
     return row["kind"] in CRITICAL_KINDS or row.get("what") in CRITICAL_WHAT
 
 
@@ -62,6 +65,73 @@ def older_critical(items):
     """The critical rows behind the top of the log, back-to-back deploys bundled again once the parks are gone."""
     rows = [r for i in items for r in (i["rows"] if i["kind"] == "group" else [i])]
     return bundle([r for r in rows if critical(r)])[:ACTIVITY_OLDER]
+
+
+HIDE_RX = re.compile(r"@(\w+): post #(\d+) hidden by the moderator \((\d+) hidden(?:, (\d+) actions)?")
+HIDE_STOP = 3                                  # swan_bot config: 3 hidden posts suspend an account
+RISKY_ACTIONS = 100                            # with 1+ hidden and this many actions, one upheld account report suspends too
+
+
+def hidden_row(t, msg):
+    """A 'hidden by the moderator' alert as who / what happened / how close to a suspension, without the rule text the
+    watch job puts in the channel message. A line that doesn't parse stays whole."""
+    m = HIDE_RX.match(msg)
+    if not m:
+        return dict(t=t, who="", what="post hidden", text=" ".join(msg.split()), kind="hidden")
+    user, pid, n, actions = m[1], m[2], int(m[3]), m[4] and int(m[4])
+    step = (re.search(r"Bot: ([^.]+)\.", msg) or [None, None])[1]
+    bits = [f"post #{pid}", f"hide {n} of {HIDE_STOP}"]
+    if actions is not None:
+        bits.append(f"{actions} actions")
+        if actions >= RISKY_ACTIONS:
+            bits.append("one upheld report would suspend it")
+    if step and step != "no change":
+        bits.append(f"bot {step}")
+    return dict(t=t, who=f"@{user}", what="post hidden", text=" · ".join(bits), kind="hidden")
+
+
+def alert_key(text):
+    """The alert with its numbers blanked, so 'spare 117, 7.2 d' and 'spare 116, 7.1 d' are one alert (swan_bot.budget)."""
+    return re.sub(r"\d+(?:[.,]\d+)?", "#", text)
+
+
+REPEAT_KINDS = {"pool", "event"}               # alerts that are a state, not an event: the same line again is one row
+BLUE_MERGE_S = 30 * 60                         # Blue rulings this close together are one row
+GENUINE_RX = re.compile(r"BLUE: #(\d+) ruled genuine")
+
+
+def collapse(rows):
+    """Repeats of one alert become one row at the newest time, '×6 since 17:34'; Blue 'ruled genuine' rulings within
+    BLUE_MERGE_S of each other become one row that opens to list them (todo: activity log, Marc, 24 Oct)."""
+    rows = sorted(rows, key=lambda r: r["t"], reverse=True)         # newest first, like the log
+    out, seen = [], {}
+    for r in rows:
+        if r.get("what") in ("pool", "alert") and r["kind"] in REPEAT_KINDS:
+            first = seen.get((r["what"], alert_key(r["text"])))
+            if first:
+                first["n"] += 1
+                first["since"] = hm(r["t"])
+                first["text"] = f"{first['base']}  ×{first['n']} since {first['since']}"
+                continue
+            r.update(n=1, base=r["text"])
+            seen[(r["what"], alert_key(r["text"]))] = r
+        out.append(r)
+    genuine = [r for r in out if r["kind"] == "blue" and GENUINE_RX.match(r["text"])]
+    rest = [r for r in out if not any(r is g for g in genuine)]
+    clusters = []                                                     # genuine rulings, newest first, near ones together
+    for r in genuine:
+        if clusters and (clusters[-1][-1]["t"] - r["t"]).total_seconds() <= BLUE_MERGE_S:
+            clusters[-1].append(r)
+        else:
+            clusters.append([r])
+    for c in clusters:
+        if len(c) == 1:
+            rest.append(c[0])
+            continue
+        ids = ", ".join(f"#{GENUINE_RX.match(x['text'])[1]}" for x in c)
+        rest.append(dict(t=c[0]["t"], who="", what="Blue", kind="blue", id=f"b-{int(c[0]['t'].timestamp())}",
+                         text=f"{len(c)} reports ruled genuine ({ids})", detail=[(hm(x["t"]), x["text"]) for x in c]))
+    return rest
 LONG_PARK_S = 600                              # per-minute parks are noise; longer ones go in the activity log
 THREAD_SHOWN = 3                               # replies in a thread shown before "… N more"
 REJECT_WINDOW_S = 15 * 60                      # old records (no draft_id): rejects this soon before a write are its own
@@ -108,7 +178,7 @@ def tail_jsonl(path, nbytes=LOG_TAIL_BYTES):
     return out
 
 
-def tail_lines(path, n=50):
+def tail_lines(path, n=300):
     try:
         return path.read_text().splitlines()[-n:]
     except FileNotFoundError:
@@ -447,7 +517,8 @@ def score_lines(points, since):
 
 
 # the activity log's alert kinds, each its own colour (Marc, 22 Oct): message prefix -> (label, css class on the row)
-ALERT_KINDS = [(r"DEPLOY FAILED", "deploy failed", "deployfail"), (r"BLUE", "Blue", "blue"),
+ALERT_KINDS = [(r"POOL( \(dry run\))?( RUNWAY|: no free persona card)", "pool", "pool"),   # a standing state: the Pool tile has it
+               (r"DEPLOY FAILED", "deploy failed", "deployfail"), (r"BLUE", "Blue", "blue"),
                (r"(BOT|SERVICE) (CRASHED|DOWN|OFFLINE)", "service down", "bad"), (r".*suspend", "suspended", "susp")]
 
 
@@ -1915,14 +1986,16 @@ def gather(root, now, service):
                 rows.append(dict(t=ts(t), who="", what="deploy", text=" ".join(subject.split()),
                                  kind="event", family="ops"))
             elif "hidden by the moderator" in msg:          # deploy/healthcheck + swan-watch: a voice lost a post
-                rows.append(dict(t=ts(t), who="", what="post hidden", text=" ".join(msg.split()), kind="hidden"))
+                rows.append(hidden_row(ts(t), msg))
             else:                                           # each alert kind its own colour (Marc, 22 Oct)
                 what, kind = next(((w, k) for rx, w, k in ALERT_KINDS if re.match(rx, msg)), ("alert", "event"))
                 rows.append(dict(t=ts(t), who="", what=what, text=" ".join(msg.split()), kind=kind))   # the template clips it
+    rows = collapse(rows)
     rows.sort(key=lambda r: r.get("last") or r["t"], reverse=True)   # a conversation moves up when it gets more
     for r in rows:
         r.setdefault("time", hm(r["t"]))
         r.setdefault("post", None)
+        r.setdefault("detail", None)
     items = bundle(rows)
 
     # ---- the trending pulse the bot writes towards (todo/15): its newest "pulse" record ----

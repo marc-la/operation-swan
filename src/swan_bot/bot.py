@@ -1408,7 +1408,8 @@ def main():
     workers = []
     # todo/38: the pool orchestrator (pool.py plans, pool_runner.py does). Always planning in the live split loop; it only
     # changes anything when config.POOL_LIVE (SWAN_POOL_LIVE=1), else it logs `pool_shadow` rows. Non-critical worker "pool".
-    pool_run = (pool_runner.PoolRunner(accounts, social, mu, log, alert, code, owner, rng=random.Random())
+    pool_run = (pool_runner.PoolRunner(accounts, social, mu, log, alert, code, owner, rng=random.Random(),
+                                       sent_file=config.DATA / "pool_alerts.json")
                 if args.live and split else None)
     rate_limited = []                    # times of 429s in the last hour (dashboard)
     write_rl = [None]                    # the write budget as our last write's headers reported it (todo/24)
