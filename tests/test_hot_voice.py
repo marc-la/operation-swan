@@ -89,6 +89,15 @@ def test_the_hot_voice_may_write_again_seconds_after_its_last_write(hot, monkeyp
     assert not acc.ready(rec, 1_000.0)
 
 
+def test_a_ramping_voice_writes_at_the_full_rate_in_hot_mode(hot, monkeypatch):
+    acc = accounts(*NAMES)
+    rec = acc.records[0]
+    rec["ramp"] = {"from": 0, "until": 10_000, "start": 0.0}                      # a pool ramp: ready with probability 0 at t=0
+    assert not acc.ramp_ok(rec, 1.0), "off: the ramp holds the voice back"
+    hot()
+    assert all(acc.ramp_ok(rec, 1.0) for _ in range(50)), "hot mode: the one voice is not rolled against its ramp"
+
+
 # ---- end to end: the split loop on the fake world --------------------------------------------------------------------
 @pytest.mark.slow
 def test_one_voice_writes_everything_and_the_next_takes_over_when_it_is_suspended(tmp_path, monkeypatch):

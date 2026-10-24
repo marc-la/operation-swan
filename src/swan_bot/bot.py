@@ -165,7 +165,7 @@ class Accounts:
         """todo/38: a voice the pool has just activated or converted (rec["ramp"] = {from, until, start}) is ready with a
         chance that rises linearly from `start` (0.25) to 1 at `until`: light first days. A voice with no ramp: always."""
         ramp = rec.get("ramp")
-        if not ramp or t >= ramp.get("until", 0):
+        if config.HOT_VOICES or not ramp or t >= ramp.get("until", 0):     # hot mode: one voice at the full rate, no light days
             return True
         span = max(1.0, ramp["until"] - ramp.get("from", t))
         p = ramp.get("start", 0.25) + (1 - ramp.get("start", 0.25)) * min(1.0, max(0.0, (t - ramp.get("from", t)) / span))
