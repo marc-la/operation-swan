@@ -187,6 +187,22 @@ def agrees(text):
     return s == "no" or (s != "yes" and bool(AGREE_OPENING.search(text or "")))
 
 
+# 25 Oct audit (#402451): "That is so incredibly kind of you to do, Mavis. Sending so much love to you and the hospital staff!"
+# under a post about knitted beanies had no word of the vote, but its thread did and "hospital" is a YES_REASON, so it was
+# answered with a pitch ("checking papers at the bakery counter won't fill one bed"). A comment that is only warmth or
+# sympathy is off topic, whatever the thread. 12 of 9,272 targets in the log: rare, and each is a visible tell.
+KINDNESS = re.compile(r"sending (so much )?(love|hugs)|\bso (incredibly |really |very )?(kind|lovely|moving|sweet|touching|"
+                      r"beautiful|thoughtful)\b|kind of you|sorry (for|about) your|congrat|well done|so proud|\bhugs?\b|"
+                      r"\u2764|\U0001f970|\U0001f60d|\U0001f495|\U0001f54a", re.I)
+ARGUES = re.compile(r"\bbut\b|should|\bneed|\bmust|worr|\?|\bif\b|\bpass\b|\brules?\b|\bpolic|\bcheck|\bsystem\b|\bargue", re.I)
+
+
+def kindness_only(text):
+    """True for a comment that says nothing of the vote and argues nothing: warmth or sympathy only."""
+    text = text or ""
+    return bool(KINDNESS.search(text) and not REFERENDUM.search(text) and not ARGUES.search(text))
+
+
 def target_class(text, context=None):
     """The experiment's target class (H3), and since todo/21 the candidate's priority (READ_PRIORITY): yes_reason
     (they voice the fear behind a Yes), conditions (the conditions they want), unsure / unclear, lean_no, firm_yes,
@@ -194,7 +210,7 @@ def target_class(text, context=None):
     a doubt named with no hedge or ask ("No sunset clause, no list, no thanks") is a No-leaning complaint."""
     text = text or ""
     s = stance(text)
-    if s is None and REFERENDUM.search(context or ""):
+    if s is None and REFERENDUM.search(context or "") and not kindness_only(text):
         s = "unclear"
     if s in ("no", "yes", None):
         return {"no": "lean_no", "yes": "firm_yes", None: "off_topic"}[s]

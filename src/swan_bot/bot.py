@@ -18,6 +18,7 @@ thread and repost it (those writes come first in the order above, after reply-ba
 """
 import argparse
 import datetime as dt
+import hashlib
 import http.client
 import json
 import os
@@ -562,6 +563,16 @@ def thread_depth(social, post, cap):
     return depth
 
 
+def depth_cap(post_id):
+    """(arm, cap) for a citizen's reply: how deep a thread we still answer in. THREAD_DEPTH_TEST off: ("off", 8). On: half the
+    posts (a sha256 of their id, the same after a re-poll or a restart) answer to THREAD_DEPTH_TEST_CAP ("deep"), the rest
+    to THREAD_MAX_DEPTH ("base")."""
+    if not config.THREAD_DEPTH_TEST:
+        return "off", config.THREAD_MAX_DEPTH
+    odd = int(hashlib.sha256(f"depth_cap:{post_id}".encode()).hexdigest()[:8], 16) % 2
+    return ("deep", config.THREAD_DEPTH_TEST_CAP) if odd else ("base", config.THREAD_MAX_DEPTH)
+
+
 def turns_left(turns, citizen, now=None):
     """Our reply-backs to this citizen may continue: fewer than TURNS_PER_SESSION in the last TURN_SESSION_S."""
     now = time.time() if now is None else now
@@ -607,18 +618,23 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
                     skip = "not_our_thread"
                 elif not turns_left(turns, theirs["author_id"]):
                     skip = "turn_cap"
-                ours = None
+                ours, depth = None, None
+                arm, cap = depth_cap(theirs["post_id"])
                 if not skip and theirs.get("reply_to_post_id"):
                     ours = social.get_post(theirs["reply_to_post_id"])
-                    if thread_depth(social, ours, config.THREAD_MAX_DEPTH) + 1 >= config.THREAD_MAX_DEPTH:
+                    # posts above the citizen's reply, read up to the deeper cap so the log has it (a value at the cap
+                    # means "at least"); the arm's cap decides
+                    depth = thread_depth(social, ours, max(cap, config.THREAD_MAX_DEPTH)) + 1
+                    if depth >= cap:
                         skip = "deep_thread"
                 if skip:
                     if skip not in ("not_citizen", "not_our_thread"):
                         log({"act": "skip", "why": skip, "mode": "reply_back", "target_post": theirs["post_id"],
-                             "target_author": theirs.get("author_id"), "username": rec["username"]})
+                             "target_author": theirs.get("author_id"), "username": rec["username"],
+                             "depth": depth, "depth_arm": arm})
                 else:
                     jobs.append(dict(mode="reply_back", rec=rec, target=theirs, tries=0, via=n["kind"],
-                                     our_text=(ours or {}).get("body") or ""))
+                                     our_text=(ours or {}).get("body") or "", depth=depth, depth_arm=arm))
             except ctn.RateLimited:
                 continue                                  # unresolved: the next poll tries again
             except ctn.APIError as e:
@@ -1530,7 +1546,8 @@ def main():
             with mu:
                 # pending reply-backs survive a restart (their notifications are already marked resolved)
                 state["queue"] = [dict(username=j["rec"]["username"], target=j["target"], our_text=j["our_text"],
-                                       tries=j.get("tries", 0)) for j in queue + held() if j["mode"] == "reply_back"]
+                                       tries=j.get("tries", 0), depth=j.get("depth"), depth_arm=j.get("depth_arm"))
+                                  for j in queue + held() if j["mode"] == "reply_back"]
                 save_json(config.STATE_FILE, {**state, "targeter": targeter.dump()})
 
     end = time.time() + args.hours * 3600
@@ -1540,7 +1557,8 @@ def main():
     for q in state.pop("queue", []):
         if q["username"] in by_user and (config.REPLY_BACK or config.REPLY_BACK_AMP):
             queue.append(dict(mode="reply_back", rec=by_user[q["username"]], target=q["target"],
-                              our_text=q["our_text"], tries=q.get("tries", 0)))
+                              our_text=q["our_text"], tries=q.get("tries", 0), depth=q.get("depth"),
+                              depth_arm=q.get("depth_arm")))
     if queue:
         print(f"resumed {len(queue)} pending reply-back(s)")
     # --batch N: replies, second voices and plain persona posts are drafted N per LLM call into a pool (batch.Desk);
@@ -1967,6 +1985,7 @@ def main():
              "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
              "net": job.get("net"),                       # todo/23: the arm it counts against (engaged + off_topic)
              "sv_delay": job.get("sv_delay"),
+             "depth": job.get("depth"), "depth_arm": job.get("depth_arm"),    # reply-backs: posts above the citizen's reply
              **stage_times(job, target),
              "own_like": job.get("own_like"),
              "frame_in": job.get("frame_in"),

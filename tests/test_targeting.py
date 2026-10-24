@@ -354,3 +354,13 @@ def test_oldest_pending_counts_from_when_we_found_it_and_skips_deliberate_waits(
     assert 7190 <= written <= 7210 and 55 <= queued <= 65, (written, queued)
     t.items = {}
     assert t.oldest_pending() == (None, None)
+
+
+def test_a_comment_of_only_warmth_is_off_topic_even_in_a_thread_about_the_vote():
+    ctx = "Referendum: what the vaccination question says"
+    mavis = "That is so incredibly kind of you to do, Mavis. Sending so much love to you and the hospital staff! ❤️"
+    assert targeting.target_class(mavis, context=ctx) == "off_topic"
+    assert targeting.target_class("I am so incredibly sorry for your loss, Marcus.", context=ctx) == "off_topic"
+    # an argument, or the vote, in the same comment keeps its class
+    assert targeting.target_class("So sorry for your loss, but the hospitals were swamped last time.", context=ctx) != "off_topic"
+    assert targeting.target_class("Exactly, the wards are full.", context=ctx) != "off_topic"

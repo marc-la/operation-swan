@@ -113,6 +113,22 @@ def main():
         for x in g:
             gram_acc[x].add(int(acc[i]))
 
+    # the live fingerprint rule (detect.py): one 6-word sequence from FP_ACCOUNTS+ accounts inside 24 h
+    gram_times = collections.defaultdict(list)
+    for i, g in post_grams.items():
+        for x in g:
+            if len(gram_acc[x]) >= detect.FP_ACCOUNTS:
+                gram_times[x].append((ts[i], int(acc[i])))
+    for v in gram_times.values():
+        v.sort()
+
+    def fingerprint(a, grams_of_account, t_end):
+        for x in grams_of_account:
+            v = gram_times.get(x)
+            if v and len({b for t, b in v if t_end - 86400 <= t <= t_end}) >= detect.FP_ACCOUNTS:
+                return True
+        return False
+
     # whole-history centroids of every account: who looks like whom
     cent_ids = [a for a, ix in by.items() if len(ix) >= K_MIN]
     M = np.stack([C[by[a]].mean(0) for a in cent_ids])
@@ -183,7 +199,7 @@ def main():
                  np.mean([len(s) for s in txt]), np.mean(["#" in s for s in txt]), side_y, side_n],
             lex=[lex, rep, np.log1p(len(others))],
             emb=[off, nd, float(sims.max()), np.log1p(int((sims >= LOOKALIKE).sum())), ent, cn],
-            flag=int(len(others) >= 4 or (hrs >= 20 and n >= 40) or (len(last24) >= 20 and span <= 1.0)),
+            flag=int(fingerprint(a, own, float(t.max())) or (hrs >= 20 and n >= 40) or (len(last24) >= 20 and span <= 1.0)),
         ))
         kept.append((a, c, y))
     y = np.array([k[2] for k in kept])

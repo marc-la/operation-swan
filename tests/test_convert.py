@@ -180,6 +180,7 @@ def test_mentions_are_answered_and_failed_reads_stay_unresolved(monkeypatch):
 
 def test_turn_cap_and_deep_threads(monkeypatch):
     import time
+    monkeypatch.setattr(bot.config, "THREAD_DEPTH_TEST", False)          # the arms have their own tests (test_depth_test.py)
     chain = {900 + i: dict(post_id=900 + i, author_id=500, reply_to_post_id=899 + i if i else None) for i in range(10)}
     posts = {**chain, 1: dict(post_id=1, author_id=500, reply_to_post_id=901, body="fair, but"),
              2: dict(post_id=2, author_id=502, reply_to_post_id=909, body="deep down"),

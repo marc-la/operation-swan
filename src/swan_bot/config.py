@@ -330,6 +330,13 @@ NOTIF_EVERY_S = 60
 TURNS_PER_SESSION = 3
 TURN_SESSION_S = 30 * 60
 THREAD_MAX_DEPTH = 8
+# 24 Oct (Marc), depth test: 356 reply-backs were skipped as deep_thread against 567 written, and nobody has measured where a
+# citizen stops answering (the platform only says "much less likely" past eight). With THREAD_DEPTH_TEST half the
+# reply-backs (a hash of the citizen's post id, so a re-poll keeps its arm) use THREAD_DEPTH_TEST_CAP instead of THREAD_MAX_DEPTH.
+# Every reply-back is logged with its thread depth and arm; scripts/depth_report.py reads out how often the citizen answers
+# again by depth. Off: SWAN_THREAD_DEPTH_TEST=0 (+ restart).
+THREAD_DEPTH_TEST = True
+THREAD_DEPTH_TEST_CAP = 11
 # Levers, 2026-10-22: fear_answer cut (0 citizen replies in 21 writes); in_group (18%) and permanence (16%) up. Others 1.
 # 2026-10-23: switching 0 (the "was Yes, now No" story: hidden 3.4% of the time against 1.4% for the rest).
 LEVER_WEIGHTS = {"fear_answer": 0.0, "switching": 0.0, "in_group": 2.0, "permanence": 2.0}
@@ -476,7 +483,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "POOL_SCHEDULER", "ONE_VOICE_AUTO",      # todo/38 (below): SWAN_POOL_SCHEDULER=0 restores longest-rest-first
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
-               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S",
+               "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance
