@@ -215,3 +215,19 @@ def test_stop_rule_counts_hot_writers_and_alerts_only_on_a_short_average(hot):
     assert texts[:2] == [None, None], "fewer than three finished writers: no rule yet"
     assert texts[2] and "100, 200, 120" in texts[2] and "mean 140" in texts[2] and "Nothing was changed" in texts[2]
     assert texts[3] is None, "the last three (200, 120, 600) average 307: back above the line, no alert"
+
+
+def test_a_spare_suspended_before_its_turn_is_not_a_hot_writer(hot):
+    """24 Oct night: two spares were suspended unused in the same sweep as the writer; the rule counted them as 0-write writers
+    (alert: 'last 3 lasted 605, 0, 0')."""
+    hot(("w1", "w2", "w3", "w4"))
+    acc = accounts("w1", "w2", "w3", "w4")
+    acc.live = False
+    for rec, w in zip(acc.records, (605, 0, 0)):
+        rec["hot_from"] = dict(at=f"2026-10-24T21:2{acc.records.index(rec)}:00", w0=0, w=w)
+        rec["status"] = "suspended"
+    assert bot.hot_track(acc, acc.hot()) is None, "one real writer (605) and two that never wrote: no rule, no alert"
+    acc.records[3]["hot_from"] = dict(at="2026-10-25T01:00:00", w0=0, w=100)
+    acc.records[3]["status"] = "suspended"
+    acc.records.append(dict(username="w5", status="suspended", hot_from=dict(at="2026-10-25T02:00:00", w0=0, w=150)))
+    assert "605, 100, 150" in bot.hot_track(acc, acc.hot())

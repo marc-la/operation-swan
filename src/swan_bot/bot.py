@@ -63,7 +63,8 @@ def hot_track(accounts, hot):
             r["hot_from"]["w"], changed = max(0, r.get("writes", 0) - r["hot_from"].get("w0", 0)), True
     if changed:
         accounts.save()
-    done = sorted((r["hot_from"] for r in accounts.records if "w" in (r.get("hot_from") or {})), key=lambda h: h["at"])
+    done = sorted((r["hot_from"] for r in accounts.records if ((r.get("hot_from") or {}).get("w") or 0) > 0),    # a spare
+                  key=lambda h: h["at"])                                                                      # suspended unused never wrote: not counted
     last = [h["w"] for h in done[-config.HOT_STOP_N:]]
     if len(last) == config.HOT_STOP_N and sum(last) / len(last) < config.HOT_STOP_WRITES:
         return (f"HOT STOP RULE: the last {len(last)} hot writers lasted {', '.join(map(str, last))} writes (mean "
