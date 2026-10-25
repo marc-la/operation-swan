@@ -147,6 +147,53 @@ def test_one_voice_writes_everything_and_the_next_takes_over_when_it_is_suspende
     assert any(m.startswith("HOT: @u2 now writes (1 spare left") for m in spies["alerts"]), spies["alerts"]
 
 
+@pytest.mark.slow
+def test_a_hand_over_does_not_wait_10_s_after_the_403(tmp_path, monkeypatch):
+    """25 Oct: the 10 s pause after a 403 cost every switch ~10 s of writes. The spare now writes within seconds of it."""
+    import time
+    block_network(monkeypatch)
+    world, _ = setup_world(monkeypatch, tmp_path, True)
+    for name in ("ACCOUNT_MIN_GAP_S", "REPOST_MIN_GAP_S", "POOL_SCHEDULER", "POOL_LIVE", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN",
+                 "ONE_VOICE_AUTO", "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER",
+                 "POOL_WRITERS", "POOL_PIPELINE"):
+        monkeypatch.setattr(config, name, getattr(config, name))
+    monkeypatch.setattr(config, "HOT_VOICES", ("u1", "u2", "u3"))
+    monkeypatch.setattr(config, "HOT_GAP_S", 0.05)
+    config.hot_mode_apply()
+    seen = {"n": 0, "403": None, "u2": None}
+    real_write = FakeWorld.write
+
+    def write(self, rec, kind, target=None, body=None):
+        if kind in ("reply", "post", "repost"):
+            if rec["username"] == "u1":
+                seen["n"] += 1
+                if seen["n"] > 5:
+                    seen["403"] = seen["403"] or time.time()
+                    raise ctn.APIError("POST", "/posts", 403, json.dumps({"error": "Your account is suspended"}))
+            elif rec["username"] == "u2" and seen["u2"] is None:
+                seen["u2"] = time.time()
+        return real_write(self, rec, kind, target, body)
+
+    monkeypatch.setattr(FakeWorld, "write", write)
+    run_main(monkeypatch, seconds=26)
+    assert seen["403"] and seen["u2"], "u1 was suspended and u2 took over"
+    assert seen["u2"] - seen["403"] < 8, f"the spare waited {seen['u2'] - seen['403']:.1f} s for the 403 pause"
+
+
+def test_a_run_of_dead_spares_brings_the_pause_back(hot):
+    """The first HOT_HANDOVER_FAST suspended answers in the window skip the pause; the next inside it do not; a quiet window resets."""
+    hot()
+    times = []
+    assert [bot.hot_handover_now(times, t) for t in (100.0, 110.0, 120.0, 130.0)] == [True, True, False, False]
+    assert bot.hot_handover_now(times, 130.0 + config.HOT_HANDOVER_WINDOW_S + 1) is True, "an old run is forgotten"
+    assert times == [130.0 + config.HOT_HANDOVER_WINDOW_S + 1]
+
+
+def test_the_pause_stays_when_hot_mode_is_off(monkeypatch):
+    monkeypatch.setattr(config, "HOT_VOICES", ())
+    assert bot.hot_handover_now([], 100.0) is False
+
+
 # ---- the refill: the pool orchestrator keeps the reserve topped up (25 Oct, Marc) -----------------------------------------
 def pooled(acc, name, at, act="activate"):
     rec = next(r for r in acc.records if r["username"] == name)

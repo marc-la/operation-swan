@@ -496,6 +496,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
 # per-voice gaps, caps, sleep, second voices, the scheduler and the pool's registering off. Roll back: unset it, restart.
 # .env: SWAN_HOT_VOICES=ana_d94,tui4,vika68   (read by load_env, so at the next restart; a comma list of usernames).
 HOT_VOICES = ()
+HOT_HANDOVER_FAST = 2               # hot mode: the first this-many 403 "suspended" in HOT_HANDOVER_WINDOW_S hand over with no pause;
+HOT_HANDOVER_WINDOW_S = 60          # more than that (spares already dead) and the usual 10 s pause between them is back
 HOT_GAP_S = 2                       # a hot voice's own minimum gap between writes (the write budget paces the bot, not this)
 # The refill (25 Oct, Marc): the pool orchestrator (todo/38) keeps the reserve topped up while hot mode runs, so there is always a
 # next writer. It plans for HOT_POOL_WRITERS voices (1 writing + the rest in reserve) and HOT_POOL_PIPELINE warming accounts on

@@ -49,6 +49,16 @@ REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3
 REPLY_BACK_GAP_S = 60         # a reply-back waits this long after its voice's last write (not the 4-min gap)
 
 
+def hot_handover_now(times, t):
+    """Hot mode: True when a 403 "suspended" at time t may hand over to the next spare with no pause. The account is marked
+    suspended, so the next write goes to another account and nothing is retried; the 10 s pause only cost the team about
+    10 s of writes per switch (24-25 Oct: 11-31 s from the 403 to the next voice's first write). `times` (the caller's
+    list) keeps the 403s of the last HOT_HANDOVER_WINDOW_S; after HOT_HANDOVER_FAST of them (a run of spares that were
+    dead already) the pause comes back."""
+    times[:] = [x for x in times if t - x < config.HOT_HANDOVER_WINDOW_S] + [t]
+    return bool(config.HOT_VOICES) and len(times) <= config.HOT_HANDOVER_FAST
+
+
 def hot_track(accounts, hot):
     """Hot-writer bookkeeping on the records (the caller holds mu): rec["hot_from"] = {at, w0} when a voice becomes the writer, and "w"
     (its writes as the hot writer) once it is suspended. Returns the stop-rule alert text when the last HOT_STOP_N hot
@@ -2046,6 +2056,7 @@ def main():
         print(f"[{mode}|{job['frame']}|{tags}|{backend}{via}] {persona['name']}{where}\n    {text}\n")
 
     net_fails = [0]                      # transient network errors in a row on the writer (reset by a send)
+    sus_403 = []                         # times of the 403 "suspended" answers in the last HOT_HANDOVER_WINDOW_S (hot mode)
 
     def handle(e, job, wait):
         """What every loop does with an API, LLM or fact-desk error (wait: that loop's sleep). The rest is raised."""
@@ -2059,6 +2070,8 @@ def main():
                 with mu:
                     accounts.mark_suspended(job["rec"])                  # todo/38: the pool's loss rate reads suspended_at
                 log({"act": "suspended", "username": job["rec"]["username"]})
+                if hot_handover_now(sus_403, time.time()):
+                    return
             elif e.status == 403 and "locked" in msg:
                 wait(300)
             wait(10)
