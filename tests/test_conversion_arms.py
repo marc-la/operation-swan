@@ -121,6 +121,8 @@ def test_fresh_facts_arm_offers_news_that_fits_the_citizen(tmp_path, monkeypatch
         f'[stale_news]\ntext = "An old story about the ferry."\nnote = "old ferry story"\nstatus = "active"\n'
         f'source = "daily-kingstonia/old"\nchecked = {old}\nadded = {old}\nnumbers = []\nsays = []\nframes = []\n')
     monkeypatch.setattr(fact_store, "AUTO_FILE", overlay)
+    real_added = fact_store.added                                  # facts the desk really added in the last 48 h stay out of it
+    monkeypatch.setattr(fact_store, "added", lambda k: real_added(k) if k in ("ferry_queue_checks", "stale_news") else None)
     try:
         picked = content.fresh_facts("Worried about the ferry queue if they check passes at the wharf")
         assert [k for k, _, _ in picked] == ["ferry_queue_checks"]                 # 48 h only, the fitting one

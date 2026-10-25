@@ -114,6 +114,10 @@ def test_reply_backs_and_reposts_are_not_starved_by_the_one_voice_writing_every_
 def test_one_voice_writes_everything_and_the_next_takes_over_when_it_is_suspended(tmp_path, monkeypatch):
     block_network(monkeypatch)
     world, spies = setup_world(monkeypatch, tmp_path, True)
+    for name in ("ACCOUNT_MIN_GAP_S", "REPOST_MIN_GAP_S", "POOL_SCHEDULER", "POOL_LIVE", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN",
+                 "ONE_VOICE_AUTO", "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER",
+                 "POOL_WRITERS", "POOL_PIPELINE"):          # hot_mode_apply sets all of these: restore them for the next test
+        monkeypatch.setattr(config, name, getattr(config, name))
     monkeypatch.setattr(config, "HOT_VOICES", ("u1", "u2", "u3"))
     monkeypatch.setattr(config, "HOT_GAP_S", 0.05)
     config.hot_mode_apply()

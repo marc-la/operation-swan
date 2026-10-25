@@ -520,7 +520,7 @@ STYLE_RULES = (
 WORLD_PARTS = [
     ("Background (don't restate it): Kingstonia votes in a binding referendum on requiring proof of H2D2 (Dolphin "
      "Flu) vaccination to enter public spaces.", [], ""),
-    (" The latest poll has No narrowly ahead, within the margin, and the unsure will decide it.", ["polls_1021"], ""),
+    (" The latest poll has Yes ahead, but over a quarter are still unsure, and they will decide it.", ["polls_1025"], ""),
     (" Most who lean Yes are afraid, after what COVID did to the hospitals; a No keeps life as it is, with the jab "
      "free either way.", ["free_either_way"], " Most who lean Yes are afraid, after what COVID did to the hospitals."),
 ]

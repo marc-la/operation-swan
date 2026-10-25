@@ -415,11 +415,11 @@ def test_auto_contradiction_new_key_with_undo_and_record(auto):
 def test_auto_hedged_or_unusable_contradiction_retires(auto):
     out, _, _ = auto(prop("contradiction", id=1, fact="no_spread", quote="Officials say H2D2 may now be spreading "
                           "in the community.", **SPREAD),
-                     prop("contradiction", id=2, fact="polls_1021", quote=QUOTE, text=None, note=None,
+                     prop("contradiction", id=2, fact="free_either_way", quote=QUOTE, text=None, note=None,
                           failed_checks="voting_logistics"))
     assert [(r["id"], r["status"]) for r in out["applied"]] == [(1, "retired"), (2, "retired")]
     t = auto.table()
-    assert t["no_spread"]["status"] == t["polls_1021"]["status"] == "paused" and not factdesk.validate(t)
+    assert t["no_spread"]["status"] == t["free_either_way"]["status"] == "paused" and not factdesk.validate(t)
 
 
 def test_auto_reword_in_place_but_not_under_a_holding_pause(auto):

@@ -544,7 +544,7 @@ def test_facts_section_is_the_autopilot_log_with_undo(tmp_path):
     base = dict(site="daily-kingstonia", slug="s", quote="The poll moved.", status="open")
     props = [dict(base, id=1, kind="new_fact", key="k1", text="T"), dict(base, id=2, kind="angle", idea="An idea"),
              dict(base, id=3, kind="reword", fact="nurses", text="N"), dict(base, id=4, kind="new_fact", key="k4"),
-             dict(base, id=5, kind="contradiction", fact="polls_1021", text="P")]
+             dict(base, id=5, kind="contradiction", fact="free_either_way", text="P")]
     (root / "data" / "fact_proposals.jsonl").write_text("".join(json.dumps(p) + "\n" for p in props))
     rec = lambda i, status, m, **kw: dict(id=i, status=status, by="factdesk-auto", decided_at=iso(m), site="daily-"
                                           "kingstonia", slug="s", quote="The poll moved.", summary=f"#{i} {status}", **kw)
@@ -552,9 +552,9 @@ def test_facts_section_is_the_autopilot_log_with_undo(tmp_path):
            rec(3, "failed", 50, kind="reword"), rec(4, "accepted", 40, kind="new_fact"), rec(4, "undone", 30),
            rec(5, "retired", 20, kind="contradiction")]
     (root / "data" / "facts_auto.jsonl").write_text("".join(json.dumps(r) + "\n" for r in log))
-    (root / "data" / "facts_auto.toml").write_text('[polls_1021]\ntext = "x"\nnote = "y"\nstatus = "paused"\nsource = '
+    (root / "data" / "facts_auto.toml").write_text('[free_either_way]\ntext = "x"\nnote = "y"\nstatus = "paused"\nsource = '
                                                    f'"s"\nchecked = {iso(20)[:19]}Z\n')
-    (root / "data" / "facts_paused.json").write_text(json.dumps({"polls_1021": {"since": iso(60), "proposal": 5}}))
+    (root / "data" / "facts_paused.json").write_text(json.dumps({"free_either_way": {"since": iso(60), "proposal": 5}}))
     ctx, html = page(root)
     f = ctx["facts"]
     assert f["auto"]["on"] and f["auto"]["today"] == 3 and not f["paused"]          # the overlay settled the pause
