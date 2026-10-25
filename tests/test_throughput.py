@@ -166,6 +166,7 @@ def test_peak_bands_are_kept_and_read_back(monkeypatch, tmp_path):
 # ---- 6. lighter refresh: news threads every 30 min, the papers' headlines every refresh -----------------------------
 def test_news_threads_every_30_min(monkeypatch, tmp_path):
     from swan_bot import feeds
+    monkeypatch.setattr(config, "REFRESH_S", 120)       # the test steps a clock in 2 min refreshes; the live value is 30 s since 25 Oct
     from test_targeting import _Page
     monkeypatch.setattr(feeds, "FEED_LOG", tmp_path / "feed_reads.jsonl")
     calls = []

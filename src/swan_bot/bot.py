@@ -38,7 +38,7 @@ import urllib.error
 import openai
 import capturethenarrative as ctn
 
-from . import batch, config, content, engage, experiment, feeds, humanize, pool_runner, pulse, quality, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, humanize, mention, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .analysis import ts_of
 from .llm import Generator
@@ -834,6 +834,9 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
                 user += content.reply_back_read_block()
         if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
             user = f"{user} {content.fresh_line(body, meta)}".rstrip()
+    if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # todo/46: name one other citizen
+        line = mention.prompt_line(job["mention"])
+        user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job.get("read") else f"{user} {line}"
     return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
                                           pulse_parts=parts, mode=mode), user
 
@@ -869,7 +872,8 @@ def gate(raw, job, user, recent_texts, ledger=None):
               wants=job.get("wants") or (), closing_question=meta.get("closing_question", True),
               specific=job.get("group") != "off_topic", same=job.get("same_texts") or (),
               phrase_texts=job.get("phrase_texts"),
-              phrase_exempt=("concede_open",) if job.get("style") == "mirror_concede" else ())   # firm_yes concedes
+              phrase_exempt=("concede_open",) if job.get("style") == "mirror_concede" else (),   # firm_yes concedes
+              mention=(job.get("mention") or {}).get("username"))                                # todo/46: the one handle allowed
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
@@ -1830,6 +1834,8 @@ def main():
             text, backend = drafted["text"], drafted["backend"]
             job["drafted_ahead"] = True
         else:
+            if mode in config.MENTION_MODES and target and "mention" not in job:
+                job["mention"] = mention.plan(job, targeter, state.get("mentioned"))    # todo/46; a public read, outside mu
             with mu:                                 # drafts waiting to be sent count as sent (todo/22)
                 recent_texts = state["recent_texts"] + [d["text"] for d in ready if d["text"]]
                 recent_shapes = state["recent_shapes"] + [d["job"]["meta"]["shape"] for d in ready
@@ -1933,6 +1939,8 @@ def main():
         clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
         if text and not args.no_humanize:
             text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode)
+            if mention.used(clean, job.get("mention")) and f"@{job['mention']['username']}" not in text:
+                text, hand = clean, []             # the hand must not touch a handle: send the clean text
 
         # ---- send ----
         post_id = None
@@ -1957,6 +1965,11 @@ def main():
         with mu:
             if target and mode in engage.FOLLOW_MODES + engage.LIKE_MODES:      # todo/33: the citizen's cell
                 engage.push(state, engage.plan(job, rec, target["author_id"], target["post_id"]))
+            if mention.used(text, job.get("mention")):     # todo/46: this citizen is named for MENTION_RECONTACT_S
+                now_m = time.time()
+                state["mentioned"] = {k: v for k, v in (state.get("mentioned") or {}).items()
+                                      if now_m - v < config.MENTION_RECONTACT_S}
+                state["mentioned"][str(job["mention"]["author_id"])] = now_m
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
             stealth.on_write(rec, rec["last_write"])            # todo/31: its day's writes and its next gap
             if target:
@@ -2037,6 +2050,8 @@ def main():
              "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
              "net": job.get("net"),                       # todo/23: the arm it counts against (engaged + off_topic)
              "sv_delay": job.get("sv_delay"),
+             "mention": (job.get("mention") or {}).get("username") if mention.used(text, job.get("mention")) else None,
+             "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
              "depth": job.get("depth"), "depth_arm": job.get("depth_arm"),    # reply-backs: posts above the citizen's reply
              **stage_times(job, target),
              "own_like": job.get("own_like"),

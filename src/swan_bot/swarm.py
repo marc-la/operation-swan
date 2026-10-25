@@ -225,6 +225,8 @@ class Swarm:
 
     def plan_reposts(self, found):
         st, accounts, out = self.state, self.active(), []
+        if config.SWARM_REPOSTS_PER_SCAN <= 0:        # 25 Oct: reposts off (todo/46)
+            return out
         for pid, c in sorted(found.items(), key=lambda kv: -score(kv[1])):
             p = c["post"]
             if str(pid) in st["reposted"] or pid in st["dead_posts"] or p.get("reply_to_post_id"):

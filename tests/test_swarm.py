@@ -117,7 +117,8 @@ def live_swarm(social, n=5):
     return swarm.Swarm(social, live=True, code="X" * 16, say=lambda *_: None, sleep=lambda s: None)
 
 
-def test_live_likes_reposts_and_never_repeats():
+def test_live_likes_reposts_and_never_repeats(monkeypatch):
+    monkeypatch.setattr(config, "SWARM_REPOSTS_PER_SCAN", 2)       # off since 25 Oct (todo/46): the repost code stays tested
     p1 = post(200, "Voting No on the referendum", author=7001)    # written by swarm account s1
     p2 = post(201, "No from me, the venue list is missing", reply_to_post_id=5)  # a reply: like, never repost
     social = FakeSocial(trending=[p1, p2])
@@ -137,7 +138,8 @@ def test_live_likes_reposts_and_never_repeats():
     assert social.calls == []                                   # same posts next run: nothing repeated
 
 
-def test_reposts_stop_when_write_budget_is_low():
+def test_reposts_stop_when_write_budget_is_low(monkeypatch):
+    monkeypatch.setattr(config, "SWARM_REPOSTS_PER_SCAN", 2)
     posts = [post(300 + i, f"Voting No on the referendum {i}") for i in range(5)]
     social = FakeSocial(trending=posts, write_left=1)
     s = live_swarm(social)

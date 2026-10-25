@@ -302,7 +302,7 @@ LIVE_SWITCHBACK = list(config.SWITCHBACK)          # read at import: conftest cl
 
 def test_the_live_switchback_runs_the_engagement_arms_and_not_the_conversion_arms():
     assert LIVE_SWITCHBACK == [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S)]
-    assert config.ENG_ARMS == ["base", "engagers_first"] and "arm_eng" in bot.ARMS
+    assert config.ENG_ARMS == ["base", "mention"] and "arm_eng" in bot.ARMS      # engagers_first killed 25 Oct (todo/46)
 
 
 def test_blocks_rotate_through_both_engagement_arms(monkeypatch):

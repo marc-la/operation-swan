@@ -639,7 +639,7 @@ def drop_vote(text, kind):
 
 
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
-          same=(), phrase_texts=None, phrase_exempt=(), known_caps=()):
+          same=(), phrase_texts=None, phrase_exempt=(), known_caps=(), mention=None):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
     same: our texts to this citizen or in this thread (todo/24), held to the strict near-duplicate threshold.
     phrase_texts: our latest citizen-facing texts (todo/27): a citizen-facing draft is held to PHRASE_BUDGETS over
@@ -647,7 +647,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     closing_question=False lets a post end on its verdict instead (a draft told to end without a question).
     specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
     of the vote (VOTE_TALK) unless the citizen's own post has some.
-    known_caps: the capitalised words of the system prompt (the voice's own people), for invented_name."""
+    known_caps: the capitalised words of the system prompt (the voice's own people), for invented_name.
+    mention: the one @username this reply is meant to name (todo/46, src/swan_bot/mention.py); that handle alone is allowed."""
     t = normalise(text)
     if kind != "post":
         t = TRAILING_TAGS.sub("", t).strip()
@@ -655,7 +656,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, "empty"
     if ARTEFACT_START.search(t) or ARTEFACTS.search(t):
         return None, "llm_artefact"
-    if FORBIDDEN.search(t):
+    if FORBIDDEN.search(re.sub(rf"@{re.escape(mention)}\b", "", t, count=1, flags=re.I) if mention else t):
         return None, "forbidden_content"
     if content.advocacy(t):                    # todo/20: no vaccine advocacy until organiser Q3 is answered
         return None, "vaccine_advocacy"

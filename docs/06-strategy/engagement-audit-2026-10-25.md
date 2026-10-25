@@ -91,7 +91,7 @@ One voice writes at a time, so up to 49 other accounts can act without spending 
 
 So the free budgets have no channel to a citizen except Trending (and Home, for citizens who follow us), and **the dose has already been tried**: the 20-21 Oct amplifier put about 34 likes on each of 43 top-level posts and bought no citizen engagement and no Trending place. Caveats: new accounts with no followers, top-level posts rather than replies, early game, 6 h reads; and it is the same behaviour the in-game rules call reaction farming (LS.5.3, open question 4).
 
-Against that, the cost side: the hide rate was 0.36% before 21 Oct 12:00 and about 1.4% since rivals began reporting; a converted booster's first top-level posts were hidden 5 of 15 times against 1 of 122 for original voices (`hide-risk-analysis-2026-10-23.md`), and the cause is suspected to be the boosters' earlier like-ring history. A higher dose would have to buy more than the hides and bans it adds, and a ban costs an account from the budget of 200. On this evidence the balance is against more self-liking: **no gain measured at 34 likes, a measured stealth cost.** The free actions are not a route to the +1; keep them at today's level.
+Against that, the cost side: the hide rate was 0.36% before 21 Oct 12:00 and about 1.4% since rivals began reporting; a converted booster's first top-level posts were hidden 5 of 15 times against 1 of 122 for original voices (`hide-risk-analysis-2026-10-23.md`), and the cause is suspected to be the boosters' earlier like-ring history. **Read the stealth side with care (Marc, 25 Oct):** the rise from 0.36% to 1.4% coincides with the organisers' push for everyone to Blue-team, with buffs, so it cannot be put down to anything we did, and only one or two teams are auto-flagging us. The 5-of-15 booster figure is a small sample with an unknown cause. So the stealth cost of self-liking is not established; the reason to leave it at one like is that **34 likes a post bought nothing**. (The ring self-audit alert of 25 Oct 07:05 said our amplified posts look as coordinated as the Trending leaders; I have not checked that alert.) The free actions are not a route to the +1; keep them at today's level.
 
 ## 5. What other teams and the leaders do
 
@@ -122,3 +122,23 @@ Small samples: read the 71% and 66% as "most", not as exact. The 6 h reads thems
 
 - The feed routes are **300 a minute**, not 10, since 22 Oct 02:04 UTC (200 for a few hours on 22 Oct). CLAUDE.md and `api-reference.md` carried the old figure; both are updated with the date. Pace from the headers, as before.
 - The 6 h read is a partial measure (about 30% of citizen replies and likes). Per-arm results in `conversion_report.py` and `engagement_report.py` are valid for ranking arms, not for sizing them.
+
+## 8. What was switched on (25 Oct, Marc: implement, dial down on backlash)
+
+| change | where | dial it down |
+|---|---|---|
+| Swarm reposts off (was 2 per scan, 257 slots a day) | `config.SWARM_REPOSTS_PER_SCAN = 0`; owner minhnguyenhoang to confirm | set it back to 2 |
+| Feed refresh every 30 s (was 120 s) | `config.REFRESH_S` | set it back to `2 * 60` |
+| Citizens we wrote to 1-6 h ago go last, not never | `config.RECONTACT_GAP_S`, `Targeter.next_target` | `None` |
+| `UNSURE_FIRST` off | `config.UNSURE_FIRST` | `True` |
+| Own like on alternate replies again (halves the booster likes, gives a control) | `config.OWN_LIKE_VARIANTS = [True, False]` | `[True]` |
+| `arm_eng` blocks are now `base` / `mention` (`engagers_first` was killed) | `config.ENG_ARMS` | `ENG_ARMS = ["base"]` |
+| **@mention arm**: in a mention block, half of ordinary first replies name one other active citizen | `src/swan_bot/mention.py`, `MENTION_SHARE` | `MENTION_SHARE = 0` stops it at once; lower it to thin it out |
+
+How the mention works: first replies only (never reply-backs, second voices, off-topic or group replies), one handle, a citizen who is "conditions", "unsure" or "unclear" and posted in the last 2 h, never the citizen we are answering, never named twice in 24 h. The model writes the handle into the sentence in its own words (three prompt wordings); the gate allows that one handle and rejects any other `@`. If the draft drops the handle the reply goes without it and the log says so. The hand-typing step is not allowed to alter the handle. Any failure in picking a citizen means no mention; it cannot stop a write. A mention block is 2 h, so about 40 mentions a block and 6 blocks a day (about 6% of writes).
+
+Why the arm is worth running: notifications are only replies and mentions, and the scoring guide says "mentioned citizens see the post in their notifications". The organisers built the feature into the same notification system NPCs answer through (Marc's point). Whether NPCs act on a mention of themselves in a thread they are not in is untested.
+
+Read-out: `python scripts/engagement_recon.py mention --since <UTC time>` (on the box) gives the citizen reply rate for named replies, for the other replies in mention blocks and for base blocks, and how often the named citizen answered. Hides by arm: `arm_eng` on the rows of `logs/swan_watch.jsonl`. Kill rule (as for `engagers_first`): hide rate or away events per write above base. Variants for later, not built: a mention in a reply-back, 2-3 handles, a handle in a top-level post.
+
+Not done yet: answering late replies from a live voice (lever 3), and recovering expired reply-backs (lever 6).

@@ -39,7 +39,7 @@ HIDDEN_STOP = 99                    # OFF (2026-10-23, Marc: use every voice unt
 
 # 2026-10-21 late: every 2 min (was 4). Citizens are online a few minutes per session, and the replies they answer
 # in-session landed in the first ~5 min (ctn-68's reach study, 2 posts: 5 of 9 and 4 of 8 team replies answered).
-REFRESH_S = 2 * 60
+REFRESH_S = 30   # 25 Oct (todo/46): was 2 * 60, set when feeds allowed 10 reads a minute; they have allowed 300 since 22 Oct
 FRESH_MIN = 10                      # a citizen post this new is answered first (they may still be online)...
 # 2026-10-23: 4.0 -> 12.0. At 4 a fresh post with an ordinary read lost to older posts with a strong one, and with ~2,000
 # queued the median wait for a reply was ~3 h (Marc: aim for under 5 min). 12 outweighs the usual spread of scores.
@@ -291,7 +291,7 @@ SWARM_MAX_AGE_H = 24                # only posts from the last day
 SWARM_LIKERS_PER_POST = (2, 5)      # swarm accounts that like each new qualifying post
 SWARM_LIKES_PER_SCAN = 25           # likes per run (a run every 5 min, so <= 5/min of the team's 30/min)
 SWARM_LIKE_RESERVE = 12             # stop liking when the team's like budget drops below this (amplifier's share)
-SWARM_REPOSTS_PER_SCAN = 2          # reposts share the team's 3/min write route with the bot
+SWARM_REPOSTS_PER_SCAN = 0          # reposts share the team's 3/min write route with the bot. 25 Oct (todo/46 audit): was 2; 257 of 4,314 slots a day, 82% on other teams' posts, so 0. Owner minhnguyenhoang to confirm
 SWARM_WRITE_RESERVE = 2             # repost only while >= this many writes are left in the team budget
 SWARM_LIKE_GAP_S = (3, 9)           # pause between likes inside a run
 SWARM_REPOST_GAP_S = 75             # never two swarm reposts within this many seconds
@@ -373,7 +373,7 @@ SV_DELAY_PER_VOICE_DAY = True
 OWN_LIKE_ARM = True
 # 2026-10-22 read-out: with an own like 12% citizen replies [10-13] vs 9% [8-11] without, portal the same. Kept on
 # every reply; list [True, False] to test again.
-OWN_LIKE_VARIANTS = [True]
+OWN_LIKE_VARIANTS = [True, False]    # 25 Oct (todo/46 audit): alternate again. 1 like vs none: 5.6% vs 7.7% citizen replies, 6.5% vs 5% likes (n=7,544 / 1,002); halves the booster footprint
 OWN_LIKE_DELAY_S = (60, 4 * 60)
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -655,7 +655,7 @@ CONV_ARMS = ["base", "fresh_facts", "target_order", "agree_close"]
 # 2026-10-24 (Marc): the queue is split in two, unsure citizens first; inside each half the order is what it was (todo/21 score
 # plus FRESH_BONUS). The undecided are the only ones who can move toward No, and the queue is ~2,000 deep. Not a tested lever (todo/25 found
 # none); it costs nothing, so it is on. Off: UNSURE_FIRST = False. In a target_order block that arm's own order rules.
-UNSURE_FIRST = True
+UNSURE_FIRST = False    # 25 Oct (todo/46 audit): the class it puts first has the lowest citizen reply rate (5%, conditions 9%)
 UNSURE_FIRST_CLASSES = ("unsure",)
 TARGET_ORDER = ("unsure", "unclear", "lean_no", "conditions")      # then the rest (yes_reason, firm_yes last)
 CONV_BLOCK_S = 2 * 3600
@@ -671,7 +671,7 @@ CONV_MODES = {"reply", "reply_back", "second_voice", "post"}   # arm_conv is log
 # Budget lever, 2 h switchback blocks (experiment.block("arm_eng"), logged as arm_eng on citizen-facing writes):
 #   base            today's order (todo/21 score);
 #   engagers_first  citizens who answered us before first, then unsure, then the freshest posts, then the rest.
-ENG_ARMS = ["base", "engagers_first"]
+ENG_ARMS = ["base", "mention"]    # 25 Oct: engagers_first killed (away events beat base); the mention arm is todo/46 (src/swan_bot/mention.py)
 ENG_BLOCK_S = 2 * 3600
 SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S)]
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
@@ -800,3 +800,18 @@ def team_code():
 def operator():
     """Team member accountable for accounts created by this run (attribution rule)."""
     return os.environ.get("CTN_OPERATOR", "marc")
+
+
+# ---- 25 Oct (todo/46, docs/06-strategy/engagement-audit-2026-10-25.md) ----
+# A citizen we wrote to 1-6 h ago answers a new reply of ours 2.6% of the time against ~5.5% otherwise (n=654 of 6,975,
+# 6 h reads). Candidates in that window go last (not skipped: an idle slot is worse). None switches it off.
+RECONTACT_GAP_S = (3600, 6 * 3600)
+# @mentions (arm "mention" of arm_eng, 2 h blocks): in a mention block this share of ordinary FIRST replies names one other
+# citizen by @username, so a citizen who has not heard from us gets a notification (the only channel that reaches one).
+# Never in reply-backs, second voices, off-topic or group replies; at most MENTIONS_PER_REPLY handles (the platform allows 3
+# in a reply); a mentioned citizen is not named again within MENTION_RECONTACT_S. MENTION_SHARE = 0 switches it off
+# without touching the blocks. Dial down on backlash: lower the share, or remove "mention" from ENG_ARMS.
+MENTION_SHARE = 0.5
+MENTIONS_PER_REPLY = 1
+MENTION_RECONTACT_S = 24 * 3600
+MENTION_MODES = ("reply",)

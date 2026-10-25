@@ -449,6 +449,13 @@ class Targeter:
         self._end(post, "pending", why, source)
 
     @locked
+    def mention_pool(self):
+        """[{author_id, post_id, cls, age_min}]: the citizens waiting in the queue, for mention.pick (todo/46). A copy, no
+        candidate is changed."""
+        return [dict(author_id=c["post"]["author_id"], post_id=pid, cls=c.get("target_class"), age_min=age_h(c["post"]) * 60)
+                for pid, c in self.candidates.items() if config.is_citizen(c["post"].get("author_id"))]
+
+    @locked
     def answered(self, post, mode):
         """bot.py, after a write to a citizen's item: a reply or reply-back ends it as answered."""
         if mode in ("reply", "reply_back") and self.is_citizen(post.get("author_id")):
@@ -984,8 +991,15 @@ class Targeter:
                 return 1
             return 2 if age_h(c["post"]) * 60 < config.FRESH_MIN else 3     # a reply within minutes of their post
 
+        gap = getattr(config, "RECONTACT_GAP_S", None)
+
+        def gap_rank(c):                              # todo/46: a citizen we wrote to 1-6 h ago answers least; they go last, not never
+            if not gap:
+                return 0
+            return 1 if gap[0] <= t - self.touched.get(str(c["post"]["author_id"]), 0) < gap[1] else 0
+
         for pid, c in sorted(self.candidates.items(),
-                             key=lambda kv: (tier(kv[1]), engage_rank(kv[1]), rank(kv[1]), -priority(kv[1]))):
+                             key=lambda kv: (tier(kv[1]), gap_rank(kv[1]), engage_rank(kv[1]), rank(kv[1]), -priority(kv[1]))):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
             post, author, source = c["post"], c["post"]["author_id"], c.get("source")
