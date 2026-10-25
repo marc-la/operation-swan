@@ -518,6 +518,7 @@ def test_engagement_per_write_is_base_points_over_the_writes_spent_with_views_an
     t = eng_tile(tmp_path, "NPC engagement: 7 views, 10 likes, 4 replies, 1 repost, 1 follow and 2 contributions to changes of mind towards your side")
     # per line 10 likes (50) + 4 replies (60) + 1 repost (10) + 1 follow (20) = 140; views and the changes of mind are not engagement
     assert t["head"] == "5.60" and t["light"] == "amber" and t["key"] == "engagement" and t["row"] == 2
+    assert t["sub"] == f"points per write, 24 h · goal {build.ENG_GOAL:g}"
     row = next(r for r in t["rows"] if r["name"].startswith("Engagement per write, last 24 h"))
     assert row["now"] == "5.60 = 3,360 points ÷ 600 writes"
     parts = next(r for r in t["rows"] if r["name"] == "Where it comes from")["now"]

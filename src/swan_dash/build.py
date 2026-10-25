@@ -1875,10 +1875,8 @@ def engagement_tile(e, extra_rows=()):
                      "the last 6 h swing with the time of day (Sydney afternoon is best, night worst); judge by the 24 h figure"))
     rows.append(grey("One more point per write is worth", f"≈ {e['worth']:,.0f} points to the end at the multipliers in force",
                      "writes at the team cap of 3 a minute, x2 from 26 Oct and x4 from 1 Nov (derived, not confirmed)"))
-    delta = None if n["rate"] is None or d1["rate"] is None else n["rate"] - d1["rate"]
     return dict(key="engagement", name="Engagement per write", rows=rows + list(extra_rows), tip=LIGHT_TIPS["engagement"], light=light,
-                head=fmt(n), sub=("base points per write, 24 h" + (f" · {delta:+.2f} on the day before" if delta is not None else "")
-                                  + f" · goal {ENG_GOAL:g}"))
+                head=fmt(n), sub=f"points per write, 24 h · goal {ENG_GOAL:g}")
 
 
 def blue_tile(blue):
