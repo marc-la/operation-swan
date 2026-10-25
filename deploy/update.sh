@@ -27,8 +27,10 @@ main() {
   trap 'exit 143' TERM; trap 'exit 130' INT; trap 'exit 129' HUP    # so the EXIT trap runs when systemd or a person kills us
   if ! out=$(git worktree add -q --detach "$wt" "$new" 2>&1 \
              && { ! grep -qx requirements.txt <<< "$changed" || .venv/bin/pip install -q -r "$wt/requirements.txt" 2>&1; } \
-             && cd "$wt" && SKIP_TESTS=1 PY="$root/.venv/bin/python" deploy/check.sh 2>&1); then
-    # SKIP_TESTS=1: the box (t3.medium, was a 913 MB t3.micro) never runs the test suite; CI and the laptop do (todo/34).
+             && cd "$wt" && PY="$root/.venv/bin/python" deploy/check.sh 2>&1); then
+    # The box runs the fast suite (-m "not slow", serially: no xdist on the box; 124 s on 24 Oct). It is the only gate before a
+    # restart: CI runs beside it and blocks nothing (25 Oct uptime check; it had run since 23 Oct, when check.sh lost the
+    # SKIP_TESTS test). The 23 Oct stalls were the 913 MB t3.micro; the t3.medium has 3.8 GB. SKIP_TESTS=1 here skips it.
     # The venv is shared, so a changed requirements.txt is installed before the check (the new code may import it).
     echo "$new" > logs/deploy_failed_sha
     record "$old" "$new" failed
@@ -49,12 +51,29 @@ apply_changes() {
   local hit
   if grep -qE '^deploy/.*\.(service|timer)$' <<< "$1"; then sudo deploy/install.sh --units-only; fi
   hit=$(grep -vE '^(content/lab/|src/swan_dash/)' <<< "$1" | grep -E '^(src/|scripts/|deploy/|content/|requirements\.txt)')   # no -q: pipefail + SIGPIPE
-  if [ -n "$hit" ] && { [ "${2:-}" != late ] || bot_older_than_tree; }; then
+  # docs/todo-only pushes don't restart the bot (content/facts.toml does); content/lab/ (the lab's strategies, cards) is
+  # reread by the lab itself
+  [ -n "$hit" ] || return 0
+  if [ "${2:-}" != late ] || bot_older_than_tree; then
     sudo systemctl try-restart swan-bot swan-blue   # only if running: a deliberate stop stays stopped
-  fi                                        # docs/todo-only pushes don't restart the bot (content/facts.toml does);
-}                                           # content/lab/ (the lab's strategies, cards) is reread by the lab itself
+  fi
+  revive_gave_up
+}
 # src/swan_dash/ runs from its own once-a-minute timer and nothing in the bot or Blue imports it (checked 24 Oct):
 # a dashboard-only push needs no restart.
+
+# A unit systemd gave up on (a crash loop: 20 starts in 30 min, Result=start-limit-hit) is not running, so try-restart
+# skipped it and no push could bring the bot back (25 Oct uptime check). New code is the fix someone pushed: start it again.
+# Only start-limit-hit: a deliberate stop ends inactive (or, if it hung past TimeoutStopSec, Result=timeout) and stays stopped.
+revive_gave_up() {
+  local u
+  for u in swan-bot swan-blue; do
+    [ "$(systemctl show "$u" -p Result --value 2>/dev/null)" = start-limit-hit ] || continue
+    systemctl is-active --quiet "$u" && continue
+    sudo systemctl reset-failed "$u"; sudo systemctl start "$u"
+    deploy/alert.sh "$u had stopped (systemd gave up after a crash loop): started it again on the new code. If it crashes again: journalctl -u $u -n 100"
+  done
+}
 
 # True when swan-bot started before the live tree last moved (the reflog of HEAD), i.e. it runs older code than the tree.
 # False when it is stopped or the time can't be read: a deliberate stop stays stopped.

@@ -4,4 +4,4 @@ Description=Alert the team that %i failed
 [Service]
 Type=oneshot
 User=ec2-user
-ExecStart=/home/ec2-user/ctn/deploy/alert.sh "SERVICE DOWN: %i crashed 20 times in 30 min and systemd gave up (a crash loop; the other services are not affected unless named swan-bot). On the box: journalctl -u %i -n 100"
+ExecStart=/home/ec2-user/ctn/deploy/alert.sh "SERVICE DOWN: %i crashed 20 times in 30 min and systemd gave up (a crash loop; the other services are not affected unless named swan-bot). Pushing a code fix starts swan-bot or swan-blue again (update.sh); by hand: sudo systemctl reset-failed %i && sudo systemctl start %i. Logs: journalctl -u %i -n 100"

@@ -59,7 +59,7 @@ def default_cards():
 
 class PoolRunner:
     def __init__(self, accounts, social, mu, log, alert, code, owner, *, clock=time.time, rng=None, cards=None,
-                 swarm=None, params=None, live=None, off=None, say=print, sent_file=None):
+                 swarm=None, params=None, live=None, off=None, say=print, sent_file=None, clock_file=None):
         self.accounts, self.social, self.mu, self.log, self.alert = accounts, social, mu, log, alert
         self._code, self.owner = code, owner                      # the team code is only ever passed to social.register
         self.clock = clock
@@ -72,6 +72,9 @@ class PoolRunner:
         self.say = say
         self.sent_file = sent_file                                # alerts already sent, kept across restarts (None: not kept)
         self.st = pool.PoolState(z=pool.draw_z(self.rng))
+        self.clock_file = clock_file                              # want_since and z, kept across restarts (None: not kept)
+        self._clock_saved = None
+        self._load_clock()
         self.shadow, self.shadow_new = {}, []                     # the shadow's private copy: {username: record}, [records]
         self.suspended_ts = {}                                    # {username: epoch} for suspensions with no suspended_at
         self._seeded = False
@@ -137,7 +140,38 @@ class PoolRunner:
             view = self._view(live_mode)
             snap = self._snapshot(view, now)
             self._status = pool.status_dict(snap, self.st, self.p, now, dry_run=not live_mode, off=off)
+        self._save_clock()
         return plan
+
+    # ---- the paced delay's clock, across restarts ---------------------------------------------------------------------
+    def _load_clock(self):
+        """want_since and z from clock_file. Kept in memory only, every restart (each deploy: 11 on 25 Oct) started the
+        healthy 5 h wait again from the restart and drew a new z, so the delay only ever grew (25 Oct: next add 872 min away,
+        nothing registered since 24 Oct 09:33). A missing or bad file, or a want in the future: a fresh start, as before."""
+        if not self.clock_file:
+            return
+        try:
+            doc = json.loads(self.clock_file.read_text())
+            z, since = float(doc["z"]), doc.get("want_since")
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        if pool.Z_CLIP[0] <= z <= pool.Z_CLIP[1]:
+            self.st.z = z
+        if isinstance(since, (int, float)) and not isinstance(since, bool) and 0 < since <= self.clock():
+            self.st.want_since = float(since)
+        self._clock_saved = (self.st.want_since, self.st.z)
+
+    def _save_clock(self):
+        if not self.clock_file or (self.st.want_since, self.st.z) == self._clock_saved:
+            return
+        try:
+            self.clock_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.clock_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"want_since": self.st.want_since, "z": self.st.z}))
+            tmp.replace(self.clock_file)
+            self._clock_saved = (self.st.want_since, self.st.z)
+        except OSError as e:
+            self.say("pool clock: not saved:", e)
 
     def status(self):
         """data/status.json["pool"] as of the last tick (None before the first)."""

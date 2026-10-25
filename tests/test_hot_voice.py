@@ -282,3 +282,65 @@ def test_a_spare_suspended_before_its_turn_is_not_a_hot_writer(hot):
     acc.records[3]["status"] = "suspended"
     acc.records.append(dict(username="w5", status="suspended", hot_from=dict(at="2026-10-25T02:00:00", w0=0, w=40)))
     assert "605, 100, 40" in bot.hot_track(acc, acc.hot())
+
+
+# ---- stuck writes (25 Oct uptime check): a 401/403 that is not a suspension no longer retries the one voice forever ----------
+def test_stuck_writes_bench_the_hot_voice_once_then_only_alert():
+    s = bot.StuckWrites(n=3)
+    assert [s.fail("u1", hot=True) for _ in range(3)] == [None, None, "bench"]
+    assert [s.fail("u2", hot=True) for _ in range(4)] == [None, None, "alert", None], \
+        "the next voice failing the same way is not the voice: one alert, no second bench"
+    assert s.benched == ["u1"] and s.told
+    s.ok()
+    assert (s.n, s.by, s.benched, s.told) == (0, {}, [], False), "a write that went through ends the spell"
+    assert [s.fail("u2", hot=True) for _ in range(3)] == [None, None, "bench"], "a new spell may bench again"
+
+
+def test_stuck_writes_outside_hot_mode_count_the_spell_and_only_alert():
+    s = bot.StuckWrites(n=3)
+    assert [s.fail(u, hot=False) for u in ("a", "b", "c", "d")] == [None, None, "alert", None]
+    assert s.benched == []
+
+
+def test_a_benched_voice_is_skipped_like_a_lost_one_until_a_restart(hot):
+    hot()
+    acc = accounts("ana_d94", "tui4", "vika68")
+    acc.benched.add("ana_d94")
+    assert [r["username"] for r in acc.voices()] == ["tui4"]
+    assert acc.hot() == dict(active="tui4", spares=["vika68"], lost=[], missing=[]), "benched is not lost (not suspended)"
+    assert acc.records[0]["status"] == "active", "nothing is marked on the record"
+    assert [r["username"] for r in Accounts(None, live=True).voices()] == [], "a fresh run (a restart) has no bench"
+
+
+@pytest.mark.slow
+def test_a_voice_whose_writes_fail_without_a_suspension_is_benched_and_the_spare_writes(tmp_path, monkeypatch):
+    block_network(monkeypatch)
+    world, spies = setup_world(monkeypatch, tmp_path, True)
+    for name in ("ACCOUNT_MIN_GAP_S", "REPOST_MIN_GAP_S", "POOL_SCHEDULER", "POOL_LIVE", "SECOND_VOICE", "ONE_VOICE_PER_CITIZEN",
+                 "ONE_VOICE_AUTO", "VOICE_DAY_CAP", "VOICE_HOUR_CAP", "VOICE_SLEEP", "VOICE_JITTER", "VOICE_STAGGER",
+                 "POOL_WRITERS", "POOL_PIPELINE"):
+        monkeypatch.setattr(config, name, getattr(config, name))
+    monkeypatch.setattr(config, "HOT_VOICES", ("u1", "u2", "u3"))
+    monkeypatch.setattr(config, "HOT_GAP_S", 0.05)
+    monkeypatch.setattr(bot, "STUCK_N", 2)                # one 10 s wait, then the bench
+    config.hot_mode_apply()
+    real_write = FakeWorld.write
+    failed = {"u1": 0}
+
+    def write(self, rec, kind, target=None, body=None):
+        if rec["username"] == "u1" and kind in ("reply", "post", "repost"):
+            failed["u1"] += 1
+            raise ctn.APIError("POST", "/posts", 403, json.dumps({"error": "account restricted"}))
+        return real_write(self, rec, kind, target, body)
+
+    monkeypatch.setattr(FakeWorld, "write", write)
+    run_main(monkeypatch, seconds=22)
+    users = [w["username"] for w in world.writes if w["kind"] in ("reply", "post", "repost")]
+    assert failed["u1"] == 2, f"u1 was tried {failed['u1']} times: benched after the second failure"
+    assert users and set(users) == {"u2"}, f"the spare wrote everything after the bench: {sorted(set(users))}"
+    stuck = [a for a in actions(tmp_path) if a.get("act") == "write_stuck"]
+    assert [(a["username"], a["status"], a["benched"]) for a in stuck] == [("u1", 403, True)]
+    recs = {r["username"]: r for r in json.loads((tmp_path / "secrets" / "swan_accounts.json").read_text())}
+    assert recs["u1"]["status"] == "active", "not marked suspended: the platform never said so"
+    assert any(m.startswith("WRITES STUCK: @u1") for m in spies["alerts"]), spies["alerts"]
+    assert any(m.startswith("HOT: @u2 now writes") for m in spies["alerts"]), spies["alerts"]

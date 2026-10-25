@@ -1050,3 +1050,39 @@ def test_alerts_already_sent_are_not_sent_again_after_a_restart(tmp_path):
     again.runner.st.flags.clear()
     again.tick(advance=60)
     assert n(again) == 1, "after the gap it may be said again"
+
+
+def test_a_restart_keeps_the_paced_delay_running(tmp_path):
+    """25 Oct uptime check: want_since and z lived in memory, so every deploy restarted the healthy 5 h wait from the
+    restart and drew a new z. clock_file keeps both: a fresh runner owes the same add at the same time."""
+    records = [voice(i) for i in range(14)] + [booster(i) for i in range(6)]
+    clock = tmp_path / "pool_clock.json"
+    first = Rig(tmp_path, records)
+    first.runner.clock_file = clock
+    first.tick(advance=60)
+    want, z = first.runner.st.want_since, first.runner.st.z
+    assert want is not None and json.loads(clock.read_text()) == {"want_since": want, "z": z}
+    snap = lambda rig: rig.runner._snapshot(rig.acc.records, rig.clock[0])
+    due = pool.add_due_ts(snap(first), first.runner.p)
+    again = Rig(tmp_path, records)                                     # the restart
+    again.clock[0] = first.clock[0] + 3600
+    again.runner = pool_runner.PoolRunner(again.acc, again.platform, again.mu, again.rows.append, again.alerts.append,
+                                          "secret-team-code", "tester", clock=lambda: again.clock[0], rng=random.Random(9),
+                                          cards=lambda: list(CARDS), swarm=lambda: (11, 11, set()), params=pool.Params(),
+                                          live=lambda: True, off=lambda: False, say=lambda *a: None, clock_file=clock)
+    again.runner._seeded = True
+    assert (again.runner.st.want_since, again.runner.st.z) == (want, z)
+    assert pool.add_due_ts(snap(again), again.runner.p) == due, "the add is due when it was before the restart"
+
+
+def test_a_bad_or_future_clock_file_is_a_fresh_start(tmp_path):
+    records = [voice(i) for i in range(14)]
+    clock = tmp_path / "pool_clock.json"
+    for text in ("not json", json.dumps({"want_since": T0 + 3600, "z": 9.0}), json.dumps({"z": "x"})):
+        clock.write_text(text)
+        r = Rig(tmp_path, records)
+        runner = pool_runner.PoolRunner(r.acc, r.platform, r.mu, r.rows.append, r.alerts.append, "code", "tester",
+                                        clock=lambda: T0, rng=random.Random(1), cards=lambda: list(CARDS),
+                                        swarm=lambda: (11, 11, set()), params=pool.Params(), say=lambda *a: None,
+                                        clock_file=clock)
+        assert runner.st.want_since is None and pool.Z_CLIP[0] <= runner.st.z <= pool.Z_CLIP[1], text

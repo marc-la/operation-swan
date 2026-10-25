@@ -10,7 +10,8 @@ $PY scripts/swan_swarm.py --help > /dev/null
 bash -n deploy/*.sh
 # Tests marked slow (bot.main() end to end, the paused-fact prompt sweep) only run with FULL=1; CI sets it.
 # pytest-xdist, when installed, spreads the rest over all cores.
-if [ -d tests ] && $PY -c "import pytest" 2>/dev/null; then
+# SKIP_TESTS=1: compile, import and --help only (update.sh on the box no longer sets it: the box runs the fast suite).
+if [ "${SKIP_TESTS:-}" != 1 ] && [ -d tests ] && $PY -c "import pytest" 2>/dev/null; then
   args=(-q tests)
   if $PY -c "import xdist" 2>/dev/null; then args+=(-n auto); fi
   if [ "${FULL:-}" != 1 ]; then args+=(-m "not slow"); fi

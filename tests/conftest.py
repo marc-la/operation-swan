@@ -28,6 +28,12 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "ACCOUNTS_FILE", tmp_path / "swan_accounts.json")
     monkeypatch.setattr(config, "SWARM_ACCOUNTS_FILE", tmp_path / "swarm_accounts.json")
     monkeypatch.setattr(config, "PORTAL_FILE", tmp_path / "portal.json")      # todo/40: the box's own portal.json marks no test account
+    # watch.py binds its own copies at import: the account-budget job read the laptop's real data/portal.json and alert state
+    # (data/swan_budget.json, which every run then rewrote), so test_hide_log failed whenever the real budget alert was due
+    # and passed on the rerun (25 Oct uptime check)
+    from swan_bot import watch
+    monkeypatch.setattr(watch, "PORTAL_FILE", tmp_path / "portal.json")
+    monkeypatch.setattr(watch, "BUDGET_FILE", tmp_path / "swan_budget.json")
     # the live switchback (todo/25 arm_conv) follows the clock: in a target_order block next_target ranks lean_no
     # first and test_targeting failed for 2 h at a time (23 Oct). Tests that need an arm set SWITCHBACK themselves.
     monkeypatch.setattr(config, "SWITCHBACK", [])

@@ -59,6 +59,39 @@ def hot_handover_now(times, t):
     return bool(config.HOT_VOICES) and len(times) <= config.HOT_HANDOVER_FAST
 
 
+STUCK_N = 5                   # failed writes in a row (401/403, not "suspended" or "locked") that make a voice stuck (~1 min)
+STUCK_WAIT_S = 60             # once stuck and alerted, the writer tries again this often (was every 10 s: known-bad calls)
+
+
+class StuckWrites:
+    """Writes that keep failing with a 401 or 403 that is neither "suspended" nor "locked" (25 Oct uptime check): handle()
+    waited 10 s and tried the same voice again, forever, with no log row and no alert, and in hot mode that is every write.
+    A spell is the failed writes since the last one that went through. In hot mode a voice's STUCK_N-th failure in a spell
+    benches it ("bench": Accounts.benched, for this run only, nothing saved) so the next spare writes; if a voice fails the
+    same way after that, it is not the voice (the team's clearance, the platform): "alert", once a spell, and nothing else
+    is switched. Outside hot mode the spell's STUCK_N-th failure is "alert"."""
+
+    def __init__(self, n=None):
+        self.n_max = STUCK_N if n is None else n
+        self.ok()
+
+    def ok(self):
+        """A write went through: the spell is over."""
+        self.n, self.by, self.benched, self.told = 0, {}, [], False
+
+    def fail(self, username, hot):
+        """One more failed write by `username`. Returns "bench", "alert" or None."""
+        self.n += 1
+        self.by[username] = self.by.get(username, 0) + 1
+        if hot and self.by[username] == self.n_max and not self.benched:
+            self.benched.append(username)
+            return "bench"
+        if not self.told and (self.by[username] if hot else self.n) >= self.n_max:
+            self.told = True
+            return "alert"
+        return None
+
+
 def hot_track(accounts, hot):
     """Hot-writer bookkeeping on the records (the caller holds mu): rec["hot_from"] = {at, w0} when a voice becomes the writer, and "w"
     (its writes as the hot writer) once it is suspended. Returns the stop-rule alert text when the last HOT_STOP_N hot
@@ -190,6 +223,7 @@ class Accounts:
         self._hidden, self._hidden_mtime = {}, None
         self._portal_next = 0.0      # todo/40: the next time sync_portal reads data/portal.json
         self.reserved = set()        # personas with a draft not sent yet (split loop): not picked for another
+        self.benched = set()         # hot mode: usernames whose writes are stuck (StuckWrites), skipped until a restart
         created = [dt.datetime.fromisoformat(r["created"]).timestamp() for r in self.records
                    if r.get("created") and r.get("role", "voice") != "booster"]
         if created:                      # a restart must not register straight after the last registration
@@ -226,7 +260,7 @@ class Accounts:
         and a suspended one drops out of this list on the same call that sees its record change."""
         voices = [r for r in self.active() if r.get("role", "voice") != "booster"]
         if config.HOT_VOICES:
-            by_name = {r["username"]: r for r in voices}
+            by_name = {r["username"]: r for r in voices if r["username"] not in self.benched}
             return next(([by_name[u]] for u in self.hot_roster() if u in by_name), [])
         return voices
 
@@ -245,7 +279,7 @@ class Accounts:
             return None
         roster = self.hot_roster()
         status = {r["username"]: r.get("status", "active") for r in self.records}
-        live = [u for u in roster if status.get(u) == "active"]
+        live = [u for u in roster if status.get(u) == "active" and u not in self.benched]
         by = {r["username"]: r for r in self.records}
         mine = lambda u: u in config.HOT_VOICES or (by.get(u) or {}).get("hot_from")     # old pool voices that never wrote hot are not "lost"
         return dict(active=live[0] if live else None, spares=live[1:],
@@ -1492,7 +1526,7 @@ def main():
     # todo/38: the pool orchestrator (pool.py plans, pool_runner.py does). Always planning in the live split loop; it only
     # changes anything when config.POOL_LIVE (SWAN_POOL_LIVE=1), else it logs `pool_shadow` rows. Non-critical worker "pool".
     pool_run = (pool_runner.PoolRunner(accounts, social, mu, log, alert, code, owner, rng=random.Random(),
-                                       sent_file=config.DATA / "pool_alerts.json")
+                                       sent_file=config.DATA / "pool_alerts.json", clock_file=config.DATA / "pool_clock.json")
                 if args.live and split else None)
     rate_limited = []                    # times of 429s in the last hour (dashboard)
     write_rl = [None]                    # the write budget as our last write's headers reported it (todo/24)
@@ -1902,7 +1936,8 @@ def main():
                                                                        "persona"))
         rec, mode, target = job["rec"], job["mode"], job.get("target")
         with mu:
-            if rec.get("status", "active") != "active":    # suspended while the draft waited (hot mode switches voice): no 403
+            # suspended or benched (StuckWrites) while the draft waited (hot mode switches voice): no 403
+            if rec.get("status", "active") != "active" or rec["username"] in accounts.benched:
                 log({"act": "skip", "why": "voice_gone_at_send", "mode": mode, "persona": persona["key"],
                      "target_post": target and target["post_id"], "draft_id": job["draft_id"]})
                 if job.get("cand"):
@@ -1962,12 +1997,17 @@ def main():
 
             acc = accounts.session(rec)
             try:
-                r = write(acc)
+                try:
+                    r = write(acc)
+                except ctn.APIError as e:
+                    if e.status != 401:
+                        raise
+                    acc = accounts.relogin(rec)
+                    r = write(acc)
             except ctn.APIError as e:
-                if e.status != 401:
-                    raise
-                acc = accounts.relogin(rec)
-                r = write(acc)
+                e.write_by = rec["username"]      # handle(): the write (or its re-login) failed, not a read (StuckWrites)
+                raise
+            stuck.ok()
             post_id = r["post_id"]
             write_rl[0] = acc.rate_limit             # the team-wide write budget, as this answer reported it
         with mu:
@@ -2081,6 +2121,29 @@ def main():
 
     net_fails = [0]                      # transient network errors in a row on the writer (reset by a send)
     sus_403 = []                         # times of the 403 "suspended" answers in the last HOT_HANDOVER_WINDOW_S (hot mode)
+    stuck = StuckWrites()                # failed writes since the last one that went through (send resets it)
+
+    def stuck_write(rec, e):
+        """A write by rec failed with a 401/403 that is not a suspension or the feed lock (StuckWrites): log and alert once
+        the voice is stuck, and in hot mode bench it so the next spare writes. Returns the writer's wait (s)."""
+        msg = (e.message or "")[:160]
+        with mu:
+            what = stuck.fail(rec["username"], bool(config.HOT_VOICES))
+            if what == "bench":
+                accounts.benched.add(rec["username"])
+            told = stuck.told
+        if what:
+            log({"act": "write_stuck", "username": rec["username"], "status": e.status, "message": msg, "in_row": stuck.n,
+                 "benched": what == "bench"})
+        if what == "bench":
+            alert(f"WRITES STUCK: @{rec['username']}'s last {STUCK_N} writes failed ({e.status} {msg}), not as a suspension. "
+                  f"Benched it for this run (not marked suspended; a restart brings it back): the next spare writes now.")
+        elif what == "alert":
+            why = (f" after @{' and @'.join(stuck.benched)} was benched, so it is not the voice (the team's clearance? the "
+                   f"platform?)" if stuck.benched else "")
+            alert(f"WRITES STUCK: {stuck.n} writes in a row failed ({e.status} {msg}){why}. Nothing else is switched; the "
+                  f"bot tries again every {STUCK_WAIT_S} s. Logs: journalctl -u swan-bot -n 50")
+        return 0 if what == "bench" else STUCK_WAIT_S if told else 10      # benched: the spare writes at once
 
     def handle(e, job, wait):
         """What every loop does with an API, LLM or fact-desk error (wait: that loop's sleep). The rest is raised."""
@@ -2098,6 +2161,9 @@ def main():
                     return
             elif e.status == 403 and "locked" in msg:
                 wait(300)
+            elif e.status in (401, 403) and job and getattr(e, "write_by", None):
+                wait(stuck_write(job["rec"], e))
+                return
             wait(10)
         elif isinstance(e, openai.APIError):
             print("LLM error", type(e).__name__, str(e)[:120])

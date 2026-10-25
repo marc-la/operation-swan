@@ -40,6 +40,8 @@ class Rig:
         self.started = tmp / "bot_started"            # what `systemctl show swan-bot -p ActiveEnterTimestamp` answers
         self.started.write_text("Thu 2020-01-01 00:00:00 UTC\n")
         self.block = tmp / "block"                     # exists -> stub install.sh hangs (a run killed mid-apply)
+        self.results = tmp / "results"                 # results/<unit>: what `systemctl show <unit> -p Result` answers
+        self.results.mkdir()
         sh("git", "init", "-q", "--bare", "-b", "main", str(self.origin), cwd=tmp)
         sh("git", "clone", "-q", str(self.origin), str(self.dev), cwd=tmp)
         for name, text in (("check.sh", CHECK_OK), ("alert.sh", ALERT), ("install.sh", INSTALL)):
@@ -61,12 +63,15 @@ class Rig:
         (shims / "sudo").write_text('#!/usr/bin/env bash\necho "sudo $*" >> "$CALLS"\nexec "$@"\n')
         (shims / "systemctl").write_text(
             '#!/usr/bin/env bash\n'
-            'if [ "$1" = show ]; then cat "$STARTED"; exit 0; fi\n'
-            'echo "systemctl $*" >> "$CALLS"\n')
+            'if [ "$1" = show ]; then case "$*" in *Result*) cat "$RESULTS/$2" 2>/dev/null || echo success ;;\n'
+            '  *) cat "$STARTED" ;; esac; exit 0; fi\n'
+            'if [ "$1" = is-active ]; then exit 1; fi\n'
+            'echo "systemctl $*" >> "$CALLS"\n'
+            'if [ "$1" = start ]; then rm -f "$RESULTS/$2"; fi\n')
         for f in shims.iterdir():
             f.chmod(0o755)
         self.env = dict(PATH=f"{shims}:{os.environ['PATH']}", CALLS=str(self.calls), STARTED=str(self.started),
-                        BLOCK=str(self.block), SWAN_UPDATE_LOCK=str(tmp / "lock"))
+                        BLOCK=str(self.block), SWAN_UPDATE_LOCK=str(tmp / "lock"), RESULTS=str(self.results))
         self.deploys = self.box / "logs" / "deploys.jsonl"
         # the box starts out deployed: one ok record for the initial commit (as after install.sh + the first tick)
         (self.box / "logs").mkdir()
@@ -151,7 +156,7 @@ def test_good_commit_deploys(rig):
     assert r.returncode == 0, r.stderr
     assert rig.head() == new
     log = rig.log()
-    assert any(x.startswith("check pwd=deploy-check skip=1 py=set") for x in log)    # checked in the worktree, tests skipped
+    assert any(x.startswith("check pwd=deploy-check skip= py=set") for x in log)     # checked in the worktree, tests run
     assert restarts(rig) == ["systemctl try-restart swan-bot swan-blue"]
     assert not any(x.startswith("install ") for x in log)                           # no unit file changed
     rec = rig.records()[-1]
@@ -309,3 +314,29 @@ def test_catch_up_does_not_restart_for_docs_or_a_stopped_bot(rig):
 def test_old_style_failed_record_does_not_trigger_a_catch_up(rig):
     rig.record_line("f" * 40, "failed", old=rig.head())        # a rollback record from the previous update.sh
     assert rig.run().returncode == 0 and rig.log() == [] and len(rig.records()) == 2
+
+
+def test_a_unit_systemd_gave_up_on_is_started_again_by_a_code_push(rig):
+    """25 Oct uptime check: after a crash loop (Result=start-limit-hit) try-restart skips the stopped unit, so a pushed fix
+    never ran. Now the push starts it; a deliberate stop (inactive, Result=success or timeout) stays stopped."""
+    (rig.results / "swan-bot").write_text("start-limit-hit\n")
+    (rig.results / "swan-blue").write_text("timeout\n")      # stopped by hand and hung past TimeoutStopSec: leave it
+    rig.write("src/mod.py", "X = 7\n")
+    new = rig.push("Fix the crash")
+    assert rig.run().returncode == 0 and rig.head() == new
+    log = rig.log()
+    assert "systemctl reset-failed swan-bot" in log and "systemctl start swan-bot" in log
+    assert log.index("systemctl reset-failed swan-bot") < log.index("systemctl start swan-bot")
+    assert "systemctl start swan-blue" not in log and "systemctl reset-failed swan-blue" not in log, log
+    assert any(a.startswith("alert swan-bot had stopped (systemd gave up") for a in alerts(rig))
+    rig.calls.write_text("")
+    rig.write("src/mod.py", "X = 8\n")
+    rig.push("Next")
+    assert rig.run().returncode == 0 and "systemctl start swan-bot" not in rig.log(), "only once: it is running again"
+
+
+def test_a_docs_push_does_not_start_a_unit_systemd_gave_up_on(rig):
+    (rig.results / "swan-bot").write_text("start-limit-hit\n")
+    rig.write("docs/a.md", "d\n")
+    rig.push("docs")
+    assert rig.run().returncode == 0 and "systemctl start swan-bot" not in rig.log(), "the same code would crash again"
