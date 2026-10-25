@@ -92,6 +92,14 @@ def test_the_prompt_carries_the_mention_line_only_when_planned(monkeypatch):
     assert "@" not in bot.build_prompt(plain, targeter)[2]
 
 
+def test_the_system_prompt_stops_banning_mentions_only_for_a_planned_one(monkeypatch):
+    monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
+    targeter = types.SimpleNamespace(headline=None)
+    planned = bot.build_prompt(job(mention=dict(author_id=7, username="tui_walker")), targeter)[1]
+    plain = bot.build_prompt(job(), targeter)[1]
+    assert "@mentions" in plain and "@mentions" not in planned      # Haiku obeyed the ban: 1 of 44 planned drafts named them
+
+
 def test_gate_in_the_bot_passes_a_reply_naming_the_planned_citizen(monkeypatch):
     monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
     j = job(mention=dict(author_id=7, username="tui_walker"))

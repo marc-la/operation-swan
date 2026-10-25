@@ -837,8 +837,11 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # todo/46: name one other citizen
         line = mention.prompt_line(job["mention"])
         user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job.get("read") else f"{user} {line}"
-    return persona, content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
-                                          pulse_parts=parts, mode=mode), user
+    system = content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
+                                   pulse_parts=parts, mode=mode)
+    if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # the style rule bans @mentions: Haiku obeyed it
+        system = system.replace(" @mentions,", "", 1)                                    # 1 of 44 drafts wrote the handle (25 Oct)
+    return persona, system, user
 
 
 # Drafts at 0.7 keep to their shape and length better; own-thread reactions keep 0.9 for variety (todo/14)

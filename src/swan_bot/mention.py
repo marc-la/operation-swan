@@ -21,9 +21,12 @@ from . import config, experiment
 CLASSES = ("conditions", "unsure", "unclear")        # the citizens a No can still reach; not yes_reason, lean_no, firm_yes
 MAX_AGE_MIN = 120                                    # the mentioned citizen posted within this long
 LINES = (
-    "Name {at} once, in a clause of your own words, as a neighbour who might have a view on this. Do not just tag them.",
-    "Bring {at} in once, in the middle or at the end, because what they have said recently touches the same worry.",
-    "Mention {at} once, naturally, by asking what they make of this. No other @ names.",
+    "Keep answering the person above. In one clause of your own words bring in {at} as a third neighbour who has raised the "
+    "same worry, for instance by asking what they make of it. Never address {at} as \"you\" and never open with the handle.",
+    "Keep answering the person above, and in the middle of the reply add that {at} has been wondering about the same thing "
+    "or ask what {at} thinks. {at} is a third person here, not the one you are talking to; don't open or end on the handle.",
+    "Answer the person above as you would, and work {at} in once, in your own words, as someone else in the neighbourhood "
+    "who might see it differently. Speak about {at} in the third person; no other @ names.",
 )
 
 
