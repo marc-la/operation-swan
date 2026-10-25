@@ -205,7 +205,7 @@ To check on 24 Oct against the table above: post reports filed, genuine per post
 
 ## 10. Live targets: liveness filter, live-lead scanner, fleets (todo/43, 2026-10-24)
 
-Work item: [todo/43](../../todo/43-blue-live-targets.md); evidence: [rival-census-2026-10-23](rival-census-2026-10-23.md). Code: `swan_blue/{service,evidence,scan,fleets}.py`; offline tools `scripts/blue_fleet_eval.py`, `scripts/blue_scan_eval.py`. Built and tested against fakes only on 24 Oct; **nothing here has run against the real platform** (the first live numbers go in the table at the end).
+Work item: todo/43; evidence: [rival-census-2026-10-23](rival-census-2026-10-23.md). Code: `swan_blue/{service,evidence,scan,fleets}.py`; offline tools `scripts/blue_fleet_eval.py`, `scripts/blue_scan_eval.py`. Built and tested against fakes only on 24 Oct; **nothing here has run against the real platform** (the first live numbers go in the table at the end).
 
 **Why.** Of our 89 account reports on 23 Oct, 46 (52%) were on accounts already idle for over 3 h at filing (27 over 12 h), and all 37 filed while the account was active (last post an hour or less before) had stopped posting by the ruling. So the 0.5 in `ACCOUNT_UPHELD` was the idle waste, not the live rate. Live supply was thin (21 of 189 unreported leads had posted in the previous 2 h), so the filter alone would only shrink Blue; the scanner and the sibling checks widen the supply of live leads. Fleets replace the 16 clusters as the unit of "one target team": c8701 holds 450 accounts, more than a team's 200, so it showed "saturated".
 
