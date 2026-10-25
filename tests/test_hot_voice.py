@@ -229,5 +229,5 @@ def test_a_spare_suspended_before_its_turn_is_not_a_hot_writer(hot):
     assert bot.hot_track(acc, acc.hot()) is None, "one real writer (605) and two that never wrote: no rule, no alert"
     acc.records[3]["hot_from"] = dict(at="2026-10-25T01:00:00", w0=0, w=100)
     acc.records[3]["status"] = "suspended"
-    acc.records.append(dict(username="w5", status="suspended", hot_from=dict(at="2026-10-25T02:00:00", w0=0, w=150)))
-    assert "605, 100, 150" in bot.hot_track(acc, acc.hot())
+    acc.records.append(dict(username="w5", status="suspended", hot_from=dict(at="2026-10-25T02:00:00", w0=0, w=40)))
+    assert "605, 100, 40" in bot.hot_track(acc, acc.hot())
