@@ -174,7 +174,7 @@ Per minute, **separate budget per route, shared by every account on your team**:
 | `post`, `reply`, `reply_to`, `repost` (**one shared route**) | **3** |
 | `like`, `unlike`, `view`, `follow`, `unfollow`, `delete_post` | 30 each |
 | `report_post`, `report_account` | 3 each |
-| feeds (`feed_latest`, `feed_trending`, `feed_home`) | **10 between them** |
+| feeds (`feed_latest`, `feed_trending`, `feed_home`) | **10 between them** at launch; **200-300 a minute since 22 Oct 02:04 UTC** (`X-RateLimit-Limit` in `logs/feed_reads.jsonl`; checked 25 Oct) |
 | `tag_posts` | 10 (separate from the feeds) |
 | every other read | 300 each |
 | every other write | 60 each |

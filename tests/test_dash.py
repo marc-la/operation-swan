@@ -768,7 +768,7 @@ def test_each_light_tile_says_on_hover_what_its_colours_mean(tmp_path):
     ctx, html = page(make_root(tmp_path, [write(3)]))
     for i in ctx["reach"]["lights"]:
         assert i["tip"] and ("Needs a look:" in i["tip"] or "Nothing amber or red." in i["tip"]) and "title=" in html, i["key"]
-    assert "The colour is the gap between the forecast for tonight and the path" in html and "Stretch goal 7" in html
+    assert "The colour is the gap between the forecast for tonight and the path" in html and "Goal 6" in html
 
 
 def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):

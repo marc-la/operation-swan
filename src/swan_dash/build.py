@@ -910,8 +910,8 @@ ENG_POINTS = {"likes": 5, "reposts": 10, "replies": 15, "follows": 20, "unfollow
 ENG_WINDOW_H = 24              # the headline window: a whole day of NPC activity, so the time of day cancels out
 ENG_LAG_H = 1                  # the portal books an hour's engagement ~1 h after it: the writes are those of the window ending 1 h earlier
 ENG_MIN_WRITES, ENG_MIN_LINES = 500, 18   # fewer writes or portal lines in the window than this and the figure is shown grey
-ENG_GREEN, ENG_AMBER = 6.5, 4.5   # base points per write: 24 h windows 23-25 Oct ran 4.5-5.9 (median 5.0). Red is below the worst of those; green is +30% on the median, what the levers in the audit add up to
-ENG_GOAL = 7.0                 # the stretch goal, shown in the row text
+ENG_GREEN, ENG_AMBER = 6.0, 4.5   # base points per write: 24 h windows 23-25 Oct ran 4.5-5.9 (median 5.0). Red is below the worst of those; green is the goal, +1 on the median (Marc, 25 Oct: what the levers in the audit can add)
+ENG_GOAL = ENG_GREEN           # the goal, shown on the tile
 HIDE_TARGET = getattr(bot_config, "HIDE_RATE_TARGET", 0.014)   # hidden text posts / text writes: 1.4% now, 1.0% after todo/40
 HIDE_WINDOW_H = 24             # trailing window of writes for the hide rate
 HIDE_CENSOR_H = 3.6            # a hide takes ~3.3 h to show: only writes at least this old are counted (hide-risk analysis)
@@ -965,7 +965,7 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
                f"Views (capped at 500 a day), changes of mind and Blue are left out. Every write counts, reposts too: each one spends a slot of the team's {TEAM_CAP_PER_MIN} a minute.\n"
                f"Writes are those of the window ending {ENG_LAG_H} h earlier, because the portal books an hour's engagement about an hour late. "
                f"Most replies and likes arrive hours after the write (7 in 10 after 6 h), so the last day's writes are not finished paying; the figure is a rate, not a verdict on one change.\n"
-               f"Green: {ENG_GREEN:g} or more · amber: {ENG_AMBER:g}-{ENG_GREEN:g} · red: under {ENG_AMBER:g} · grey: under {ENG_MIN_WRITES} writes or {ENG_MIN_LINES} portal lines. Stretch goal {ENG_GOAL:g}.")
+               f"Green: {ENG_GREEN:g} or more · amber: {ENG_AMBER:g}-{ENG_GREEN:g} · red: under {ENG_AMBER:g} · grey: under {ENG_MIN_WRITES} writes or {ENG_MIN_LINES} portal lines. Goal {ENG_GOAL:g}, one point above the median of the first days at the cap.")
 
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
@@ -1837,7 +1837,7 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
                     sub=" · ".join(x for x in ((f"{standby} standby · {len(hot['lost'])} lost" if hot else
                                                 f"of {target:g} wanted" if p and target is not None else None),
                                                f"{alive} alive" if alive is not None else None) if x))
-    # ---- engagement per write: what each write we spend earns, against the stretch goal (Marc, 25 Oct; replaces Accounts left) ----
+    # ---- engagement per write: what each write we spend earns, against the goal (Marc, 25 Oct; replaces Accounts left) ----
     st, goal = f.get("status") or {}, f.get("goal")
     budget_rows = by("left")
     if st.get("delta") is not None:        # the account budget stays in the detail, grey: it no longer colours a tile
@@ -1863,7 +1863,7 @@ def engagement_tile(e, extra_rows=()):
     rows = [dict(group="left", name=f"Engagement per write, last {ENG_WINDOW_H} h", light=light, note="",
                  now=(f"{fmt(n)} = {n['points']:,.0f} points ÷ {n['writes']:,} writes" if n["rate"] is not None else "no writes in the window")
                  + (f" · thin: {n['lines']} portal lines, {n['writes']} writes" if thin and n["rate"] is not None else ""),
-                 target=f"green {ENG_GREEN:g}+ · amber {ENG_AMBER:g}+ · red below · stretch goal {ENG_GOAL:g}",
+                 target=f"green {ENG_GREEN:g}+ · amber {ENG_AMBER:g}+ · red below · goal {ENG_GOAL:g}",
                  fix="Engagement per write is under the 24 h baseline: the levers and what each is worth are in "
                      "docs/06-strategy/engagement-audit-2026-10-25.md (fresh targets first, no wasted slots, reply-backs, news threads).")]
     if n["rate"] is not None:

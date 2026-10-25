@@ -531,7 +531,7 @@ def test_the_red_multiplier_does_not_move_engagement_per_write(tmp_path):
 
 
 @pytest.mark.parametrize("likes,replies,light", [(30, 8, "green"), (2, 8, "amber"), (0, 6, "red")])
-def test_engagement_light_is_green_from_6_5_amber_from_4_5_red_below(tmp_path, likes, replies, light):
+def test_engagement_light_is_green_from_6_amber_from_4_5_red_below(tmp_path, likes, replies, light):
     t = eng_tile(tmp_path, f"NPC engagement: {likes} likes, {replies} replies" if likes else f"NPC engagement: {replies} replies")
     rate = (15 * replies + 5 * likes) * 24 / 600                 # a line an hour, 600 writes: 10.8, 5.2, 3.6
     assert t["head"] == f"{rate:.2f}" and t["light"] == light, (rate, light)
@@ -557,4 +557,4 @@ def test_engagement_tile_shows_the_days_before_and_what_one_more_point_is_worth(
     worth = next(r for r in t["rows"] if r["name"].startswith("One more point per write"))["now"]
     # from 17:00 Sydney on 24 Oct (x1, 0.29 of the day left) to the end of 2 Nov: 4,320 writes a day at x1, x2 from 26 Oct, x4 from 1 Nov
     assert worth.startswith("≈ ") and worth.endswith("to the end at the multipliers in force")
-    assert t["tip"].startswith("Engagement per write:") and "Stretch goal 7" in t["tip"]
+    assert t["tip"].startswith("Engagement per write:") and "Goal 6" in t["tip"]
