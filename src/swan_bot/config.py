@@ -432,7 +432,7 @@ WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1
 # Lighter refresh (approved 22 Oct): the replies under the papers' article posts are read every 30 min, not every
 # refresh (2 min): 0 citizen replies under the post-launch paper posts. The papers' own posts (headlines for the pulse
 # and persona posts) are still read every refresh.
-NEWS_THREADS_S = 30 * 60
+NEWS_THREADS_S = 10 * 60               # 25 Oct (todo/46): was 30 * 60; reads are cheap (300 a minute) and a comment under an article is answered best in minutes
 
 # ---- todo/27 fingerprint (docs/06-strategy/stealth.md) ----
 # 2026-10-22 05:00 UTC: the moderator hid 2, 5, 6 of our posts an hour (other teams' Blue reports on one reply template,
@@ -815,3 +815,10 @@ MENTION_SHARE = 0.5
 MENTIONS_PER_REPLY = 1
 MENTION_RECONTACT_S = 24 * 3600
 MENTION_MODES = ("reply",)
+# Late replies (todo/46 lever 3): citizens answer our posts hours later (7 in 10 after 6 h); when the voice that wrote the post is
+# suspended or parked its notifications cannot be read, so the reply-back path never saw them (48 a day aged out as
+# expired:reply_back, and replies read as off topic were skipped). With LATE_REPLY a citizen's reply to such a voice's post is
+# an ordinary candidate in the group "late", handed out BEFORE every other candidate, answered by a live voice as a first reply
+# (on their topic when it is off topic), at most LATE_PER_H an hour. Off: LATE_REPLY = False (the old behaviour).
+LATE_REPLY = True
+LATE_PER_H = 30

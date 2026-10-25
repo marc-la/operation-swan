@@ -146,3 +146,45 @@ def test_the_engagement_arms_are_base_and_mention(monkeypatch):
     assert config.ENG_ARMS == ["base", "mention"]          # tests/conftest.py empties SWITCHBACK; the live line is built from ENG_ARMS
     monkeypatch.setattr(config, "SWITCHBACK", [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S)])
     assert {experiment.block("arm_eng", 7200 * n)[1] for n in range(4)} == {"base", "mention"}
+
+
+# ---- late replies (todo/46 lever 3) ----
+def _reply(pid, author, parent, body, minutes=2):
+    return dict(post_id=pid, author_id=author, body=body, reply_to_post_id=parent,
+                created_at=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).isoformat())
+
+
+def _late_targeter(monkeypatch, dead):
+    monkeypatch.setattr(config, "SWITCHBACK", [])
+    monkeypatch.setattr(config, "TURNOUT_ARM", False)
+    t = targeting.Targeter(None, log=lambda r: None)
+    t.dead_ids = set(dead)
+    ours = dict(post_id=900, author_id=7001, body="You're right that Central's stretched thin.", reply_to_post_id=None,
+                created_at=dt.datetime.now(dt.timezone.utc).isoformat())
+    t.post = lambda i: ours if i == 900 else None
+    return t, ours
+
+
+def test_a_citizen_answering_a_lost_voice_is_an_ordinary_candidate_handed_out_first(monkeypatch):
+    t, ours = _late_targeter(monkeypatch, dead={7001})
+    t._consider(_reply(1, 1001, 900, "Thanks, my nan says the same about the ferry."), "latest", parent=ours)        # off topic
+    t._consider(_reply(2, 1002, None, "The referendum pass is a blank cheque for me, not sure yet."), "latest")       # an ordinary one
+    assert t.candidates[1]["net"] == "late" and "net" not in t.candidates[2]
+    first = t.next_target({7001}, set(), {}, set())
+    assert first["post"]["post_id"] == 1 and first["group"] == "off_topic" and first["net"] == "late"
+
+
+def test_a_citizen_answering_a_voice_we_can_read_still_goes_to_the_reply_back_path(monkeypatch):
+    t, ours = _late_targeter(monkeypatch, dead=set())
+    t._consider(_reply(1, 1001, 900, "The referendum pass worries me too, honestly."), "latest", parent=ours)
+    t.candidates[1]["parent_author"] = 7001
+    assert t.next_target({7001}, set(), {}, set()) is None               # swallowed by the notifications path, as before
+
+
+def test_a_hostile_reply_to_a_lost_voice_is_still_skipped_and_the_switch_restores_the_old_behaviour(monkeypatch):
+    t, ours = _late_targeter(monkeypatch, dead={7001})
+    t._consider(_reply(1, 1001, 900, "You are a stupid bot, go away idiot"), "latest", parent=ours)
+    assert 1 not in t.candidates
+    monkeypatch.setattr(config, "LATE_REPLY", False)
+    t._consider(_reply(2, 1002, 900, "Thanks, my nan says the same about the ferry."), "latest", parent=ours)
+    assert 2 not in t.candidates                                         # off topic, skipped as it was

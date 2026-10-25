@@ -273,7 +273,7 @@ def hour_of(ts=None):
 
 
 ARMS_ON = {"sweep": "SWEEP_ARM", "older": "OLDER_ARM", "off_topic": "OFF_TOPIC_ARM", "engaged": "ENGAGED_ARM",
-           "turnout": "TURNOUT_ARM"}
+           "turnout": "TURNOUT_ARM", "late": "LATE_REPLY"}
 
 
 def arm_on(net):
@@ -285,7 +285,8 @@ def group_cap(net, t=None):
     if net == "sweep":
         night = dt.datetime.fromtimestamp(t or time.time(), zoneinfo.ZoneInfo(config.LOCAL_TZ)).hour in config.NIGHT_HOURS
         return config.SWEEP_NIGHT_PER_H if night else config.SWEEP_PER_H
-    return {"older": config.OLDER_PER_H, "off_topic": config.OFF_TOPIC_PER_H, "engaged": config.ENGAGED_PER_H}.get(net)
+    return {"older": config.OLDER_PER_H, "off_topic": config.OFF_TOPIC_PER_H, "engaged": config.ENGAGED_PER_H,
+            "late": config.LATE_PER_H}.get(net)
 
 
 def citizen_ids():
@@ -329,6 +330,7 @@ class Targeter:
         # todo/23
         self.group_out = {}          # group -> when its candidates were handed out (the caps per hour)
         self.touched = {}            # citizen id -> our last write to them (kept SWEEP_RECONTACT_S)
+        self.dead_ids = set()        # account ids of voices whose notifications we cannot read (suspended, parked): bot.py sets it (todo/46)
         self.swept = {}              # citizen id -> when the sweep last read them (or a time ahead: private)
         self.sweep_next = 0          # index into citizen_ids(): where the sweep carries on
         self.engaged_pool = {}       # citizen id -> persona: liked or follows that voice, not read yet
@@ -568,12 +570,17 @@ class Targeter:
         why = (hard_skip(body, context) or ("deep_thread" if d >= config.DEEP_THREAD else None)
                or ("firm_yes" if cls == "firm_yes" and not config.FIRM_YES_ARM else None))
         group = None
-        if why == "off_topic" and self._off_topic_ok(post, d):      # todo/23 C: their topic, no pivot
+        # todo/46: a citizen answering a post of a voice we can no longer read (suspended: its notifications are gone, and 7 in 10
+        # replies arrive hours after the post) is a conversation we owe a reply, whatever the topic: answered by a live voice, first
+        late = bool(config.LATE_REPLY and parent and parent.get("author_id") in self.dead_ids)
+        if late and why == "off_topic" and not (loud(body) or HOSTILE.search(body)):
+            why, group = None, "off_topic"                          # a thank-you or an aside: on their topic, no pivot to the vote
+        elif why == "off_topic" and self._off_topic_ok(post, d):      # todo/23 C: their topic, no pivot
             why, group = None, "off_topic"
             it["exp"] = it["c"] + 3600 * config.TARGET_MAX_AGE_H
         if why:
             return self.skip(post, why, source)
-        self._queue(post, source, context, parent, d, cls, group=group)
+        self._queue(post, source, context, parent, d, cls, group=group, net="late" if late else None)
 
     def _off_topic_ok(self, post, d):
         """An off-topic citizen post we may answer on its own topic (todo/23 C): the arm on, not hostile or shouting,
@@ -597,7 +604,7 @@ class Targeter:
         self.candidates[post["post_id"]] = dict(post=post, frame=frame, wants=wants, context=context, source=source,
                                                 score=score, identity=identity(body), target_class=cls, depth=d,
                                                 parent_author=(parent or {}).get("author_id"),
-                                                **({"group": group, "net": net or group} if group else {}),
+                                                **({"group": group, "net": net or group} if group else {"net": net} if net else {}),
                                                 **({"prefer": prefer} if prefer else {}))
         it = self._item(post, source)
         it["why"] = "queued"
@@ -965,6 +972,8 @@ class Targeter:
 
         def tier(c):
             net = self._net(c)
+            if net == "late":
+                return -1                                 # todo/46: a citizen who answered a lost voice goes before everything
             return config.GROUP_ORDER.index(net) + 1 if net in config.GROUP_ORDER else 0
 
         # todo/25's target_order arm: in its blocks the lab's movability order goes first (config.TARGET_ORDER), the
@@ -1007,7 +1016,7 @@ class Targeter:
                 self.candidates.pop(pid)
                 self.skip(post, "replied" if pid in replied_posts else "ours", source)
                 continue
-            if config.REPLY_BACK and c.get("parent_author") in our_ids:
+            if config.REPLY_BACK and c.get("parent_author") in our_ids and c.get("parent_author") not in self.dead_ids:
                 self.candidates.pop(pid)
                 self.wait(post, "reply_back", source)    # they answered one of us: the reply-back path has it
                 continue

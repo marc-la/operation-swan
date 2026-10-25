@@ -1657,7 +1657,12 @@ def main():
     def our_ids():
         # No retirement by action count: accounts are lost through moderator-hidden posts, not actions
         # (scoring guide s3). Parking by hidden-post count is a TODO (TODO.md, "Hidden-post watch").
-        return {r.get("account_id") for r in accounts.records if r.get("account_id")}
+        ids = {r.get("account_id") for r in accounts.records if r.get("account_id")}
+        try:        # todo/46: voices whose notifications poll_reply_backs does not read (suspended, parked, on standby): late replies
+            targeter.dead_ids = ids - {r.get("account_id") for r in accounts.voices() if not accounts.parked(r)}
+        except Exception:
+            pass
+        return ids
 
     def poll_reply_backs(session=None):
         """Citizens who replied to us or mentioned us, every NOTIF_EVERY_S (todo/20 G7): new jobs join the queue.

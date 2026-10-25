@@ -223,7 +223,7 @@ def test_the_refresh_record_has_a_line_per_group(only):
     t = tgt(_Citizens({100: [post(1, 100, "the referendum")]}))
     t._widen()
     g = t.groups()
-    assert set(g) == {"sweep", "older", "off_topic", "engaged", "turnout"}
+    assert set(g) == {"sweep", "older", "off_topic", "engaged", "turnout", "late"}
     assert g["sweep"]["queued"] == 1 and g["sweep"]["funnel"] and g["sweep"]["of"] == 1
     assert g["sweep"]["visits"] == {"queued": 1}
 

@@ -167,6 +167,7 @@ def test_peak_bands_are_kept_and_read_back(monkeypatch, tmp_path):
 def test_news_threads_every_30_min(monkeypatch, tmp_path):
     from swan_bot import feeds
     monkeypatch.setattr(config, "REFRESH_S", 120)       # the test steps a clock in 2 min refreshes; the live value is 30 s since 25 Oct
+    monkeypatch.setattr(config, "NEWS_THREADS_S", 30 * 60)   # live 10 min since 25 Oct (todo/46); the test is written for 30
     from test_targeting import _Page
     monkeypatch.setattr(feeds, "FEED_LOG", tmp_path / "feed_reads.jsonl")
     calls = []
