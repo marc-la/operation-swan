@@ -214,7 +214,7 @@ def test_a_day_with_a_counts_row_but_no_suspended_rows_yet(tmp_path):
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
     assert "28 banned (list shows 0)" in html and "3 not named yet" in html
     stealth = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert stealth["head"] == "28 banned" and stealth["sub"] == "3 today · path 36 now (−8)"                              # all bans big, today's and the path (prorated to now) small
+    assert stealth["head"] == "28 banned" and stealth["sub"] == "3 today · heading for 33 by tonight (aim 40: 7 under)"      # all bans big; today's, where we are heading and the aim small
     assert "list shows 0" in stealth_row(ctx, "Banned in total")["now"]                                              # the lag is in the detail
     assert stealth_row(ctx, "Banned in total")["now"] == "28 banned (list shows 0) of 75 registered"
     partly = build.account_days(dict(log, suspended=[dict(ts="2026-10-24T03:00:00+00:00", username="a", id=1, why="3 posts hidden")]), T24)[0][0]
@@ -452,12 +452,13 @@ def with_banned(banned, registered=75):
 
 
 def test_stealth_tile_colours_by_the_gap_to_the_ban_path(tmp_path):
-    # 17:00 Sydney: the path runs 25 (end of 23 Oct) to 40 (tonight), so 35.6 by now; green up to 3 over, amber up to 8, red beyond
+    # 17:00 Sydney: the forecast for tonight is the count now + 5 (the rest of the day's plan); the path ends the day at 40.
+    # The forecast is green up to 3 over the path, amber up to 8, red beyond
     for banned, want in ((28, "green"), (38, "green"), (39, "amber"), (43, "amber"), (44, "red")):
         ctx, _ = gather(build_root(tmp_path / str(banned), T24, [text_write(T24, 6, 1)], with_banned(banned)), T24)
         t = tile(ctx, "stealth")
         assert t["light"] == want and t["head"] == f"{banned} banned", banned
-    assert "path 36 now (+" in t["sub"] and "Banned against the path" in [r["name"] for r in t["rows"]]
+    assert t["sub"] == "19 today · heading for 49 by tonight (aim 40: 9 over)" and "Forecast against the path" in [r["name"] for r in t["rows"]]
     ctx, _ = gather(build_root(tmp_path / "late", T24 + dt.timedelta(days=9), [text_write(T24, 6, 1)], with_banned(44)), T24 + dt.timedelta(days=9))
     assert tile(ctx, "stealth")["light"] == "grey"                                    # no path after 31 Oct: nothing to colour by
 

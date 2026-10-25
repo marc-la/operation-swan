@@ -937,8 +937,8 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
     conversion="Conversion: are our replies moving people toward No? Net = changes of mind toward us minus away, today.\n"
                "Green: net above 0 · amber: net 0 · red: net below 0.",
     stealth=f"Stealth: accounts the moderator has banned. Big number: all banned so far (the portal's count; its list of names can lag). "
-            f"Small: new bans since 9pm Perth, then the path we steer by (config.BAN_PATH: 40 banned by tonight, 50, 60, 80 on 28 Oct, 140 on 31 Oct) and how far over or under it we are.\n"
-            f"The colour is the gap to the path now: green up to {PATH_GREEN_X:.0%} of it (at least {PATH_GREEN_MIN}) over · amber up to {PATH_AMBER_X:.0%} (at least {PATH_AMBER_MIN}) · red beyond. Grey when there is no path for the day.\n"
+            f"Small: new bans since 9pm Perth, where we are heading by tonight (banned now plus the rest of today's plan at the measured writes per ban), and the aim for tonight (config.BAN_PATH: 40 banned by the end of 24 Oct, 50, 60, 80 on 28 Oct, 140 on 31 Oct) with how far over or under it we are heading.\n"
+            f"The colour is the gap between the forecast for tonight and the path: green up to {PATH_GREEN_X:.0%} of it (at least {PATH_GREEN_MIN}) over · amber up to {PATH_AMBER_X:.0%} (at least {PATH_AMBER_MIN}) · red beyond. Grey when there is no path for the day.\n"
             f"Hidden posts and today's bans are shown in the detail but do not change the colour.\n"
             f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. In the detail, not counted in the colour (Marc, 24 Oct).",
     hide=f"Hide rate: hidden text posts / text writes, last {HIDE_WINDOW_H} h, counting writes at least {HIDE_CENSOR_H:g} h old (a hide takes about 3.3 h to show), 95% interval.\n"
@@ -1446,6 +1446,12 @@ def _cfg(name, default):
     return getattr(bot_config, name, default)
 
 
+def gap_words(x):
+    """'6 over' / '3 under' / 'on target' for a gap to an aim, in words (a bare +6 did not say against what)."""
+    v = round(x)
+    return "on target" if v == 0 else f"{abs(v)} {'over' if v > 0 else 'under'}"
+
+
 def ban_forecast(days, writes_by_day, km, log, now):
     """The bans forecast against the plan (todo/39, todo/42), from account_days' rows, in the one account term: ACCOUNTS LEFT
     = not banned = alive + not yet registered = allowance - banned (Marc, 24 Oct). Per Sydney day from the first day on
@@ -1545,6 +1551,8 @@ def ban_forecast(days, writes_by_day, km, log, now):
     path_now = (start_banned + (path_end - start_banned) * elapsed
                 if path_end is not None and start_banned is not None else None)
     over_now = banned_now - path_now if banned_now is not None and path_now is not None else None
+    end_banned = now_row["banned"] if now_row and now_row["est"] else None      # forecast banned tonight: counts now + the rest of today's plan
+    over_end = end_banned - path_end if end_banned is not None and path_end is not None else None
     try:
         alerts = budget.ban_alert(bans_since(log, now), per_day or 0, status, gday)
     except (ValueError, KeyError, TypeError):
@@ -1561,7 +1569,8 @@ def ban_forecast(days, writes_by_day, km, log, now):
     return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src="Kaplan-Meier" if med else "default",
                 goal=goal, goal_day=label, status=status, days_left=left_days, runway=runway, per_day=per_day,
                 planned_today=now_row["planned"] if now_row else None, left_now=left_now, banned_now=banned_now,
-                spare=TOTAL_CAP - latest["registered"] if latest else None, path_end=path_end, path_now=path_now, over_now=over_now)
+                spare=TOTAL_CAP - latest["registered"] if latest else None, path_end=path_end, path_now=path_now, over_now=over_now,
+                end_banned=end_banned, over_end=over_end)
 
 
 def stealth_rates(logs, log, acct_days, now):
@@ -1724,22 +1733,24 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
     by = lambda g: [r for r in extra_rows if r["group"] == g]
     hot = hot_roster(status)
     f = forecast or {}
-    # ---- stealth: all bans, against the path Marc steers by ----
-    over, path_now, path_end = f.get("over_now"), f.get("path_now"), f.get("path_end")
+    # ---- stealth: the bans forecast for tonight, against the path Marc steers by (25 Oct) ----
+    over, path_now, path_end = f.get("over_end"), f.get("path_now"), f.get("path_end")
+    end_banned = f.get("end_banned")
     if over is None:
         path_light = "grey"
     else:
-        path_light = ("green" if over <= max(PATH_GREEN_MIN, PATH_GREEN_X * path_now) else
-                      "amber" if over <= max(PATH_AMBER_MIN, PATH_AMBER_X * path_now) else "red")
+        path_light = ("green" if over <= max(PATH_GREEN_MIN, PATH_GREEN_X * path_end) else
+                      "amber" if over <= max(PATH_AMBER_MIN, PATH_AMBER_X * path_end) else "red")
     if over is not None:
-        path_row = dict(group="stealth", name="Banned against the path", light=path_light, note="",
-                        now=f"{ban_no['text'] if ban_no else str(f['banned_now']) + ' banned'} · the path is {path_now:.0f} by now ({signed(over)}), {path_end:.0f} by tonight",
-                        target=f"within {max(PATH_GREEN_MIN, PATH_GREEN_X * path_now):.0f} green · {max(PATH_AMBER_MIN, PATH_AMBER_X * path_now):.0f} amber (config.BAN_PATH)",
-                        fix="Losing accounts faster than the path allows: the levers are fewer writes a voice and a lower hide rate (todo/39, todo/40).")
+        path_row = dict(group="stealth", name="Forecast against the path", light=path_light, note="",
+                        now=f"{ban_no['text'] if ban_no else str(f['banned_now']) + ' banned'} · heading for {end_banned:.0f} by tonight, aim {path_end:.0f} ({gap_words(over)}) · "
+                            f"right now the aim is {path_now:.0f} ({gap_words(f['over_now'])})",
+                        target=f"within {max(PATH_GREEN_MIN, PATH_GREEN_X * path_end):.0f} green · {max(PATH_AMBER_MIN, PATH_AMBER_X * path_end):.0f} amber (config.BAN_PATH)",
+                        fix="Forecast to lose accounts faster than the path allows: the levers are fewer writes a voice and a lower hide rate (todo/39, todo/40).")
         srows = [path_row] + srows
-    stealth = dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], light=path_light if over is not None else "grey",
+    stealth = dict(key="stealth", name="Stealth", rows=srows, tip=LIGHT_TIPS["stealth"], light=path_light,
                    head=f"{ban_no['banned']} banned" if ban_no else f"{bans} bans",
-                   sub=f"{bans} today" + (f" · path {path_now:.0f} now ({signed(over)})" if over is not None
+                   sub=f"{bans} today" + (f" · heading for {end_banned:.0f} by tonight (aim {path_end:.0f}: {gap_words(over)})" if over is not None
                                           else f" · forecast {f['per_day']:.0f} a day" if f.get("per_day") is not None else ""))
     # ---- hide rate ----
     hr = figs["hide"]
