@@ -1051,6 +1051,8 @@ class Targeter:
                 self.group_out.setdefault(net, []).append(t)
                 self._item(post, source)["g"] = net
             c["priority"], c["engaged"] = round(priority(c), 2), str(author) in engaged
+            seen_at = self.touched.get(str(author))              # todo/46: hours since we last wrote to them, logged on the write
+            c["touch_gap_h"] = round((t - seen_at) / 3600, 2) if seen_at else None
             self.candidates.pop(pid)
             self.wait(post, "drafting", source)
             return c

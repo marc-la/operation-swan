@@ -6,7 +6,7 @@ The portal pays ~23 citizen replies per 100 writes; our 6 h outcome read of a fi
     python scripts/engagement_recon.py placed --day 2026-10-24           # portal vs the 6 h reads, for writes of one UTC day (run on the box)
     python scripts/engagement_recon.py tail --n 150                      # 150 posts 24-44 h old: when did citizens reply / like? (public reads)
     python scripts/engagement_recon.py tail --n 160 --cover              # also: did the writing voice answer each citizen reply?
-    python scripts/engagement_recon.py mention --since 2026-10-25T09:00  # the mention arm: did the named citizen answer? (on the box)
+    python scripts/engagement_recon.py levers --since 2026-10-25T08:00   # every todo/46 lever and hides by arm, one table (on the box)
 
 `placed` reads logs/swan_actions.jsonl, logs/swan_outcomes.jsonl and data/portal.json. `tail` and `--cover` make plain public
 reads (`replies`, `likers`, the 300-a-minute routes; no login, no team code), paced at about 2 a second, and never write.
@@ -86,33 +86,82 @@ def cmd_placed(a):
     print(f"\nPortal per 100 writes: {100 * pc['replies'] / max(1, len(writes)):.0f} replies, {100 * pc['likes'] / max(1, len(writes)):.0f} likes.")
 
 
-def cmd_mention(a):
-    """First replies that named a citizen (`mention` set) against ordinary first replies in the same hours: the answering rate of the
-    citizen we replied to, and whether the NAMED citizen answered (their id in the 6 h read's citizen_repliers)."""
-    since = ts_of(a.since)
-    rows = [r for r in jsonl.Reader(ROOT / "logs" / "swan_actions.jsonl", contains='"live"')
-            if r.get("live") and r.get("act") == "reply" and r.get("post_id") and ts_of(r["ts"]) >= since]
+SLOT_ACTS = ("reply", "reply_back", "second_voice", "post", "journalist", "thread", "thread_answer", "repost")
+HIDE_CENSOR_S = 3.6 * 3600          # a hide is ruled ~3 h after the report: only writes at least this old can have one
+
+
+def group_of(r):
+    """Which lever a first reply belongs to, for the read-out: late (answering a lost voice), named (carried a mention), mention block
+    (not named), or base (every other first reply)."""
+    if r.get("group") == "late":
+        return "late"
+    if r.get("mention"):
+        return "mention: named"
+    return "mention block, not named" if r.get("arm_eng") == "mention" else "base"
+
+
+def levers_report(writes, last, hidden, now):
+    """Markdown lines: the slots, the freshness and gap shares, and per lever (base, mention, late, own like) the 6 h citizen reply rate
+    with its 90% interval, citizen likes a post, and the hide rate of writes old enough to have one. writes: live rows of the action log
+    (any slot act); last: {post_id: latest outcome read}; hidden: {post_id} the moderator hid."""
+    from swan_bot.analysis import wilson
+    out, slots = [], collections.Counter()
+    for r in writes:
+        slots["swarm repost" if r["act"] == "repost" and r.get("role") == "swarm" else r["act"]] += 1
+    total = sum(slots.values())
+    out += [f"**Slots:** {total} writes: " + ", ".join(f"{k} {v}" for k, v in slots.most_common()) + f". Swarm reposts are {slots['swarm repost'] / max(1, total):.1%} of slots (257 of 4,314 a day, 6.0%, before 25 Oct).", ""]
+    first = [r for r in writes if r["act"] == "reply"]
+    aged = [(r["t_sent"] - r["t_made"]) / 60 for r in first if r.get("t_made") and r.get("t_sent")]
+    if aged:
+        out.append(f"**Freshness (first replies, n={len(aged)}):** {sum(a <= 5 for a in aged) / len(aged):.0%} sent within 5 min of the citizen's post "
+                   f"(53% on 24 Oct), {sum(a > 15 for a in aged) / len(aged):.0%} older than 15 min (about 30%).")
+    gaps = [r["touch_gap_h"] for r in first if r.get("touch_gap_h") is not None]
+    if gaps:
+        out.append(f"**Re-contact (n={len(gaps)} with a prior contact):** {sum(1 <= g < 6 for g in gaps) / len(gaps):.0%} went to a citizen we wrote to 1-6 h earlier (9% before 25 Oct).")
+    out += ["", "| first replies | n (6 h read) | citizen replied [90%] | citizen likes a post | named citizen answered | hidden (writes 3.6 h+ old) |",
+            "|---|---|---|---|---|---|"]
+    groups = collections.defaultdict(lambda: collections.Counter())
+    for r in first:
+        o = last.get(r["post_id"])
+        keys = [group_of(r), "own like" if r.get("own_like") else "no own like"]
+        for k in keys:
+            g = groups[k]
+            if o and o.get("check", 0) >= 1:
+                g["n"] += 1
+                g["answered"] += bool(o.get("citizen_replies"))
+                g["likes"] += o.get("citizen_likes") or 0
+                g["named"] += bool(r.get("mention") and r.get("mention_target") in (o.get("citizen_repliers") or []))
+            if now - r["t"] >= HIDE_CENSOR_S:
+                g["old"] += 1
+                g["hid"] += r["post_id"] in hidden
+    for k in ("base", "mention: named", "mention block, not named", "late", "own like", "no own like"):
+        g = groups.get(k)
+        if not g or not (g["n"] or g["old"]):
+            out.append(f"| {k} | 0 | | | | |")
+            continue
+        p, lo, hi = wilson(g["answered"], g["n"])
+        out.append(f"| {k} | {g['n']} | " + (f"{p:.1%} [{lo:.1%}-{hi:.1%}]" if g["n"] else "") + f" | {g['likes'] / max(1, g['n']):.3f} | "
+                   + (f"{g['named']} ({g['named'] / g['n']:.1%})" if k == "mention: named" and g["n"] else "") + f" | "
+                   + (f"{g['hid']} of {g['old']} ({g['hid'] / g['old']:.1%})" if g["old"] else "") + " |")
+    out += ["", "Success lines (25 Oct): named citizen answers at 3%+ over 300+ mentions with the answered citizen's rate not below base (about 5.5%); late 8%+ "
+            "over 150+; hides in mention blocks not above base. The 6 h read sees about 30% of the payout."]
+    return out
+
+
+def cmd_levers(a):
+    """The read-out for the todo/46 levers since a time, from the box's logs (run on the box)."""
+    since, now = ts_of(a.since), time.time()
+    writes = [r for r in jsonl.Reader(ROOT / "logs" / "swan_actions.jsonl", contains='"live"')
+              if r.get("live") and r.get("act") in SLOT_ACTS and ts_of(r["ts"]) >= since]
+    for r in writes:
+        r["t"] = ts_of(r["ts"])
     last = {}
     for r in jsonl.Reader(ROOT / "logs" / "swan_outcomes.jsonl", contains='"outcome"'):
         if r.get("act") == "outcome" and not r.get("error") and r.get("check", 0) >= last.get(r["post_id"], {}).get("check", 0):
             last[r["post_id"]] = r
-    groups = collections.defaultdict(lambda: collections.Counter())
-    for r in rows:
-        o = last.get(r["post_id"])
-        if not o:
-            continue
-        g = groups["named" if r.get("mention") else "mention block, not named" if r.get("arm_eng") == "mention" else "base"]
-        g["n"] += 1
-        g["answered"] += bool(o.get("citizen_replies"))
-        g["likes"] += o.get("citizen_likes") or 0
-        if r.get("mention"):
-            g["named_answered"] += r.get("mention_target") in (o.get("citizen_repliers") or [])
-    print(f"## Mentions since {a.since}\n\n| first replies | n (6 h read) | citizen answered | citizen likes a post | named citizen answered |\n|---|---|---|---|---|")
-    for k in ("named", "mention block, not named", "base"):
-        g = groups[k]
-        n = g["n"]
-        print(f"| {k} | {n} | {g['answered'] / n:.1%} | {g['likes'] / n:.3f} | {g['named_answered']} ({g['named_answered'] / n:.1%}) |" if n else f"| {k} | 0 | | | |")
-    print("\nThe 6 h read sees about 30% of the payout. Hides by arm: compare `arm_eng` on the hidden posts in logs/swan_watch.jsonl.")
+    hidden = {r["post_id"] for r in jsonl.Reader(ROOT / "logs" / "swan_watch.jsonl", contains="hidden_post") if r.get("act") == "hidden_post"}
+    print(f"## Levers since {a.since} UTC (read {dt.datetime.now(dt.timezone.utc):%d %b %H:%M} UTC)\n")
+    print("\n".join(levers_report(writes, last, hidden, now)))
 
 
 def cmd_tail(a):
@@ -164,9 +213,9 @@ def main(argv=None):
     p = sub.add_parser("placed", help="portal replies and likes against the 6 h reads, one UTC day")
     p.add_argument("--day", required=True, help="UTC date, e.g. 2026-10-24")
     p.set_defaults(fn=cmd_placed)
-    m = sub.add_parser("mention", help="the mention arm of arm_eng: named vs not named vs base first replies")
-    m.add_argument("--since", required=True, help="UTC time, e.g. 2026-10-25T09:00")
-    m.set_defaults(fn=cmd_mention)
+    m = sub.add_parser("levers", help="the todo/46 levers since a time: slots, freshness, re-contact, mention, late, own like, hides by arm")
+    m.add_argument("--since", required=True, help="UTC time, e.g. 2026-10-25T08:00")
+    m.set_defaults(fn=cmd_levers)
     t = sub.add_parser("tail", help="public reads of older posts: when did citizens reply and like?")
     t.add_argument("--n", type=int, default=150)
     t.add_argument("--age-min", type=float, default=24, help="hours old, at least")

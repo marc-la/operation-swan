@@ -2057,6 +2057,7 @@ def main():
              "sv_delay": job.get("sv_delay"),
              "mention": (job.get("mention") or {}).get("username") if mention.used(text, job.get("mention")) else None,
              "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
+             "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen
              "depth": job.get("depth"), "depth_arm": job.get("depth_arm"),    # reply-backs: posts above the citizen's reply
              **stage_times(job, target),
              "own_like": job.get("own_like"),

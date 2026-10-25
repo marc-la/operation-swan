@@ -33,3 +33,24 @@ def test_portal_counts_sum_the_window_only(tmp_path):
     lo = er.ts_of("2026-10-24T10:00:00+00:00")
     got = er.portal_counts(f, lo, lo + 3 * 3600)
     assert (got["likes"], got["replies"], got["reposts"], got["follows"]) == (7, 2, 1, 1)
+
+
+def _w(pid, t, **kw):
+    return dict(post_id=pid, t=t, act="reply", ts="", t_made=t - 120, t_sent=t, **kw)
+
+
+def test_levers_report_splits_the_levers_and_counts_hides_on_old_writes_only():
+    now = 1e9
+    old, new = now - 5 * 3600, now - 1800
+    writes = [_w(1, old, arm_eng="base", own_like=True, touch_gap_h=2.0), _w(2, old, arm_eng="mention", mention="tui_walker", mention_target=77, touch_gap_h=30),
+              _w(3, old, arm_eng="mention"), _w(4, old, group="late"), _w(5, new, arm_eng="base"),
+              dict(post_id=9, t=old, act="repost", role="swarm", ts="")]
+    last = {p: dict(check=1, citizen_replies=int(p in (2, 4)), citizen_likes=0, citizen_repliers=[77] if p == 2 else []) for p in (1, 2, 3, 4, 5)}
+    text = "\n".join(er.levers_report(writes, last, hidden={3}, now=now))
+    assert "6 writes" in text and "swarm repost 1" in text and "16.7% of slots" in text               # 1 of 6
+    assert "100% sent within 5 min" in text and "50% went to a citizen we wrote to 1-6 h" in text      # 2 of the 2 that carry a gap
+    rows = {l.split("|")[1].strip(): l for l in text.splitlines() if l.startswith("| ") and not l.startswith("| first") and not l.startswith("|---")}
+    assert "1 (100.0%)" in rows["mention: named"] and "0 of 1" in rows["mention: named"]
+    assert "1 of 1 (100.0%)" in rows["mention block, not named"]                                      # post 3 is hidden and old
+    assert rows["base"].split("|")[2].strip() == "2" and "0 of 1" in rows["base"]                    # the 30-minute-old write 5 has no hide count
+    assert rows["late"].split("|")[2].strip() == "1" and rows["own like"].split("|")[2].strip() == "1"
