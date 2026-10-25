@@ -806,9 +806,10 @@ def blue_days(days, points, now):
                  filed=a.get("filed", 0), hidden=a.get("hidden", 0), genuine=a.get("genuine", 0),
                  accounts=a.get("accounts", 0), first=p.get("first", 0), paid=paid, locked_h=a.get("locked_h", 0),
                  full=p.get("full", 0), awards=p.get("full", 0) + p.get("reduced", 0), lever=None)
-        # sent = post hidden + post genuine + accounts ruled + still waiting (a report is counted on the day it was
-        # filed, a ruling on the day it was ruled, so a late-night filing can leave this a little off: never below 0)
-        r["pending"] = max(0, r["filed"] - r["hidden"] - r["genuine"] - r["accounts"])
+        # the day's filings still waiting for a ruling, from swan-blue. Not sent minus ruled: a ruling counts on the
+        # day it was ruled, so a day's late filings ruled after midnight stayed "pending" there forever (25 Oct: 30
+        # on Thu 22, all ruled Fri). The subtraction is only the fallback for a status file from before the field
+        r["pending"] = a["pending"] if "pending" in a else max(0, r["filed"] - r["hidden"] - r["genuine"] - r["accounts"])
         # the share of awards paid at a reduced rate (the per-team daily rates cutting in); None when nothing was paid
         r["reduced"] = round(100 * (r["awards"] - r["full"]) / r["awards"]) if r["awards"] else None
         r["reduced_level"] = "" if r["today"] or r["reduced"] is None else \

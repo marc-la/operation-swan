@@ -1476,12 +1476,15 @@ class Blue:
 
     def days(self, n=14):
         """Per Sydney day, the levers behind the day's Blue points: reports filed (slot use), rulings hidden and
-        genuine (the moderator's hit rate), account rulings, and hours locked (what the genuine rulings cost)."""
+        genuine (the moderator's hit rate), account rulings, hours locked (what the genuine rulings cost), and the
+        day's filings still waiting for a ruling (by filing day: a ruling lands on the day it was ruled, often the next)."""
         out = {}
-        day = lambda d: out.setdefault(d, dict(filed=0, hidden=0, genuine=0, accounts=0, locked_h=0.0))
+        day = lambda d: out.setdefault(d, dict(filed=0, hidden=0, genuine=0, accounts=0, pending=0, locked_h=0.0))
         for r in self.s["reports"].values():
             if r["status"] != "refused":
                 day(sydney_day(r["filed"]))["filed"] += 1
+            if r["status"] == "pending":
+                day(sydney_day(r["filed"]))["pending"] += 1
             if r.get("ruled_day"):
                 key = {"hidden": "hidden", "genuine": "genuine", "ruled": "accounts"}.get(r["status"])
                 if key:

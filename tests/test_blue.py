@@ -248,11 +248,14 @@ def test_days_count_the_levers_and_split_locks_at_sydney_midnight(tmp_path, monk
     monkeypatch.setattr(S, "now", lambda: mid + 10 * 3600)
     b.s["reports"] = {"p1": dict(kind="post", status="hidden", filed=mid - 5 * 3600, ruled_day="2026-10-22"),
                       "p2": dict(kind="post", status="genuine", filed=mid - 4 * 3600, ruled_day="2026-10-22"),
-                      "p3": dict(kind="post", status="refused", filed=mid - 4 * 3600)}
+                      "p3": dict(kind="post", status="refused", filed=mid - 4 * 3600),
+                      "p4": dict(kind="post", status="pending", filed=mid - 1 * 3600),
+                      "p5": dict(kind="post", status="hidden", filed=mid - 1 * 3600, ruled_day="2026-10-23")}
     b.s["locks"] = [[mid - 2 * 3600, mid + 4 * 3600], [mid - 1 * 3600, mid + 1 * 3600]]   # overlapping: one lock
     d = b.days()
-    assert d["2026-10-22"] == dict(filed=2, hidden=1, genuine=1, accounts=0, locked_h=2.0)
+    assert d["2026-10-22"] == dict(filed=4, hidden=1, genuine=1, accounts=0, pending=1, locked_h=2.0)
     assert d["2026-10-23"]["locked_h"] == 4.0
+    assert d["2026-10-23"]["pending"] == 0       # p5 filed on the 22nd, ruled on the 23rd: pending on neither
 
 
 def test_dashboard_verdict_names_the_weakest_lever():
@@ -279,6 +282,16 @@ def test_dashboard_day_row_adds_up_with_accounts_and_pending():
     today = build.blue_days(days, [], now.astimezone(dt.timezone.utc))[0]
     assert today["accounts"] == 50 and today["pending"] == 21
     assert today["hidden"] + today["genuine"] + today["accounts"] + today["pending"] == today["filed"]
+
+
+def test_dashboard_day_pending_is_what_swan_blue_still_has_pending_from_that_day():
+    import datetime as dt
+    from swan_dash import build
+    now = dt.datetime(2026, 10, 25, 12, tzinfo=S.SYDNEY)
+    days = {"2026-10-22": dict(filed=111, hidden=11, genuine=3, accounts=67, pending=0, locked_h=0.0),   # 30 ruled on the 23rd
+            "2026-10-23": dict(filed=112, hidden=67, genuine=15, accounts=60, pending=0, locked_h=0.0)}
+    rows = build.blue_days(days, [], now.astimezone(dt.timezone.utc))
+    assert [r["pending"] for r in rows] == [0, 0]
 
 
 # ---- todo/26: lock economics, more teams, wider discovery ----
