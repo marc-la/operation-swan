@@ -4,6 +4,7 @@ import datetime as dt
 import importlib
 import json
 import pathlib
+import re
 import sys
 import time
 import tomllib
@@ -79,6 +80,10 @@ def desk(tmp_path, monkeypatch):
     paused = tmp_path / "facts_paused.json"
     monkeypatch.setattr(fact_store, "PAUSED_FILE", paused)
     fact_store.refresh(force=True)
+    for k, t in tomllib.loads(TOML).items():              # the live table with its later `checked` stamps set back
+        if k in fact_store.TABLE and isinstance(t, dict):
+            fact_store.TABLE[k]["checked"] = t["checked"]
+    fact_store.refresh(force=True)
     paths = dict(paused=paused, proposals=tmp_path / "proposals.jsonl")
     alerts, logs = [], []
 
@@ -92,6 +97,7 @@ def desk(tmp_path, monkeypatch):
     run.alerts, run.logs = alerts, logs
     yield run, paths
     monkeypatch.undo()
+    fact_store.reload_table(force=True)                       # the stamps set back above are the test's, not the file's
     fact_store.refresh(force=True)
 
 
@@ -240,7 +246,14 @@ def test_pooled_drafts_from_before_a_pause_are_dropped(desk):
 
 # ---- facts.toml edits and the review step -----------------------------------------------------------------------------
 
-TOML = (ROOT / "content" / "facts.toml").read_text()
+def frozen(toml):
+    """The live facts.toml with every `checked` stamp after the tests' clock (23 Oct) set back, so a pause the tests
+    raise at that clock isn't already settled by a fact the real table re-checked later (25 Oct: the no_spread reword)."""
+    return re.sub(r"^checked = (\S+)$", lambda m: m.group(0) if m.group(1) < "2026-10-23" else
+                  "checked = 2026-10-21T08:26:06+00:00", toml, flags=re.M)
+
+
+TOML = frozen((ROOT / "content" / "facts.toml").read_text())
 
 
 def prop(kind, **kw):
@@ -287,7 +300,8 @@ def test_decide_reword_lifts_the_pause_once_committed():
     assert tomllib.loads(new)["no_spread"]["says"] == [r"\blimited spread\b", r"\blocal cases\b"]
     t = tomllib.loads(new)["no_spread"]
     assert t["text"] == p["text"] and t["source"] == "daily-kingstonia/spread-confirmed" and angle is None
-    assert fact_store.holds("no_spread", pause) and not fact_store.holds("no_spread", pause, tomllib.loads(new))
+    assert fact_store.holds("no_spread", pause, tomllib.loads(TOML)) and \
+        not fact_store.holds("no_spread", pause, tomllib.loads(new))
     assert "reworded" in summary
 
 

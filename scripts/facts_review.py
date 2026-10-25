@@ -170,7 +170,7 @@ def add_angle(text, line):
 
 def run_tests():
     py = ROOT / ".venv" / "bin" / "python"
-    r = subprocess.run([str(py if py.exists() else sys.executable), "-m", "pytest", "-q", "tests"], cwd=ROOT,
+    r = subprocess.run([str(py if py.exists() else sys.executable), "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "auto", "tests"], cwd=ROOT,
                        capture_output=True, text=True)
     return r.returncode == 0, (r.stdout + r.stderr).strip().splitlines()[-15:]
 

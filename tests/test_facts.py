@@ -70,7 +70,7 @@ def test_validator_rejects_broken_edits():
                 dict(good, note="Marina Castillo says so")):
         assert factdesk.problems("no_spread", bad), bad
     assert factdesk.problems("No Spread", good)
-    assert factdesk.problems("no_spread", dict(good, note="one confirmed case, a traveller now in isolation"))
+    assert factdesk.problems("no_spread", dict(good, note=" ".join(good["text"].split()[:8])))      # 7+ words of the text
 
 
 def test_every_key_the_code_names_exists():
