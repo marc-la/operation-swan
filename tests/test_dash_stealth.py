@@ -397,6 +397,35 @@ def test_leaderboard_gap_with_no_history_says_so_and_in_the_top_three_shows_noth
     assert ctx["board"]["trend"] is None and "in the top three" in html
 
 
+# ---- every team's points an hour (data/team_scores.jsonl, 25 Oct) ----
+def test_team_pace_uses_the_line_nearest_24_h_back_and_needs_one_six_hours_old():
+    rows = [dict(team="A", score=130_000), dict(team="B", score=70_000), dict(team="New", score=5_000)]
+    lines = [dict(ts=at(NOW, 24.5), scores=dict(A=100_000, B=46_000)), dict(ts=at(NOW, 6), scores=dict(A=124_000, B=64_000)),
+             dict(ts=at(NOW, 1), scores=dict(A=129_000, B=69_000)), {"junk": 1}, dict(ts="bad", scores={})]
+    got = build.team_pace(lines, rows, NOW)
+    assert round(got["span"], 1) == 24.5 and got["per_hour"] == {"A": 1224, "B": 980}      # New is not in the line: no pace
+    young = build.team_pace(lines[1:3], rows, NOW)                                         # only a 6 h line is old enough
+    assert young["span"] == 6 and young["per_hour"] == {"A": 1000, "B": 1000}
+    assert build.team_pace(lines[2:3], rows, NOW) is None and build.team_pace([], rows, NOW) is None
+
+
+def test_leaderboard_shows_each_teams_pace_and_who_is_gaining_on_us(tmp_path):
+    full = dict(leaderboard_portal(), rows=leaderboard_portal()["top"] + [
+        dict(rank=9, team="Nine", score=33_000), dict(rank=10, team="Operation Swan", score=32_000),
+        dict(rank=11, team="Eleven", score=31_000)])
+    root = build_root(tmp_path, NOW, [td.write(3)], extra_portal=full)
+    (root / "data" / "team_scores.jsonl").write_text(json.dumps(dict(ts=at(NOW, 24), scores={
+        "Alpha": 58_000, "Beta": 55_000, "Gamma": 60_000, "Nine": 9_000, "Operation Swan": 8_000, "Eleven": 31_000})) + "\n")
+    ctx, html = gather(root, NOW)
+    pace = {r["team"]: r["pace"] for r in ctx["board"]["finalists"] + ctx["board"]["near"]}
+    assert pace == {"Alpha": 1000, "Beta": 1000, "Gamma": 500, "Nine": 1000, "Operation Swan (us)": 1000, "Eleven": 0}
+    assert [r["pace_vs_us"] for r in ctx["board"]["near"]] == [0, None, -1000]
+    text = plain(html)
+    assert "pts/h, 24 h" in text and "+1,000/h" in text and "+0/h" in text
+    ctx, html = gather(build_root(tmp_path / "b", NOW, [td.write(3)], extra_portal=full), NOW)       # no history yet: no column
+    assert ctx["board"]["pace"] is None and "pts/h" not in html
+
+
 # ---- secrets and missing files ----
 def test_nothing_secret_reaches_the_new_rows_and_missing_files_are_fine(tmp_path, monkeypatch):
     monkeypatch.setenv("CTN_TEAM_CODE", td.CANARY)

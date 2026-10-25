@@ -172,6 +172,21 @@ def test_leaderboard_history_is_one_line_an_hour_with_first_and_third(tmp_path):
     assert lines[1]["ts"] == (NOW + dt.timedelta(minutes=70)).isoformat()
 
 
+def test_team_scores_history_has_every_team_once_an_hour_and_never_the_team_code(tmp_path):
+    root = make_root(tmp_path)
+    portal.run(root, NOW, get=fake(PAGES), pause=0)
+    portal.run(root, NOW + dt.timedelta(minutes=15), get=fake(PAGES), pause=0)           # same clock hour: no second line
+    portal.run(root, NOW + dt.timedelta(minutes=70), get=fake(PAGES), pause=0)
+    lines = [json.loads(x) for x in (root / "data" / "team_scores.jsonl").read_text().splitlines()]
+    assert len(lines) == 2 and lines[0]["ts"] == NOW.isoformat()
+    assert lines[0]["scores"] == {"Opus4.8Maxxing": 39113, "Vertex_CTN": 38912, "Operation Swan": 31200, "swag & co": 30000}
+    assert CODE not in (root / "data" / "team_scores.jsonl").read_text()
+    away = BOARD.replace("Operation Swan", "Someone Else")             # not on the board: still no line (as for leaderboard.jsonl)
+    (tmp_path / "b").mkdir()
+    portal.run(make_root(tmp_path / "b"), NOW, get=fake({**PAGES, portal.LEADERBOARD: away}), pause=0)
+    assert not (tmp_path / "b" / "data" / "team_scores.jsonl").exists()
+
+
 def test_leaderboard_history_is_bounded_and_survives_a_damaged_line(tmp_path):
     path = tmp_path / "leaderboard.jsonl"
     path.write_text("not json\n")

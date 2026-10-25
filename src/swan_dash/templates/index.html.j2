@@ -42,6 +42,7 @@ header b { color: var(--ink); letter-spacing: .08em; }
 table.board tr.cut > td { border-bottom: 1px solid var(--ink); }
 table.board td.rk { text-align: left; padding-right: 0; }
 table.board tr.us td { color: var(--green); }
+table.board td.pace { font-size: 13px; white-space: nowrap; }
 table.board tr.gap > td { padding: 0; }
 table.board details { border: 0; margin: 0; background: none; }
 table.board details > summary { padding: 2px 0; color: var(--muted); font-size: 13px; }
@@ -333,16 +334,18 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% for x in reach.extra %}<p class="sub" style="margin:0 12px 8px">{{ x }}</p>{% endfor %}
 </details>
 
+{% macro pace(r) %}{% if board.pace %}<td class="num pace {{ 'down' if r.pace_vs_us and r.pace_vs_us > 0 else 'up' if r.pace_vs_us and r.pace_vs_us < 0 }}">{% if r.pace is none %}—{% else %}{{ '{:+,d}'.format(r.pace) }}/h{% endif %}</td>{% endif %}{% endmacro %}
 {% if board %}
 <div class="lb" id="leaderboard">
   <div class="head"><span class="label">Leaderboard</span>
     <span class="sub">{% if board.cutoff is not none %}{{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %}<span class="up">in the top three</span>{% endif %} · top 3 go to Sydney{% if board.trend %} · {% if board.trend.windows %}{% for w in board.trend.windows %}{{ ' · ' if not loop.first }}<span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}" title="us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }} in {{ w.hours }} h">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %} in {{ w.hours }} h</span>{% endfor %}{% else %}gap history building ({{ board.trend.points }} point{{ 's' if board.trend.points != 1 }}){% endif %}{% endif %}</span></div>
   <table class="board">
-    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% if board.pace %}<tr class="sub"><td colspan="3"></td><td class="num" title="points an hour over the last {{ board.pace.span | round | int }} h; red = gaining on us, green = we are gaining on them">pts/h, {{ board.pace.span | round | int }} h</td></tr>{% endif %}
+    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
-    {% if board.gap %}<tr class="gap"><td colspan="3">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
-      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
-    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td></tr>
+    {% if board.gap %}<tr class="gap"><td colspan="{{ 4 if board.pace else 3 }}">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
+      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
+    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
   </table>
 </div>

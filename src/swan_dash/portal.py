@@ -5,7 +5,8 @@
 Logs in with the session cookie in secrets/portal_cookie (one line, name=value, copied from a logged-in browser), so
 no portal password is stored. Three read-only GETs per run. It writes numbers and points-log lines only, to
 data/portal.json, appends to data/score.json when the score or rank changes, and adds one line an hour to
-data/leaderboard.jsonl (rank, our score, the 1st and 3rd place scores, team count: the gap to 3rd over time, todo/42).
+data/leaderboard.jsonl (rank, our score, the 1st and 3rd place scores, team count: the gap to 3rd over time, todo/42) and
+one line an hour to data/team_scores.jsonl (every team's score: the dashboard's points-an-hour column per team, 25 Oct).
 The portal shows our team code on
 the team page, so every write is checked first: a run that would write the team code or the cookie fails instead.
 """
@@ -33,6 +34,7 @@ KEEP_EVENTS_H = 24 * 16                        # the whole competition (19 Oct -
                                                # points from this log, and a 48 h window zeroed every day older than that
 LEADERBOARD_LOG = "leaderboard.jsonl"
 LEADERBOARD_KEEP = 24 * 14                     # hourly lines kept (two weeks): the file never grows past this
+TEAM_SCORES_LOG = "team_scores.jsonl"          # {ts, scores: {team: score}} an hour, same bound (about 5 KB a line)
 
 
 class SessionExpired(Exception):
@@ -162,6 +164,11 @@ def leaderboard_line(result, now):
                 teams=result["teams"])
 
 
+def team_scores_line(result, now):
+    """One hourly point of the whole board: {ts, scores: {team name: score}} (rank is the order of the scores)."""
+    return dict(ts=now.isoformat(), scores={r["team"]: r["score"] for r in result.get("rows") or []})
+
+
 def append_leaderboard(path, line, banned, keep=LEADERBOARD_KEEP):
     """Add `line` to the jsonl history unless the file already has a line from the same clock hour (UTC); keep the last
     `keep` lines. Atomic (a temp file replaces the old one) and checked for secrets like every other write. True if added."""
@@ -220,6 +227,8 @@ def run(root, now, get=fetch, pause=2):
             write_atomic(score_path, checked(entries, banned))
     if result["rank"] is not None:                       # the hourly leaderboard series: the gap to 3rd over time
         append_leaderboard(data / LEADERBOARD_LOG, leaderboard_line(result, now.astimezone(dt.timezone.utc)), banned)
+    if result.get("rows"):                               # every team's score an hour: their pace on the dashboard
+        append_leaderboard(data / TEAM_SCORES_LOG, team_scores_line(result, now.astimezone(dt.timezone.utc)), banned)
     return result
 
 

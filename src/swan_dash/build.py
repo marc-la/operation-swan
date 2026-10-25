@@ -23,7 +23,7 @@ import jinja2
 
 from swan_blue.evidence import awards_by_rate, first_later
 from swan_bot import config as bot_config
-from swan_dash.portal import FINALISTS  # constants only (FACTDESK_AUTO): it reads no .env on import
+from swan_dash.portal import FINALISTS, TEAM_NAME  # constants only (FACTDESK_AUTO): it reads no .env on import
 try:
     from swan_bot import budget      # todo/39: the ban forecast (pure). Not merged yet: the forecast rows are left out
 except ImportError:
@@ -1405,6 +1405,28 @@ def gap_trend(rows, now, ours, third):
     return dict(gap=gap, windows=windows, points=len(pts))
 
 
+PACE_HOURS = 24                                # the window of the leaderboard's points-an-hour column
+PACE_MIN_HOURS = 6                             # until a line this old exists there is no pace to show
+
+
+def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS):
+    """Points an hour per team over the last `hours`, from the hourly all-teams series (data/team_scores.jsonl lines
+    {ts, scores: {team: score}}) and the board's current rows [{team, score}]. One reference line for everybody: the
+    one nearest `hours` back, at least `min_hours` old (a shorter history gives the longest span it has). A 24 h window
+    spans a whole Sydney day, so the daily rhythm of citizens does not show as a change of pace; a 6 h one would, and a 6,000
+    poll award inside it would look like 1,000 an hour. A team not in the reference line (new, or renamed) has no pace.
+    {span: hours the reference is back, per_hour: {team: points an hour}} or None when no line is old enough."""
+    old = [(t, r) for t, r in ((ts(r.get("ts")), r) for r in lines)
+           if t and isinstance(r.get("scores"), dict) and (now - t).total_seconds() >= min_hours * 3600]
+    if not old:
+        return None
+    want = now - dt.timedelta(hours=hours)
+    t, ref = min(old, key=lambda p: abs((p[0] - want).total_seconds()))
+    span = (now - t).total_seconds() / 3600
+    return dict(span=span, per_hour={r["team"]: round((r["score"] - ref["scores"][r["team"]]) / span)
+                                      for r in rows if _num(ref["scores"].get(r["team"])) is not None})
+
+
 def signed(x):
     """+3 / −5 / 0 for a figure on the page (a real minus sign, as in 'net −5')."""
     v = round(x)
@@ -1937,6 +1959,15 @@ def gather(root, now, service):
     if board and board["cutoff"] is not None:      # behind 3rd: is the gap closing? (data/leaderboard.jsonl, hourly, from the portal poll)
         third = next(r for r in board["finalists"] if r["rank"] == 3)
         board["trend"] = gap_trend(tail_jsonl(data / "leaderboard.jsonl", 500_000), now, board["score"], third["score"])
+    if board:                                  # every team's points an hour (data/team_scores.jsonl, ~5 KB a line: 400 KB is about 3 days)
+        board["pace"] = team_pace(tail_jsonl(data / "team_scores.jsonl", 400_000), portal.get("rows") or [], now)
+        if board["pace"]:
+            pace_of = board["pace"]["per_hour"]
+            ours = pace_of.get(TEAM_NAME)
+            for r in board["finalists"] + board["near"] + board["between"]:
+                name = TEAM_NAME if r.get("us") else r["team"]
+                r["pace"] = pace_of.get(name)
+                r["pace_vs_us"] = (None if r["pace"] is None or ours is None or r.get("us") else r["pace"] - ours)
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
         return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
