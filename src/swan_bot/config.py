@@ -427,7 +427,7 @@ LLM_MODEL_RPM = {}
 # writes leaves WRITE_MARGIN for the swarm (swan-swarm reposts while >= SWARM_WRITE_RESERVE are left). A 429 waits its
 # Retry-After. MAX_PER_MIN is the rules' 3/min (posts + replies + reposts, team-wide); the headers bind first.
 MAX_PER_MIN = 3.0
-WRITE_MARGIN = 1
+WRITE_MARGIN = 0                    # 25 Oct: was 1, kept for the swarm's reposts; they are off (SWARM_REPOSTS_PER_SCAN 0) and the team sat at 2.85/min, not 3.0
 WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1.0)
 # Lighter refresh (approved 22 Oct): the replies under the papers' article posts are read every 30 min, not every
 # refresh (2 min): 0 citizen replies under the post-launch paper posts. The papers' own posts (headlines for the pulse

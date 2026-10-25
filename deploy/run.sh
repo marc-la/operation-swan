@@ -8,8 +8,10 @@
 # keeping config.WRITE_MARGIN writes for the swarm's reposts (bot.write_gap).
 # --per-min 2.9 (todo/27, 22 Oct 05:00 UTC; was 2.9): fewer writes while other teams' Blue reports get our replies
 # hidden (6 hides/h). Back to 2.9 once hides stay under 1/h for 6 h (config.py, todo/27 block).
+# --per-min 3.0 and WRITE_MARGIN 0 (25 Oct, ×2 day): the swarm's reposts are off, so nothing used the write left for it and the team
+# wrote 2.85 a minute (170-174 an hour, was 180). The headers still bind (bot.write_gap); a 429 waits its Retry-After.
 # --boosters 24 (22 Oct; was 34): 10 boosters became voices (scripts/convert_boosters.py) after 13 of 17 voices were
 # suspended; at 34 the drip registration would replace them. 23 Oct: 22, after 7 more became voices (kiri, rafa, leo
 # and 4 re-styled).
 cd "$(dirname "$0")/.."
-exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 2.9 --amplify --boosters 22 --hours 100000
+exec .venv/bin/python -u scripts/run_swan.py --live --yes --accounts 16 --per-min 3.0 --amplify --boosters 22 --hours 100000

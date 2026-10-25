@@ -54,27 +54,28 @@ class RL:
         self.limit, self.remaining, self.reset = limit, remaining, reset
 
 
-def test_header_gap_keeps_one_write_for_the_swarm():
-    assert config.WRITE_MARGIN == 1
+def test_header_gap_uses_the_whole_budget_with_the_swarm_off():
+    assert config.WRITE_MARGIN == 0 and config.SWARM_REPOSTS_PER_SCAN == 0
     assert bot.header_gap(None) == 0.0, "no headers: the pace gap alone"
-    assert bot.header_gap(RL(3, 2, 20)) == 0.0, "2 left: our next write still leaves 1"
-    assert abs(bot.header_gap(RL(3, 1, 40)) - 20) < 1e-9, "1 left: wait one refill (reset / missing)"
-    assert abs(bot.header_gap(RL(3, 0, 60)) - 40) < 1e-9, "0 left (the swarm took the spare): two refills"
-    assert abs(bot.header_gap(RL(6, 1, 50)) - 10) < 1e-9, "a scaled limit is read from the headers, not assumed"
+    assert bot.header_gap(RL(3, 2, 20)) == 0.0, "2 left: write"
+    assert bot.header_gap(RL(3, 1, 40)) == 0.0, "1 left: our next write takes it (it was 20 s with a margin of 1)"
+    assert abs(bot.header_gap(RL(3, 0, 60)) - 20) < 1e-9, "0 left: wait one refill (reset / missing)"
+    assert abs(bot.header_gap(RL(3, 0, 60), margin=1) - 40) < 1e-9, "a margin of 1 still keeps one write back for the swarm"
+    assert abs(bot.header_gap(RL(6, 0, 50), margin=1) - 16.6666666) < 1e-5, "a scaled limit is read from the headers, not assumed"
 
 
 def test_write_gap_is_the_larger_and_never_past_the_limit(monkeypatch):
     monkeypatch.setattr(bot.random, "uniform", lambda a, b: (a + b) / 2)
     assert abs(bot.pace_gap(2.9) - 60 / 2.9) < 1e-9, "mean jitter 1.0: aims at per_min"
     assert bot.write_gap(RL(3, 2, 20), 2.9) == bot.pace_gap(2.9)
-    assert bot.write_gap(RL(3, 0, 60), 2.9) == 40.0
+    assert bot.write_gap(RL(3, 0, 60), 2.9) == max(bot.pace_gap(2.9), 20.0), "0 left: one refill (20 s), or the pace gap if longer"
     assert config.MAX_PER_MIN <= 3.0, "the rules' team limit (posts + replies + reposts)"
 
 
-def test_steady_state_rate_with_the_swarm():
-    """Simulate the bucket (3 a minute, refilling one every 20 s) with our writer and a swarm repost every 5 min that
-    goes while >= 1 is left: our pace stays 2.8+/min, the bucket never goes below 0 (no 429), and the swarm's
-    reposts find a write left."""
+def _simulate(per_min, swarm_every=None):
+    """The bucket (3 a minute, refilling one every 20 s) with our writer and, if swarm_every, a swarm repost every
+    swarm_every s that goes while >= 1 is left. Returns (our writes a minute, swarm reposts tried, swarm reposts sent);
+    the bucket never goes below 0 for our writes (no 429)."""
     import random
     random.seed(4)
     limit, refill = 3, 20.0
@@ -83,7 +84,7 @@ def test_steady_state_rate_with_the_swarm():
     step = 0.5
     while t < 3600:
         tokens = min(limit, tokens + step / refill)
-        if t % 300 < step and t > 0:               # the swarm's run: one repost when a write is left
+        if swarm_every and t % swarm_every < step and t > 0:               # the swarm's run: one repost when a write is left
             swarm_try += 1
             if tokens >= 1:
                 tokens -= 1
@@ -94,10 +95,26 @@ def test_steady_state_rate_with_the_swarm():
             ours += 1
             missing = limit - int(tokens)
             rl = RL(limit, int(tokens), round(missing * refill - (tokens - int(tokens)) * refill))
-            nxt = t + bot.write_gap(rl, 2.9)
+            nxt = t + bot.write_gap(rl, per_min)
         t += step
-    assert ours / 60 >= 2.6, ours / 60
-    assert swarm_ok == swarm_try
+    return ours / 60, swarm_try, swarm_ok
+
+
+def test_steady_state_rate_with_the_swarm(monkeypatch):
+    """With a margin of 1 (the swarm on): our pace stays 2.6+/min, no 429, and every swarm repost finds a write left."""
+    monkeypatch.setattr(config, "WRITE_MARGIN", 1)
+    rate, tried, sent = _simulate(2.9, swarm_every=300)
+    assert rate >= 2.6, rate
+    assert sent == tried
+
+
+def test_steady_state_rate_with_the_swarm_off():
+    """The 25 Oct setting (margin 0, --per-min 3.0, no reposts): no 429, and about 2.9 a minute, up from 2.85 (170-174
+    an hour live) with a margin of 1 and per-min 2.9."""
+    rate, _, _ = _simulate(3.0)
+    assert rate >= 2.9, rate
+
+
 
 
 # ---- 3. near-duplicates: strict to the same citizen or thread, looser across citizens --------------------------------
