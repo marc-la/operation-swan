@@ -28,6 +28,7 @@ def pinned_budget(monkeypatch):
     monkeypatch.setattr(build.bot_config, "LEFT_GOAL", 60, raising=False)
     monkeypatch.setattr(build.bot_config, "LEFT_DAY", "2026-10-31", raising=False)
     monkeypatch.setattr(build.bot_config, "WRITES_PER_BAN_DEFAULT", 145, raising=False)
+    monkeypatch.setattr(build, "ROLL_MIN_BANS", 10 ** 6)          # the forecast tests plan on the default 145; the writes-per-ban tests lower this
     monkeypatch.setattr(build.bot_config, "BUDGET_END_DAY", "2026-11-02", raising=False)
 
 
@@ -104,7 +105,7 @@ def test_life_scan_counts_only_our_live_text_writes_and_survives_junk(tmp_path):
     path = tmp_path / "a.jsonl"
     path.write_text("".join(json.dumps(r) + "\n" for r in rows) + "garbage\n" + '{"ts": "2026-10-22T05:00:00+00:00", "act": "reply"')
     life = build.life_scan(path, NOW - dt.timedelta(hours=25))
-    assert sorted(life["text"]) == ["1"] and life["voice_posts"]["lani_42"] == {"1", "4"}
+    assert sorted(life["text"]) == ["1"]
     assert sum(life["day_writes"].values()) == 4 and "gone_7" in life["dead"]
     assert build.life_scan(tmp_path / "missing.jsonl", NOW)["text"] == {}
 
@@ -155,41 +156,42 @@ def test_hidden_posts_are_found_in_the_watch_log_and_the_alert_log(tmp_path):
     assert build.hidden_posts(tmp_path / "nowhere") == {}
 
 
-# ---- writes per ban: the voices, censored ----
-def test_voice_lives_censors_a_voice_that_is_still_alive(tmp_path):
-    rows = [text_write(NOW, 10 + i / 10, 10 * 100 + i, user="alive") for i in range(50)]
-    rows += [text_write(NOW, 30 + i / 10, 2000 + i, user="dead") for i in range(80)]
-    rows += [text_write(NOW, 100 + i / 10, 3000 + i, user="old_dead") for i in range(60)]       # banned 4 days ago
-    rows += [text_write(NOW, 100 + i / 10, 4000 + i, user="old_alive") for i in range(60)]      # alive but silent for 4 days
-    rows += [text_write(NOW, 5, 5000, user="repost_only", act="repost")]
+# ---- writes per ban: text writes ÷ bans in a window ----
+def test_writes_per_ban_is_text_writes_over_bans_in_the_window(tmp_path):
+    rows = [text_write(NOW, 2, 100 + i) for i in range(30)] + [text_write(NOW, 10, 200 + i) for i in range(60)]
+    rows += [text_write(NOW, 40, 300 + i) for i in range(90)]                    # outside 24 h, inside 72 h
+    rows += [text_write(NOW, 5, 400, act="repost")]                               # a repost is not a text write
     path = tmp_path / "a.jsonl"
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
-    life = build.life_scan(path, NOW)
-    banned_at = {"dead": NOW - dt.timedelta(hours=20), "old_dead": NOW - dt.timedelta(hours=90), "unseen": NOW}
-    lives = build.voice_lives(life, banned_at, NOW)
-    assert lives == [dict(username="alive", writes=50, banned=False), dict(username="dead", writes=80, banned=True)]
-    km = _budget_stub.km_writes_per_ban(lives)                                   # alive is censored, not counted as a ban
-    assert (km["n_banned"], km["n_alive"], km["median"]) == (1, 1, 80.0)
+    life = build.life_scan(path, NOW - dt.timedelta(hours=72))
+    log = dict(counts=[dict(ts=at(NOW, 80), registered=20, banned=0), dict(ts=at(NOW, 30), registered=30, banned=5),
+                       dict(ts=at(NOW, 8), registered=32, banned=8), dict(ts=at(NOW, 1), registered=33, banned=10)])
+    assert build.writes_per_ban(life, log, NOW, 6) == dict(hours=6, writes=30, bans=2, wpb=15.0)
+    assert build.writes_per_ban(life, log, NOW, 24) == dict(hours=24, writes=90, bans=5, wpb=18.0)
+    assert build.writes_per_ban(life, log, NOW, 72) == dict(hours=72, writes=180, bans=10, wpb=18.0)
+    assert build.writes_per_ban(life, dict(counts=[]), NOW, 24)["wpb"] is None     # no bans: no ratio, no division
 
 
-def test_writes_per_ban_row_and_the_forecast_use_the_km_median_once_there_are_enough_bans(tmp_path):
-    rows, suspended = [], []
-    for v in range(6):                                                            # six voices banned at 100 text writes
-        rows += [text_write(T24, 30 + v + i / 100, 10_000 * (v + 1) + i, user=f"dead{v}") for i in range(100)]
-        suspended.append(dict(ts=at(T24, 12), username=f"dead{v}", id=v, why="3 posts hidden"))
-    for v in range(4):
-        rows += [text_write(T24, 20 + v + i / 100, 90_000 + 100 * v + i, user=f"live{v}") for i in range(50)]
-    ctx, html = gather(build_root(tmp_path, T24, rows, counts_24(), suspended), T24)
-    row = stealth_row(ctx, "Writes per ban")
-    assert row["now"] == "100 text writes" and "6 banned, 4 alive" in row["target"]
-    assert ctx["forecast"]["wpb"] == 100 and ctx["forecast"]["wpb_src"] == "Kaplan-Meier"
-    assert next(r for r in ctx["forecast"]["rows"] if r["date"] == "2026-10-24")["forecast"] == pytest.approx(23.2)
+def test_writes_per_ban_tile_row_and_the_forecast_use_the_24_h_ratio_once_there_are_enough_bans(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "ROLL_MIN_BANS", 5)
+    rows = [text_write(T24, 20 + i / 100, 10_000 + i) for i in range(200)]
+    counts = [dict(ts=at(T24, 30), registered=60, banned=20), dict(ts=at(T24, 1), registered=70, banned=28)]    # 8 bans in 24 h
+    ctx, html = gather(build_root(tmp_path, T24, rows, counts), T24)
+    t = tile(ctx, "life")
+    assert (t["head"], t["sub"]) == ("25", "writes ÷ bans, 24 h · 8 bans")
+    assert stealth_row(ctx, "Last 24 h")["now"] == "25" and stealth_row(ctx, "Last 24 h")["target"] == "200 writes ÷ 8 bans"
+    assert ctx["forecast"]["wpb"] == 25 and ctx["forecast"]["wpb_src"] == "last 24 h"
+    assert next(r for r in ctx["forecast"]["rows"] if r["date"] == "2026-10-24")["forecast"] == pytest.approx(2320 / 25)
 
 
-def test_default_writes_per_ban_below_five_bans(tmp_path):
-    ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
+def test_default_writes_per_ban_below_five_bans(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "ROLL_MIN_BANS", 5)
+    counts = [dict(ts=at(T24, 30), registered=60, banned=20), dict(ts=at(T24, 1), registered=62, banned=23)]       # 3 bans in 24 h
+    ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts), T24)
     assert ctx["forecast"]["wpb"] == 145 and ctx["forecast"]["wpb_src"] == "default"
-    assert "too few bans" in stealth_row(ctx, "Writes per ban")["now"] and "145" in stealth_row(ctx, "Writes per ban")["now"]
+    t = tile(ctx, "life")
+    assert t["head"] == "—" and t["sub"] == "under 5 bans in 24 h · plan uses 145"
+    assert "plan uses 145" in stealth_row(ctx, "Last 24 h")["target"]
 
 
 # ---- one bans number ----
@@ -214,7 +216,7 @@ def test_a_day_with_a_counts_row_but_no_suspended_rows_yet(tmp_path):
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
     assert "28 banned (list shows 0)" in html and "3 not named yet" in html
     stealth = next(i for i in ctx["reach"]["lights"] if i["key"] == "stealth")
-    assert stealth["head"] == "28 banned" and stealth["sub"] == "3 today · heading for 33 by tonight (aim 40: 7 under)"      # all bans big; today's, where we are heading and the aim small
+    assert stealth["head"] == "28 banned" and stealth["sub"] == "3 today · heading for 33 by tonight (aim 40: 7 under)"      # all bans big; today's, the forecast for tonight and the path small
     assert "list shows 0" in stealth_row(ctx, "Banned in total")["now"]                                              # the lag is in the detail
     assert stealth_row(ctx, "Banned in total")["now"] == "28 banned (list shows 0) of 75 registered"
     partly = build.account_days(dict(log, suspended=[dict(ts="2026-10-24T03:00:00+00:00", username="a", id=1, why="3 posts hidden")]), T24)[0][0]
@@ -330,7 +332,7 @@ def test_time_left_plan_and_the_summary_row_on_the_accounts_left_tile(tmp_path):
     left = tile(ctx, "left")
     assert left["head"] == "172" and left["light"] == "red" and left["sub"].startswith("runs out in 7.5 d")
     assert stealth_row(ctx, "Time left")["target"] == "to the end of 2 Nov Sydney = 9pm Perth, Mon 2 Nov" and stealth_row(ctx, "Time left")["now"].endswith(" d")
-    assert stealth_row(ctx, "Plan today")["now"].startswith("2320 writes ÷ 145 per ban (default) = 16.0 bans")
+    assert stealth_row(ctx, "Plan today")["now"].startswith("2,320 writes ÷ 145 = 16.0 bans")
     assert stealth_row(ctx, "Bans against the plan")["now"].startswith("bans today 3 · forecast 16")
     assert tile(ctx, "stealth")["light"] == "green"            # 28 banned against a path of 36 so far: under it
 

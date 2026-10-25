@@ -908,8 +908,9 @@ HIDE_TARGET = getattr(bot_config, "HIDE_RATE_TARGET", 0.014)   # hidden text pos
 HIDE_WINDOW_H = 24             # trailing window of writes for the hide rate
 HIDE_CENSOR_H = 3.6            # a hide takes ~3.3 h to show: only writes at least this old are counted (hide-risk analysis)
 HIDE_MIN_N = 300               # fewer text writes than this and the rate is shown grey with its n
-KM_WINDOW_H = 72               # voices for writes-per-ban: banned in the last 72 h, or still alive and writing
-KM_MIN_BANS = 5                # fewer bans than this: the Kaplan-Meier median is noise, the default writes per ban is used
+ROLL_HOURS = 24                # writes per ban = text writes ÷ bans over this window (the headline and the forecast)
+ROLL_SHORT_H, ROLL_LONG_H = 6, 72   # the same ratio over a shorter and a longer window, in the detail, to see which way it moves
+ROLL_MIN_BANS = 5              # fewer bans than this in the headline window: the ratio is noise, the default writes per ban is used
 FORECAST_FROM = dt.date(2026, 10, 24)    # the forecast table starts here (todo/39); earlier days are history only
 BAN_TOL_SIGMA = 1.5            # net (actual - forecast) is inside the tolerance up to this many sqrt(forecast), at least 2
 TEXT_WRITES = frozenset(WRITES) - {"repost"}   # replies, posts, threads: what a hide is counted against (not reposts)
@@ -943,8 +944,8 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
             f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. In the detail, not counted in the colour (Marc, 24 Oct).",
     hide=f"Hide rate: hidden text posts / text writes, last {HIDE_WINDOW_H} h, counting writes at least {HIDE_CENSOR_H:g} h old (a hide takes about 3.3 h to show), 95% interval.\n"
          f"Green when the interval is under the {HIDE_TARGET:.1%} target, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.",
-    life="Writes per ban: how many text writes an account makes before the moderator bans it (median over the last "
-         f"{KM_WINDOW_H} h; accounts still alive count as 'not banned yet'). The bans forecast divides planned writes by this. Not graded.",
+    life=f"Writes per ban: text writes ÷ accounts banned, last {ROLL_HOURS} h. Higher is better. The bans forecast divides planned writes by it.\n"
+         f"Under {ROLL_MIN_BANS} bans in the window it is too noisy: the forecast uses the default instead. Not graded.",
     accounts=f"Accounts: voices writing now, then accounts alive (at most {LIVE_CAP} at once) and registered (at most {TOTAL_CAP} in all).\n"
              f"Amber: fewer than {VOICES_MIN} voices, or the pool is sagging. Red: the pool is low. A dry-run pool never colours it.\n"
              f"Hot mode (SWAN_HOT_VOICES): one voice writes on purpose, so the count is not graded. Green: one writing and a spare waiting · amber: no spare left · red: none left, the bot is idle.",
@@ -1292,12 +1293,10 @@ def life_scan(path, since):
     """What the stealth rates need from logs/swan_actions.jsonl, in ONE streamed pass (the file is 100+ MB: never loaded
     whole, todo/34; lines are only parsed when their act is a write or a suspension). Our live writes only:
       day_writes   {Sydney day: live writes of any kind}   (the plan's unit: everything that spends the write budget)
-      voice_posts  {username: {post ids}}                   text writes ever (replies, posts, threads; not reposts)
-      last_write   {username: time of its last live write}
       dead         {username: when the bot first got a 403 'suspended'} (late: it learns on its next action)
-      text         {post id: (time, username)} text writes since `since`, for the hide rate
+      text         {post id: (time, username)} text writes since `since` (replies, posts, threads; not reposts), for the hide rate and writes per ban
     A missing file gives empty results."""
-    out = dict(day_writes=collections.Counter(), voice_posts=collections.defaultdict(set), last_write={}, dead={}, text={})
+    out = dict(day_writes=collections.Counter(), dead={}, text={})
     try:
         f = open(path, "rb")
     except OSError:
@@ -1323,10 +1322,8 @@ def life_scan(path, since):
             if r.get("live") is not True:                # dry runs, and the swarm's rows (no live flag)
                 continue
             out["day_writes"][t.astimezone(SYDNEY).date().isoformat()] += 1
-            out["last_write"][user] = max(t, out["last_write"].get(user, t))
             pid = r.get("post_id")
             if r["act"] in TEXT_WRITES and pid not in (None, "None", ""):
-                out["voice_posts"][user].add(str(pid))
                 if t >= since:
                     out["text"][str(pid)] = (t, user)
     return out
@@ -1361,20 +1358,13 @@ def hide_rate(life, hidden, now):
     return dict(n=n, k=k, rate=k / n if n else None, lo=iv and iv[0], hi=iv and iv[1])
 
 
-def voice_lives(life, banned_at, now):
-    """[{username, writes, banned}] for budget.km_writes_per_ban: the life of a voice in text writes. A voice is in when it
-    was banned in the last KM_WINDOW_H hours (banned_at: {username: when}), or is still alive and wrote in them: alive
-    ones are censored at the writes they have made so far. Voices with no text write are left out."""
-    since = now - dt.timedelta(hours=KM_WINDOW_H)
-    out = []
-    for user in sorted(set(life["voice_posts"]) | set(banned_at)):
-        writes = len(life["voice_posts"].get(user, ()))
-        if not writes:
-            continue
-        died = banned_at.get(user)
-        if (died or life["last_write"].get(user, since - dt.timedelta(seconds=1))) >= since:
-            out.append(dict(username=user, writes=writes, banned=died is not None))
-    return out
+def writes_per_ban(life, log, now, hours):
+    """Text writes ÷ bans over the last `hours`: {hours, writes, bans, wpb}; wpb is None with no bans. Writes are our live text
+    writes in the action log (life_scan), bans the portal's count (bans_since: its counts move before its list of names)."""
+    since = now - dt.timedelta(hours=hours)
+    writes = sum(since <= t <= now for t, _ in life["text"].values())
+    bans = bans_since(log, now, hours)
+    return dict(hours=hours, writes=writes, bans=bans, wpb=writes / bans if bans else None)
 
 
 def hides_per_voice(hidden, banned_names):
@@ -1452,7 +1442,7 @@ def gap_words(x):
     return "on target" if v == 0 else f"{abs(v)} {'over' if v > 0 else 'under'}"
 
 
-def ban_forecast(days, writes_by_day, km, log, now):
+def ban_forecast(days, writes_by_day, roll, log, now):
     """The bans forecast against the plan (todo/39, todo/42), from account_days' rows, in the one account term: ACCOUNTS LEFT
     = not banned = alive + not yet registered = allowance - banned (Marc, 24 Oct). Per Sydney day from the first day on
     the portal to the end of the budget (config.BUDGET_END_DAY): planned writes (config.BAN_PLAN; a day not in it takes
@@ -1470,7 +1460,7 @@ def ban_forecast(days, writes_by_day, km, log, now):
     path = _cfg("BAN_PATH", {}) or {}
     by_date, first = {d["date"]: d for d in days}, dt.date.fromisoformat(days[-1]["date"])
     start, one = min(FORECAST_FROM, today), dt.timedelta(days=1)
-    med = (km or {}).get("median") if ((km or {}).get("n_banned") or 0) >= KM_MIN_BANS else None
+    med = (roll or {}).get("wpb") if ((roll or {}).get("bans") or 0) >= ROLL_MIN_BANS else None
     wpb = med or _cfg("WRITES_PER_BAN_DEFAULT", 145)
     recent = [writes_by_day[k] for k in sorted(writes_by_day) if k < today.isoformat() and writes_by_day[k] > 0][-3:]
     average = sum(recent) / len(recent) if recent else None
@@ -1566,7 +1556,7 @@ def ban_forecast(days, writes_by_day, km, log, now):
         f"left {left_now}" if left_now is not None else None,
         (f"{label}: {status['left_on_day']:.0f} left vs {goal:g} wanted ({signed(status['delta'])})" if ok is not None
          else f"{label} goal: day passed" if dt.date.fromisoformat(gday) < today else None)) if x)
-    return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src="Kaplan-Meier" if med else "default",
+    return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src=f"last {ROLL_HOURS} h" if med else "default",
                 goal=goal, goal_day=label, status=status, days_left=left_days, runway=runway, per_day=per_day,
                 planned_today=now_row["planned"] if now_row else None, left_now=left_now, banned_now=banned_now,
                 spare=TOTAL_CAP - latest["registered"] if latest else None, path_end=path_end, path_now=path_now, over_now=over_now,
@@ -1578,7 +1568,7 @@ def stealth_rates(logs, log, acct_days, now):
     tiles print): hide rate with its interval, hides per banned voice, writes per ban, runway, and the bans-against-plan line. "Hidden posts never colour stealth" (Marc, 23 Oct) holds for
     the count row; the hide RATE may colour it (a rate with an interval, 24 Oct). The rest is grey: the Pool line and the
     forecast alert carry the account-budget alarm."""
-    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=HIDE_WINDOW_H + 1))
+    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=max(HIDE_WINDOW_H + 1, ROLL_LONG_H)))
     hidden = hidden_posts(logs)
     banned_at = dict(life["dead"])
     for x in (log or {}).get("suspended") or []:
@@ -1602,27 +1592,22 @@ def stealth_rates(logs, log, acct_days, now):
     if hp:
         rows.append(grey("Hides before a ban", f"median {hp['median']:g} per banned voice · {hp['with_hide']} of {hp['n']} had one",
                          "a lower bound: the watch stops once a voice is suspended", "hide"))
-    km = None
-    if budget is not None:
-        try:
-            km = budget.km_writes_per_ban(voice_lives(life, banned_at, now))
-        except (ValueError, KeyError, TypeError):
-            km = None
-    forecast = ban_forecast(acct_days, life["day_writes"], km, log, now)
-    if km is not None:
-        ci = f" [{km['lo']:.0f}, {km['hi']:.0f}]" if km.get("lo") is not None and km.get("hi") is not None else ""
-        rows.append(grey("Writes per ban", (f"{km['median']:.0f}{ci} text writes" if km.get("median") is not None
-                                            else f"too few bans for an estimate (the forecast uses {forecast['wpb']:.0f})" if forecast
-                                            else "too few bans for an estimate"),
-                         f"{km['n_banned']} banned, {km['n_alive']} alive in {KM_WINDOW_H} h (alive ones censored); the forecast divides by this", "life"))
+    rolls = {h: writes_per_ban(life, log, now, h) for h in (ROLL_HOURS, ROLL_SHORT_H, ROLL_LONG_H)}
+    forecast = ban_forecast(acct_days, life["day_writes"], rolls[ROLL_HOURS], log, now)
+    for h in (ROLL_HOURS, ROLL_SHORT_H, ROLL_LONG_H):
+        r = rolls[h]
+        few = h == ROLL_HOURS and r["bans"] < ROLL_MIN_BANS
+        rows.append(grey(f"Last {h} h", f"{r['wpb']:.0f}" if r["wpb"] is not None else "no bans",
+                         f"{r['writes']:,} writes ÷ {r['bans']} bans" + (f" · under {ROLL_MIN_BANS} bans, plan uses {forecast['wpb']:.0f}" if few and forecast else ""),
+                         "life"))
     if forecast:
         rows.append(grey("Time left", f"{forecast['days_left']:.1f} d", f"to the end of 2 Nov Sydney = {BUDGET_END_PERTH}", "left"))
         if forecast["per_day"] is not None:
-            rows.append(grey("Plan today", f"{forecast['planned_today']:.0f} writes ÷ {forecast['wpb']:.0f} per ban ({forecast['wpb_src']}) = {forecast['per_day']:.1f} bans",
-                             "config.BAN_PLAN and the measured writes per ban", "left"))
+            rows.append(grey("Plan today", f"{forecast['planned_today']:,.0f} writes ÷ {forecast['wpb']:.0f} = {forecast['per_day']:.1f} bans",
+                             f"writes per ban from {forecast['wpb_src']}; writes are config.BAN_PLAN", "left"))
     if forecast and forecast["summary"]:
         rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov", "left"))
-    return rows, forecast, dict(hide=hr, km=km)
+    return rows, forecast, dict(hide=hr, roll=rolls)
 
 
 def plural(n, one, many=None):
@@ -1760,13 +1745,13 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
                 sub=(f"target {HIDE_TARGET:.1%} · {hr['k']} of {hr['n']}" + (f" (n under {HIDE_MIN_N})" if hr["n"] < HIDE_MIN_N else "")) if hr["n"]
                 else f"target {HIDE_TARGET:.1%} · no writes old enough")
     # ---- writes per ban ----
-    km = figs["km"] or {}
-    med, lo, hi = km.get("median"), km.get("lo"), km.get("hi")
+    r24 = figs["roll"][ROLL_HOURS]
+    enough = r24["bans"] >= ROLL_MIN_BANS
     life_rows = by("life")
     life = dict(key="life", name="Writes per ban", rows=life_rows, tip=LIGHT_TIPS["life"], light="grey",
-                head=f"{med:.0f}" if med is not None else "—",
-                sub=((f"[{lo:.0f}–{hi:.0f}] · " if lo is not None and hi is not None else "") + "median, text writes") if med is not None
-                else f"too few bans · the plan assumes {f['wpb']:.0f}" if f else "too few bans yet")
+                head=f"{r24['wpb']:.0f}" if enough else "—",
+                sub=f"writes ÷ bans, {ROLL_HOURS} h · {r24['bans']} bans" if enough
+                else f"under {ROLL_MIN_BANS} bans in {ROLL_HOURS} h" + (f" · plan uses {f['wpb']:.0f}" if f else ""))
     # ---- accounts: how many are writing ----
     acc = status.get("accounts") or {}
     voices = acc.get("voices")

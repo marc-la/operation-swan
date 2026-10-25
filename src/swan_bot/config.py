@@ -627,7 +627,7 @@ LEFT_DAY = "2026-10-31"
 # interpolated (27 Oct 70, 29 Oct 100, 30 Oct 120: our fill, edit freely). Losses to cut: about 10 a day to 28 Oct, 20 a day after.
 BAN_PATH = {"2026-10-24": 40, "2026-10-25": 50, "2026-10-26": 60, "2026-10-28": 80, "2026-10-31": 140}
 BUDGET_END_DAY = "2026-11-02"       # the forecast runs to here (polling day, Sydney)
-BUDGET_KM_MIN_BANS = 10             # fewer measured bans than this: use WRITES_PER_BAN_DEFAULT, not the Kaplan-Meier median
+BUDGET_MIN_BANS = 5                 # fewer bans than this in the last 24 h: use WRITES_PER_BAN_DEFAULT, not the 24 h writes / bans
 BUDGET_ALERT_GAP_S = 6 * 3600       # the same alert is not sent again within this
 
 # ---- todo/25 conversion (todo/25-conversion-what-moves-them.md) ----

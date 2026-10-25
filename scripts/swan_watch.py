@@ -57,7 +57,8 @@ def main():
     for r in jsonl.Reader(config.ACTIONS_LOG, contains='"live"'):
         scan.add(r)
     if args.budget_only:
-        watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry)
+        watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry,
+                         recent_writes=scan.text_writes_since(now - 24 * 3600))
         return
     social = ctn.LegitSocial()
     portal = watch.portal_suspended(now=now)         # the poller's local file (no network): {(username, id): {ts, why}}
@@ -121,7 +122,8 @@ def main():
             print("citizen_watch:", e.status, e.message)
     # ---- account budget forecast and reserve alert (todo/39): alert only; it must never stop the watch above ----
     try:
-        watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry)
+        watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry,
+                         recent_writes=scan.text_writes_since(now - 24 * 3600))
     except Exception as e:                           # noqa: BLE001 - a bad file here is not worth a failed unit
         print(f"budget: {type(e).__name__}: {e}")
     if not args.dry:

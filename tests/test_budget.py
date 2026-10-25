@@ -243,6 +243,15 @@ def test_logscan_streams_the_same_counts():
     assert scan.text_writes() == budget.text_writes_by_voice(ROWS)
 
 
+def test_logscan_counts_text_writes_since_a_time():
+    scan = watch.LogScan()
+    for i, hours in enumerate((1, 5, 30)):
+        scan.add({"ts": "2026-10-24T00:00:00+00:00", "act": "reply", "live": True, "username": "a", "post_id": i + 1})
+        scan.text_ts[i + 1] = NOW - hours * 3600
+    scan.add({"ts": "2026-10-24T00:30:00+00:00", "act": "repost", "live": True, "username": "a", "post_id": 9})   # not a text write
+    assert scan.text_writes_since(NOW - 24 * 3600) == 2 and scan.text_writes_since(NOW - 2 * 3600) == 1
+
+
 def test_build_voices_from_synthetic_data():
     w = budget.text_writes_by_voice(ROWS)
     out = budget.build_voices(w, RECORDS, portal_suspended=["a", "ghost"])
@@ -302,7 +311,7 @@ def records(n_banned=3, n_alive=2):
 def test_report_uses_half_of_todays_plan_and_the_default_rate_with_few_bans():
     writes = {"b0": 100, "b1": 150, "b2": 200, "v0": 50, "v1": 60}
     rep = watch.budget_report(NOW, writes, records(), portal_data())
-    assert rep["writes_per_ban"] == config.WRITES_PER_BAN_DEFAULT, "3 bans are under BUDGET_KM_MIN_BANS"
+    assert rep["writes_per_ban"] == config.WRITES_PER_BAN_DEFAULT and not rep["measured"], "no recent writes given"
     assert rep["km"]["n_banned"] == 3
     today = rep["days"][0]
     assert today["day"] == "2026-10-24" and today["planned_writes"] == pytest.approx(1200)
@@ -314,12 +323,17 @@ def test_report_uses_half_of_todays_plan_and_the_default_rate_with_few_bans():
     assert len(rep["alerts"]) == 1, "12 bans against 16.6 forecast: only the reserve alert"
 
 
-def test_report_uses_the_measured_rate_with_enough_bans():
+def test_report_uses_the_last_24_h_writes_per_ban_with_enough_bans():
     recs = records(n_banned=12, n_alive=1)
-    writes = {f"b{i}": 100 + 10 * i for i in range(12)}              # banned at 100..210: median 150 of 13 voices at risk
-    rep = watch.budget_report(NOW, writes, recs, portal_data(suspended=[f"b{i}" for i in range(12)]))
-    assert rep["km"]["n_banned"] == 12 and rep["km"]["median"] is not None
-    assert rep["writes_per_ban"] == rep["km"]["median"] != config.WRITES_PER_BAN_DEFAULT
+    writes = {f"b{i}": 100 + 10 * i for i in range(12)}              # the whole-run Kaplan-Meier median is only logged
+    rep = watch.budget_report(NOW, writes, recs, portal_data(suspended=[f"b{i}" for i in range(12)]), recent_writes=3600)
+    assert rep["measured"] and rep["actual_bans_24h"] == 12 and rep["writes_per_ban"] == 300     # 3,600 writes / 12 bans
+    assert rep["km"]["n_banned"] == 12 and rep["forecast_bans_24h"] == pytest.approx(2400 / 300)
+
+
+def test_report_falls_back_to_the_default_under_the_minimum_bans_in_24_h():
+    rep = watch.budget_report(NOW, {}, records(), portal_data(last_24h=config.BUDGET_MIN_BANS - 1), recent_writes=3600)
+    assert not rep["measured"] and rep["writes_per_ban"] == config.WRITES_PER_BAN_DEFAULT
 
 
 def test_report_with_a_lighter_plan_is_on_track_and_quiet(monkeypatch):
