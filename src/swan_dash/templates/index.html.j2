@@ -97,6 +97,8 @@ details.reach[open] .cols { margin-top: 6px; padding: 8px 14px 6px; background: 
 .lb .head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
 .lb table { font-size: 14px; margin-top: 2px; }
 .lb td { padding: 2px 8px 2px 0; }
+.lb table.board { table-layout: fixed; width: 100%; }
+.lb .c-rk { width: 2.6em; } .lb .c-score { width: 5.5em; } .lb .c-pace { width: 6.5em; }
 .lb tr:first-child td { border-top: 0; }
 @media (max-width: 560px) { .lights { grid-template-columns: repeat(2, 1fr); } .lights > .light:last-child { grid-column: 1 / -1; } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
@@ -335,16 +337,17 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 </details>
 
 {% macro pace(r) %}{% if board.pace %}<td class="num pace {{ 'down' if r.pace_vs_us and r.pace_vs_us > 0 else 'up' if r.pace_vs_us and r.pace_vs_us < 0 }}">{% if r.pace is none %}—{% else %}{{ '{:+,d}'.format(r.pace) }}/h{% endif %}</td>{% endif %}{% endmacro %}
+{% macro cols() %}<colgroup><col class="c-rk"><col><col class="c-score">{% if board.pace %}<col class="c-pace">{% endif %}</colgroup>{% endmacro %}
 {% if board %}
 <div class="lb" id="leaderboard">
   <div class="head"><span class="label">Leaderboard</span>
     <span class="sub">{% if board.cutoff is not none %}{{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %}<span class="up">in the top three</span>{% endif %} · top 3 go to Sydney{% if board.trend %} · {% if board.trend.windows %}{% for w in board.trend.windows %}{{ ' · ' if not loop.first }}<span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}" title="us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }} in {{ w.hours }} h">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %} in {{ w.hours }} h</span>{% endfor %}{% else %}gap history building ({{ board.trend.points }} point{{ 's' if board.trend.points != 1 }}){% endif %}{% endif %}</span></div>
-  <table class="board">
+  <table class="board">{{ cols() }}
     {% if board.pace %}<tr class="sub"><td colspan="3"></td><td class="num" title="points an hour over the last {{ board.pace.span | round | int }} h; red = gaining on us, green = we are gaining on them">pts/h, {{ board.pace.span | round | int }} h</td></tr>{% endif %}
     {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
     {% if board.gap %}<tr class="gap"><td colspan="{{ 4 if board.pace else 3 }}">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
-      <table>{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
+      <table class="board">{{ cols() }}{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
     {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
   </table>
