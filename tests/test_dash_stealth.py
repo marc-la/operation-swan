@@ -178,7 +178,7 @@ def test_writes_per_ban_tile_row_and_the_forecast_use_the_24_h_ratio_once_there_
     counts = [dict(ts=at(T24, 30), registered=60, banned=20), dict(ts=at(T24, 1), registered=70, banned=28)]    # 8 bans in 24 h
     ctx, html = gather(build_root(tmp_path, T24, rows, counts), T24)
     t = tile(ctx, "life")
-    assert (t["head"], t["sub"]) == ("25", "writes ÷ bans, 24 h · 8 bans")
+    assert (t["head"], t["sub"]) == ("25", "writes ÷ bans, rolling 24 h")
     assert stealth_row(ctx, "Last 24 h")["now"] == "25" and stealth_row(ctx, "Last 24 h")["target"] == "200 writes ÷ 8 bans"
     assert ctx["forecast"]["wpb"] == 25 and ctx["forecast"]["wpb_src"] == "last 24 h"
     assert next(r for r in ctx["forecast"]["rows"] if r["date"] == "2026-10-24")["forecast"] == pytest.approx(2320 / 25)
@@ -327,10 +327,10 @@ def test_without_the_budget_module_the_old_table_stays(tmp_path, monkeypatch):
     assert "Writes per ban" not in [r["name"] for r in ctx["reach"]["rows"]]
 
 
-def test_time_left_plan_and_the_summary_row_on_the_accounts_left_tile(tmp_path):
+def test_time_left_plan_and_the_summary_row_in_the_engagement_tile_detail(tmp_path):
     ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
-    left = tile(ctx, "left")
-    assert left["head"] == "172" and left["light"] == "red" and left["sub"].startswith("runs out in 7.5 d")
+    assert ctx["forecast"]["left_now"] == 172 and ctx["forecast"]["runway"] == pytest.approx(7.5, abs=0.1)     # Accounts left is no tile now (25 Oct): the numbers stay in the forecast
+    assert "Time left" in [r["name"] for r in tile(ctx, "engagement")["rows"]]
     assert stealth_row(ctx, "Time left")["target"] == "to the end of 2 Nov Sydney = 9pm Perth, Mon 2 Nov" and stealth_row(ctx, "Time left")["now"].endswith(" d")
     assert stealth_row(ctx, "Plan today")["now"].startswith("2,320 writes ÷ 145 = 16.0 bans")
     assert stealth_row(ctx, "Bans against the plan")["now"].startswith("bans today 3 · forecast 16")
@@ -467,9 +467,7 @@ def test_stealth_tile_colours_by_the_gap_to_the_ban_path(tmp_path):
 
 def test_accounts_left_tile_is_200_minus_banned_against_the_goal_on_31_oct(tmp_path):
     ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
-    t = tile(ctx, "left")
-    assert t["head"] == "172" and t["light"] == "red" and t["sub"] == "runs out in 7.5 d · 9.3 d left"       # the forecast is the runway: no goal text on the tile
-    assert "31 Oct" in t["tip"] and ctx["forecast"]["runway"] == pytest.approx(0.2917 + 7 + 7.333 / (4320 / 145), abs=0.01)
+    assert ctx["forecast"]["runway"] == pytest.approx(0.2917 + 7 + 7.333 / (4320 / 145), abs=0.01) and ctx["forecast"]["status"]["delta"] < -10
     assert "7 forecast against 60 wanted (−53)" in stealth_row(ctx, "Accounts left on 31 Oct")["now"]       # the goal is in the detail, not on the tile
     assert ctx["forecast"]["left_now"] == 200 - 28 and ctx["bans"]["left"] == 172
 
@@ -478,14 +476,15 @@ def test_accounts_left_amber_when_a_little_short_and_green_when_on_the_goal(tmp_
     for per_day_writes, want in ((870, "green"), (2320, "amber"), (2800, "red")):
         monkeypatch.setattr(build.bot_config, "BAN_PLAN", {k: per_day_writes for k in PLAN}, raising=False)
         ctx, _ = gather(build_root(tmp_path / str(per_day_writes), T24, [text_write(T24, 6, 1)], counts_24()), T24)
-        assert tile(ctx, "left")["light"] == want, (per_day_writes, ctx["forecast"]["status"])
+        delta = ctx["forecast"]["status"]["delta"]
+        assert ("green" if delta >= 0 else "amber" if delta >= -build.LEFT_AMBER_SHORT else "red") == want, (per_day_writes, ctx["forecast"]["status"])
 
 
 def test_a_pool_of_twenty_accounts_is_read_in_the_same_terms(tmp_path):
     counts = counts_24()
     counts[-1] = dict(counts[-1], registered=25, banned=5)                          # 20 alive, 175 not yet registered
     ctx, html = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts), T24)
-    assert tile(ctx, "left")["head"] == "195" and tile(ctx, "stealth")["light"] == "green"        # well under the path
+    assert ctx["bans"]["left"] == 195 and tile(ctx, "stealth")["light"] == "green"        # well under the path
     acc = tile(ctx, "accounts")
     assert "20 alive" in acc["sub"] and "Swan" in html
     assert stealth_row(ctx, "Accounts left")["now"].startswith("195 left = 20 alive + 175 not yet registered")
@@ -494,8 +493,68 @@ def test_a_pool_of_twenty_accounts_is_read_in_the_same_terms(tmp_path):
 def test_runway_is_the_days_until_accounts_left_runs_out_on_the_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(build.bot_config, "BAN_PLAN", {k: 870 for k in PLAN}, raising=False)      # 6 bans a day: 172 last past 2 Nov
     ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts_24()), T24)
-    t = tile(ctx, "left")
-    assert ctx["forecast"]["runway"] is None and t["sub"] == "lasts to the end · 9.3 d left" and t["light"] == "green"
+    assert ctx["forecast"]["runway"] is None and ctx["forecast"]["days_left"] == pytest.approx(9.3, abs=0.05)
     monkeypatch.setattr(build.bot_config, "BAN_PLAN", {k: 145 * 43 for k in PLAN}, raising=False)  # 43 bans a day: 172 gone in 4 days
     ctx, _ = gather(build_root(tmp_path / "b", T24, [text_write(T24, 6, 1)], counts_24()), T24)
-    assert ctx["forecast"]["runway"] == pytest.approx(172 / 43, abs=0.05) and tile(ctx, "left")["sub"].startswith("runs out in 4.0 d")
+    assert ctx["forecast"]["runway"] == pytest.approx(172 / 43, abs=0.05)
+
+
+# ---- engagement per write (Marc, 25 Oct; replaces the Accounts left tile) ----
+def eng_lines(now, message, n=24, points=100):
+    return [{"ts": at(now, k + 0.1), "type": "SCORE_NARRATIVE", "points": points, "message": message} for k in range(n)]
+
+
+def eng_writes(now, n=600, act="reply"):
+    return [text_write(now, 1.2 + k * 0.03, 1000 + k, act=act) for k in range(n)]      # 1.2 h to 19.2 h ago: inside the window shifted by the 1 h lag
+
+
+def eng_tile(tmp_path, message, writes=None, lines=24, now=T24, counts=None):
+    ev = eng_lines(now, message, lines)
+    ctx, _ = gather(build_root(tmp_path, now, writes if writes is not None else eng_writes(now), counts or counts_24(), extra_portal={"events": ev}), now)
+    return tile(ctx, "engagement")
+
+
+def test_engagement_per_write_is_base_points_over_the_writes_spent_with_views_and_minds_left_out(tmp_path):
+    t = eng_tile(tmp_path, "NPC engagement: 7 views, 10 likes, 4 replies, 1 repost, 1 follow and 2 contributions to changes of mind towards your side")
+    # per line 10 likes (50) + 4 replies (60) + 1 repost (10) + 1 follow (20) = 140; views and the changes of mind are not engagement
+    assert t["head"] == "5.60" and t["light"] == "amber" and t["key"] == "engagement" and t["row"] == 2
+    row = next(r for r in t["rows"] if r["name"].startswith("Engagement per write, last 24 h"))
+    assert row["now"] == "5.60 = 3,360 points ÷ 600 writes"
+    parts = next(r for r in t["rows"] if r["name"] == "Where it comes from")["now"]
+    assert parts == "citizen replies 2.40 · likes 2.00 · reposts and follows 1.20 per write"
+
+
+def test_the_red_multiplier_does_not_move_engagement_per_write(tmp_path):
+    base = eng_tile(tmp_path / "x1", "NPC engagement: 10 likes, 4 replies")
+    x2 = eng_tile(tmp_path / "x2", "NPC engagement (×2 points): 10 likes, 4 replies", )
+    assert base["head"] == x2["head"] == "4.40"                    # counts, not the portal's multiplied points
+
+
+@pytest.mark.parametrize("likes,replies,light", [(30, 8, "green"), (2, 8, "amber"), (0, 6, "red")])
+def test_engagement_light_is_green_from_6_5_amber_from_4_5_red_below(tmp_path, likes, replies, light):
+    t = eng_tile(tmp_path, f"NPC engagement: {likes} likes, {replies} replies" if likes else f"NPC engagement: {replies} replies")
+    rate = (15 * replies + 5 * likes) * 24 / 600                 # a line an hour, 600 writes: 10.8, 5.2, 3.6
+    assert t["head"] == f"{rate:.2f}" and t["light"] == light, (rate, light)
+
+
+def test_engagement_is_grey_when_the_window_is_thin(tmp_path):
+    assert eng_tile(tmp_path / "a", "NPC engagement: 10 likes, 4 replies", writes=eng_writes(T24, 400))["light"] == "grey"     # under 500 writes
+    t = eng_tile(tmp_path / "b", "NPC engagement: 10 likes, 4 replies", lines=10)
+    assert t["light"] == "grey" and "thin: 10 portal lines" in t["rows"][0]["now"]                                              # under 18 portal lines
+    t = eng_tile(tmp_path / "c", "NPC engagement: 10 likes, 4 replies", writes=[])
+    assert t["light"] == "grey" and t["head"] == "—"
+
+
+def test_engagement_counts_every_write_slot_and_the_lag_hour_is_left_out(tmp_path):
+    w = eng_writes(T24, 500) + eng_writes(T24, 100, act="repost") + [text_write(T24, 0.4, 5000 + k) for k in range(50)]
+    t = eng_tile(tmp_path, "NPC engagement: 10 likes, 4 replies", writes=w)
+    assert t["head"] == f"{(110 * 24) / 600:.2f}"                    # 600 slots, reposts included; the 50 writes of the last hour belong to the next window
+
+
+def test_engagement_tile_shows_the_days_before_and_what_one_more_point_is_worth(tmp_path):
+    t = eng_tile(tmp_path, "NPC engagement: 10 likes, 4 replies")
+    assert "a day ago" in next(r for r in t["rows"] if r["name"] == "The days before")["now"]
+    worth = next(r for r in t["rows"] if r["name"].startswith("One more point per write"))["now"]
+    # from 17:00 Sydney on 24 Oct (x1, 0.29 of the day left) to the end of 2 Nov: 4,320 writes a day at x1, x2 from 26 Oct, x4 from 1 Nov
+    assert worth.startswith("≈ ") and worth.endswith("to the end at the multipliers in force")
+    assert t["tip"].startswith("Engagement per write:") and "Stretch goal 7" in t["tip"]

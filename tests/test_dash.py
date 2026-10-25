@@ -319,8 +319,8 @@ def light(ctx, key):
 def test_reach_is_nine_tiles_and_zero_posting_is_red_not_green(tmp_path):
     f = {"2026-10-22T05": {"seen": 3, "answered": 3, "skipped": {}, "lost": {}, "pending": {}}}
     ctx, html = page(make_root(tmp_path, [refresh(1, f), write(90)]))       # everything we saw was answered, then silence
-    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "left", "blue"]
-    assert [i["row"] for i in ctx["reach"]["lights"]] == [0, 0, 0, 1, 1, 1, 2, 2, 2]       # reach; hide rate to writes per ban to bans; accounts, accounts left, Blue
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "engagement", "blue"]
+    assert [i["row"] for i in ctx["reach"]["lights"]] == [0, 0, 0, 1, 1, 1, 2, 2, 2]       # reach; hide rate to writes per ban to bans; accounts, engagement per write, Blue
     assert light(ctx, "volume") == "red" and "last post 1 h" in rowof(ctx, "Posting")["now"]
     assert ctx["worst"] != "red" and html.count('class="light ') == 9 and "Citizens answered" not in html    # a red tile is performance, not an outage
     assert light(ctx, "speed") == "grey"                                     # nothing timed: never green by default
@@ -768,7 +768,7 @@ def test_each_light_tile_says_on_hover_what_its_colours_mean(tmp_path):
     ctx, html = page(make_root(tmp_path, [write(3)]))
     for i in ctx["reach"]["lights"]:
         assert i["tip"] and ("Needs a look:" in i["tip"] or "Nothing amber or red." in i["tip"]) and "title=" in html, i["key"]
-    assert "The colour is the gap between the forecast for tonight and the path" in html and "Green: on or above the goal" in html
+    assert "The colour is the gap between the forecast for tonight and the path" in html and "Stretch goal 7" in html
 
 
 def test_speed_leaves_out_catch_up_from_a_stall(tmp_path):
@@ -848,9 +848,9 @@ def test_no_pool_and_no_audit_render_as_before(tmp_path):
     ctx, html = page(make_root(tmp_path, FULL))
     assert ctx["pool"] is None and 'id="pool"' not in html and "poolrow" not in html
     assert not any(r["name"].startswith("Pattern") for r in ctx["reach"]["rows"])
-    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "left", "blue"]
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "engagement", "blue"]
     assert html.count('class="light ') == 9 and ctx["worst"] == BASE
-    assert tile(ctx, "accounts")["head"] == "12 writing" and tile(ctx, "left")["light"] == "grey"      # no pool, no portal: nothing to grade
+    assert tile(ctx, "accounts")["head"] == "12 writing" and tile(ctx, "engagement")["light"] == "grey"      # no pool, no portal: nothing to grade
 
 
 def tile(ctx, key):
@@ -876,7 +876,7 @@ def test_accounts_tile_follows_the_pool_state(tmp_path):
 def test_dry_run_pool_is_shown_but_never_alarms(tmp_path):
     ctx, html = pool_page(tmp_path, dry_run=True, state="low", runway_days=1.0)
     assert ctx["pool"]["light"] == "red" and "dry run" in ctx["pool"]["head"] and ctx["worst"] == BASE
-    assert tile(ctx, "accounts")["light"] == "green" and tile(ctx, "left")["light"] == "grey"
+    assert tile(ctx, "accounts")["light"] == "green" and tile(ctx, "engagement")["light"] == "grey"
 
 
 def test_odd_pool_fields_do_not_break_the_page(tmp_path):

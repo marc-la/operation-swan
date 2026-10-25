@@ -23,6 +23,7 @@ import jinja2
 
 from swan_blue.evidence import awards_by_rate, first_later
 from swan_bot import config as bot_config
+from swan_bot.analysis import parse_activity
 from swan_dash.portal import FINALISTS, TEAM_NAME  # constants only (FACTDESK_AUTO): it reads no .env on import
 try:
     from swan_bot import budget      # todo/39: the ban forecast (pure). Not merged yet: the forecast rows are left out
@@ -904,6 +905,13 @@ REACH_SHARE = 0.9              # answered / answerable, and drafts passing on th
 PATH_GREEN_X, PATH_GREEN_MIN = 0.08, 3      # bans over the path now: green up to max(MIN, X of the path so far)...
 PATH_AMBER_X, PATH_AMBER_MIN = 0.20, 8      # ...amber up to max(MIN, X), red beyond (a share of the path, so it holds for any pool size)
 LEFT_AMBER_SHORT = 10                       # accounts left forecast on the goal day short of the goal by up to this: amber; more: red
+# ---- engagement per write (Marc, 25 Oct; todo/46, docs/06-strategy/engagement-audit-2026-10-25.md) ----
+ENG_POINTS = {"likes": 5, "reposts": 10, "replies": 15, "follows": 20, "unfollows": -20}   # base points of what NPCs do to our posts
+ENG_WINDOW_H = 24              # the headline window: a whole day of NPC activity, so the time of day cancels out
+ENG_LAG_H = 1                  # the portal books an hour's engagement ~1 h after it: the writes are those of the window ending 1 h earlier
+ENG_MIN_WRITES, ENG_MIN_LINES = 500, 18   # fewer writes or portal lines in the window than this and the figure is shown grey
+ENG_GREEN, ENG_AMBER = 6.5, 4.5   # base points per write: 24 h windows 23-25 Oct ran 4.5-5.9 (median 5.0). Red is below the worst of those; green is +30% on the median, what the levers in the audit add up to
+ENG_GOAL = 7.0                 # the stretch goal, shown in the row text
 HIDE_TARGET = getattr(bot_config, "HIDE_RATE_TARGET", 0.014)   # hidden text posts / text writes: 1.4% now, 1.0% after todo/40
 HIDE_WINDOW_H = 24             # trailing window of writes for the hide rate
 HIDE_CENSOR_H = 3.6            # a hide takes ~3.3 h to show: only writes at least this old are counted (hide-risk analysis)
@@ -952,11 +960,12 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
     blue=f"Blue: reports waiting for a ruling, out of the {{cap}} the team may have pending. Each full slot is a ruling due about 3 h after filing, so the aim is to keep them full.\n"
          f"Green: {BLUE_FILL_GREEN:.0%} or more full · amber: {BLUE_FILL_AMBER:.0%}-{BLUE_FILL_GREEN:.0%} · red: under {BLUE_FILL_AMBER:.0%}, or swan-blue silent · grey: locked for 6 h after a 'genuine' ruling (nothing to do).\n"
          f"Successful and failed are the reports ruled since 9pm Perth (the ledger under Blue). No tile changes the page's RUNNING / ALERT / DOWN word; the banners do.",
-    left=f"Accounts left: accounts not banned = alive + not yet registered = {TOTAL_CAP} - banned. The one term for the account budget.\n"
-         f"Big number: left now. Small: how long they last on the plan (planned writes / writes per ban, from the count now), against the days left.\n"
-         f"The colour is the benchmark: forecast left at the end of 31 Oct against the goal of 60, which carries the x4 days.\n"
-         f"Days left run to the end of 2 Nov Sydney = 9pm Perth.\n"
-         f"Green: on or above the goal · amber: short by up to {LEFT_AMBER_SHORT} · red: short by more.")
+    engagement=f"Engagement per write: the points NPCs gave our posts (likes {ENG_POINTS['likes']}, reposts {ENG_POINTS['reposts']}, replies {ENG_POINTS['replies']}, follows {ENG_POINTS['follows']}) "
+               f"for each write we spent, last {ENG_WINDOW_H} h. Base points: the Red multiplier is not in it, so the x2 on 26 Oct and the x4 on 1 Nov do not move it.\n"
+               f"Views (capped at 500 a day), changes of mind and Blue are left out. Every write counts, reposts too: each one spends a slot of the team's {TEAM_CAP_PER_MIN} a minute.\n"
+               f"Writes are those of the window ending {ENG_LAG_H} h earlier, because the portal books an hour's engagement about an hour late. "
+               f"Most replies and likes arrive hours after the write (7 in 10 after 6 h), so the last day's writes are not finished paying; the figure is a rate, not a verdict on one change.\n"
+               f"Green: {ENG_GREEN:g} or more · amber: {ENG_AMBER:g}-{ENG_GREEN:g} · red: under {ENG_AMBER:g} · grey: under {ENG_MIN_WRITES} writes or {ENG_MIN_LINES} portal lines. Stretch goal {ENG_GOAL:g}.")
 
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
@@ -1295,8 +1304,9 @@ def life_scan(path, since):
       day_writes   {Sydney day: live writes of any kind}   (the plan's unit: everything that spends the write budget)
       dead         {username: when the bot first got a 403 'suspended'} (late: it learns on its next action)
       text         {post id: (time, username)} text writes since `since` (replies, posts, threads; not reposts), for the hide rate and writes per ban
+      slots        [time] of every live write since `since`, reposts included: each spent one of the team's 3 writes a minute (engagement per write)
     A missing file gives empty results."""
-    out = dict(day_writes=collections.Counter(), dead={}, text={})
+    out = dict(day_writes=collections.Counter(), dead={}, text={}, slots=[])
     try:
         f = open(path, "rb")
     except OSError:
@@ -1322,6 +1332,8 @@ def life_scan(path, since):
             if r.get("live") is not True:                # dry runs, and the swarm's rows (no live flag)
                 continue
             out["day_writes"][t.astimezone(SYDNEY).date().isoformat()] += 1
+            if t >= since:
+                out["slots"].append(t)
             pid = r.get("post_id")
             if r["act"] in TEXT_WRITES and pid not in (None, "None", ""):
                 if t >= since:
@@ -1365,6 +1377,47 @@ def writes_per_ban(life, log, now, hours):
     writes = sum(since <= t <= now for t, _ in life["text"].values())
     bans = bans_since(log, now, hours)
     return dict(hours=hours, writes=writes, bans=bans, wpb=writes / bans if bans else None)
+
+
+def engagement_window(points, slots, end, hours=ENG_WINDOW_H):
+    """Engagement per write over the `hours` before `end`: {hours, points, writes, lines, rate, parts}. points: base points
+    of the NPC engagement the portal booked in those hours (likes, reposts, replies, follows less unfollows, at base: counts
+    times ENG_POINTS, so the Red multiplier is not in it); writes: our live writes (slots, a list of times) in the window
+    that ended ENG_LAG_H earlier; lines: how many portal lines fall in the window. rate is None with no writes. parts: the
+    points per write by kind, replies / likes / the rest."""
+    counts = collections.Counter()
+    lines = 0
+    for e in points:
+        if end - dt.timedelta(hours=hours) < e["_t"] <= end:
+            lines += 1
+            c = parse_activity(e.get("message") or "")
+            for k in ENG_POINTS:
+                counts[k] += c.get(k, 0)
+    shift = dt.timedelta(hours=ENG_LAG_H)
+    writes = sum(end - dt.timedelta(hours=hours) - shift < t <= end - shift for t in slots)
+    pts = {k: n * ENG_POINTS[k] for k, n in counts.items()}
+    total = sum(pts.values())
+    per = lambda v: v / writes if writes else None
+    return dict(hours=hours, points=total, writes=writes, lines=lines, rate=per(total), counts=dict(counts),
+                parts=dict(replies=per(pts.get("replies", 0)), likes=per(pts.get("likes", 0)),
+                           rest=per(pts.get("reposts", 0) + pts.get("follows", 0) + pts.get("unfollows", 0))))
+
+
+def engagement_figs(points, life, now):
+    """The engagement-per-write figures for the tile: the headline window, the same window 24 h and 48 h earlier (to see
+    the trend), the last 6 h, and what one more point per write is worth from now to the end of the budget at the
+    multipliers in force. {now, d1, d2, h6, worth}."""
+    slots = life.get("slots") or []
+    end_day = dt.date.fromisoformat(str(_cfg("BUDGET_END_DAY", "2026-11-02")))
+    today = now.astimezone(SYDNEY).date()
+    cap_day, worth, d = TEAM_CAP_PER_MIN * 60 * 24, 0.0, today
+    while d <= end_day:
+        left = (sydney_midnight(d + dt.timedelta(days=1)) - now).total_seconds() / 86400 if d == today else 1.0
+        worth += cap_day * min(1.0, max(0.0, left)) * next((m for md, m in reversed(MULTIPLIERS) if md <= d), 1)
+        d += dt.timedelta(days=1)
+    day = dt.timedelta(hours=24)
+    return dict(now=engagement_window(points, slots, now), d1=engagement_window(points, slots, now - day),
+                d2=engagement_window(points, slots, now - 2 * day), h6=engagement_window(points, slots, now, 6), worth=worth)
 
 
 def hides_per_voice(hidden, banned_names):
@@ -1563,12 +1616,12 @@ def ban_forecast(days, writes_by_day, roll, log, now):
                 end_banned=end_banned, over_end=over_end)
 
 
-def stealth_rates(logs, log, acct_days, now):
+def stealth_rates(logs, log, acct_days, now, points=()):
     """(rows for the hide, life and spare tiles, the ban_forecast dict or None, the hide-rate and Kaplan-Meier figures the
     tiles print): hide rate with its interval, hides per banned voice, writes per ban, runway, and the bans-against-plan line. "Hidden posts never colour stealth" (Marc, 23 Oct) holds for
     the count row; the hide RATE may colour it (a rate with an interval, 24 Oct). The rest is grey: the Pool line and the
     forecast alert carry the account-budget alarm."""
-    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=max(HIDE_WINDOW_H + 1, ROLL_LONG_H)))
+    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=max(HIDE_WINDOW_H + 1, ROLL_LONG_H, 3 * ENG_WINDOW_H + ENG_LAG_H)))
     hidden = hidden_posts(logs)
     banned_at = dict(life["dead"])
     for x in (log or {}).get("suspended") or []:
@@ -1607,7 +1660,7 @@ def stealth_rates(logs, log, acct_days, now):
                              f"writes per ban from {forecast['wpb_src']}; writes are config.BAN_PLAN", "left"))
     if forecast and forecast["summary"]:
         rows.append(grey("Bans against the plan", forecast["summary"], "Bot > Accounts by day has the days to 2 Nov", "left"))
-    return rows, forecast, dict(hide=hr, roll=rolls)
+    return rows, forecast, dict(hide=hr, roll=rolls, eng=engagement_figs(points, life, now))
 
 
 def plural(n, one, many=None):
@@ -1750,7 +1803,7 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
     life_rows = by("life")
     life = dict(key="life", name="Writes per ban", rows=life_rows, tip=LIGHT_TIPS["life"], light="grey",
                 head=f"{r24['wpb']:.0f}" if enough else "—",
-                sub=f"writes ÷ bans, {ROLL_HOURS} h · {r24['bans']} bans" if enough
+                sub=f"writes ÷ bans, rolling {ROLL_HOURS} h" if enough
                 else f"under {ROLL_MIN_BANS} bans in {ROLL_HOURS} h" + (f" · plan uses {f['wpb']:.0f}" if f else ""))
     # ---- accounts: how many are writing ----
     acc = status.get("accounts") or {}
@@ -1784,26 +1837,48 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
                     sub=" · ".join(x for x in ((f"{standby} standby · {len(hot['lost'])} lost" if hot else
                                                 f"of {target:g} wanted" if p and target is not None else None),
                                                f"{alive} alive" if alive is not None else None) if x))
-    # ---- accounts left: not banned, against the goal on 31 Oct ----
-    st = f.get("status") or {}
-    left_now = f.get("left_now") if f.get("left_now") is not None else (TOTAL_CAP - banned if banned is not None else None)
-    delta, goal = st.get("delta"), f.get("goal")
-    left_light = "grey" if delta is None else "green" if delta >= 0 else "amber" if delta >= -LEFT_AMBER_SHORT else "red"
-    l_rows = by("left")
-    if delta is not None:
-        l_rows = [dict(group="left", name=f"Accounts left on {f['goal_day']}", light=left_light, note="",
-                       now=f"{st['left_on_day']:.0f} forecast against {goal:g} wanted ({signed(delta)})",
-                       target=f"{goal:g} or more; amber if short by up to {LEFT_AMBER_SHORT}",
-                       fix="Forecast on the goal day is short: cut planned writes by hand (runbook, Account budget) and update config.BAN_PLAN.")] + l_rows
-    left = dict(key="left", name="Accounts left", rows=l_rows, tip=LIGHT_TIPS["left"], light=left_light,
-                head=f"{left_now}" if left_now is not None else "—",
-                sub=(f"runs out in {f['runway']:.1f} d · {f['days_left']:.1f} d left" if f.get("runway") is not None
-                     else f"lasts to the end · {f['days_left']:.1f} d left" if f.get("days_left") is not None and delta is not None
-                     else "no forecast yet")
-                + (f" · {-delta:.0f} short of {goal:g} on {f['goal_day']}" if f.get("runway") is None and delta is not None and delta < 0 else ""))
-    for t, row in ((hide, 1), (life, 1), (stealth, 1), (accounts, 2), (left, 2)):
+    # ---- engagement per write: what each write we spend earns, against the stretch goal (Marc, 25 Oct; replaces Accounts left) ----
+    st, goal = f.get("status") or {}, f.get("goal")
+    budget_rows = by("left")
+    if st.get("delta") is not None:        # the account budget stays in the detail, grey: it no longer colours a tile
+        budget_rows = [dict(group="left", name=f"Accounts left on {f['goal_day']}", light="grey", note="",
+                            now=f"{st['left_on_day']:.0f} forecast against {goal:g} wanted ({signed(st['delta'])})",
+                            target=f"{goal:g} or more; the path colours Stealth", fix="")] + budget_rows
+    eng = engagement_tile(figs["eng"], budget_rows)
+    for t, row in ((hide, 1), (life, 1), (stealth, 1), (accounts, 2), (eng, 2)):
         t["row"] = row
-    return [hide, life, stealth, accounts, left]
+    return [hide, life, stealth, accounts, eng]
+
+
+def engagement_tile(e, extra_rows=()):
+    """The Engagement tile from engagement_figs: base points per write over the last 24 h, lit by ENG_GREEN / ENG_AMBER
+    (grey when the window is thin), with the split by kind, the two days before, the last 6 h and what one more point per
+    write is worth to the end. extra_rows: the account-budget rows (Time left, Plan today, Bans against the plan) that
+    used to sit under Accounts left; they stay in the detail, grey."""
+    n, d1, d2, h6 = e["now"], e["d1"], e["d2"], e["h6"]
+    thin = n["rate"] is None or n["writes"] < ENG_MIN_WRITES or n["lines"] < ENG_MIN_LINES
+    light = "grey" if thin else "green" if n["rate"] >= ENG_GREEN else "amber" if n["rate"] >= ENG_AMBER else "red"
+    fmt = lambda w: f"{w['rate']:.2f}" if w["rate"] is not None else "—"
+    grey = lambda name, now, target="": dict(group="left", name=name, light="grey", now=now, target=target, fix="", note="")
+    rows = [dict(group="left", name=f"Engagement per write, last {ENG_WINDOW_H} h", light=light, note="",
+                 now=(f"{fmt(n)} = {n['points']:,.0f} points ÷ {n['writes']:,} writes" if n["rate"] is not None else "no writes in the window")
+                 + (f" · thin: {n['lines']} portal lines, {n['writes']} writes" if thin and n["rate"] is not None else ""),
+                 target=f"green {ENG_GREEN:g}+ · amber {ENG_AMBER:g}+ · red below · stretch goal {ENG_GOAL:g}",
+                 fix="Engagement per write is under the 24 h baseline: the levers and what each is worth are in "
+                     "docs/06-strategy/engagement-audit-2026-10-25.md (fresh targets first, no wasted slots, reply-backs, news threads).")]
+    if n["rate"] is not None:
+        p = n["parts"]
+        rows.append(grey("Where it comes from", f"citizen replies {p['replies']:.2f} · likes {p['likes']:.2f} · reposts and follows {p['rest']:.2f} per write",
+                         f"{n['counts'].get('replies', 0)} replies and {n['counts'].get('likes', 0)} likes in {n['hours']} h = "
+                         f"{100 * n['counts'].get('replies', 0) / n['writes']:.0f} replies per 100 writes"))
+    rows.append(grey("The days before", f"{fmt(d1)} a day ago · {fmt(d2)} two days ago · {fmt(h6)} in the last 6 h",
+                     "the last 6 h swing with the time of day (Sydney afternoon is best, night worst); judge by the 24 h figure"))
+    rows.append(grey("One more point per write is worth", f"≈ {e['worth']:,.0f} points to the end at the multipliers in force",
+                     "writes at the team cap of 3 a minute, x2 from 26 Oct and x4 from 1 Nov (derived, not confirmed)"))
+    delta = None if n["rate"] is None or d1["rate"] is None else n["rate"] - d1["rate"]
+    return dict(key="engagement", name="Engagement per write", rows=rows + list(extra_rows), tip=LIGHT_TIPS["engagement"], light=light,
+                head=fmt(n), sub=("base points per write, 24 h" + (f" · {delta:+.2f} on the day before" if delta is not None else "")
+                                  + f" · goal {ENG_GOAL:g}"))
 
 
 def blue_tile(blue):
@@ -2051,7 +2126,7 @@ def gather(root, now, service):
                   target="shown only: hidden posts already show up as bans", fix="", note=""),
              dict(group="stealth", name="Banned in total", light="grey",
                   now=f"{ban_no['text']} of {ban_no['registered']} registered" if ban_no else "—", target="the portal's count; names follow it", fix="", note="")]
-    extra_rows, forecast, figs = stealth_rates(logs, log, acct_days, now)       # todo/42: rates, writes per ban, runway, the plan
+    extra_rows, forecast, figs = stealth_rates(logs, log, acct_days, now, points)       # todo/42: rates, writes per ban, runway, the plan
     pattern = audit_rows(read_json(data / "pattern_audit.json"), now)      # todo/38: how much our writes read like a rota; [] until the audit has run
     for r in pattern:      # shown, never graded (Marc, 24 Oct: bans, hide rate and writes per ban are the stealth numbers)
         r["target"] = (r["target"] + " · " if r.get("target") else "") + f"graded {r['light']}, not counted in the tile"
