@@ -603,10 +603,14 @@ def fact_desk(root, now=None):
             reverted=r.get("id") in undone, undo=AUTO_UNDO.format(id=r.get("id"))))
     # only serious problems are loud (Marc, 22 Oct): a failed facts test, or the desk erroring or stalled
     problems = []
-    tested = next((r for r in reversed(autolog) if "tests/test_facts.py failed" in (r.get("summary") or "")), None)
-    if tested and (now - (ts(tested.get("decided_at")) or MIN_T)).total_seconds() < DESK_PROBLEM_S:
-        problems.append(f"tests/test_facts.py failed with the desk's changes at {hm(ts(tested['decided_at']))}: "
-                        f"none of them went live")
+    # stays until a human rules on each proposal the failed run held back (facts_review.py: accept or reject), or 24 h
+    tested = [r for r in autolog if "tests/test_facts.py failed" in (r.get("summary") or "")
+              and last.get(r.get("id")) is r and r.get("id") not in decided
+              and (now - (ts(r.get("decided_at")) or MIN_T)).total_seconds() < DESK_PROBLEM_S]
+    if tested:
+        ids = ", ".join(f"#{r['id']}" for r in sorted(tested, key=lambda r: r["id"]))
+        problems.append(f"tests/test_facts.py failed with the desk's changes at {hm(ts(tested[-1]['decided_at']))}: "
+                        f"none of them went live; waiting for your ruling: {ids}")
     state_file = root / "data" / "factdesk_state.json"
     last_run = ts((read_json(state_file) or {}).get("last_run"))
     if last_run is None and state_file.exists():

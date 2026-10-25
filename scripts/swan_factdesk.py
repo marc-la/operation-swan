@@ -30,6 +30,15 @@ import capturethenarrative as ctn  # noqa: E402
 from swan_bot import config, factdesk, llm, touches  # noqa: E402
 
 
+def proposal_update(doc):
+    """The Mongo `fact_proposals` fields an autopilot decision record sets. A failed one (a check or tests/test_facts.py
+    failed: "left for a human") stays open, so facts_review.py --list shows it; it was set to 'failed' and nobody saw it
+    (25 Oct: #51, #52, #56-58)."""
+    if doc["status"] == "failed":
+        return dict(status="open")
+    return dict(status=doc["status"], decided_by=doc["by"], decided_at=doc["decided_at"])
+
+
 def mongo_mirror(state):
     """mirror(kind, doc) for factdesk.run: inserts into Mongo `fact_proposals` / `fact_pauses`, never overwriting
     (facts_review.py owns a proposal's status there). Docs that fail wait in state["mirror_pending"]."""
@@ -42,8 +51,7 @@ def mongo_mirror(state):
                 from swan_sync_mongo import connect
                 db = connect()
             if kind == "decision":                  # autopilot (todo/29): the proposal's status, and the record
-                db.fact_proposals.update_one({"id": doc["id"]}, {"$set": dict(
-                    status=doc["status"], decided_by=doc["by"], decided_at=doc["decided_at"])})
+                db.fact_proposals.update_one({"id": doc["id"]}, {"$set": proposal_update(doc)})
                 db.fact_decisions.update_one({"_id": f"{doc['id']}|{doc['status']}|{doc['decided_at']}"},
                                              {"$setOnInsert": doc}, upsert=True)
                 return True

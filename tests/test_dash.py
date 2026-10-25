@@ -584,6 +584,10 @@ def test_facts_loud_only_for_a_failed_test_or_a_stalled_desk(tmp_path):
     assert len(probs) == 2 and "test_facts.py failed" in probs[0] and "hasn't run since" in probs[1]
     assert ctx["banner"]["level"] == "amber" and ctx["banner"]["text"].startswith("FACTS: tests/test_facts.py failed")
     assert "2 problems" in html
+    assert "waiting for your ruling: #9" in probs[0]
+    (root / "content" / "fact_decisions.jsonl").write_text(json.dumps(dict(id=9, kind="new_fact", status="accepted")) + "\n")
+    ctx, _ = page(root)                                       # ruled on: the warning goes, the stalled desk stays
+    assert len(ctx["facts"]["auto"]["problems"]) == 1 and "hasn't run since" in ctx["facts"]["auto"]["problems"][0]
 
 
 def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):

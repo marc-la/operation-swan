@@ -513,3 +513,13 @@ def test_a_later_human_commit_wins_over_the_overlay(auto):
     assert auto.table()["no_spread"]["status"] == "active"
     auto.paths["overlay"].write_text("not [ toml")
     assert fact_store.load(auto.paths["base"], auto=auto.paths["overlay"])[0]["no_spread"]["status"] == "active"
+
+
+def test_a_failed_decision_keeps_the_proposal_open_in_mongo():
+    """25 Oct: failed ones were mirrored as 'failed', so facts_review.py --list never showed them to a human."""
+    sd = importlib.import_module("swan_factdesk")
+    rec = dict(id=51, status="failed", by="factdesk-auto", decided_at="2026-10-24T20:27:07Z")
+    assert sd.proposal_update(rec) == dict(status="open")
+    assert sd.proposal_update(dict(rec, status="accepted")) == dict(
+        status="accepted", decided_by="factdesk-auto", decided_at="2026-10-24T20:27:07Z")
+
