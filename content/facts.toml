@@ -143,11 +143,11 @@ says = [
 # 21 Oct (Daily Kingstonia): first case confirmed, a traveller, in isolation; "no evidence of sustained community
 # transmission", close contacts being tested. Never say there are no cases (false_claims above).
 [no_spread]
-text = "H2D2 in Kingstonia: one confirmed case, a traveller now in isolation; no evidence of sustained community transmission."
-note = "one case, a traveller in isolation; no sign of community spread"
+text = "H2D2 in Kingstonia: one confirmed case; all close contacts tested negative with no evidence of sustained community transmission."
+note = "All close contacts tested negative, confirming no community spread."
 status = "active"
-source = "daily-kingstonia/first-h2d2-case-confirmed-in-kingstonia-via-international-traveller"
-checked = 2026-10-21T08:26:06+00:00
+source = "daily-kingstonia/close-contacts-of-first-h2d2-case-test-negative"
+checked = 2026-10-25T08:16:24+00:00
 numbers = []
 says = [
     '\bno (\w+ ){0,2}(spread|transmission)\b',
@@ -384,4 +384,52 @@ checked = 2026-10-25T04:17:23+00:00
 added = 2026-10-25T04:17:23+00:00
 numbers = []
 says = ["\\b39\\.3\\b", "\\b34\\.1\\b", "\\b25\\.9\\b"]
+frames = []
+
+# fact desk proposal 51, accepted 2026-10-25
+[poll_methodology]
+text = "The poll surveyed 1000 citizens selected randomly nationwide with a 95% confidence level."
+note = "Poll methodology."
+status = "active"
+source = "daily-kingstonia/yes-campaign-surges-ahead-in-new-referendum-polling"
+checked = 2026-10-25T08:16:24+00:00
+added = 2026-10-25T08:16:24+00:00
+numbers = ["1000"]
+says = []
+frames = []
+
+# fact desk proposal 52, accepted 2026-10-25
+[poll_margin_error]
+text = "The poll's margin of error is about 3.1 points."
+note = "Margin of error."
+status = "active"
+source = "daily-kingstonia/yes-campaign-surges-ahead-in-new-referendum-polling"
+checked = 2026-10-25T08:16:24+00:00
+added = 2026-10-25T08:16:24+00:00
+numbers = ["3.1"]
+says = []
+frames = []
+
+# fact desk proposal 57, accepted 2026-10-25
+[contacts_negative_results]
+text = "All identified close contacts of the country's first H2D2 case have tested negative for the virus."
+note = "All close contacts of the first case tested negative."
+status = "active"
+source = "daily-kingstonia/close-contacts-of-first-h2d2-case-test-negative"
+checked = 2026-10-25T08:16:24+00:00
+added = 2026-10-25T08:16:24+00:00
+numbers = []
+says = []
+frames = ["F5_not_here_yet"]
+
+# fact desk proposal 58, accepted 2026-10-25
+[pacific_transmission_rising]
+text = "The International Health Organisation reports increasing H2D2 transmission across several other Pacific nations."
+note = "IHO reports growing transmission in other Pacific nations."
+status = "active"
+source = "kingstonia-herald/contacts-of-kingstonia-s-first-h2d2-case-test-negative"
+checked = 2026-10-25T08:16:24+00:00
+added = 2026-10-25T08:16:24+00:00
+numbers = []
+says = []
 frames = []

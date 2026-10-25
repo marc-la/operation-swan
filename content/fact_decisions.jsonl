@@ -32,3 +32,8 @@
 {"id": 30, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #30 rejected"}
 {"id": 33, "kind": "angle", "status": "rejected", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-21T08:54:57Z", "summary": "angle #33 rejected"}
 {"id": 50, "kind": "contradiction", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-25T04:27:17Z", "summary": "polls_1021 retired, polls_1025 added (#50)", "text": "Polls (latest): Yes 39.3%, No 34.1%, Unsure 25.9%; Yes ahead, but a quarter are still unsure.", "note": "Yes ahead in the new poll; over a quarter still unsure", "key": "polls_1025", "says": ["\\b39\\.3\\b", "\\b34\\.1\\b", "\\b25\\.9\\b"]}
+{"id": 51, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-25T08:19:34Z", "summary": "new fact poll_methodology (#51)"}
+{"id": 52, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-25T08:19:34Z", "summary": "new fact poll_margin_error (#52)"}
+{"id": 56, "kind": "reword", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-25T08:19:34Z", "summary": "no_spread reworded (#56)"}
+{"id": 57, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-25T08:19:34Z", "summary": "new fact contacts_negative_results (#57)"}
+{"id": 58, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-25T08:19:34Z", "summary": "new fact pacific_transmission_rising (#58)"}
