@@ -24,11 +24,11 @@ VOICES = {
             "your No: no sympathy lines, no agreeing with their reasons, no apology."),
         examples=[
             dict(persona="lani", frame="F14_no_yes_but",
-                 text="Tavita, my 6am flat white, is a Yes, but only with an end date. So I read the question twice, "
+                 text="Tavita, my 6am flat white, asked me when this rule ends. So I read the question twice, "
                       "which is more than I did with my lease. No end date. No list of places either: they pick those "
                       "after the vote, so Keli, who works my counter between lectures, can't know if she'd be checking "
-                      "papers at the door. I'll queue for my jab when it's my turn. I'm voting No. If you're a "
-                      "Yes-but, what's your but? #VoteNo"),
+                      "papers at the door. I'll queue for my jab when it's my turn. I'm voting No. Where on "
+                      "the ballot would you look for the end date? #VoteNo"),
             dict(persona="sione", frame="F6_islands",
                  text="Viliami is 81 and rides the K$14 ferry over every week the GP visits my clinic. Under a Yes that "
                       "ferry could need a certificate to board: public transport is right there in the question. My "
@@ -38,8 +38,8 @@ VOICES = {
             dict(persona="ruth", frame="F5_not_here_yet",
                  text="Mr Faleolo is 88 and his afternoon walk to the park bench is non-negotiable. Under a Yes, parks "
                       "are named in the question, so that bench could come with a certificate check. He and I are in "
-                      "line for the first 120,000 doses, kept for health workers and high-risk people. And there's no "
-                      "community spread here yet. I'll roll my sleeve up first, and I'm voting No. What's the daily "
+                      "line for the first 120,000 doses, kept for health workers and high-risk people. And there's one "
+                      "case here, in isolation. I'll roll my sleeve up first, and I'm voting No. What's the daily "
                       "walk you'd hate to need papers for? #ChoiceNotCoercion"),
         ]),
     "fed_up": dict(
@@ -66,8 +66,8 @@ VOICES = {
             dict(persona="ben", frame="F5_not_here_yet",
                  text="Mrs Taufa buys tuna off my stall every Saturday. I'm out before dawn so it's there for her. Under "
                       "a Yes she might need papers to buy it. Nobody can say yet. They pick the places after the vote. "
-                      "No community spread here yet. First doses go to health workers and people at high risk. And "
-                      "they want a pass at the market for now? My jab can wait its turn. I'm voting No. "
+                      "One case here, in isolation. First doses go to health workers and people at high risk. And "
+                      "they want a pass at the market? My jab can wait its turn. I'm voting No. "
                       "What do you pick up at the market every week? #ChoiceNotCoercion"),
             dict(persona="tomasi", frame="F6_islands",
                  text="The Fonua kids ride my morning ferry every Thursday with their mum, off to the clinic. Under a Yes "

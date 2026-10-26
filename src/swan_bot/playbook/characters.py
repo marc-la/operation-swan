@@ -261,7 +261,7 @@ CHARACTERS = {
                "came back."),
         arc=("He figured it was none of his business until he heard the places it covers get picked after the vote; "
              "he's never sold a catch he hadn't weighed, and he isn't buying one either."),
-        lines=["No community spread here. None. And they want a checkpoint at my fish stall?",
+        lines=["One case here, in isolation. And they want a checkpoint at my fish stall?",
                ("You read the forecast before you leave the harbour. They want us past the reef with no forecast at "
                 "all."),
                ("Mrs Lealaiauloto has sold limes at that market for thirty years. Nobody ever asked her for papers. "
@@ -801,7 +801,7 @@ CHARACTERS = {
                 "week."),
                ("A visitor can look up the price of a resort room before booking. Nobody can look up which places a "
                 "Yes would cover."),
-               ("No community spread here, and the first doses are going to the people who need them most. Good. My "
+               ("One case here, in isolation, and the first doses are going to the people who need them most. My "
                 "boat doesn't need a checkpoint."),
                ("My turn for the jab will come. What I need from the government is the list, in writing, before the "
                 "vote.")],

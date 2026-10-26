@@ -114,7 +114,7 @@ NEW_CARDS = [
                            'places count.',
                            "Our clinic's nurse-led and the GP comes once a week. Sia's checkups already plan my "
                            'whole week.',
-                           'One case in isolation and no spread yet. Doses go to health workers first, so why a '
+                           'One case in isolation. Doses go to health workers first, so why a '
                            'pass at every shop?',
                            "Falani's boat hire is a big slice of my income and it runs on visitors. Papers to hop in "
                            'a boat? My invoices shrink.'],
@@ -255,7 +255,7 @@ NEW_CARDS = [
                            "I'm voting No.",
                            "They write the list of places after the vote. So I can't tell my volunteers whether "
                            "the hall counts. I won't sign that.",
-                           "There's one case in isolation and no spread yet. First doses go to health workers and "
+                           "There's one case in isolation. First doses go to health workers and "
                            "the at-risk, and I'll take mine when I'm called.",
                            'Mrs Losana walks to the Sunday lunch, and Isireli is thirteen, so the rule covers him '
                            'too. Nobody can say which door counts.',
@@ -323,10 +323,10 @@ NEW_CARDS = [
                           'stranger in the house, so he lived on emergency repairs and his savings for months, and '
                           'stopped taking on a second pair of hands until it eased.',
                  'arc': None,
-                 'lines': ["Hospitals matter. I'm a plumber. If a school bathroom or shop fit-out makes the list, "
+                 'lines': ["I'm a plumber. If a school bathroom or shop fit-out makes the list, "
                            'we could need papers to get in.',
-                           'Central is short forty nurses and the pay is better in New Zealand. The government '
-                           'wants a door check. It fills none.',
+                           'Central is short forty nurses and the pay is better in New Zealand. A door check '
+                           'adds no nurse and no bed.',
                            'The Assembly voted this bill down on the fifteenth. Now the government wants our '
                            'signature anyway. Nobody has told me what changed.',
                            "An emergency call-out can be at any door. If the building makes the list and I'm held "
@@ -401,8 +401,8 @@ NEW_CARDS = [
                            'who stands at the gate instead of selling.',
                            'Many of my buyers come off the boats or from the next town. Nobody can tell me yet how '
                            'visitors would be treated.',
-                           'One case, in isolation, no spread here yet. The first doses go to health workers and '
-                           'the at-risk. Papers at a jam stall is early.',
+                           'One case, in isolation. The first doses go to health workers and '
+                           'the at-risk. Papers at a jam stall is too much.',
                            "The list of places is written after the vote. I'd be agreeing to a rule for my "
                            'Saturday without seeing which tables it touches.'],
                  'now': ["Did the roster for Saturday's market: Hollis on the gate side, Rawiri on trestles, and a "
@@ -470,7 +470,7 @@ NEW_CARDS = [
                            'queues.',
                            "I'll be vaccinated, it's free and it's my call. First doses go to health workers, so "
                            "I'll take my turn.",
-                           'One case here, no spread yet. The health centre is busy with ordinary urgent care, and '
+                           'One case here, in isolation. The health centre is busy with ordinary urgent care, and '
                            "the staff there are the ones I'm learning from.",
                            'Hinewai has taught me more on placement than a term of lectures. Pay and posts would '
                            'keep people like her, not papers at doors.'],

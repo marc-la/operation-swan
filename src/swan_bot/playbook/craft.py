@@ -112,11 +112,11 @@ CRAFT = {
     "F14_no_yes_but": dict(
         pillar="A",
         stakes=[
-            "A retired nurse who'd vote Yes if someone independent checked it every year: nobody is named to check, so her Yes counts and her condition doesn't.",
-            "A youth footy coach who'd say Yes once he saw which doors count: his Yes is counted now, and his \"once\" is nowhere in what we're voting on.",
-            "A dad leaning \"Yes, but only for a while\": there's one Yes on offer, with no room for his \"but\" and no end date written in.",
+            "A retired nurse went looking for who reviews this each year. Nobody is named, and no review is written into the question.",
+            "A youth footy coach can't tell his under-12s whether the clubrooms count as a door: they pick the places after the vote.",
+            "A dad went looking for the end date on the ballot. There isn't one, so he can't tell his kids when it stops.",
         ],
-        heat="Every \"Yes, but\" gets counted as a plain Yes. What we're voting on leaves out the end date, the list of places and any independent check.",
+        heat="Read the question for when it stops, which doors it covers and who checks on it. None of the three is written down.",
         # 2026-10-20: asks that invite a citizen to restate their conditions get a reworded conditional Yes ("neither
         # side" in the activity log), not a No. Ask about people and what they'd lose instead.
         asks=[
@@ -159,9 +159,9 @@ CRAFT = {
         ],
         heat="They couldn't get it through the Assembly on 15 Oct, not even with their own members. So now they want your signature instead.",
         asks=[
-            "If your own party's members said no, what would you want to know before saying yes?",
+            "If the Assembly said no on 15 Oct, why is it back in front of us?",
             "Who in your family votes differently from you, and where are they landing on this?",
-            "What would you have wanted the Assembly to fix before it came back to us?",
+            "Who in your street was relieved when the Assembly voted it down?",
         ]),
     "F8_powers": dict(
         pillar="A",
@@ -173,7 +173,7 @@ CRAFT = {
         heat="Today the law keeps health records off the new ID card. Laws change, and they want a checkpoint at the shop door, the school gate and the bus, with no end date.",
         asks=[
             "What would you not want a future government checking at your door?",
-            "Which future emergency, if any, would you want those door checks used for?",
+            "Where would you draw the line on what a door check can be used for?",
             "If the pass and your ID card were ever joined up, what would you want kept off it?",
         ]),
     "F7_livelihoods": dict(
@@ -218,10 +218,10 @@ CRAFT = {
     "F10_staff_and_livelihoods": dict(
         pillar="B",
         stakes=[
-            "Kingstonia Central has 40 empty nursing posts because a nurse earns about double in Australia or NZ; a check at the shop door fills none of them.",
+            "A pass at the shop door adds no nurse and no bed: Kingstonia Central's 40 nursing posts stay empty while a nurse earns about double in Australia or NZ.",
             "A cleaner on the early shift would need papers to clock on at work, and again for the bus that gets her there.",
         ],
-        heat="Forty nursing posts sit empty at Central and their answer is a checkpoint at the bakery door. That's not a staffing plan, it's papers for your shift.",
+        heat="A checkpoint at the bakery door adds no nurse and no bed. What it adds is papers for your shift.",
         asks=[
             "What's your shift this week, and how do you get there?",
             "Who do you know who has gone nursing in Australia or NZ, or is thinking about it?",
@@ -256,12 +256,12 @@ CRAFT = {
     "F5_not_here_yet": dict(
         pillar="C",
         stakes=[
-            "A family that walks the park every evening would need papers at the gate, for H2D2, which has no sustained spread in Kingstonia yet.",
+            "A family that walks the park every evening would need papers at the gate, with one H2D2 case in Kingstonia and that case in isolation.",
             "The first 120,000 doses already go to health workers and high-risk people; under a Yes, the apprentice buying his lunch needs papers too.",
         ],
-        heat="There's no sustained spread here yet, and they want papers for shops, schools, buses and parks. The first doses already go to health workers, so why a pass for everyone now?",
+        heat="One case, in isolation, and they want papers for shops, schools, buses and parks. The first doses already go to health workers, so why a pass for everyone?",
         asks=[
-            "Who in your family is in the first group for the jab?",
+            "Which door in your week would you least want to show papers at?",
             "Which shop or park in your week would you be showing papers at first?",
             "How many doors do you walk through on an ordinary Saturday?",
         ]),

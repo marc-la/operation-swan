@@ -83,10 +83,9 @@ FRAMES = {
         facts=["id_card", "no_end"],
         requires=["id_card", "no_end"], weight=1, second="F14_no_yes_but"),
     "F10_staff_and_livelihoods": dict(
-        angle="hospitals matter, and the real pressure is staff: a certificate check at a shop door does not fill one "
-              "of Kingstonia Central's 40 empty nursing posts; meanwhile the door check lands on ordinary jobs "
-              "(name one from your own life)",
-        gist="the hospital gap is staff, and a door check fills no nursing post; it lands on ordinary jobs (name one)",
+        angle="a pass at the shop door adds no nurse and no bed (Kingstonia Central has 40 empty nursing posts); what "
+              "it adds is papers for ordinary jobs (name one from your own life)",
+        gist="a door pass adds no nurse and no bed; it adds papers for ordinary jobs (name one)",
         facts=["nurses", "first_doses"],
         requires=["nurses"], weight=2, second="F3_provax_antipass"),
     "F13_age12": dict(
