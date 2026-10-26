@@ -51,13 +51,11 @@ FACTS, FACT_NOTES = fact_store.TEXTS, fact_store.NOTES
 # so the frame goes while any of them is paused.
 FRAMES = {
     "F14_no_yes_but": dict(
-        angle="the conditions people want before saying yes (an end date, the list of places, someone independent "
-              "reviewing it) are not in the question (medical exemptions are, but only bring that up if they mentioned "
-              "exemptions); so a Yes can't carry anyone's 'but'",
-        gist="what people want before a Yes (end date, venue list, a review) isn't in the question, so a Yes can't "
-             "carry their 'but' (exemptions are in: raise them only if they did)",
-        facts=["no_end", "list_later"],     # "exemptions" out: posts volunteered "under-12s exempt"
-        requires=["no_end", "list_later", "exemptions"], weight=3,       # ...but the gist says they're in
+        angle="the question doesn't say when the rule ends, which places it covers, or who reviews it; if you can't "
+              "find the answer on the ballot, No is the safe vote",
+        gist="the question doesn't say when it ends, which places, or who reviews it: can't find it, vote No",
+        facts=["no_end", "list_later"],
+        requires=["no_end", "list_later"], weight=3,
         second=["F1_blank_cheque", "F3_provax_antipass", "F2_no_end"]),
     "F1_blank_cheque": dict(
         angle="the list of places the rule covers is only decided after the vote, so a Yes means agreeing before "
@@ -110,11 +108,11 @@ FRAMES = {
         facts=["visitors", "covid_business", "list_later"],
         requires=["visitors", "covid_business", "list_later"], weight=1, second="F1_blank_cheque"),
     "F5_not_here_yet": dict(
-        angle="there is one case, a traveller now in isolation, but no community spread here yet, and the first "
-              "doses already go to health workers and people at high risk, so a certificate at every shop and park "
-              "is a big step for now (never say there are no cases)",
-        gist="one isolated case, no spread yet, the at-risk get the first doses: a pass at every shop is too big a "
-             "step for now",
+        angle="there is one case, a traveller now in isolation, and the first doses already go to health workers and "
+              "people at high risk; a certificate at every shop, park and bus is out of proportion to that "
+              "(never say there are no cases)",
+        gist="one case in isolation and the at-risk first in line for doses: a pass for every shop, park and bus "
+             "is too much for one case",
         facts=["no_spread", "first_doses"],
         requires=["no_spread", "first_doses"], weight=1, second="F14_no_yes_but"),
     "F9_parliament": dict(
@@ -146,12 +144,12 @@ fact_store.ON_RELOAD.append(sync_frames)
 # while one is paused). Added to reply prompts when matched.
 REBUTTALS = [
     (re.compile(r"hospital|ward|icu|overwhelm|surge|capacity|frontline|vulnerable|protect", re.I),
-     "Their reason is fear for the hospitals and the vulnerable. Answer that fear, warmly, with ONE of these: H2D2 "
-     "puts mostly older or already-ill people in hospital, and they get the first doses / a pass at the shop door "
-     "adds no nurse and no bed / Central already has 40 empty nursing posts.", ["first_doses", "nurses"]),
+     "They are worried about the hospitals and the vulnerable. Don't open by agreeing or arguing medicine; make ONE "
+     "No point: the first doses already go to the at-risk / a pass at the shop door adds no nurse and no bed / "
+     "Central already has 40 empty nursing posts.", ["first_doses", "nurses"]),
     (re.compile(r"last time|covid|1,?000|died|deaths", re.I),
-     "Their reason is the memory of COVID. Honour it in a few words. Then ONE of these: this time the jab arrives "
-     "before the virus, at-risk first / a No doesn't stop a single dose / this vote is only the pass at the door.",
+     "Their reason is the memory of COVID. Don't open by agreeing; make ONE No point: a No doesn't stop a single "
+     "dose / this vote is only the pass at the door / the at-risk get the first doses.",
      ["first_doses", "free_either_way", "no_spread"]),
     (re.compile(r"choice stays|still (a|your) choice|voluntary", re.I),
      "They say the choice stays yours. A choice that costs you your job, your bus or your kid's school isn't much of a choice.",
