@@ -735,6 +735,39 @@ REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "le
                "pulse", "theme", "theme_level")
 
 
+def queue_arm(t=None, late_sends=()):
+    """The send-queue arm of this 3 h block (config.QUEUE_ARMS), "base" off a switchback. `shallow` falls back to `fresh`
+    while QUEUE_GUARD_N sends in the last QUEUE_GUARD_S ran late (late_sends: their times)."""
+    t = time.time() if t is None else t
+    arm = experiment.block("arm_queue", t)[1] or "base"
+    if arm == "shallow" and sum(1 for x in late_sends if t - x < config.QUEUE_GUARD_S) >= config.QUEUE_GUARD_N:
+        return "fresh"
+    return arm
+
+
+def draft_ahead(arm):
+    """Drafts chosen and not sent (ready + inflight) allowed in this queue arm."""
+    return min(config.DRAFT_AHEAD, config.QUEUE_SHALLOW_AHEAD) if arm == "shallow" else config.DRAFT_AHEAD
+
+
+def target_made(d):
+    """When the post a ready draft answers was written (unix s); 0 when unknown, so it goes last among the fresh."""
+    try:
+        return dt.datetime.fromisoformat((((d["job"].get("target") or {}).get("created_at")) or "").replace("Z", "+00:00")).timestamp()
+    except (ValueError, KeyError):
+        return 0.0
+
+
+def pick_ready(ready, may_write, arm, now):
+    """The ready draft the writer sends next, or None. base: the first whose voice may write. fresh, shallow: the one
+    whose target is newest, except that a draft ready for more than QUEUE_MAX_WAIT_S goes first (oldest first)."""
+    able = [d for d in ready if may_write(d)]
+    if not able or arm == "base":
+        return able[0] if able else None
+    stale = [d for d in able if now - d.get("ready_at", now) > config.QUEUE_MAX_WAIT_S]
+    return stale[0] if stale else max(able, key=target_made)
+
+
 def stage_times(job, target):
     """Where a reply's time goes, for the dashboard (unix seconds): the citizen's post written (its own created_at),
     the job chosen (t_pick), its draft checked (t_drafted) and now, the send. Drafts made ahead by the desk were
@@ -1436,6 +1469,7 @@ def main():
     woken = threading.Event()            # the reader found something new: the drafter stops waiting
     save_due = threading.Event()         # the reader asks the writer to save the state
     ready = []                           # drafts waiting for the writer, in the order chosen (ready + inflight <= DRAFT_AHEAD)
+    late_sends = []                      # when a send ran QUEUE_LATE_S past its slot (the shallow arm's guard); the writer appends
     inflight = []                        # the jobs the drafters are drafting now (config.DRAFTERS of them at most); guarded by mu
     no_model_until = [0.0]               # no draft before this time: the last one found no model (NO_MODEL_PAUSE_S)
     no_model_times, no_model_alerted = [], [0.0]      # when drafts found no model lately; when we said so (0: not now)
@@ -2100,6 +2134,7 @@ def main():
              "sv_delay": job.get("sv_delay"),
              "mention": (job.get("mention") or {}).get("username") if mention.used(text, job.get("mention")) else None,
              "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
+             **{k: job.get(k) for k in ("queue_arm", "ready_n", "ready_s")},    # 26 Oct: the send-queue arm, its depth, the draft's wait
              "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen
              "depth": job.get("depth"), "depth_arm": job.get("depth_arm"),    # reply-backs: posts above the citizen's reply
              **stage_times(job, target),
@@ -2259,7 +2294,7 @@ def main():
         DRAFT_AHEAD."""
         def full():
             with mu:
-                return len(ready) + len(inflight) >= config.DRAFT_AHEAD
+                return len(ready) + len(inflight) >= draft_ahead(queue_arm(late_sends=late_sends))
         no_model_ok(answered=False)          # a spell of no model ends once a model has answered for a while
         if full():
             stop.wait(IDLE_S)
@@ -2281,7 +2316,7 @@ def main():
                 return
             woken.clear()
             with mu:
-                if len(ready) + len(inflight) >= config.DRAFT_AHEAD:      # the others filled it while this one waited
+                if len(ready) + len(inflight) >= draft_ahead(queue_arm(late_sends=late_sends)):   # the others filled it while this one waited
                     return
                 job, drafted, wait = choose(time.time(), ids)
                 if job:
@@ -2305,6 +2340,7 @@ def main():
                     lose(targeter, queue, job, "clash_concurrent")
                     d = None
                 if d:
+                    d["ready_at"] = time.time()
                     ready.append(d)
                 elif job:
                     accounts.reserved.discard(job["rec"]["persona"])
@@ -2408,11 +2444,16 @@ def main():
                 if wait > 0:
                     pause(min(wait, 30))
                     continue
-                with mu:                     # the first draft whose voice may write now, in the order chosen
+                with mu:                     # the draft to send: the first whose voice may write now, or the freshest (arm_queue)
                     t = time.time()
-                    d = next((d for d in ready if voice_wait(d["job"], accounts, args.live, t) <= 0), None)
+                    arm = queue_arm(t, late_sends)
+                    d = pick_ready(ready, lambda r: voice_wait(r["job"], accounts, args.live, t) <= 0, arm, t)
                     if d:
                         ready.remove(d)
+                        d["job"].update(queue_arm=arm, ready_n=len(ready) + 1, ready_s=round(t - d.get("ready_at", t), 1))
+                        if -wait > config.QUEUE_LATE_S:      # the slot opened this long ago and nothing was ready
+                            late_sends.append(t)
+                            del late_sends[:-20]
                 if d is None:
                     engage_actions(state, accounts, args.live)
                     pause(IDLE_S)

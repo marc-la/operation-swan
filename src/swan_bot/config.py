@@ -673,7 +673,22 @@ CONV_MODES = {"reply", "reply_back", "second_voice", "post"}   # arm_conv is log
 #   engagers_first  citizens who answered us before first, then unsure, then the freshest posts, then the rest.
 ENG_ARMS = ["base", "mention"]    # 25 Oct: engagers_first killed (away events beat base); the mention arm is todo/46 (src/swan_bot/mention.py)
 ENG_BLOCK_S = 2 * 3600
-SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S)]
+# 26 Oct (engagement audit of the last hour): a reply waits ~68 s in the send queue (DRAFT_AHEAD 4, first in first out) and
+# reply rate falls with the target's age (<2 min 2.45 6 h points a write, 2-5 min 1.13). Second switchback, 3 h blocks so it
+# does not line up with the 2 h arm_eng blocks (a 4 h and a 9 h cycle meet every 36 h). Arms:
+#   base     today: the first ready draft goes first, DRAFT_AHEAD deep;
+#   fresh    the ready draft whose target post is newest goes first (no throughput risk: same depth);
+#   shallow  fresh, and only QUEUE_SHALLOW_AHEAD drafts chosen and not sent, so each waits less. If sends run late (the
+#            writer found nothing ready) it falls back to fresh for QUEUE_GUARD_S: an empty slot costs ~5 points.
+# Read: scripts/engagement_recon.py queue. Stop: remove ("arm_queue", ...) from SWITCHBACK.
+QUEUE_ARMS = ["base", "fresh", "shallow"]
+QUEUE_BLOCK_S = 3 * 3600
+QUEUE_SHALLOW_AHEAD = 2
+QUEUE_MAX_WAIT_S = 150              # a ready draft older than this goes first whatever its target's age (no starvation)
+QUEUE_LATE_S = 8                    # a send this many seconds after its slot opened counts as late
+QUEUE_GUARD_N = 3                   # this many late sends within QUEUE_GUARD_S: shallow falls back to fresh
+QUEUE_GUARD_S = 15 * 60
+SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEUE_BLOCK_S)]
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
 # Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
 # picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes

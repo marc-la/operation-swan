@@ -301,7 +301,8 @@ LIVE_SWITCHBACK = list(config.SWITCHBACK)          # read at import: conftest cl
 
 
 def test_the_live_switchback_runs_the_engagement_arms_and_not_the_conversion_arms():
-    assert LIVE_SWITCHBACK == [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S)]
+    assert LIVE_SWITCHBACK == [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S),
+                               ("arm_queue", config.QUEUE_ARMS, config.QUEUE_BLOCK_S)]      # 26 Oct: the send-queue arms
     assert config.ENG_ARMS == ["base", "mention"] and "arm_eng" in bot.ARMS      # engagers_first killed 25 Oct (todo/46)
 
 
