@@ -147,7 +147,7 @@ text = "H2D2 in Kingstonia: one confirmed case; all close contacts tested negati
 note = "All close contacts tested negative, confirming no community spread."
 status = "active"
 source = "daily-kingstonia/close-contacts-of-first-h2d2-case-test-negative"
-checked = 2026-10-25T08:16:24+00:00
+checked = 2026-10-26T01:50:06+00:00
 numbers = []
 says = [
     '\bno (\w+ ){0,2}(spread|transmission)\b',
@@ -281,7 +281,7 @@ text = "The first H2D2 case in Kingstonia is an imported traveller currently in 
 note = "imported case"
 status = "active"
 source = "daily-kingstonia/first-h2d2-case-confirmed-in-kingstonia-via-international-traveller"
-checked = 2026-10-21T08:26:06+00:00
+checked = 2026-10-26T01:50:06+00:00
 numbers = []
 says = []
 frames = []
@@ -433,3 +433,15 @@ added = 2026-10-25T08:16:24+00:00
 numbers = []
 says = []
 frames = []
+
+# fact desk proposal 66, accepted 2026-10-26
+[emergency_services_maintained]
+text = "The Kingstonia Health Service kept all ordinary emergency services running through Monday's surge drills; routine care and urgent medical needs were not disrupted."
+note = "no disruption to routine care during the drills (a drill, not a real surge)"
+status = "active"
+source = "daily-kingstonia/hospitals-conduct-nationwide-surge-exercises-amid-h2d2-concerns"
+checked = 2026-10-26T01:50:06+00:00
+added = 2026-10-26T01:50:06+00:00
+numbers = []
+says = []
+frames = ["F10_staff_and_livelihoods", "F5_not_here_yet"]
