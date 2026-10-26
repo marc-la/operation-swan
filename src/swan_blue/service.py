@@ -154,6 +154,11 @@ READ_RESERVE = 60             # liveness, scan and sibling reads leave this many
 # before), a few pages a tick. fleets.py builds the fleets from the ids and creation times; counts_today counts awards
 # per fleet instead of per cluster (c8701 holds 450 accounts, more than one team's 200, so it said "saturated").
 FLEET_EVERY_S = 6 * 3600
+# What an award is counted against (BLUE_TEAM_BY): "label" (the cluster label, the default since 26 Oct) or "fleet".
+# Replayed on the portal's own tiers for 24-26 Oct (scripts/blue_graph_eval.py; blue-reporting section 12) the labels
+# were off by 46 awards and the fleets by 102: a fleet is a registration batch, so a team's second batch looked fresh
+# and paid reduced. The fleets are still built: the sibling checks use them.
+TEAM_BY = "label"
 FLEET_PAGES_PER_TICK = 20
 FLEET_ERR_S = 5 * 60          # after a failed page read, wait this long
 # todo/43 item 2, the live-lead scanner (scan.py): a pass reads the newest page of each tracked live rival account every
@@ -605,9 +610,12 @@ class Blue:
             self.fleet_size[k] = self.fleet_size.get(k, 0) + 1
 
     def team_key(self, aid, label=None):
-        """The target team an award is counted against: the account's fleet, or (no account list yet, the filter off,
-        or a fleet of one with a cluster label) its Blue cluster label."""
+        """The target team an award is counted against: its Blue cluster label (BLUE_TEAM_BY=label, the default), or with
+        BLUE_TEAM_BY=fleet the account's fleet (the label when there is no account list yet, the filter is off, or the
+        fleet is one account with a label). An account with no label counts under its fleet either way."""
         label = label or self.s["labels"].get(str(aid))
+        if label and policy().get("team_by", TEAM_BY) == "label":
+            return label
         k = self.fleet_map.get(int(aid)) if policy().get("fleet_every", FLEET_EVERY_S) > 0 else None
         if k is not None and (self.fleet_size.get(k, 1) > 1 or not label):
             return k
@@ -1563,6 +1571,7 @@ def policy():
                 live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S),
                 scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0),
                 siblings=num("BLUE_SIBLINGS", 1), fleet_gap_s=num("BLUE_FLEET_GAP_S", fleets_mod.FLEET_GAP_S),
+                team_by=os.environ.get("BLUE_TEAM_BY", TEAM_BY).strip().lower(),
                 thread_max=int(num("BLUE_THREAD_MAX", THREAD_MAX)),
                 label_pending_max=int(num("BLUE_LABEL_PENDING_MAX", LABEL_PENDING_MAX)),
                 label_day_max=int(num("BLUE_LABEL_DAY_MAX", LABEL_DAY_MAX)))

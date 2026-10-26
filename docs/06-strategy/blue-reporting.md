@@ -315,3 +315,23 @@ Turn `BLUE_SCAN_FILE=1` on only after the scan leads have been checked by hand a
 A candidate over a cap is dropped from that ranking, so the slot goes to the next team's ring or to a live account report. `blue_status.json` → `spread` has the caps and `held` (candidates kept back, by cap). Tests: `tests/test_blue_spread.py`.
 
 **To check on 25 Oct:** reports per cluster per batch (expect ≤ 4), share of awards paid reduced (was 46%), awards a day at full rate, genuine per post ruling (expect about 8%, and not in runs), points a day against 24 Oct's 1,255.
+
+## 12. Graph team test, labels over fleets, scan supply (Marc, 26 Oct 2026)
+
+Question (Marc, 26 Oct): can a graph of who interacts with whom tell us which rival accounts are one team, and what else is left in Blue? Read against how Blue got here: each step answered the last failure (21 Oct greedy fill → 22 Oct locks, then the no-lock mode → 23 Oct it cost 40% of points, relaxed → 24 Oct live targets, fleets, then spread caps after the 10-genuine streak). Two things stayed flat through all of it: **genuine rulings are about 11%** (32 of 294 post rulings by 26 Oct; reply rings 14 of 98, expected 6, so no class is safe) and **locked hours stay at 9–18 a day** (12.5, 13.1, 12.8, 17.7 on 22–25 Oct). Tuning evidence classes or gates has not moved either, so the open levers are which team and which account we report.
+
+Offline, read-only: `scripts/blue_graph_eval.py` (Blue's audits hold each post's liker ids and reply authors: 2,035 posts, 1,748 accounts, 10,411 edges; Louvain, split above 200). Data: copies of `blue_state.json`, `blue_reports.jsonl`, `portal.json`, `blue_fleets.json` from the box, 26 Oct 05:45 UTC. The bar was written before any result.
+
+| Bar | Result |
+|---|---|
+| G1 communities join fleets (median ≥ 2 fleets, none over 200) | **pass**: 40 communities of 10+, median 19 fleets, largest 132 |
+| G2 same fate across fleets (≥ 65% and +10 points over shuffled) | **pass**: 99.4% same fate in a community against 52.4% shuffled; 99.2% for pairs in different fleets (fleets: 75.6%). Caveat: accounts active in the same window interact, so part of this is timing, not team (a time-stratified shuffle was not run) |
+| G3 replay: predicts the portal's full/half/tenth post awards with ≥ 20% less error than fleets **and** labels | **fail**. 24–26 Oct, total absolute error in awards: labels 46, fleets 102, graph 76 (any resolution 0.05–4). The graph beats fleets but **not labels**; it splits c8701 into 45 pieces, so it predicts almost every award at full rate where the portal paid 41% reduced on 24 Oct |
+
+**Finding: the cluster labels count teams better than the fleets do**, and max(label, fleet) equals the labels. The graph is not shipped as an attribution scheme. Fleets are a registration batch (§10): a team's second batch looked fresh while the team was past its 5 full awards. So **`counts_today` and the ranking now count per cluster label** (`BLUE_TEAM_BY=label`, default; `fleet` restores §10). The fleet map is still built: the sibling checks use it. The 253 candidates held by `label_day` are held correctly: they would pay reduced.
+
+**Scan leads are fresher than the 25 Oct log suggested.** 657 accounts were found by the scanner or a sibling check on 23–26 Oct. At first discovery 1 vanished post and posting within 2 h: 497 (76%), about 125 a day; with a measured pace of 3+ an hour (needed for the report's statement): 218, about 55 a day; 38 of the 497 we had already reported. Later re-leads of the same account show 3+ vanished posts and an idle account: three hidden posts suspends it, so the window from first hidden post to suspension is hours, and a lead has to be filed soon after it is found. Hand check 26 Oct (reads only): the 12 most recent leads were all re-leads with 3 or 4 vanished posts; 11 had been idle 5+ h, 1 (id 10511, 1 vanished post) was live. `get_post` answered `404 post not found` for the vanished post in all 12. The filing-time liveness read drops the dead ones.
+
+Live account reports since the 24 Oct liveness filter: upheld **62%** on 25 Oct (13 of 21) and **67%** on 26 Oct (16 of 24), against 35–48% before, and 12 of 13 and 12 of 16 upheld at full rate. That is about 10 points per report, not the 13.5 `ACCOUNT_UPHELD` = 0.9 assumes (n = 45). Filing fell from 76 account reports on 23 Oct to 30 and 15 because the live supply is thin without the scanner.
+
+**Not done / not supported:** the report-wording test (about 150 reports an arm needed at 60 a day: too slow for the days left); a lock-hours cut by evidence class (§9 and the table above: classes do not separate risk). Embeddings stay shelved ([blue-embed-eval](blue-embedding-eval-2026-10-24.md)).

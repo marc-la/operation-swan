@@ -90,6 +90,7 @@ class AccountsSocial:
 
 
 def fleet_blue(tmp_path, monkeypatch, accounts=None, **kw):
+    monkeypatch.setenv("BLUE_TEAM_BY", "fleet")           # the fleet tests count per fleet (the default is the label)
     b = blue(tmp_path, monkeypatch)
     b.fl = dict(rows=F.rows(accounts or []), built=time.time())
     b.make_fleets()
@@ -98,9 +99,14 @@ def fleet_blue(tmp_path, monkeypatch, accounts=None, **kw):
     return b
 
 
-def test_team_key_is_the_fleet_then_the_cluster_label(tmp_path, monkeypatch):
+def test_team_key_is_the_cluster_label_by_default_and_the_fleet_on_request(tmp_path, monkeypatch):
     b = fleet_blue(tmp_path, monkeypatch, burst(5000, 6, 0) + [acc(5100, 5000)])   # a fleet of 6 and a singleton
     b.s["labels"].update({"5001": "c8701", "5100": "cX", "9999": "c8701"})
+    monkeypatch.delenv("BLUE_TEAM_BY", raising=False)
+    assert b.team_key(5001, "c8701") == "c8701"                           # default: the label (replay 26 Oct: 46 vs 102 error)
+    assert b.team_key(5200) == "c5200"                                    # unknown account, no label
+    assert b.team_key(5001) == "c8701"
+    monkeypatch.setenv("BLUE_TEAM_BY", "fleet")
     assert b.team_key(5001, "c8701") == "f5000"                           # in a fleet: the fleet, whatever the cluster
     assert b.team_key(5100) == "cX"                                       # alone, with a cluster label: the label
     assert b.team_key(5200) == "c5200"                                    # unknown account, no label
@@ -108,6 +114,7 @@ def test_team_key_is_the_fleet_then_the_cluster_label(tmp_path, monkeypatch):
     monkeypatch.setenv("BLUE_FLEET_EVERY_S", "0")
     assert b.team_key(5001, "c8701") == "c8701"                           # fleets off: Blue's clusters, as before
     monkeypatch.delenv("BLUE_FLEET_EVERY_S")
+    monkeypatch.delenv("BLUE_TEAM_BY")
     b.ours = {5003}
     b.make_fleets()
     assert 5003 not in b.fleet_map

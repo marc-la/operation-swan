@@ -13,7 +13,8 @@ def live_lead(t, **kw):
 
 
 def two_teams(tmp_path, monkeypatch):
-    """Fleets f5000 (team A) and f6000 (team B), and a fleet f7000 (team C)."""
+    """Fleets f5000 (team A) and f6000 (team B), and a fleet f7000 (team C), counted per fleet."""
+    monkeypatch.setenv("BLUE_TEAM_BY", "fleet")           # the default counts per cluster label
     b = blue(tmp_path, monkeypatch)
     b.fl = dict(rows=F.rows(burst(5000, 30, 0) + burst(6000, 30, 5000) + burst(7000, 30, 9000)), built=time.time())
     b.make_fleets()
