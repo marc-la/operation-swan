@@ -29,7 +29,7 @@ Real campaigns run on a *message box*: one slogan everybody repeats, three pilla
 |---|---|---|---|
 | **A. Don't sign a blank cheque** | They want a Yes before they'll show you what it covers or when it ends | F14, F1, F2, F9, F8 | "No sweeping restrictions without an immediate emergency"; KITB: "dangerous powers future governments could use"; Castillo: "powers he could never pass through Parliament" |
 | **B. Ordinary life shouldn't need papers** | School, the bus, your shift, the corner shop: a choice that costs you those isn't a choice | F7, F13, F6, F10, F12 | "Access to everyday life should not depend on vaccination status"; KITB: two-tier society, people kept from working, tourism confidence |
-| **C. Jabbed, and voting No** | Get the jab, it's free either way. This vote is only about the pass | F3, F11, F5 | "Medical decisions should remain a personal choice"; "the vaccine is new"; "balance public health against individual rights"; disproportionate to a disease not here yet |
+| **C. Your jab, your call** (was "Jabbed, and voting No"; renamed 2026-10-26: no urging the jab, todo/20) | The jab is free and your call either way. This vote is only about the pass at the door | F3, F11, F5 | "Medical decisions should remain a personal choice"; "the vaccine is new"; "balance public health against individual rights"; disproportionate to a disease not here yet |
 
 Pillar A wins the "Yes, but" swing group (the largest visible group). B gives every post its stake. C keeps the vaccinated majority from hearing "anti-vax" (backfire −80).
 
@@ -45,7 +45,7 @@ Pillar A wins the "Yes, but" swing group (the largest visible group). B gives ev
 |---|---|---|---|---|
 | `dont_know` (lead) | Nobody can say which places a Yes covers; the list comes after the result. Can't see it: vote No | **Don't know? Vote No.** | the 29.5% unsure | everyone |
 | `no_list` | They want our Yes before they show which places count | **No list, no Yes.** | "Yes, but" voters | Lani, Priya, Isla, Josh, Mere, Ben, Dan, Grace, Esther, Paulo, Ngaire, Kai |
-| `get_jab` | Getting the jab and voting No go together; a No stops nobody's jab | **Get the jab. Vote No.** | the vaccinated majority | Priya, Ana, Ruth, Sione, Grace, Esther, Wally, Mere, Paulo |
+| `get_jab` (**off** since 22 Oct, `config.THEMES_OFF`: urging the jab is advocacy) | Getting the jab and voting No go together; a No stops nobody's jab | ~~Get the jab. Vote No.~~ | the vaccinated majority | Priya, Ana, Ruth, Sione, Grace, Esther, Wally, Mere, Paulo |
 | `own_party` | Hawthorne's own PA members voted the bill down; a No isn't turning on him | **Voted Hawthorne. Voting No.** | People's Alliance voters | Josh, Dan, Wally, Kai, Isla (exact line and "voted Hawthorne": **Josh only**) |
 | `staff` | Under a Yes, the people behind the counter end up checking papers | **Baristas, not border guards.** | shop, café and transport workers | Lani, Esther, Isla, Dan, Tomasi (exact line: Lani, Isla) |
 

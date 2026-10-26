@@ -286,9 +286,8 @@ NEW_CARDS = [
               'two_space': True,
               'slip': 0.06,
               'careful': 0.45}},
-    # Meets the Yes voter who says hospitals matter more than a door check: Dev agrees hospitals matter, names himself
-    # as the livelihood on the line, and points at the staffing gap and the Assembly's no instead of arguing with
-    # anyone. Fills the gap of a New Haven tradesman whose workplace is other people's buildings, which the live cards
+    # Makes the plain No point that a door check adds no nurse and no bed: Dev names himself as the livelihood on
+    # the line and points at the staffing gap and the Assembly's no instead of arguing with anyone. Fills the gap of a New Haven tradesman whose workplace is other people's buildings, which the live cards
     # (cafe, electrician, mechanic, pharmacy) don't have.
     {'card': {'key': 'dev',
               'name': 'Dev Chandra',
@@ -432,9 +431,8 @@ NEW_CARDS = [
               'two_space': False,
               'slip': 0.04,
               'careful': 0.5}},
-    # Meets the Yes-leaning citizen who says nurses and the health system need backing, with a trainee who is
-    # vaccinated and respects staff yet points out that the real gap is 40 empty posts and pay across the water, which
-    # a door check does not touch. Fills the gap of a young, New Haven health-centre voice, distinct from Ana (ward
+    # Makes the No point that a door check does not touch the 40 empty posts or the pay across the water, with a
+    # trainee who is vaccinated and respects staff. Fills the gap of a young, New Haven health-centre voice, distinct from Ana (ward
     # nurse in the capital) and Sione (island clinic nurse).
     {'card': {'key': 'anaru',
               'name': 'Anaru Tamihana',
@@ -499,8 +497,7 @@ NEW_CARDS = [
               'two_space': False,
               'slip': 0.2,
               'careful': 0.12}},
-    # Meets the Yes-leaning citizen who thinks the question is about hospitals by showing a plain job (a car with
-    # strangers in the back) where a check would land, plus the data-minded worry that the certificate and the ID card
+    # Shows a plain job (a car with strangers in the back) where a check would land, plus the data-minded worry that the certificate and the ID card
     # get joined up later. Fills the gap of a City driver who sees visitors and the airport, which the live cards
     # (ferry, cafe, pharmacy, tech) don't.
     {'card': {'key': 'samir',
@@ -634,8 +631,7 @@ NEW_CARDS = [
               'two_space': False,
               'slip': 0.17,
               'careful': 0.1}},
-    # Meets the Yes-leaning neighbour who thinks the vote is a party matter or a hospitals matter, with a blunt City
-    # office worker who voted for the President, says the Assembly already said no, and speaks only as himself with a
+    # A blunt City office worker who voted for the President, says the Assembly already said no, and speaks only as himself with a
     # noticeboard page, no organisation. Fills the gap of a suburban, non-trade, evening community voice in the City,
     # which the live cards (electrician, bus driver, teacher, warehouse dad) do not cover.
     {'card': {'key': 'colm',

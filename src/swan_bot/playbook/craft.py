@@ -17,8 +17,8 @@ PILLARS = {
         claim="School, the bus, your shift, the corner shop: a choice that costs you those isn't a choice",
         tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"]),
     "C": dict(
-        name="Jabbed, and voting No",
-        claim="Get the jab, it's free either way. This vote is only about the pass",
+        name="Your jab, your call",
+        claim="The jab is free and your call either way. This vote is only about the pass at the door",
         tags=["#ChoiceNotCoercion"]),
 }
 
@@ -250,8 +250,8 @@ CRAFT = {
         heat="Childhood jabs here reach the low nineties without one check at the school gate. So why do they need a pass at the shop door for this one?",
         asks=[
             "Which jabs has your family had without anyone checking papers?",
-            "When your turn for the jab comes, who are you taking with you?",
-            "Who in your family is still making up their mind about the jab?",
+            "Which door in your week would you least want a pass at?",
+            "Who in your family would be stopped at the first door?",
         ]),
     "F5_not_here_yet": dict(
         pillar="C",

@@ -393,7 +393,7 @@ CHARACTERS = {
                 "prove anything to come to class."),
                ("A mum asked me at pick-up where else her son would need it. I had to say I don't know, and neither "
                 "does anyone."),
-               ("Get the jab, by all means; I will. But a school should be the one door that stays open to every "
+               ("The jab is free and everyone's call; I'll take mine. But a school should be the one door that stays open to every "
                 "child.")],
         now=[("Saturday on the lagoon: Tevita and Lucy practised starts for the Regatta Week junior race, and "
               "between runs Tevita wanted to know if he'd need papers to come to school."),

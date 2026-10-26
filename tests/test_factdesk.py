@@ -284,7 +284,7 @@ def test_a_contradiction_retires_the_fact_and_adds_a_new_key():
     assert t["no_spread"]["status"] == "paused" and t["no_spread"]["text"] == tomllib.loads(TOML)["no_spread"]["text"]
     assert t["no_spread_1023"]["text"] == p["text"] and t["no_spread_1023"]["status"] == "active"
     assert t["no_spread_1023"]["frames"] == ["F12_open_island"]          # F5 requires no_spread: it stays out
-    assert "F5_not_here_yet" in summary and "rebuttal 2" in summary
+    assert "F5_not_here_yet" in summary
     assert not factdesk.problems("no_spread_1023", t["no_spread_1023"])
 
 

@@ -39,7 +39,7 @@ HIDDEN_STOP = 99                    # OFF (2026-10-23, Marc: use every voice unt
 
 # 2026-10-21 late: every 2 min (was 4). Citizens are online a few minutes per session, and the replies they answer
 # in-session landed in the first ~5 min (ctn-68's reach study, 2 posts: 5 of 9 and 4 of 8 team replies answered).
-REFRESH_S = 30   # 25 Oct (todo/46): was 2 * 60, set when feeds allowed 10 reads a minute; they have allowed 300 since 22 Oct
+REFRESH_S = 15   # 26 Oct: was 30 (25 Oct, todo/46: was 2 * 60), set when feeds allowed 10 reads a minute; they have allowed 300 since 22 Oct
 FRESH_MIN = 10                      # a citizen post this new is answered first (they may still be online)...
 # 2026-10-23: 4.0 -> 12.0. At 4 a fresh post with an ordinary read lost to older posts with a strong one, and with ~2,000
 # queued the median wait for a reply was ~3 h (Marc: aim for under 5 min). 12 outweighs the usual spread of scores.
@@ -677,13 +677,15 @@ ENG_BLOCK_S = 2 * 3600
 # reply rate falls with the target's age (<2 min 2.45 6 h points a write, 2-5 min 1.13). Second switchback, 3 h blocks so it
 # does not line up with the 2 h arm_eng blocks (a 4 h and a 9 h cycle meet every 36 h). Arms:
 #   base     today: the first ready draft goes first, DRAFT_AHEAD deep;
-#   fresh    the ready draft whose target post is newest goes first (no throughput risk: same depth);
+#   fresh    the ready draft whose target post is newest goes first (no throughput risk: same depth), and the pick takes
+#            the newest post under FRESH_MIN first (QUEUE_PICK_NEWEST);
 #   shallow  fresh, and only QUEUE_SHALLOW_AHEAD drafts chosen and not sent, so each waits less. If sends run late (the
 #            writer found nothing ready) it falls back to fresh for QUEUE_GUARD_S: an empty slot costs ~5 points.
 # Read: scripts/engagement_recon.py queue. Stop: remove ("arm_queue", ...) from SWITCHBACK.
 QUEUE_ARMS = ["base", "fresh", "shallow"]
 QUEUE_BLOCK_S = 3 * 3600
 QUEUE_SHALLOW_AHEAD = 2
+QUEUE_PICK_NEWEST = True            # fresh and shallow blocks also pick the newest post under FRESH_MIN first (targeting.next_target)
 QUEUE_MAX_WAIT_S = 150              # a ready draft older than this goes first whatever its target's age (no starvation)
 QUEUE_LATE_S = 8                    # a send this many seconds after its slot opened counts as late
 QUEUE_GUARD_N = 3                   # this many late sends within QUEUE_GUARD_S: shallow falls back to fresh

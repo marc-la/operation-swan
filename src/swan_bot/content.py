@@ -149,7 +149,7 @@ REBUTTALS = [
     (re.compile(r"last time|covid|1,?000|died|deaths", re.I),
      "Their reason is the memory of COVID. Don't open by agreeing; make ONE No point: a No doesn't stop a single "
      "dose / this vote is only the pass at the door / the at-risk get the first doses.",
-     ["first_doses", "free_either_way", "no_spread"]),
+     ["first_doses", "free_either_way"]),
     (re.compile(r"choice stays|still (a|your) choice|voluntary", re.I),
      "They say the choice stays yours. A choice that costs you your job, your bus or your kid's school isn't much of a choice.",
      []),
@@ -290,7 +290,7 @@ PILLAR_OF = {"F14_no_yes_but": "A", "F1_blank_cheque": "A", "F2_no_end": "A", "F
 _PILLARS_V1 = {
     "A": dict(name="Don't sign a blank cheque", tags=["#VoteNo", "#H2D2No"]),
     "B": dict(name="Ordinary life shouldn't need papers", tags=["#KeepKingstoniaOpen", "#SmallBusiness", "#WorkersRights"]),
-    "C": dict(name="Jabbed, and voting No", tags=["#ChoiceNotCoercion"]),
+    "C": dict(name="Your jab, your call", tags=["#ChoiceNotCoercion"]),
 }
 _VOICES_V1 = {r: dict(instruction="You are cheerful and reasonable, never angry.", reply_instruction="")
               for r in ("warm", "fed_up", "plain")}

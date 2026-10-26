@@ -1007,8 +1007,16 @@ class Targeter:
                 return 0
             return 1 if gap[0] <= t - self.touched.get(str(c["post"]["author_id"]), 0) < gap[1] else 0
 
+        # 26 Oct: in the fresh/shallow queue blocks the newest post under FRESH_MIN goes first. Priority did not predict a
+        # reply (AUC 0.52; its middle tercile did best) and many tie at 20.0, which sorted() keeps oldest first.
+        newest = config.QUEUE_PICK_NEWEST and experiment.block("arm_queue")[1] in ("fresh", "shallow")
+
+        def newest_key(c):
+            return min(age_h(c["post"]) * 60, config.FRESH_MIN) if newest else 0.0
+
         for pid, c in sorted(self.candidates.items(),
-                             key=lambda kv: (tier(kv[1]), gap_rank(kv[1]), engage_rank(kv[1]), rank(kv[1]), -priority(kv[1]))):
+                             key=lambda kv: (tier(kv[1]), gap_rank(kv[1]), engage_rank(kv[1]), rank(kv[1]), newest_key(kv[1]),
+                                             -priority(kv[1]))):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
             post, author, source = c["post"], c["post"]["author_id"], c.get("source")

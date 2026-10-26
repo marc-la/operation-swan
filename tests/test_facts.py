@@ -257,7 +257,7 @@ def test_routing_skips_a_paused_frame(pause):
     assert content.live_frame("F1_blank_cheque", ben) == "F1_blank_cheque"
     overreach = "Isn't a pass at every single shop too far? I'm not sure."
     assert targeting.classify(overreach)[0] != "F5_not_here_yet"
-    assert content.rebuttal_for("I remember covid, so many died") is None   # its only rebuttal states no_spread
+    assert content.rebuttal_for("I remember covid, so many died")   # the COVID rebuttal no longer states no_spread
 
 
 def test_world_jab_rule_and_storylines_follow_pauses(pause):
