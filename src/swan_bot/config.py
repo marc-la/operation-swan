@@ -27,6 +27,84 @@ def is_citizen(account_id):
     return OFFICIAL_MAX_ID < i <= CITIZEN_MAX_ID or any(lo <= i <= hi for lo, hi in EXTRA_CITIZEN_RANGES)
 
 
+# ---- todo/48: citizens above id 2343 (swan_bot/npc.py scores them, scripts/npc_scan.py writes NPC_SCORES_FILE) ----
+# is_citizen stays the id rule for every metric. These read a cached score in [0, 1] (no network call) for accounts above
+# CITIZEN_MAX_ID; with no file, or a file older than NPC_SCORES_MAX_AGE_S, nothing changes. Both switches ship OFF.
+NPC_SCORES_FILE = DATA / "npc_scores.json"
+NPC_SCORES_MAX_AGE_S = 4 * 86400    # targeting ignores an older file (a team may change what an account does); Blue never does
+# Cuts, from the 27 Oct fit (todo/48 read-out, held-out labels): writing favours precision (a team bot read as a citizen wastes
+# a write), Blue favours recall (any plausible citizen is not reported: a genuine ruling locks reporting for 6 h).
+NPC_TARGET_MIN = 0.9
+NPC_BLUE_MIN = 0.3
+# The extra arm: with it on, Targeter._consider admits a likely citizen (score >= NPC_TARGET_MIN) in the "extra" blocks of
+# arm_npc (SWITCHBACK below; "base" blocks are as now), logged with npc_score; reply-backs answer them in any block.
+NPC_EXTRA_ARM = False
+# Blue's final check: with it on, evidence.py / fleets.py never count an account scoring >= NPC_BLUE_MIN as a competitor,
+# and a report whose author or target scores that high is skipped and logged ("skip", reason "npc", with the score).
+BLUE_NPC_GUARD = False
+_NPC = {"mtime": None, "built": 0.0, "scores": {}}
+
+
+def npc_scores():
+    """{account id: score} from NPC_SCORES_FILE (re-read when its mtime changes) and when it was built (epoch s)."""
+    import json
+    try:
+        m = NPC_SCORES_FILE.stat().st_mtime
+    except OSError:
+        _NPC.update(mtime=None, built=0.0, scores={})
+        return _NPC["scores"], 0.0
+    if m != _NPC["mtime"]:
+        try:
+            d = json.loads(NPC_SCORES_FILE.read_text())
+            scores = {int(k): float(v["s"]) for k, v in (d.get("scores") or {}).items() if v.get("s") is not None}
+            built = float(d.get("built_ts") or m)
+        except (OSError, ValueError, TypeError, AttributeError, KeyError):
+            scores, built = {}, 0.0
+        _NPC.update(mtime=m, built=built, scores=scores)
+    return _NPC["scores"], _NPC["built"]
+
+
+def npc_score(account_id, max_age_s=None):
+    """The cached citizen score of an account above CITIZEN_MAX_ID, or None (not scored, too few posts, a stale file)."""
+    i = account_id or 0
+    if i <= CITIZEN_MAX_ID:
+        return None
+    import time
+    scores, built = npc_scores()
+    if max_age_s is not None and time.time() - built > max_age_s:
+        return None
+    return scores.get(i)
+
+
+def likely_citizen(account_id):
+    """is_citizen, or an account above CITIZEN_MAX_ID whose fresh cached score is >= NPC_TARGET_MIN (todo/48)."""
+    if is_citizen(account_id):
+        return True
+    s = npc_score(account_id, NPC_SCORES_MAX_AGE_S)
+    return s is not None and s >= NPC_TARGET_MIN
+
+
+def npc_target(account_id):
+    """With NPC_EXTRA_ARM: the score of a likely citizen the bot may write to beyond is_citizen, else None."""
+    if not NPC_EXTRA_ARM or is_citizen(account_id) or not likely_citizen(account_id):
+        return None
+    return npc_score(account_id, NPC_SCORES_MAX_AGE_S)
+
+
+def writes_to_citizen(account_id):
+    """Who the bot treats as a citizen when it writes (reply-backs, phrase budgets): is_citizen, plus todo/48's likely
+    citizens while NPC_EXTRA_ARM is on. Metrics keep is_citizen."""
+    return is_citizen(account_id) or npc_target(account_id) is not None
+
+
+def blue_citizen(account_id):
+    """With BLUE_NPC_GUARD: the score of an account above CITIZEN_MAX_ID scoring >= NPC_BLUE_MIN (any file age), else None."""
+    if not BLUE_NPC_GUARD:
+        return None
+    s = npc_score(account_id)
+    return s if s is not None and s >= NPC_BLUE_MIN else None
+
+
 MAX_ACCOUNTS = 21                   # lifetime cap on voices: 12 used + 5 promoted 21 Oct + 4 replacements; boosters: MAX_BOOSTERS
 REGISTER_GAP_S = (20 * 60, 40 * 60) # drip registration: one new account every 20-40 min, never a burst
 ACCOUNT_MIN_GAP_S = 4 * 60          # one voice writes at most every 4 minutes (todo/03); todo/31 jitters it (VOICE_GAP)
@@ -484,7 +562,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "POOL_LIVE", "POOL_WRITERS", "POOL_PIPELINE",    # the pool orchestrator (below): SWAN_POOL_LIVE=1 is the go-live switch
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
                "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S",
-               "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE")   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
+               "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN")    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance
@@ -699,12 +778,16 @@ QUEUE_MAX_WAIT_S = 150              # a ready draft older than this goes first w
 QUEUE_LATE_S = 8                    # a send this many seconds after its slot opened counts as late
 QUEUE_GUARD_N = 3                   # this many late sends within QUEUE_GUARD_S: shallow falls back to fresh
 QUEUE_GUARD_S = 15 * 60
-SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEUE_BLOCK_S)]
+# todo/48: the extra-citizens arm (NPC_EXTRA_ARM, off): in "extra" blocks likely citizens above id 2343 are candidates too.
+# 3 h blocks; it only rotates anything while NPC_EXTRA_ARM is on. Read: scripts/engagement_report.py (arm_npc table).
+NPC_ARMS = ["base", "extra"]
+NPC_BLOCK_S = 3 * 3600
+SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEUE_BLOCK_S), ("arm_npc", NPC_ARMS, NPC_BLOCK_S)]
 # 27 Oct (Marc): every test stops at midnight Sydney on 1 Nov, when x4 starts; from then each switchback dimension runs
 # FREEZE_PIN's arm (its first arm when not listed). Before the freeze, set each dimension's pin to its read-out winner
 # (scripts/engagement_report.py --hours 48, by arm). None: never freeze.
 ARMS_FREEZE = 1793451600            # 2026-10-31T13:00:00Z = 2026-11-01 00:00 Sydney (AEDT)
-FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "base"}
+FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "base", "arm_npc": "base"}   # arm_npc: set to "extra" if its read-out wins
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
 # Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
 # picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes

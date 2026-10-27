@@ -30,8 +30,10 @@ def ts(s):
 
 
 def is_team(account_id, ours):
-    """A competitor team's account: registered after launch, not a citizen added mid-game, not one of ours."""
-    return account_id > config.CITIZEN_MAX_ID and not config.is_citizen(account_id) and account_id not in ours
+    """A competitor team's account: registered after launch, not a citizen added mid-game, not one of ours, and (todo/48,
+    with BLUE_NPC_GUARD) not an account that posts like a citizen (cached score >= NPC_BLUE_MIN)."""
+    return (account_id > config.CITIZEN_MAX_ID and not config.is_citizen(account_id) and account_id not in ours
+            and config.blue_citizen(account_id) is None)
 
 
 def longest_run(ids, gap=RUN_GAP):
