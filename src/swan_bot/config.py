@@ -38,10 +38,10 @@ NPC_TARGET_MIN = 0.9
 NPC_BLUE_MIN = 0.3
 # The extra arm: with it on, Targeter._consider admits a likely citizen (score >= NPC_TARGET_MIN) in the "extra" blocks of
 # arm_npc (SWITCHBACK below; "base" blocks are as now), logged with npc_score; reply-backs answer them in any block.
-NPC_EXTRA_ARM = False
+NPC_EXTRA_ARM = True                # ON 27 Oct (Marc): the 28-30 Oct test; hourly scan = deploy/swan-npcscan.timer. Off: SWAN_NPC_EXTRA_ARM=0
 # Blue's final check: with it on, evidence.py / fleets.py never count an account scoring >= NPC_BLUE_MIN as a competitor,
 # and a report whose author or target scores that high is skipped and logged ("skip", reason "npc", with the score).
-BLUE_NPC_GUARD = False
+BLUE_NPC_GUARD = True               # ON 27 Oct (Marc), after the first scan. Off: SWAN_BLUE_NPC_GUARD=0
 _NPC = {"mtime": None, "built": 0.0, "scores": {}}
 
 

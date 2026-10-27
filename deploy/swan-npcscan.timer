@@ -1,0 +1,9 @@
+[Unit]
+Description=Citizen scan every hour (first run 5 min after install)
+
+[Timer]
+OnActiveSec=5min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
