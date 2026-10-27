@@ -497,10 +497,11 @@ class Targeter:
     @locked
     def answered(self, post, mode):
         """bot.py, after a write to a citizen's item: a reply or reply-back ends it as answered."""
-        if mode in ("reply", "reply_back") and self.is_citizen(post.get("author_id")):
+        cit = config.writes_to_citizen(post.get("author_id"))      # todo/48: the extra arm's citizens end as answered too
+        if mode in ("reply", "reply_back") and cit:
             it = self._item(post, "reply_back" if mode == "reply_back" else None)
             it["o"], it["why"], it["a"] = "answered", mode, time.time()
-        if self.is_citizen(post.get("author_id")):    # the sweep leaves them alone for a week (todo/23)
+        if cit:                                       # the sweep leaves them alone for a week (todo/23)
             self.touched[str(post["author_id"])] = time.time()
 
     @locked
@@ -583,7 +584,8 @@ class Targeter:
         """Judge a post once: not a citizen item (not counted), a hard skip (logged), or a candidate whose read sets
         its priority. A citizen reply gets its parent post as context when the thread gave none (todo/21 item 5)."""
         pid = post["post_id"]
-        if pid in self.candidates or post.get("kind") == "repost" or not self.is_citizen(post.get("author_id")):
+        npc = None if self.is_citizen(post.get("author_id")) else self.npc_extra(post.get("author_id"))
+        if pid in self.candidates or post.get("kind") == "repost" or (npc is None and not self.is_citizen(post.get("author_id"))):
             return                                    # team bots, ~98% of Latest: not in the funnel
         max_h = config.OLDER_MAX_AGE_H if config.OLDER_ARM else config.TARGET_MAX_AGE_H     # todo/23 B
         if age_h(post) > max_h or (pid in self.items and self.items[pid]["o"] != "pending"):
@@ -618,6 +620,15 @@ class Targeter:
         if why:
             return self.skip(post, why, source)
         self._queue(post, source, context, parent, d, cls, group=group, net="late" if late else None)
+        if npc is not None:                           # todo/48: logged on the write (bot.py), so the read can split them
+            self.candidates[pid]["npc_score"] = round(npc, 3)
+
+    def npc_extra(self, account_id):
+        """todo/48: the cached citizen score of an account above id 2343 that this block admits (NPC_EXTRA_ARM on, an
+        "extra" block of arm_npc, score >= NPC_TARGET_MIN), else None. No read: scripts/npc_scan.py keeps the file."""
+        if not config.NPC_EXTRA_ARM or experiment.block("arm_npc")[1] != "extra":
+            return None
+        return config.npc_target(account_id)
 
     def _off_topic_ok(self, post, d):
         """An off-topic citizen post we may answer on its own topic (todo/23 C): the arm on, not hostile or shouting,
@@ -1065,6 +1076,10 @@ class Targeter:
             if config.REPLY_BACK and c.get("parent_author") in our_ids and c.get("parent_author") not in self.dead_ids:
                 self.candidates.pop(pid)
                 self.wait(post, "reply_back", source)    # they answered one of us: the reply-back path has it
+                continue
+            if c.get("npc_score") is not None and self.npc_extra(author) is None:
+                self.candidates.pop(pid)
+                self.skip(post, "npc_block_over", source)    # todo/48: an extra-arm candidate goes out in an extra block only
                 continue
             if len(contacted.get(str(author), ())) >= config.SESSION_VOICES:
                 self.wait(post, "session_cap", source)   # stays queued: answered once their session is over

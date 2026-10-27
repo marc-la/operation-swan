@@ -586,8 +586,8 @@ def gone_at_send(job, state, t=None):
 def citizen_texts(sent, ready=()):
     """Our latest citizen-facing texts, oldest first (todo/27 phrase budgets, quality.over_budget): what we sent to a
     citizen (state["recent_sent"]) and the drafts to citizens waiting for the writer, the last PHRASE_WINDOW."""
-    out = [text for a, _, text in sent if config.is_citizen(a)]
-    out += [d["text"] for d in ready if d.get("text") and config.is_citizen((d["job"].get("target") or {}).get("author_id"))]
+    out = [text for a, _, text in sent if config.writes_to_citizen(a)]
+    out += [d["text"] for d in ready if d.get("text") and config.writes_to_citizen((d["job"].get("target") or {}).get("author_id"))]
     return out[-quality.PHRASE_WINDOW:]
 
 
@@ -687,7 +687,7 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
             try:
                 theirs = social.get_post(n["post"]["post_id"])
                 skip = None
-                if not config.is_citizen(theirs.get("author_id")):
+                if not config.writes_to_citizen(theirs.get("author_id")):     # todo/48: the extra arm's citizens too, when on
                     skip = "not_citizen"
                 elif theirs["post_id"] in replied:
                     skip = "replied"
@@ -730,7 +730,7 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
-        "block_id", "arm_conv", "arm_eng", "fresh", "agree")
+        "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block")     # todo/48: arm_npc with NPC_EXTRA_ARM
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level")
 
@@ -840,6 +840,9 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         meta.update(arm_conv=arm or "base", **({"block_id": block_id} if block_id else {}))
         block_id, arm = experiment.block("arm_eng")                # todo/33: the engagement arm of this 2 h block
         meta.update(arm_eng=arm or "base", **({"block_id": block_id} if block_id else {}))
+        if config.NPC_EXTRA_ARM:                                   # todo/48: the extra-citizens arm, its own 3 h blocks
+            block_id, arm = experiment.block("arm_npc")
+            meta.update(arm_npc=arm or "base", npc_block=block_id)
     if mode == "reply" and job.get("group") == "off_topic":      # todo/23: on their topic, no read, no theme
         job["style"], job["read"] = "off_topic", False
     elif mode == "reply":                # todo/20: the style arm in turn (the firm-Yes arm concedes first) and the read
@@ -1916,7 +1919,7 @@ def main():
                 recent_texts = state["recent_texts"] + [d["text"] for d in ready if d["text"]]
                 recent_shapes = state["recent_shapes"] + [d["job"]["meta"]["shape"] for d in ready
                                                           if (d["job"].get("meta") or {}).get("shape")]
-                if mode in quality.PERSONAL_KINDS and target and config.is_citizen(target.get("author_id")):
+                if mode in quality.PERSONAL_KINDS and target and config.writes_to_citizen(target.get("author_id")):
                     job["phrase_texts"] = citizen_texts(state.get("recent_sent", []), ready)     # todo/27
                 persona, system, user = build_prompt(job, targeter, recent_shapes, pulse_now, recent_texts=recent_texts)
 
@@ -2136,6 +2139,8 @@ def main():
              "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
              **{k: job.get(k) for k in ("queue_arm", "ready_n", "ready_s")},    # 26 Oct: the send-queue arm, its depth, the draft's wait
              "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen
+             # todo/48: a citizen above id 2343 by the cached score (the extra arm's candidates, and reply-backs to them)
+             "npc_score": job.get("npc_score", config.npc_target(target.get("author_id")) if target else None),
              "depth": job.get("depth"), "depth_arm": job.get("depth_arm"),    # reply-backs: posts above the citizen's reply
              **stage_times(job, target),
              "own_like": job.get("own_like"),

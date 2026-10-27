@@ -40,7 +40,7 @@ MIND = {"towards": {"primary": 160, "contribution": 8}, "away": {"primary": -80,
 SUMMED = ("points", "engagement", "persuasion", "toward", "away", "likes", "replies", "reposts", "follows", "unfollows",
           "gain", "penalty")
 KEEP = ("ts", "act", "live", "post_id", "account_id", "username", "target_author", "eng_cell", "arm_eng", "block_id",
-        "purpose", "citizen_id", "why")
+        "purpose", "citizen_id", "why", "arm_npc", "npc_block", "npc_score")
 
 
 def rows_since(path, since):
@@ -76,17 +76,18 @@ def portal_points(events):
 
 
 def citizen_writes(rows):
+    """Writes to citizens: is_citizen, plus todo/48's extra-arm citizens above id 2343 (logged with npc_score)."""
     return [r for r in rows if r.get("act") in CITIZEN_WRITES and r.get("post_id")
-            and config.is_citizen(r.get("target_author"))]
+            and (config.is_citizen(r.get("target_author")) or r.get("npc_score") is not None)]
 
 
-def arm_table(rows, points, dim="arm_eng"):
+def arm_table(rows, points, dim="arm_eng", block="block_id"):
     """{arm: stats}: per arm of the switchback, over its whole blocks, the citizen-facing writes, the hours, the
-    portal's lines (1 h lag) summed, and points per write and per hour."""
+    portal's lines (1 h lag) summed, and points per write and per hour. block: the field holding the block id."""
     blocks = collections.defaultdict(lambda: collections.defaultdict(list))
     for w in citizen_writes(rows):
-        if w.get(dim) and w.get("block_id"):
-            blocks[w[dim]][w["block_id"]].append(w)
+        if w.get(dim) and w.get(block):
+            blocks[w[dim]][w[block]].append(w)
     out = {}
     for arm, bs in blocks.items():
         a = dict(blocks=len(bs), writes=0, hours=0.0, hidden=0)
@@ -225,6 +226,40 @@ def fmt(x, nd=1):
     return "–" if x is None else f"{x:.{nd}f}"
 
 
+def proxy(w, outcomes):
+    """Our points proxy for one write from its latest outcome read, at x1: likes 5, replies 15, by citizens and (todo/48)
+    by likely citizens above id 2343. None when unread."""
+    o = outcomes.get(w["post_id"])
+    if not o or o.get("hidden_or_gone"):
+        return None
+    return (BASE["likes"] * ((o.get("citizen_likes") or 0) + (o.get("npc_likes") or 0))
+            + BASE["replies"] * ((o.get("citizen_replies") or 0) + (o.get("npc_replies") or 0)))
+
+
+def npc_section(rows, points, outcomes):
+    """todo/48's arm_npc (base / extra, NPC_BLOCK_S blocks): portal points per write over the arm's blocks, and our proxy
+    per write from the outcome reads, the extra writes (npc_score set) apart. [] when no write carries arm_npc."""
+    table = arm_table(rows, points, "arm_npc", "npc_block")
+    if not table:
+        return []
+    verdicts = arm_verdicts(table)
+    out = [f"### Extra citizens (arm_npc, {config.NPC_BLOCK_S // 3600} h blocks; todo/48)", "",
+           "| arm | blocks | writes | of them to npc | portal points | points per write | proxy per write (read) | "
+           "npc proxy per write (read) | npc answered | verdict |", "|---|---|---|---|---|---|---|---|---|---|"]
+    for arm in sorted(table):
+        a = table[arm]
+        ws = [w for w in citizen_writes(rows) if w.get("arm_npc") == arm and w.get("npc_block")]
+        px = [x for x in (proxy(w, outcomes) for w in ws) if x is not None]
+        nw = [w for w in ws if w.get("npc_score") is not None]
+        npx = [x for x in (proxy(w, outcomes) for w in nw) if x is not None]
+        ans = [bool((outcomes.get(w["post_id"]) or {}).get("target_replied")) for w in nw if w["post_id"] in outcomes]
+        out.append(f"| {arm} | {a['blocks']} | {a['writes']} | {len(nw)} | {a['points']:.0f} | "
+                   f"**{fmt(a['points'] / a['writes'] if a['writes'] else None, 2)}** | "
+                   f"{fmt(sum(px) / len(px) if px else None, 2)} ({len(px)}) | {fmt(sum(npx) / len(npx) if npx else None, 2)} "
+                   f"({len(npx)}) | {pct(sum(ans), len(ans))} | {verdicts.get(arm, '(base)')} |")
+    return out + [""]
+
+
 def render(rows, points, outcomes, checks, since, until):
     p = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%d %b %H:%M UTC")
     writes = citizen_writes(rows)
@@ -245,6 +280,7 @@ def render(rows, points, outcomes, checks, since, until):
                        f"{a['persuasion']:.0f} | {a['away']:.0f} | **{fmt(a['points'] / a['writes'] if a['writes'] else None, 2)}** | "
                        f"{fmt(a['points'] / a['hours'] if a['hours'] else None, 0)} | {verdicts.get(arm, '(base)')} |")
         out.append("")
+    out += npc_section(rows, points, outcomes)
     first, did = cohort(rows)
     citizens = citizen_outcomes(first, did, outcomes, checks)
     cells = cell_table(citizens)

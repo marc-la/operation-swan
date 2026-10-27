@@ -174,6 +174,7 @@ SIB_MAX = 30                  # siblings looked at per lead event
 SIB_CHECKS = 6                # recent posts of one sibling checked for a hide (those the bot's Latest snapshot saw)
 # the platform's answer while we're locked: "reporting is suspended for your team until 2026-10-22T02:00:49Z"
 LOCK_UNTIL_RE = re.compile(r"suspended .*until (\d{4}-\d\d-\d\dT[\d:.]+Z?)", re.I)
+NPC_SKIP_LOG_S = 6 * 3600     # todo/48: a citizen-guard skip is logged once per account in this long
 
 
 def now():
@@ -318,12 +319,26 @@ class Blue:
     def note(self, post, source):
         """Remember a post worth auditing: a team author, not ours, not a reply on one of our posts."""
         if not ev.is_team(post["author_id"], self.ours) or post.get("repost_of_post_id"):
+            self.npc_skip(post["author_id"], f"p{post['post_id']}")
             return
         pid = str(post["post_id"])
         p = self.s["posts"].setdefault(pid, dict(post=post, first_seen=now(), audits=0, trending=False, src=source))
         p["known"] = str(post["author_id"]) in self.s["author_ring"]      # its author ran a confirmed ring before
         if source == "trending":
             p["trending"] = True
+
+    def npc_skip(self, account_id, key):
+        """todo/48: log (once per account per NPC_SKIP_LOG_S) that the citizen guard kept an account out of Blue, with its
+        score. Returns the score, or None when the guard is off or the account is not a likely citizen."""
+        s = config.blue_citizen(account_id) if account_id and account_id > config.CITIZEN_MAX_ID else None
+        if s is None:
+            return None
+        seen = self.s.setdefault("npc_skips", {})
+        if now() - seen.get(str(account_id), 0) >= NPC_SKIP_LOG_S:
+            seen[str(account_id)] = now()
+            self.log({"act": "skip", "key": key, "reason": "npc", "account": account_id, "npc_score": round(s, 3),
+                      "npc_min": config.NPC_BLUE_MIN})
+        return s
 
     def scan(self):
         if self.due("ours"):
@@ -1158,6 +1173,12 @@ class Blue:
             return False
         if why:
             self.error(f"not filed {c['key']}: {why}")
+            return False
+        who = int(c["target"]) if c["kind"] == "account" else c.get("author")
+        if who is not None and self.npc_skip(int(who), c["key"]) is not None:     # todo/48: the last check, a likely citizen
+            self.skip = "npc"
+            self.s["reports"][c["key"]] = dict(kind=c["kind"], target=c["target"], author=c.get("author"), why="npc",
+                                               label=c.get("label"), filed=now(), status="refused", detail=c["detail"])
             return False
         if c["kind"] == "account" and not self.live_at_filing(c):
             return False

@@ -18,7 +18,8 @@ FLEET_MAX = 200           # a team may hold 200 accounts in all (CLAUDE.md): a l
 
 
 def is_team_row(account_id, verified=False):
-    return account_id > config.CITIZEN_MAX_ID and not config.is_citizen(account_id) and not verified
+    return (account_id > config.CITIZEN_MAX_ID and not config.is_citizen(account_id) and not verified
+            and config.blue_citizen(account_id) is None)          # todo/48: a likely citizen is no team's (BLUE_NPC_GUARD)
 
 
 def rows(accounts, skip=()):

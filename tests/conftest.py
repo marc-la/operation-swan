@@ -39,6 +39,12 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "SWITCHBACK", [])
     # 27 Oct: the arm freeze is a date (1 Nov Sydney); tests use clocks past it (NOW = 1.8e9). Its own test sets it.
     monkeypatch.setattr(config, "ARMS_FREEZE", None)
+    # todo/48: the box's data/npc_scores.json must not make a test account a citizen; both switches stay off (a .env
+    # override included). tests/test_npc.py writes its own file and turns them on.
+    monkeypatch.setattr(config, "NPC_SCORES_FILE", tmp_path / "npc_scores.json")
+    monkeypatch.setattr(config, "NPC_EXTRA_ARM", False)
+    monkeypatch.setattr(config, "BLUE_NPC_GUARD", False)
+    config._NPC.update(mtime=None, built=0.0, scores={})
     # todo/38: the pool scheduler is on in config, but the older tests are written for the longest-rest-first pick; the
     # scheduler's own tests (tests/test_pool_scheduler.py) switch it on. Its state is per process: start every test clean.
     from swan_bot import stealth

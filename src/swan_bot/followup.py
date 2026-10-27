@@ -100,11 +100,18 @@ class Reader:
         likers = self.read(self.social.likers, pid, limit=100) if c.get("like_count") else []
         replies = self.read(self.social.replies, pid, limit=100) if c.get("reply_count") else []
         cit_replies = [x for x in replies if is_citizen_id(x.get("author_id"))]
+        # todo/48: likely citizens above id 2343 (the cached npc score) counted apart, so the extra arm's writes get their
+        # replies and likes without touching the citizen_* numbers every metric reads; and whether the target answered
+        npc = lambda a: not is_citizen_id(a) and config.likely_citizen(a)      # noqa: E731
+        npc_replies = [x for x in replies if npc(x.get("author_id"))]
         return {**rec, "views": c.get("view_count"), "likes": c.get("like_count"), "replies": c.get("reply_count"),
                 "reposts": c.get("repost_count"),
                 "citizen_likes": sum(is_citizen_id(x.get("account_id")) for x in likers),
                 "citizen_likers": sorted({x["account_id"] for x in likers if is_citizen_id(x.get("account_id"))}),
-                "citizen_replies": len(cit_replies), "citizen_repliers": sorted({x["author_id"] for x in cit_replies})}
+                "citizen_replies": len(cit_replies), "citizen_repliers": sorted({x["author_id"] for x in cit_replies}),
+                "npc_likes": sum(bool(npc(x.get("account_id"))) for x in likers), "npc_replies": len(npc_replies),
+                "npc_repliers": sorted({x["author_id"] for x in npc_replies}),
+                "target_replied": sum(x.get("author_id") == r.get("target_author") for x in replies) if r.get("target_author") else None}
 
     def followup(self, r, i, now, our_ids):
         citizen, t0 = r["target_author"], ts_of(r["ts"])
