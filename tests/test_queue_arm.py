@@ -64,11 +64,18 @@ def test_off_a_switchback_the_arm_is_base(monkeypatch):
 
 
 def test_the_three_arms_rotate_through_a_day(monkeypatch):
-    monkeypatch.setattr(config, "SWITCHBACK", [("arm_queue", config.QUEUE_ARMS, BLOCK)])
+    arms = ["base", "fresh", "shallow"]                     # the 26 Oct test, kept so it can be run again
+    monkeypatch.setattr(config, "SWITCHBACK", [("arm_queue", arms, BLOCK)])
     day0 = NOW // 86400 * 86400
     seen = [bot.queue_arm(day0 + i * BLOCK) for i in range(3)]
-    assert sorted(seen) == sorted(config.QUEUE_ARMS)       # three consecutive blocks: one of each
+    assert sorted(seen) == sorted(arms)                     # three consecutive blocks: one of each
     assert bot.queue_arm(day0) == bot.queue_arm(day0 + BLOCK - 1)       # one arm for a whole block
+
+
+def test_live_queue_is_shallow_in_every_block(monkeypatch):
+    assert config.QUEUE_ARMS == ["shallow"]                 # 27 Oct (Marc): the test ended, shallow everywhere
+    monkeypatch.setattr(config, "SWITCHBACK", [("arm_queue", config.QUEUE_ARMS, BLOCK)])
+    assert {bot.queue_arm(NOW + i * BLOCK) for i in range(8)} == {"shallow"}
 
 
 def test_shallow_falls_back_to_fresh_after_late_sends_and_recovers(monkeypatch):
@@ -88,7 +95,7 @@ def test_the_arm_is_logged_on_every_send():
 
 
 # ---- the pick: the newest post under FRESH_MIN first in the fresh and shallow blocks (26 Oct) ----
-def _pick_order(monkeypatch, arm, ages_min, scores=None):
+def _pick_order(monkeypatch, arm, ages_min, scores=None, classes=None):
     """Post ids in the order next_target hands them out, for posts of these ages (minutes), queued oldest first."""
     import datetime as dt
     from swan_bot import targeting
@@ -99,7 +106,7 @@ def _pick_order(monkeypatch, arm, ages_min, scores=None):
     for pid, minutes in enumerate(ages_min, 1):
         created = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).isoformat()
         t._queue(dict(post_id=pid, author_id=1000 + pid, body="the referendum", created_at=created), "latest", None, None, 0,
-                 "conditions")
+                 (classes or {}).get(pid, "conditions"))
         t.candidates[pid]["score"] = (scores or {}).get(pid, 8.0)           # equal scores: priority ties at the fresh bonus
     out = []
     while (c := t.next_target(set(), set(), {}, set())):
@@ -132,3 +139,18 @@ def test_a_stronger_read_no_longer_beats_a_newer_fresh_post_in_fresh_blocks(monk
 def test_the_flag_turns_the_new_pick_order_off(monkeypatch):
     monkeypatch.setattr(config, "QUEUE_PICK_NEWEST", False)
     assert _pick_order(monkeypatch, "fresh", [8, 5, 2, 0.5]) == [1, 2, 3, 4]
+
+
+# ---- todo/47 (27 Oct): the weak classes count as DOWNRANK_MIN minutes older in the newest-first pick ----
+def test_a_fresh_conditions_post_goes_before_a_slightly_newer_unclear_one(monkeypatch):
+    assert config.DOWNRANK_MIN == 2.5 and set(config.DOWNRANK_CLASSES) == {"unclear", "unsure", "off_topic"}
+    assert _pick_order(monkeypatch, "shallow", [2, 1], classes={2: "unclear"}) == [1, 2]
+
+
+def test_a_much_newer_weak_post_still_beats_an_older_strong_one(monkeypatch):
+    assert _pick_order(monkeypatch, "shallow", [4, 0.5], classes={2: "unsure"}) == [2, 1]
+
+
+def test_downrank_off_restores_newest_first(monkeypatch):
+    monkeypatch.setattr(config, "DOWNRANK_MIN", 0)
+    assert _pick_order(monkeypatch, "shallow", [2, 1], classes={2: "unclear"}) == [2, 1]

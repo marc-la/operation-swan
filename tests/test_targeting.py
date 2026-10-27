@@ -63,6 +63,70 @@ def test_complaints_read_as_lean_no():
         assert targeting.target_class(text, context="Referendum: what the vaccination question says") == "lean_no", text
 
 
+# 27 Oct audit (real citizen posts): conditions said flatly were read as lean_no and got priority 0 and the turnout line.
+FLAT_CONDITIONS = [
+    "A full list of venues, date-stamped limits, and clear exemptions. That's the bare minimum.",
+    "End date and oversight in regs, venue list out now so folks know what counts.",
+    "id want a full list of designated spaces and a legal sunset clause so this doesn't just become a permanent thing",
+    "Yeah, a fixed review date would be much better than just leaving it to chance. It gives people some actual certainty.",
+]
+# Yes voters whose post has a No-ish phrase in it ("a No vote", "slippery slopes")
+YES_WITH_NO_WORDS = [
+    "Ofa, the venue list should be published before polling day, no argument. But a No vote leaves us with no access rule "
+    "at all while H2D2 gets closer. I'm still voting YES; spell out the venues.",
+    "Everyone's arguing about certificates and slippery slopes. If H2D2 overwhelms our hospitals, the rest of life goes with "
+    "them. I'm voting Yes.",
+]
+# On the vote without a REFERENDUM word: skipped as off topic before 27 Oct
+ON_VOTE_TEXTS = [
+    "i havent seen a full rules list published yet and thats exactly what is holding me back",
+    "i'd give it a six month expiry and require a public review before the assembly can renew it",
+    "Tavita, I'd want to see a complete freeze on any new regulatory powers for a decade after this.",
+    "honestly id want it to be an independent body so the politicians cant just mess with it for votes!!",
+    "I could still be persuaded, but I need to know what the pass means for everyday life before I mark that box.",
+]
+SMALL_TALK = [
+    "Usually Monday, getting tools and gear sorted before heading out to the first job. How about you, Kiri?",
+    "mostly just the wind making it hard to breathe really",
+    "thanks flora it was a bit of a struggle but worth it",
+    "Grabbed a pie and a cold drink at the roadside shop after work. Nothing fancy, but it hit the spot.",
+    "spent half the morning chasing a bug that turned out to be a timezone setting  at least it wasnt the internet this time",
+    "oof 0300 is crazy!! stay safe out there",
+]
+
+
+def test_flat_conditions_are_swing_not_lean_no():
+    for text in FLAT_CONDITIONS:
+        assert targeting.target_class(text, context="Referendum: the vaccination question") == "conditions_flat", text
+        assert targeting.READ_PRIORITY["conditions_flat"] == 3.0
+
+
+def test_a_stated_yes_is_never_lean_no():
+    for text in YES_WITH_NO_WORDS:
+        assert targeting.target_class(text) not in ("lean_no", "conditions_flat"), text
+    assert targeting.target_class(YES_WITH_NO_WORDS[1]) == "firm_yes"
+    assert not targeting.yes_stated("I won't be voting yes on this.")
+    assert targeting.target_class("I won't be voting yes on this.") == "lean_no"
+    # someone else's Yes is not theirs, and an explicit vote No always stands
+    no = ("I want H2D2 vaccination free and easy to get, but I'm voting NO on a public-space pass. To friends voting YES: "
+          "protecting people matters, but a pass won't staff a ward.")
+    assert targeting.target_class(no) == "lean_no"
+    assert not targeting.yes_stated("We need concrete guardrails before ticking Yes: publish the end date.")
+
+
+def test_on_vote_words_are_not_off_topic_and_small_talk_still_is():
+    for text in ON_VOTE_TEXTS:
+        assert targeting.hard_skip(text) is None, text
+        assert targeting.target_class(text) != "off_topic", text
+    for text in SMALL_TALK:
+        assert targeting.hard_skip(text) == "off_topic", text
+
+
+def test_follow_up_labels_keep_the_old_vocabulary():
+    assert targeting.stance(ON_VOTE_TEXTS[0]) is None              # labels compare across days
+    assert targeting.stance(ON_VOTE_TEXTS[0], wide=True) is not None
+
+
 def test_is_citizen():
     from swan_bot import config
     assert not config.is_citizen(3) and not config.is_citizen(None)

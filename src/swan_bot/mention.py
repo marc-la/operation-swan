@@ -18,7 +18,7 @@ import time
 
 from . import config, experiment
 
-CLASSES = ("conditions", "unsure", "unclear")        # the citizens a No can still reach; not yes_reason, lean_no, firm_yes
+CLASSES = ("conditions", "conditions_flat", "unsure", "unclear")   # the citizens a No can still reach; not yes_reason, lean_no, firm_yes
 MAX_AGE_MIN = 120                                    # the mentioned citizen posted within this long
 LINES = (
     "Keep answering the person above. In one clause of your own words bring in {at} as a third neighbour who has raised the "

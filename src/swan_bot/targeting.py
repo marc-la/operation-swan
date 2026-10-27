@@ -79,13 +79,38 @@ ASKS = re.compile(r"\b(i|we)('d| would)? (want|need|expect)|\bneeds? (to|a|an|th
                   r"\b(has|have) to be\b|\bessential\b|\bi.?d push\b|\bi could (back|support|vote)\b", re.I)
 HOSTILE = re.compile(r"resort (profits|owners|bookings)|profits|castillo|kitb|tourism board|\bsheep\b|idiots?|"
                      r"conspiracy|tyrann", re.I)
+# 27 Oct audit: about half of the ~1,800 citizen posts a day skipped as off topic were on the vote in other words ("i havent
+# seen a full rules list published yet and thats exactly what is holding me back", "i'd give it a six month expiry and
+# require a public review"). Used by hard_skip and target_class only: stance() keeps REFERENDUM, so labels compare across days.
+ON_VOTE = re.compile(r"\bvot(es|ers?)\b|\bpolling\b|mark (that|the) box|\brules? list|list of (places|venues|spaces|shops)|"
+                     r"\breview(ed|s|ing)?\b|\bexpir(y|es|e|ing)\b|end date|oversight|independent (body|review|watchdog|panel)|"
+                     r"\bregulat(ion|ions|ory|ors?)\b|guardrails?|safeguards?|\bprivacy\b|health (data|records?|status)|"
+                     r"\bid card|checkpoints?|checking (papers|passes)|gatekeep|blank (cheque|check)|scope creep|"
+                     r"\bthe (pass|rule)\b|government polic|be persuaded", re.I)
+# A Yes said outright, not negated ("I'm still voting YES"; not "I won't be voting yes"): such a post is not a No-leaner,
+# whatever "a No vote" or "slippery slope" in it says (27 Oct: Yes voters were getting the turnout line).
+YES_STATED = re.compile(r"\b(i'?m|i am|i'?ll|i will|i'?d|i|we'?re|we will)\b[\w ']{0,14}?\b(vot(e|ing)|lean(ing|s)?|going|"
+                        r"tick(ing)?|back(ing)?|support(ing)?) (a )?yes\b|\bi'?m (still )?(a )?yes\b|\bmy yes\b", re.I)
+NEGATED = re.compile(r"\b(not|never|won'?t|wouldn'?t|can'?t|cannot|isn'?t|no way|before)\b", re.I)
+# A doubt named flatly is a complaint (echo: lean_no) unless it asks for something. 27 Oct audit: ~85% of 1,341 lean_no
+# targets had no No in them; they were Yes-buts listing their conditions ("A full list of venues, date-stamped limits, and
+# clear exemptions. That's the bare minimum."), and got the lowest priority and the turnout line.
+COMPLAINT = re.compile(r"\bno #?(end|sunset|list|thanks|review|limit|trust)|permanent|forever|new normal|never (end|go away|"
+                       r"let go)|won'?t ever|they know it|is a joke|foot in the door|slippery|\bnot voting (for|to)\b", re.I)
+DEMAND = re.compile(r"\b(want|need|needs|expect|publish|published|show|should|must|minimum|baseline|would help|would be|"
+                    r"in (the )?(regs|regulations|law|act)|written|put|lock|set|clear|out now|deserve|essential|"
+                    r"only way|works for me)\b", re.I)
+# The conditions themselves (WANTS also has topics: hospitals, kids, jobs, which a No-leaner names too)
+CONDITIONS_NAMED = re.compile(r"sunset|end date|end point|finish line|expir|review|oversight|appeals?|exemptions?|"
+                              r"safeguards?|guardrails?|venues?|spaces list|the list|which places|scope|privacy|id card|"
+                              r"health data|time[- ]limited|temporary|audits?", re.I)
 ON_TOPIC = re.compile(r"referendum|h2d2|dolphin flu|vaccin|\bjabs?\b|mandate|ballot|certificate|health pass|"
                       r"\bvot(e|ing|ers?)\b", re.I)    # journalist posts: the vote itself, not a passing word
 FRAME_PRIORITY = {"F14_no_yes_but": 3.0, "F1_blank_cheque": 2.5, "F8_powers": 2.0}
 # todo/21: the read sets the priority. Highest: the people we can move toward No. Unclear: unknown, often movable.
 # Lean No: engagement and lean->firm moves, no backfire. Firm Yes: the arm (backfire risk -80), lowest and capped.
-READ_PRIORITY = {"conditions": 3.0, "yes_reason": 3.0, "unsure": 3.0, "unclear": 2.0, "lean_no": 0.0,
-                 "firm_yes": -3.0, "off_topic": 0.0}
+READ_PRIORITY = {"conditions": 3.0, "conditions_flat": 3.0, "yes_reason": 3.0, "unsure": 3.0, "unclear": 2.0,
+                 "lean_no": 0.0, "firm_yes": -3.0, "off_topic": 0.0}
 # who the citizen says they are -> the personas who share it (playbook §7: an in-group messenger beats a better
 # argument). First match wins; the reply still argues the frame their doubt picked.
 IDENTITIES = [
@@ -155,19 +180,26 @@ def hard_skip(text, context=None):
     """Why we never answer this text, or None: "off_topic" (nothing on the vote, its thread included) or "hostile"
     (abuse or shouting)."""
     text = text or ""
-    if not REFERENDUM.search(f"{text} {context or ''}"):
+    if not REFERENDUM.search(f"{text} {context or ''}") and not ON_VOTE.search(text):
         return "off_topic"
     if loud(text) or HOSTILE.search(text):
         return "hostile"
     return None
 
 
-def stance(text):
+def yes_stated(text):
+    """A Yes said outright, in the first person, and not negated ("I'm still voting YES"; not "I won't be voting yes",
+    "before ticking Yes", or "to friends voting YES")."""
+    return any(not NEGATED.search(m.group(0)) for m in YES_STATED.finditer(text or ""))
+
+
+def stance(text, wide=False):
     """Where a post stands on the vote, by the keyword rules: "no" (firm or leaning), "yes" (firm, unhedged),
     "unsure" (hedged or undecided, incl. a Yes-but), "unclear" (on the referendum, no stance), None (off topic).
-    Used to label targets and the follow-up reads (todo/13). Keeps SOFT, not hedged(), so labels compare across days."""
+    Used to label targets and the follow-up reads (todo/13). Keeps SOFT, not hedged(), so labels compare across days.
+    wide: ON_VOTE words also put a text on the vote (target_class; the follow-up labels keep REFERENDUM alone)."""
     text = text or ""
-    if not REFERENDUM.search(text):
+    if not REFERENDUM.search(text) and not (wide and ON_VOTE.search(text)):
         return None
     if FIRM_NO.search(text) or LEAN_NO.search(text):
         return "no"
@@ -207,16 +239,21 @@ def target_class(text, context=None):
     """The experiment's target class (H3), and since todo/21 the candidate's priority (READ_PRIORITY): yes_reason
     (they voice the fear behind a Yes), conditions (the conditions they want), unsure / unclear, lean_no, firm_yes,
     off_topic. Two fixes (todo/21): a text on the vote only through its thread (context) is "unclear", not off topic;
-    a doubt named with no hedge or ask ("No sunset clause, no list, no thanks") is a No-leaning complaint."""
+    a doubt named with no hedge or ask ("No sunset clause, no list, no thanks") is a No-leaning complaint.
+    27 Oct: a No that also says Yes outright is not a No-leaner; ON_VOTE words put a text on the vote; and a doubt named
+    flatly that demands its conditions ("End date and oversight in regs, venue list out now") is conditions_flat."""
     text = text or ""
-    s = stance(text)
+    s = stance(text, wide=True)
+    if s == "no" and not FIRM_NO.search(text) and yes_stated(text):
+        s = "unsure" if SOFT.search(text) else "yes"
     if s is None and REFERENDUM.search(context or "") and not kindness_only(text):
         s = "unclear"
     if s in ("no", "yes", None):
         return {"no": "lean_no", "yes": "firm_yes", None: "off_topic"}[s]
     c = "yes_reason" if YES_REASON.search(text) else ("conditions" if WANTS.search(text) else s)
     if c in ("conditions", "unclear") and not hedged(text) and any(p.search(text) for p, _ in DOUBTS):
-        return "lean_no"
+        flat = CONDITIONS_NAMED.search(text) and (DEMAND.search(text) or not COMPLAINT.search(text))
+        return "conditions_flat" if flat else "lean_no"
     return c
 
 
@@ -1011,8 +1048,9 @@ class Targeter:
         # reply (AUC 0.52; its middle tercile did best) and many tie at 20.0, which sorted() keeps oldest first.
         newest = config.QUEUE_PICK_NEWEST and experiment.block("arm_queue")[1] in ("fresh", "shallow")
 
-        def newest_key(c):
-            return min(age_h(c["post"]) * 60, config.FRESH_MIN) if newest else 0.0
+        def newest_key(c):                            # todo/47: the weak classes count as DOWNRANK_MIN minutes older
+            late = config.DOWNRANK_MIN if c.get("target_class") in config.DOWNRANK_CLASSES else 0.0
+            return min(age_h(c["post"]) * 60 + late, config.FRESH_MIN) if newest else 0.0
 
         for pid, c in sorted(self.candidates.items(),
                              key=lambda kv: (tier(kv[1]), gap_rank(kv[1]), engage_rank(kv[1]), rank(kv[1]), newest_key(kv[1]),

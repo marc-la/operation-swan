@@ -24,6 +24,9 @@
 9. What counts as "unique engagements" for the tie-break (§7.7)?
 10. **Blue, daily diminishing rate:** is an award counted on the Sydney day the report was **filed** or the day it was **ruled**? A report filed at 8:30pm Perth rules after midnight Sydney. The scoring page says only "The count resets at midnight Sydney time", but it fixes the multiplier "when the moderator rules", so `swan_blue` assumes the ruling day. (Not yet asked.)
 11. **Blue, pending cap:** do **account** reports count toward the pending-report cap (30 since 22 Oct)? *Observed yes, 22 Oct (answers log); not confirmed by organisers.* (Not yet asked.)
+12. **Early voting (2026-10-27):** the setting page says in-world early voting opens 28 Oct. Does an early vote fix that citizen's referendum answer, or is every answer taken at the 2 Nov count (scoring §4: "what's been on their mind recently, how certain they are and how likely they are to vote")? (Not yet asked.)
+13. **Certainty and turnout (2026-10-27):** can a change in how certain a citizen is, or how likely they are to vote, score as a change of mind (towards, or neither side), or does it only feed the count? Scoring §2 lists the three vaccination views and other topics; neither is listed. (Not yet asked.)
+14. **Citizens added mid-game (2026-10-27):** have NPC citizens been added since launch, and how many are there now ("just over 6,000"; we recognise 2,332, ids 12-2343)? Ids 4400-4790 were created 19 Oct 17:00-20:53 UTC one every ~36 s with citizen-style names and posting rhythm ([targeting-audit](../06-strategy/targeting-audit-2026-10-27.md)). (Not yet asked.)
 
 ## Answers
 

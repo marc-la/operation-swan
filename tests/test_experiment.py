@@ -200,3 +200,31 @@ def test_report_builds(monkeypatch):
     portal = [dict(ts=iso(now - 3600 * h), towards=1, neither=2, away=0) for h in range(10)]
     text = experiment_report.report(writes, followups, outcomes, portal, now - DAY, now, 1800)
     assert "## H1 switchback" in text and "### lever" in text and "moved_no" in text and "O1" in text
+
+
+# ---- 27 Oct (Marc): every switchback freezes at midnight Sydney on 1 Nov (x4) ----
+LIVE_FREEZE = (config.ARMS_FREEZE, dict(config.FREEZE_PIN), list(config.SWITCHBACK))   # read at import: conftest clears them
+
+
+def test_arms_freeze_at_midnight_sydney_on_1_nov(monkeypatch):
+    import datetime as dt
+    import zoneinfo
+    from swan_bot import config as cfg
+    at = dt.datetime.fromtimestamp(LIVE_FREEZE[0], zoneinfo.ZoneInfo("Australia/Sydney"))
+    assert (at.month, at.day, at.hour, at.minute) == (11, 1, 0, 0)
+    monkeypatch.setattr(cfg, "ARMS_FREEZE", LIVE_FREEZE[0])
+    monkeypatch.setattr(cfg, "SWITCHBACK", [("arm_queue", ["base", "fresh", "shallow"], 3 * 3600),
+                                            ("arm_eng", ["base", "mention"], 2 * 3600), ("new_dim", ["a", "b"], 3600)])
+    monkeypatch.setattr(cfg, "FREEZE_PIN", {"arm_queue": "shallow", "arm_eng": "base"})
+    before = {experiment.block("arm_eng", cfg.ARMS_FREEZE - 3600 * h)[1] for h in range(1, 12)}
+    assert before == {"base", "mention"}                                    # still testing before the freeze
+    for h in range(0, 48):
+        t = cfg.ARMS_FREEZE + h * 3600
+        assert experiment.block("arm_queue", t) == ("arm_queue:frozen", "shallow")
+        assert experiment.block("arm_eng", t)[1] == "base"
+        assert experiment.block("new_dim", t)[1] == "a"                     # unlisted: its first arm, never a random draw
+
+
+def test_every_live_switchback_dimension_has_a_freeze_pin():
+    _, pins, switchback = LIVE_FREEZE
+    assert {name for name, _, _ in switchback} <= set(pins) and pins["arm_queue"] == "shallow"

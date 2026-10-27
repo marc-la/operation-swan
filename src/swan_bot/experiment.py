@@ -65,10 +65,15 @@ def _uniform(arms):
 
 def block(dim, t=None):
     """(block_id, arm) if `dim` is in a running switchback, else (None, None). The arm order shifts by one each
-    UTC day, so no arm always gets the same clock hours (12 two-hour blocks a day would otherwise fix them)."""
+    UTC day, so no arm always gets the same clock hours (12 two-hour blocks a day would otherwise fix them).
+    From config.ARMS_FREEZE (27 Oct, Marc: the x4 days run the winners, no tests) each switchback dimension runs its
+    FREEZE_PIN arm, or its first arm when it has none, as block "<dim>:frozen"."""
     for name, arms, period in getattr(config, "SWITCHBACK", ()):
         if name == dim:
             t = time.time() if t is None else t
+            freeze = getattr(config, "ARMS_FREEZE", None)
+            if freeze and t >= freeze:
+                return f"{dim}:frozen", getattr(config, "FREEZE_PIN", {}).get(dim, arms[0])
             n = int(t // period)
             return f"{dim}:{period}:{n}", arms[(n + int(t // 86400)) % len(arms)]
     return None, None

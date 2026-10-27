@@ -682,15 +682,29 @@ ENG_BLOCK_S = 2 * 3600
 #   shallow  fresh, and only QUEUE_SHALLOW_AHEAD drafts chosen and not sent, so each waits less. If sends run late (the
 #            writer found nothing ready) it falls back to fresh for QUEUE_GUARD_S: an empty slot costs ~5 points.
 # Read: scripts/engagement_recon.py queue. Stop: remove ("arm_queue", ...) from SWITCHBACK.
-QUEUE_ARMS = ["base", "fresh", "shallow"]
+# 27 Oct (Marc, blind audit): shallow in every block. 26 Oct reply rate base 7.4% / fresh 7.9% / shallow 9.4% (proxy points a
+# write 1.24 / 1.55 / 1.69), created->sent 140 / 74 / 52 s, and reply rate halves from <2 min to 5-10 min old. The guard
+# still drops a block to fresh when sends run late. Was ["base", "fresh", "shallow"].
+QUEUE_ARMS = ["shallow"]
 QUEUE_BLOCK_S = 3 * 3600
 QUEUE_SHALLOW_AHEAD = 2
+# todo/47 (closed 27 Oct, Marc): in the newest-first pick these classes count as DOWNRANK_MIN minutes older than they are,
+# so a fresh conditions / yes_reason post goes before a fresh unclear one, and a stale one does not. Reply rate against
+# conditions, adjusted for the post's age: unclear -2.3, unsure -5.2, off_topic -4.9 points (within one citizen, the
+# three together: -1.9); 2-3 minutes of the age curve (<2 min 10.5%, 2-5 min 7.1%). Off: DOWNRANK_MIN = 0.
+DOWNRANK_CLASSES = ("unclear", "unsure", "off_topic")
+DOWNRANK_MIN = 2.5
 QUEUE_PICK_NEWEST = True            # fresh and shallow blocks also pick the newest post under FRESH_MIN first (targeting.next_target)
 QUEUE_MAX_WAIT_S = 150              # a ready draft older than this goes first whatever its target's age (no starvation)
 QUEUE_LATE_S = 8                    # a send this many seconds after its slot opened counts as late
 QUEUE_GUARD_N = 3                   # this many late sends within QUEUE_GUARD_S: shallow falls back to fresh
 QUEUE_GUARD_S = 15 * 60
 SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEUE_BLOCK_S)]
+# 27 Oct (Marc): every test stops at midnight Sydney on 1 Nov, when x4 starts; from then each switchback dimension runs
+# FREEZE_PIN's arm (its first arm when not listed). Before the freeze, set each dimension's pin to its read-out winner
+# (scripts/engagement_report.py --hours 48, by arm). None: never freeze.
+ARMS_FREEZE = 1793451600            # 2026-10-31T13:00:00Z = 2026-11-01 00:00 Sydney (AEDT)
+FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "base"}
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
 # Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
 # picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes
