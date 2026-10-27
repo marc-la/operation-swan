@@ -2061,10 +2061,6 @@ def gather(root, now, service):
             r["side"] = team_sides.label(team_sides.side_of(state, TEAM_NAME if r.get("us") else r["team"]))
         shown = {r["rank"] for r in board["finalists"] + board["near"]}
         board["fourth"] = next((mark(r) for r in rows_all if r["rank"] == 4 and r["rank"] not in shown), None) if board["rank"] <= 3 else None
-        board["top10"] = [mark(r) for r in rows_all if 4 <= r["rank"] <= 10 and r["rank"] not in shown and r["team"] != TEAM_NAME]
-        board["clearance"] = team_sides.clearance(rows_all, state, board["score"], board["rank"])
-        board["sides_known"] = len(state.get("teams") or {})
-        board["sides_polls"] = ", ".join(f"{k}: {v['status']}" for k, v in (state.get("polls") or {}).items())
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
         return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),

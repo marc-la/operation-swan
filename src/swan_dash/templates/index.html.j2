@@ -351,12 +351,8 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
       <table class="board">{{ cols() }}{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
     {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
-    {% if board.fourth %}<tr><td class="rk">#{{ board.fourth.rank }}</td><td>{{ board.fourth.team }} <span class="side">{{ board.fourth.side }}</span> <span class="sub">· {{ board.clearance.over4 | n }} below us</span></td><td class="num">{{ board.fourth.score | n }}</td>{{ pace(board.fourth) }}</tr>{% endif %}
+    {% if board.fourth %}<tr><td class="rk">#{{ board.fourth.rank }}</td><td>{{ board.fourth.team }} <span class="side">{{ board.fourth.side }}</span></td><td class="num">{{ board.fourth.score | n }}</td>{{ pace(board.fourth) }}</tr>{% endif %}
   </table>
-  {% set c = board.clearance %}
-  <p class="sub" id="clearance" style="margin:6px 12px">{% if c.over4 is not none %}Clear of #4 ({{ c.fourth }}) by <b>{{ c.over4 | n }}</b>{% endif %}{% if c.rival %} · best team not known to be No: {{ c.rival }} {{ c.rival_side }}, we are <b class="{{ 'up' if c.margin >= c.target else 'down' if c.margin < 0 }}">{{ '{:+,d}'.format(c.margin) }}</b> against a clearance of +{{ c.target | n }} (Poll 3 + referendum + pool share){% endif %}{% if not board.sides_known %} · sides come from the polls' awards{% endif %}</p>
-  {% if board.top10 %}<details style="margin:0 12px"><summary class="sub">Top 10, sides{% if board.sides_polls %} ({{ board.sides_polls }}){% endif %}</summary>
-    <table class="board">{{ cols() }}{% for r in board.top10 %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% endif %}
 </div>
 {% endif %}
 

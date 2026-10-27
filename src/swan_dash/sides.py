@@ -30,7 +30,6 @@ CLOSE_MIN_EXCESS = 2000                        # a too-close poll pays 3,000 to 
 CLOSE_SHARE = 0.8                              # this share of eligible teams above CLOSE_MIN_EXCESS = everyone was paid
 MIN_AWARDED = 2                                # fewer teams than this jumping is not a poll
 BASE_HOURS = 6                                 # a team's own pace: the median of its last six hourly gains before the poll hour
-CLEARANCE_TARGET = 50_000                      # Marc, 27 Oct: 6k Poll 3 + 20k referendum + about 30k of the 100k pool, rounded
 SIDES_FILE = "team_sides.json"
 LABEL = {"yes": "(Yes)", "no": "(No)"}
 
@@ -185,21 +184,6 @@ def side_of(state, team):
     if team == OUR_TEAM:
         return OUR_SIDE
     return ((state or {}).get("teams") or {}).get(team, {}).get("side")
-
-
-def clearance(rows, state, us_score, us_rank, target=CLEARANCE_TARGET):
-    """The numbers the leaderboard header shows. rows: [{rank, team, score}] all teams, best first.
-    over4: our lead over 4th place (what keeps us in the top three; None when we are not in it).
-    rival: the best team that is Yes or not known to be No (unknown counts against us until a poll says otherwise); the
-    swing from the Poll 3 and referendum awards only comes from the other side. {over4, fourth, rival, rival_side (a label), margin, target}."""
-    fourth = next((r for r in rows if r["rank"] == 4), None)
-    rivals = [r for r in rows if r["team"] != OUR_TEAM and side_of(state, r["team"]) != OUR_SIDE]
-    rival = rivals[0] if rivals else None
-    return dict(over4=us_score - fourth["score"] if fourth and us_rank <= 3 else None,
-                fourth=fourth["team"] if fourth else None,
-                rival=rival["team"] if rival else None,
-                rival_side=label(side_of(state, rival["team"])) if rival else None,
-                margin=us_score - rival["score"] if rival else None, target=target)
 
 
 def _read(path):

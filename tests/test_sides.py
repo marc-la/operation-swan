@@ -76,17 +76,9 @@ def test_merge_keeps_the_first_side_and_records_a_conflict():
     assert state["conflicts"] == [dict(team="A", poll="Poll 3", side="no", kept="yes")]
 
 
-def test_labels_and_clearance():
+def test_labels():
     state = {"teams": {"Y": dict(side="yes"), "N": dict(side="no")}}
     assert [sides.label(sides.side_of(state, t)) for t in ("Y", "N", "Z", "Operation Swan")] == ["(Yes)", "(No)", "(?)", "(No)"]
-    rows = [dict(rank=1, team="N", score=200), dict(rank=2, team="Z", score=190), dict(rank=3, team="Operation Swan", score=180),
-            dict(rank=4, team="Y", score=150)]
-    c = sides.clearance(rows, state, 180, 3)
-    assert c["over4"] == 30 and c["fourth"] == "Y"
-    assert c["rival"] == "Z" and c["rival_side"] == "(?)" and c["margin"] == -10         # unknown counts against us; a known No does not
-    state["teams"]["Z"] = dict(side="no")
-    assert sides.clearance(rows, state, 180, 3)["rival"] == "Y"
-    assert sides.clearance(rows, state, 100, 6)["over4"] is None                          # outside the top three: no margin over 4th
 
 
 def test_update_saves_once_and_a_bad_file_does_not_raise(tmp_path):
@@ -99,7 +91,7 @@ def test_update_saves_once_and_a_bad_file_does_not_raise(tmp_path):
     assert sides.update(tmp_path / "nowhere", now) == {}
 
 
-def test_leaderboard_shows_yes_no_or_unknown_after_each_name_and_the_clearance(tmp_path):
+def test_leaderboard_shows_yes_no_or_unknown_after_each_name_and_the_fourth_place(tmp_path):
     full = dict(ts.leaderboard_portal(), rank=2, score=79_500, above=dict(rank=1, team="Alpha", score=82_000),
                 below=dict(rank=3, team="Gamma", score=72_000))
     full["top"] = [dict(rank=1, team="Alpha", score=82_000), dict(rank=2, team="Operation Swan", score=79_500),
@@ -114,8 +106,7 @@ def test_leaderboard_shows_yes_no_or_unknown_after_each_name_and_the_clearance(t
     ctx, html = ts.gather(root, ts.NOW)
     b = ctx["board"]
     assert [(r["team"], r["side"]) for r in b["finalists"]] == [("Alpha", "(?)"), ("Operation Swan", "(No)"), ("Gamma", "(Yes)")]
-    assert b["fourth"]["team"] == "Delta" and b["fourth"]["side"] == "(No)" and [r["team"] for r in b["top10"]] == ["Delta", "Epsilon"]
-    assert b["clearance"]["over4"] == 19_500 and b["clearance"]["rival"] == "Alpha" and b["clearance"]["margin"] == -2_500
+    assert b["fourth"]["team"] == "Delta" and b["fourth"]["side"] == "(No)" 
     text = ts.plain(html)
     assert "Alpha (?)" in text and "Gamma (Yes)" in text and "Delta (No)" in text
-    assert "Clear of #4 (Delta) by 19,500" in text and "best team not known to be No: Alpha (?)" in text and "-2,500" in text.replace("−", "-")
+    assert "Clear of" not in text and "Top 10" not in text and "below us" not in text
