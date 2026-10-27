@@ -24,6 +24,7 @@ import jinja2
 from swan_blue.evidence import awards_by_rate, first_later
 from swan_bot import config as bot_config
 from swan_bot.analysis import parse_activity
+from swan_dash import sides as team_sides
 from swan_dash.portal import FINALISTS, TEAM_NAME  # constants only (FACTDESK_AUTO): it reads no .env on import
 try:
     from swan_bot import budget      # todo/39: the ban forecast (pure). Not merged yet: the forecast rows are left out
@@ -226,6 +227,14 @@ def perth(t):
 
 def hm(t):
     return perth(t).strftime("%H:%M")
+
+
+def hm_day(t, now):
+    """Clock time, with the Perth day added once it is not today: '14:05', 'yesterday 14:05', 'Sun 25 Oct 14:05'."""
+    days = (perth(now).date() - perth(t).date()).days
+    if days == 0:
+        return hm(t)
+    return f"{'yesterday' if days == 1 else perth(t).strftime('%a %-d %b')} {hm(t)}"
 
 
 def ordinal(n):
@@ -2042,6 +2051,20 @@ def gather(root, now, service):
                 name = TEAM_NAME if r.get("us") else r["team"]
                 r["pace"] = pace_of.get(name)
                 r["pace_vs_us"] = (None if r["pace"] is None or ours is None or r.get("us") else r["pace"] - ours)
+    if board:                                  # Yes / No / ? after each name (data/team_sides.json, from the polls' awards: swan_dash/sides.py)
+        state = read_json(data / team_sides.SIDES_FILE) or {}
+        pace_of = (board.get("pace") or {}).get("per_hour") or {}
+        rows_all = portal.get("rows") or []
+        mark = lambda r: dict(r, side=team_sides.label(team_sides.side_of(state, r["team"])), pace=pace_of.get(r["team"]),
+                              pace_vs_us=None if pace_of.get(r["team"]) is None or pace_of.get(TEAM_NAME) is None else pace_of[r["team"]] - pace_of[TEAM_NAME])
+        for r in board["finalists"] + board["near"] + board["between"]:
+            r["side"] = team_sides.label(team_sides.side_of(state, TEAM_NAME if r.get("us") else r["team"]))
+        shown = {r["rank"] for r in board["finalists"] + board["near"]}
+        board["fourth"] = next((mark(r) for r in rows_all if r["rank"] == 4 and r["rank"] not in shown), None) if board["rank"] <= 3 else None
+        board["top10"] = [mark(r) for r in rows_all if 4 <= r["rank"] <= 10 and r["rank"] not in shown and r["team"] != TEAM_NAME]
+        board["clearance"] = team_sides.clearance(rows_all, state, board["score"], board["rank"])
+        board["sides_known"] = len(state.get("teams") or {})
+        board["sides_polls"] = ", ".join(f"{k}: {v['status']}" for k, v in (state.get("polls") or {}).items())
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
         return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
@@ -2114,9 +2137,9 @@ def gather(root, now, service):
 
     every = tail_jsonl(logs / "deploys.jsonl", 200_000)
     deploys = [d for d in every if d.get("result") == "ok"]
-    running = dict(sha=deploys[-1]["new"][:7], prev=deploys[-1]["old"][:7], when=hm(ts(deploys[-1]["ts"])),
+    running = dict(sha=deploys[-1]["new"][:7], prev=deploys[-1]["old"][:7], when=hm_day(ts(deploys[-1]["ts"]), now),
                    light="green" if every[-1] is deploys[-1] else "red",
-                   failed=hm(ts(every[-1]["ts"])) if every[-1] is not deploys[-1] else None) if deploys else None
+                   failed=hm_day(ts(every[-1]["ts"]), now) if every[-1] is not deploys[-1] else None) if deploys else None
 
     rc = reach(actions, status, points, now, day_start, read_json(data / "reach_notes.json") or {})
     today_acct = next((d for d in acct_days if d["today"]), None)

@@ -229,6 +229,11 @@ def run(root, now, get=fetch, pause=2):
         append_leaderboard(data / LEADERBOARD_LOG, leaderboard_line(result, now.astimezone(dt.timezone.utc)), banned)
     if result.get("rows"):                               # every team's score an hour: their pace on the dashboard
         append_leaderboard(data / TEAM_SCORES_LOG, team_scores_line(result, now.astimezone(dt.timezone.utc)), banned)
+    try:                                                 # which side each rival is on, from the polls' awards (sides.py): labels only
+        from swan_dash import sides
+        sides.update(data, now)
+    except Exception as e:                               # a labelling fault must never cost a score read
+        print(f"portal: sides not updated: {e}", file=sys.stderr)
     return result
 
 

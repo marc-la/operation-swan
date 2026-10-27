@@ -42,6 +42,7 @@ header b { color: var(--ink); letter-spacing: .08em; }
 table.board tr.cut > td { border-bottom: 1px solid var(--ink); }
 table.board td.rk { text-align: left; padding-right: 0; }
 table.board tr.us td { color: var(--green); }
+table.board .side { color: var(--muted); font-size: 13px; }
 table.board td.pace { font-size: 13px; white-space: nowrap; }
 table.board tr.gap > td { padding: 0; }
 table.board details { border: 0; margin: 0; background: none; }
@@ -344,13 +345,18 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     <span class="sub">{% if board.cutoff is not none %}{{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %}<span class="up">in the top three</span>{% endif %} · top 3 go to Sydney{% if board.trend %} · {% if board.trend.windows %}{% for w in board.trend.windows %}{{ ' · ' if not loop.first }}<span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}" title="us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }} in {{ w.hours }} h">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %} in {{ w.hours }} h</span>{% endfor %}{% else %}gap history building ({{ board.trend.points }} point{{ 's' if board.trend.points != 1 }}){% endif %}{% endif %}</span></div>
   <table class="board">{{ cols() }}
     {% if board.pace %}<tr class="sub"><td colspan="3"></td><td class="num" title="points an hour over the last {{ board.pace.span | round | int }} h; red = gaining on us, green = we are gaining on them">pts/h, {{ board.pace.span | round | int }} h</td></tr>{% endif %}
-    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
+    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
     {% if board.gap %}<tr class="gap"><td colspan="{{ 4 if board.pace else 3 }}">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
-      <table class="board">{{ cols() }}{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
-    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }}</td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
+      <table class="board">{{ cols() }}{% for r in board.between %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
+    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
     {% endfor %}
+    {% if board.fourth %}<tr><td class="rk">#{{ board.fourth.rank }}</td><td>{{ board.fourth.team }} <span class="side">{{ board.fourth.side }}</span> <span class="sub">· {{ board.clearance.over4 | n }} below us</span></td><td class="num">{{ board.fourth.score | n }}</td>{{ pace(board.fourth) }}</tr>{% endif %}
   </table>
+  {% set c = board.clearance %}
+  <p class="sub" id="clearance" style="margin:6px 12px">{% if c.over4 is not none %}Clear of #4 ({{ c.fourth }}) by <b>{{ c.over4 | n }}</b>{% endif %}{% if c.rival %} · best team not known to be No: {{ c.rival }} {{ c.rival_side }}, we are <b class="{{ 'up' if c.margin >= c.target else 'down' if c.margin < 0 }}">{{ '{:+,d}'.format(c.margin) }}</b> against a clearance of +{{ c.target | n }} (Poll 3 + referendum + pool share){% endif %}{% if not board.sides_known %} · sides come from the polls' awards{% endif %}</p>
+  {% if board.top10 %}<details style="margin:0 12px"><summary class="sub">Top 10, sides{% if board.sides_polls %} ({{ board.sides_polls }}){% endif %}</summary>
+    <table class="board">{{ cols() }}{% for r in board.top10 %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endfor %}</table></details>{% endif %}
 </div>
 {% endif %}
 
