@@ -55,3 +55,7 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "POOL_LIVE", False)
     for name in ("POOL_WRITERS", "POOL_PIPELINE"):             # hot_mode_apply sets the hot refill's target: never leaks to the next test
         monkeypatch.setattr(config, name, getattr(config, name))
+    # todo/49: the box's data/value_table.json must not change the value pick the tests see; tests of the file write their own
+    from swan_bot import value
+    monkeypatch.setattr(config, "VALUE_TABLE_FILE", tmp_path / "value_table.json")
+    value.reset()

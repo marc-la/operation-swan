@@ -2138,6 +2138,7 @@ def main():
              "mention": (job.get("mention") or {}).get("username") if mention.used(text, job.get("mention")) else None,
              "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
              **{k: job.get(k) for k in ("queue_arm", "ready_n", "ready_s")},    # 26 Oct: the send-queue arm, its depth, the draft's wait
+             **{k: job.get(k) for k in ("ev", "arm_pick")},                     # todo/49: expected points at the pick, the pick arm
              "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen
              # todo/48: a citizen above id 2343 by the cached score (the extra arm's candidates, and reply-backs to them)
              "npc_score": job.get("npc_score", config.npc_target(target.get("author_id")) if target else None),

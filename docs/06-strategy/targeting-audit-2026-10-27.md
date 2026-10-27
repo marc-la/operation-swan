@@ -34,3 +34,23 @@ Smaller: answering citizens who once liked us gets 10.0% vs 7.3%; after 6+ unans
 - Arms freeze at midnight Sydney 1 Nov (`ARMS_FREEZE`, `FREEZE_PIN`): the x4 days run the winners. Set each pin to its read-out winner before then.
 
 Expected: shallow about +15% engagement a write (+3k to +7k points a day at x2); the class changes a few tenths of reply rate, mostly the right argument to the swing citizens. Next: todo/48 (citizens above id 2343, and Blue's final check).
+
+## todo/49: the value pick (27 Oct, built, shipped off)
+`swan_bot/value.py` gives each candidate its expected points when the reply lands (class group x age at landing, 6 h
+outcomes, each clock hour its own level, cells under 40 to the group mean, curves made non-increasing). In a `value` block
+(`VALUE_PICK`, switchback `arm_pick` base/value, 3 h; `FREEZE_PIN` base) a candidate a whole `VALUE_STEP` (0.25) ahead goes
+first; within a step, today's order. `ev` and `arm_pick` are logged on every first reply, and lost items now log their class.
+Table (`scripts/value_table.py build`, 72 h to 27 Oct 03:37 UTC, 10,165 first replies), points at landing:
+
+| group | 0.6 min | 1.5 | 2.5 | 4 | 7-11 | 35 | 2 h+ |
+|---|---|---|---|---|---|---|---|
+| strong (conditions, yes_reason) | 2.84 | 2.22 | 1.94 | 1.28 | 1.12 | 0.90 | 0.65 |
+| weak (unclear, unsure, off_topic) | 2.83 | 0.69 | 0.69 | 0.69 | 0.62 | 0.62 | 0.62 |
+| lean_no | 2.60 | 2.57 | 1.01 | 1.01 | 0.72 | 0.72 | 0.72 |
+
+Replay (`scripts/value_table.py replay`, 6,793 ordinary slots 25 Oct 04:50-27 Oct 04:50 UTC, the box's funnel and queue for
+the 3,009 never-answered candidates): base 1.774 expected points a write, value 1.799 (+1.4%), but decided with a table fit
+before the window (22-25 Oct) value is 1.764 (-0.6%). It moves ~13% of slots (weak 2-20 min to strong 5-60 min and to weak
+posts in their first minute, which only reads high since 25 Oct). Within noise of today's order: newest-first already takes
+the age lever. Real picks in shallow blocks scored 1.93 against 2.02 for the same order replayed without voice ownership and
+requeues (~4%), the bigger gap.
