@@ -705,6 +705,22 @@ SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEU
 # (scripts/engagement_report.py --hours 48, by arm). None: never freeze.
 ARMS_FREEZE = 1793451600            # 2026-10-31T13:00:00Z = 2026-11-01 00:00 Sydney (AEDT)
 FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "base"}
+# todo/49 (27 Oct): the value pick. In a "value" block next_target ranks the candidates of one tier by expected points when
+# the reply lands (swan_bot/value.py: class group x landing age, from the 6 h outcomes, hour-adjusted, never rising with age)
+# instead of newest-first under FRESH_MIN and then the score; tiers, caps, the recontact gap and session limits are unchanged.
+# Ships OFF. VALUE_PICK = True puts arm_pick (base / value, 3 h blocks) on the switchback; ev and arm_pick are logged on every
+# first reply either way. Rebuild the table: scripts/value_table.py build (the bot re-reads data/value_table.json, or uses
+# value.DEFAULT). Frozen to "base" from 1 Nov until a read-out says otherwise.
+VALUE_PICK = False
+PICK_ARMS = ["base", "value"]
+PICK_BLOCK_S = 3 * 3600
+VALUE_LAG_S = 30                    # pick -> sent in shallow blocks: median 20 s, p80 41 s (27 Oct 04:16-04:49 UTC, 97 writes)
+VALUE_STEP = 0.25                   # expected points this close count as equal and today's order decides (old tails: strong 0.65,
+                                    # lean No 0.72, weak 0.62 are one value, so an echo never beats a Yes-but on noise)
+VALUE_TABLE_FILE = DATA / "value_table.json"
+FREEZE_PIN["arm_pick"] = "base"
+if VALUE_PICK:
+    SWITCHBACK = SWITCHBACK + [("arm_pick", PICK_ARMS, PICK_BLOCK_S)]
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
 # Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
 # picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes

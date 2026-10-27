@@ -27,7 +27,7 @@ import zoneinfo
 
 import capturethenarrative as ctn
 
-from . import config, content, experiment, feeds
+from . import config, content, experiment, feeds, value
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption|"
@@ -473,7 +473,8 @@ class Targeter:
         it["o"], it["why"] = outcome, why
         self.log({"act": {"skipped": "skip", "lost": "lost", "pending": "wait"}[outcome], "why": why,
                   "post_id": post["post_id"], "author_id": post.get("author_id"), "source": it["src"],
-                  "reply": it["reply"], "age_min": round((time.time() - it["c"]) / 60, 1), "group": it.get("g")})
+                  "reply": it["reply"], "age_min": round((time.time() - it["c"]) / 60, 1), "group": it.get("g"),
+                  "cls": it.get("cls")})
 
     def skip(self, post, why, source=None):
         """We chose not to answer this citizen item (final)."""
@@ -644,7 +645,7 @@ class Targeter:
                                                 **({"group": group, "net": net or group} if group else {"net": net} if net else {}),
                                                 **({"prefer": prefer} if prefer else {}))
         it = self._item(post, source)
-        it["why"] = "queued"
+        it["why"], it["cls"] = "queued", cls      # todo/49: the class rides on the funnel record, so a lost item logs it
         if group:
             it["g"] = net or group
 
@@ -1052,9 +1053,15 @@ class Targeter:
             late = config.DOWNRANK_MIN if c.get("target_class") in config.DOWNRANK_CLASSES else 0.0
             return min(age_h(c["post"]) * 60 + late, config.FRESH_MIN) if newest else 0.0
 
+        # todo/49: in a value block (VALUE_PICK, arm_pick) a candidate a whole VALUE_STEP of expected points at landing ahead
+        # goes first (value.py); within a step, and in base blocks, today's order
+        pick = value.pick_arm(t)
+
+        def pick_key(c):
+            return ((-value.step(value.expected_points(c, t)),) if pick == "value" else ()) + (newest_key(c), -priority(c))
+
         for pid, c in sorted(self.candidates.items(),
-                             key=lambda kv: (tier(kv[1]), gap_rank(kv[1]), engage_rank(kv[1]), rank(kv[1]), newest_key(kv[1]),
-                                             -priority(kv[1]))):
+                             key=lambda kv: (tier(kv[1]), gap_rank(kv[1]), engage_rank(kv[1]), rank(kv[1]), *pick_key(kv[1]))):
             if c.get("not_before", 0) > t:
                 continue                              # requeued: backing off
             post, author, source = c["post"], c["post"]["author_id"], c.get("source")
@@ -1097,6 +1104,7 @@ class Targeter:
                 self.group_out.setdefault(net, []).append(t)
                 self._item(post, source)["g"] = net
             c["priority"], c["engaged"] = round(priority(c), 2), str(author) in engaged
+            c["ev"], c["arm_pick"] = value.expected_points(c, t), pick      # todo/49: logged on the write, both arms
             seen_at = self.touched.get(str(author))              # todo/46: hours since we last wrote to them, logged on the write
             c["touch_gap_h"] = round((t - seen_at) / 3600, 2) if seen_at else None
             self.candidates.pop(pid)

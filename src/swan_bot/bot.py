@@ -2135,6 +2135,7 @@ def main():
              "mention": (job.get("mention") or {}).get("username") if mention.used(text, job.get("mention")) else None,
              "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
              **{k: job.get(k) for k in ("queue_arm", "ready_n", "ready_s")},    # 26 Oct: the send-queue arm, its depth, the draft's wait
+             **{k: job.get(k) for k in ("ev", "arm_pick")},                     # todo/49: expected points at the pick, the pick arm
              "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen
              "depth": job.get("depth"), "depth_arm": job.get("depth_arm"),    # reply-backs: posts above the citizen's reply
              **stage_times(job, target),
