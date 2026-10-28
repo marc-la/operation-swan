@@ -816,8 +816,9 @@ if VALUE_PICK:
 # checks; (4) the citizen's register mirrored (case, final stop, length), no keyboard slips, closing questions about
 # REPLY_QUESTION_SHARE, no echo opener; and with LEAN_PROMPT (5) the lean reply prompt (content.lean_reply_prompt).
 # Shipped OFF; on since 28 Oct (below). STYLE_FIXES = True puts arm_style (base / fixes, 2.5 h blocks so it lines up with neither the 2 h nor the 3 h
-# blocks) on the switchback; the memory is recorded on every write either way. Frozen to "base" from 1 Nov (ARMS_FREEZE)
-# unless FREEZE_PIN["arm_style"] says "fixes". Read: hides, away events and citizen replies by arm_style (logged on writes).
+# blocks) on the switchback; the memory is recorded on every write either way. Frozen to FREEZE_PIN["arm_style"] from
+# 1 Nov (ARMS_FREEZE): "fixes" since 28 Oct (Marc, after the A/B; back to "base" if the 24 h read is bad). Read: hides,
+# away events and citizen replies by arm_style (logged on writes).
 # 28 Oct (Marc: on if the offline A/B passes): it passed. scripts/style_ab.py, 100 live targets, Sonnet raters blind, 2
 # passes, paired against base: P(bot) -4.8 [-7.9, -1.6], engage +4.0 [+1.9, +6.1], shift +0.03, misread -0.03 (fixes);
 # results in docs/06-strategy/prompt-critique-2026-10-28.md §9. Off: STYLE_FIXES = False.
@@ -837,7 +838,7 @@ CITIZEN_HISTORY_N = 2               # our latest texts to a citizen that the rep
 CITIZEN_HISTORY_MAX = 3000          # citizens kept in state["citizen_sent"] (the least recent go; ~1 MB in the saved state)
 REPLY_QUESTION_SHARE = 0.10         # fixes blocks: replies that end on a question (base: about 40%)
 FIXES_REPLY_FLOOR = 40              # fixes blocks: a reply may be this short (quality.LENGTHS floor is 80; citizens' median 157)
-FREEZE_PIN["arm_style"] = "base"
+FREEZE_PIN["arm_style"] = "fixes"
 if STYLE_FIXES:
     SWITCHBACK = SWITCHBACK + [("arm_style", STYLE_ARMS, STYLE_BLOCK_S)]
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us

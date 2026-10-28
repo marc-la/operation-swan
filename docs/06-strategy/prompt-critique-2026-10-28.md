@@ -279,7 +279,7 @@ Repetition across replies, which the rater cannot see (it judges one reply at a 
 How to read the switch-on:
 - **What is running:** half the time (2.5 h `arm_style` blocks, alternating) citizen-facing writes get fixes 1-4.
 - **The read at 24 h:** `arm_style` on writes, judged on hides, away events, citizen replies and engagement per write.
-- **The freeze:** from 1 Nov the arm freezes to `FREEZE_PIN["arm_style"]`, now `base`. Set it to `fixes` if the 24 h read is clean.
+- **The freeze:** from 1 Nov the arm freezes to `FREEZE_PIN["arm_style"]`, set to `fixes` on 28 Oct (Marc). Put it back to `base` if the 24 h read is bad.
 
 Caveats:
 - The rater is a stand-in. The npc-lab found it overstates persuasion, and no lab gain had yet shown up live.

@@ -32,19 +32,20 @@ def test_the_arm_is_base_while_style_fixes_is_off(monkeypatch):
     assert memory.arm() == "base"
 
 
-def test_the_arm_follows_the_switchback_and_freezes_to_base(monkeypatch):
+def test_the_arm_follows_the_switchback_and_freezes_to_the_pin(monkeypatch):
     monkeypatch.setattr(config, "STYLE_FIXES", True)
     monkeypatch.setattr(config, "SWITCHBACK", [("arm_style", ["base", "fixes"], 9000)])
     monkeypatch.setattr(config, "ARMS_FREEZE", None)
     arms = {memory.arm(t=9000 * n + 1) for n in range(6)}
     assert arms == {"base", "fixes"}
     monkeypatch.setattr(config, "ARMS_FREEZE", 1.0)
-    assert memory.arm(t=5.0) == config.FREEZE_PIN["arm_style"] == "base"
+    assert memory.arm(t=5.0) == config.FREEZE_PIN["arm_style"] == "fixes"
 
 
-def test_the_arm_freezes_to_base_and_its_blocks_line_up_with_no_other_arm():
-    """28 Oct: STYLE_FIXES is on (the offline A/B passed), LEAN_PROMPT stays off (it repeats our worn phrases)."""
-    assert config.FREEZE_PIN["arm_style"] == "base"
+def test_the_arm_freezes_to_fixes_and_its_blocks_line_up_with_no_other_arm():
+    """28 Oct: STYLE_FIXES is on (the offline A/B passed) and pinned to fixes for the freeze; LEAN_PROMPT stays off (it
+    repeats our worn phrases)."""
+    assert config.FREEZE_PIN["arm_style"] == "fixes"
     assert config.STYLE_BLOCK_S % 3600 and config.STYLE_BLOCK_S % (2 * 3600)
 
 
