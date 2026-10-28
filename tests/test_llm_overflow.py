@@ -170,3 +170,13 @@ def test_bot_complete_in_order_delegates_and_plain_fakes_keep_the_old_loop(gen):
         def complete(self, system, user, models=None, **kw):
             return (None, None) if models[0] == KIMI else (f"from {models[0]}", models[0])
     assert bot.complete_in_order(Plain(), "s", "u", ORDER) == (f"from {HAIKU}", HAIKU)
+
+
+def test_a_premium_reply_model_is_called_only_when_named(gen):
+    """28 Oct: Sonnet sits in the chain file so bot.draft_models can name it; an unrestricted call never reaches it."""
+    sonnet = config.SONNET
+    gen.chain = gen.chain + [("bedrock-converse", sonnet)]
+    for m in (LITE, KIMI, GLM, HAIKU, FREE):
+        gen.parked[m] = time.time() + 3600
+    assert gen.complete("s", "u")[0] is None and not gen.sent, "everything else parked: nothing falls back to Sonnet"
+    assert gen.complete("s", "u", models=(sonnet,))[1] == sonnet and [m for m, _ in gen.sent] == [sonnet]

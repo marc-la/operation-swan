@@ -22,8 +22,11 @@ bedrock:moonshotai.kimi-k2.5
 # (todo/24), replies never used it, and nothing else called it after 21 Oct. config.REPLY_NEVER still bars it for replies.
 # 2026-10-23: the plan upgrade lifted the Claude limit (one-token calls to Haiku 4.5, Sonnet 4.5/4.6 and Opus 4.6 passed).
 # Haiku 4.5 is the second reply model (config.REPLY_MODELS); priced in config.LLM_PRICES, so it counts against the budget.
-# Sonnet 4.6 is deliberately NOT in the chain (Marc, 2026-10-23: not even as a last resort).
+# 2026-10-28 (Marc): Sonnet 4.6 is in the chain ONLY so config.PREMIUM_REPLY_MODELS can lead the high-value replies in
+# "fixes" blocks (bot.draft_models); everywhere else it is filtered out, so it is never a fallback (Marc, 23 Oct: not even
+# as a last resort). To take it out again: PREMIUM_REPLY_MODELS = () in config.py.
 bedrock-converse:global.anthropic.claude-haiku-4-5-20251001-v1:0
+bedrock-converse:global.anthropic.claude-sonnet-4-6
 gemini:gemini-3.8-flash
 gemini:gemini-3.6-flash
 groq:openai/gpt-oss-120b

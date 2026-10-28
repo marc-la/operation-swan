@@ -484,6 +484,15 @@ REPLY_MODELS = ("moonshotai.kimi-k2.5", "global.anthropic.claude-haiku-4-5-20251
 # hide rates of the two leads separate (~1,000 each; compare hidden/writes by lead). 0 turns it off.
 LEAD_HAIKU_SHARE = 0.5
 PREMIUM_MODELS = ()
+# 2026-10-28 (Marc): Sonnet 4.6 leads the high-value replies (bot.high_value: movable classes, citizens who answered us,
+# reply-backs) in "fixes" blocks of arm_style only. Offline A/B (scripts/style_ab.py, 100 live targets x 3 prompts, Sonnet
+# raters blind, paired against Kimi/Haiku on the same prompt): on the fixes prompt engage +3.8 [+2.1, +5.5], misread
+# -5 pts [-9, -2], repeats what we told the citizen in 9% of replies against 17%, first-try gate pass 85% against 62%;
+# P(bot) not lower (+0.6 [-1.9, +3.1]); on the base prompt P(bot) +5.0 [+2.1, +7.9], hence fixes blocks only. Costs: it
+# converges on the same wording (16% of its drafts would hit the phrase budgets against 2%), ~$0.01 a reply. Not for
+# journalists, posts or the lean prompt (59% first-try pass), and it never fills in for other models (draft_models).
+# Needs SONNET in deploy/llm_chain.txt. () turns it off. Read by `backend` on writes, with arm_style: hides, away events.
+PREMIUM_REPLY_MODELS = (SONNET,)
 PREMIUM_CLASSES = {"unsure", "unclear", "conditions", "yes_reason"}
 REPLY_NEVER = {"zai.glm-5"}
 # 2026-10-23 load spreading (llm.Generator.complete_in_order). Pacing is OUR cap per model (llm.DEFAULT_RPM = 10 a
@@ -498,7 +507,7 @@ REPLY_NEVER = {"zai.glm-5"}
 LLM_OVERFLOW_AT_S = 2.5
 LLM_OVERFLOW_MODELS = REPLY_MODELS
 LLM_MAX_WAIT_S = 20.0
-LLM_MODEL_RPM = {}
+LLM_MODEL_RPM = {SONNET: 6}              # Sonnet 4.6's Bedrock quota is 10 a minute for the whole account (28 Oct)
 # Pacing. 22 Oct overnight: 2.2-2.3 writes/min (per_min 2.5 clamped, jitter 0.7-1.5) and the queue grew at Sydney peak.
 # The writer now aims at the team limit (deploy/run.sh --per-min 2.9): the next write waits for the larger of the pace
 # gap and the headers' gap (bot.write_gap): X-RateLimit-Remaining must be back to WRITE_MARGIN + 1, so each of our

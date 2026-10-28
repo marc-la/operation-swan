@@ -14,3 +14,9 @@ Written 2026-10-28 (Marc + Claude). Why and what: [prompt-critique-2026-10-28](.
 
 ## Not in scope (see §8 of the critique)
 Salience (fix 6), invented history, dashes, one hot voice's volume, roles that drift between replies.
+
+## Sonnet lane (28 Oct, Marc)
+- `config.PREMIUM_REPLY_MODELS = (SONNET,)`: Sonnet 4.6 leads high-value replies (`bot.high_value`: movable classes, citizens who answered us, reply-backs) **in fixes blocks only**; Kimi/Haiku follow as the fallback. It sits in `deploy/llm_chain.txt` only to be named: `llm.Generator.complete` skips it on unrestricted calls, `draft_models` drops it from every other order. `LLM_MODEL_RPM[SONNET] = 6` (account quota 10/min).
+- Why: offline A/B on 100 targets (same prompt, Sonnet vs Kimi/Haiku, Sonnet raters blind): fixes prompt engage +3.8 [+2.1, +5.5], misread -5 pts, first-try gate pass 85% vs 62%, repeats what we told the citizen 9% vs 17%; P(bot) not lower; on the base prompt P(bot) +5.0, hence fixes only. Lean prompt on Sonnet: 59% first-try pass. Caveat: the rater is also Sonnet; shift did not move for any set.
+- Cost to watch: it converges on the same wording (16% of drafts would hit the phrase budgets vs 2%); about $0.01 a reply, est. $5-10 a day.
+- Read-out at 24 h: `backend` = Sonnet vs not, within fixes blocks: hides, away events, citizen replies, engagement per write, `voice_repeat`/phrase-budget rejects. Kill: `PREMIUM_REPLY_MODELS = ()`.

@@ -1028,6 +1028,8 @@ def draft_models(job, gen):
     todo/24): REPLY_MODELS in that order, then the rest of the chain, never REPLY_NEVER (ordered). Thread one-liners:
     the free models, then the paid REPLY_MODELS as the last resort (ordered). Anything else: None, the whole chain."""
     chain = [m for _, m in getattr(gen, "chain", ())]
+    full_chain = chain                                          # the premium reply models are in the chain file only to
+    chain = [m for m in chain if m not in config.PREMIUM_REPLY_MODELS]   # be named below; never a fallback (llm.Generator)
     if job.get("amp"):                                          # our best content: Sonnet leads (AMP_MODELS order)
         return config.AMP_MODELS, True
     if job["mode"] == "journalist":
@@ -1035,6 +1037,8 @@ def draft_models(job, gen):
         return [m for m in dict.fromkeys(order) if m not in config.REPLY_NEVER and (m in chain)], True
     if job["mode"] in config.STRONG_MODES:                      # where minds change
         lead = list(config.PREMIUM_MODELS) if high_value(job) else []
+        if job.get("fixes") and high_value(job):               # 28 Oct: Sonnet on the fixes prompt (config.PREMIUM_REPLY_MODELS)
+            lead += [m for m in config.PREMIUM_REPLY_MODELS if m in full_chain]
         replies = list(config.REPLY_MODELS)
         if config.LEAD_HAIKU_SHARE and "lead" not in job:      # 24 Oct: a random lead, so hide rates compare cleanly
             job["lead"] = config.HAIKU if random.random() < config.LEAD_HAIKU_SHARE else replies[0]

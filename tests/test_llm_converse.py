@@ -111,8 +111,8 @@ def test_not_available_disables_it_for_the_day(tmp_path, monkeypatch):
     msg = "Invocation of model ID global.anthropic.claude-sonnet-4-6 is not available for this account."
     gen = make_gen(tmp_path, monkeypatch, lambda req: httpx.Response(400, json={"message": msg}),
                    chain=(("bedrock-converse", "global.anthropic.claude-sonnet-4-6"),))
-    assert gen.complete("s", "u") == (None, None)
     m = "global.anthropic.claude-sonnet-4-6"
+    assert gen.complete("s", "u", models=(m,)) == (None, None)       # named: Sonnet is only ever called by name (28 Oct)
     assert gen.park_why[m] == "not available" and gen.parked[m] - time.time() > llm._to_utc_midnight() - 5
 
 

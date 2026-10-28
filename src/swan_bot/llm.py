@@ -239,6 +239,8 @@ class Generator:
         for prov, model in self.chain:
             if models and model not in models:
                 continue
+            if not models and model in config.PREMIUM_REPLY_MODELS:
+                continue                                     # in the chain file to be named (bot.draft_models), not a fallback
             if time.time() < self.parked.get(model, 0):
                 continue
             if model in config.LLM_PRICES:
