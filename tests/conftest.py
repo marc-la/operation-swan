@@ -44,6 +44,10 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "NPC_SCORES_FILE", tmp_path / "npc_scores.json")
     monkeypatch.setattr(config, "NPC_EXTRA_ARM", False)
     monkeypatch.setattr(config, "BLUE_NPC_GUARD", False)
+    # todo/50: with SWITCHBACK cleared, STYLE_FIXES on would put every test in a fixes block; tests/test_prompt_fixes.py
+    # sets its own block
+    monkeypatch.setattr(config, "STYLE_FIXES", False)
+    monkeypatch.setattr(config, "LEAN_PROMPT", False)
     config._NPC.update(mtime=None, built=0.0, scores={})
     # todo/38: the pool scheduler is on in config, but the older tests are written for the longest-rest-first pick; the
     # scheduler's own tests (tests/test_pool_scheduler.py) switch it on. Its state is per process: start every test clean.

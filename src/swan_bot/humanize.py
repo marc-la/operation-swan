@@ -12,7 +12,18 @@ clean text goes out. bot.py logs the clean draft and the changes beside the text
 import random
 import re
 
-from . import content, quality
+from . import content, quality, register
+
+# todo/50 (prompt critique, 28 Oct): the citizens are LLMs and hardly ever misspell (a handful of dropped g's and
+# apostrophes in 5,370 posts: "anythin", "buyin"), while 6.3% of our replies carried a keyboard slip ("chexks"); they end
+# without a full stop 16% of the time (us 0.1%) and write all lowercase 24% (we matched 69 of 929 lowercase posts).
+# With mirror=True (a fixes block) the hand follows the citizen: their case, their missing full stop, a dropped g at a
+# tenth of the voice's slip rate in place of a keyboard slip, no "..." and no double spaces.
+MIRROR_LOWER = 0.8          # they wrote all lowercase: we do too, this often
+MIRROR_NO_STOP = 0.7        # they left off the full stop: so do we, this often
+BASE_NO_STOP = 0.12         # otherwise about the crowd's 16%
+SEMICOLON = re.compile(r";\s+(?=[a-z])")
+_ING = re.compile(r"(?<![\w#$'])([a-z]{3,}in)g(?![\w'$])")
 
 # lower: share of texts typed all lowercase (hashtags, acronyms and K$ kept); lower_start: first letter left lower;
 # small_i: "i" / "i'm" for "I"; apos: share of texts that drop apostrophes (dont, cant, im), per contraction 70%;
@@ -118,12 +129,15 @@ def _slip(word, device, rng):
     return word[:i] + word[i + 1:]
 
 
-def apply(text, persona_key, kind="post", rng=random):
+def apply(text, persona_key, kind="post", rng=random, target_text=None, mirror=False):
     """(text as this persona types it, list of what changed). Unknown personas get a light default hand.
-    persona_key may also be a hand itself (a dict, as a variant's persona carries: variants.py)."""
+    persona_key may also be a hand itself (a dict, as a variant's persona carries: variants.py).
+    mirror (todo/50): type like the citizen in target_text (their case and final stop; see MIRROR_LOWER)."""
     if not text:
         return text, []
     hand = {**_DEFAULT, **persona_key} if isinstance(persona_key, dict) else HANDS.get(persona_key, _DEFAULT)
+    if mirror:
+        return _mirror(text, hand, kind, rng, register.read(target_text or ""))
     h, out, changes = hand, text, []
     careful = rng.random() < h["careful"]
     if not careful and rng.random() < h["slip"]:
@@ -173,5 +187,55 @@ def apply(text, persona_key, kind="post", rng=random):
             out, changes = out[0].lower() + out[1:], changes + ["lower_start"]
     lo, hi = quality.LENGTHS.get(kind, (0, 10 ** 6))
     if not lo <= len(out) <= hi:
+        return text, []
+    return out, changes
+
+
+def _mirror(text, h, kind, rng, reg):
+    """apply() in a fixes block: the voice's apostrophes, commas and & as before; the citizen's case and final stop; a
+    dropped g in place of a keyboard slip; semicolons as full stops; no dots or double spaces."""
+    out, changes = text, []
+    careful = rng.random() < h["careful"]
+    if not careful and rng.random() < h["slip"] / 10:
+        spans = _protected_spans(out)
+        ings = [m for m in _ING.finditer(out) if not _inside(m.start(), spans)]
+        if ings:
+            m = rng.choice(ings)
+            out, changes = out[:m.end(1)] + out[m.end():], changes + [f"drop_g:{m.group(0)}"]
+    if not careful and rng.random() < h["apos"]:
+        before = out
+        out = _CONTRACTIONS.sub(lambda m: m.group(0).replace("'", "") if rng.random() < 0.7 else m.group(0), out)
+        if out != before:
+            changes.append("apos")
+    if not careful and h["comma"]:
+        spans = _protected_spans(out)
+        drop = [m.start() for m in _CONJ_COMMA.finditer(out) if not _inside(m.start(), spans) and rng.random() < h["comma"]]
+        for i in reversed(drop):
+            out = out[:i] + out[i + 1:]
+        if drop:
+            changes.append(f"comma-{len(drop)}")
+    if rng.random() < h["amp"]:
+        ands = list(re.finditer(r"(?<=\w) and (?=\w)", out))
+        if ands:
+            m = rng.choice(ands)
+            out, changes = out[:m.start()] + " & " + out[m.end():], changes + ["amp"]
+    if SEMICOLON.search(out):
+        out = SEMICOLON.sub(lambda m: ". ", out)
+        out = re.sub(r"(?<=\. )([a-z])", lambda m: m.group(1).upper(), out)
+        changes.append("semicolon")
+    if rng.random() < (MIRROR_LOWER if reg["lower"] else h["lower"]):
+        out, changes = _lowercase(out), changes + ["lower"]
+    else:
+        if rng.random() < h["small_i"]:
+            before = out
+            out = re.sub(r"\bI\b", "i", out)
+            if out != before:
+                changes.append("small_i")
+        if rng.random() < h["lower_start"] and out[:1].isupper() and not _KEEP_CASE.match(out):
+            out, changes = out[0].lower() + out[1:], changes + ["lower_start"]
+    if out.endswith(".") and not out.endswith("..") and rng.random() < (MIRROR_NO_STOP if reg["no_stop"] else BASE_NO_STOP):
+        out, changes = out[:-1], changes + ["no_stop"]
+    lo, hi = quality.LENGTHS.get(kind, (0, 10 ** 6))
+    if len(out) > hi:
         return text, []
     return out, changes

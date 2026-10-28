@@ -20,8 +20,9 @@ import random
 import re
 from zoneinfo import ZoneInfo
 
-from . import config, experiment, touches
+from . import config, experiment, register as reg_mod, touches
 from . import facts as fact_store
+from .memory import item_key, reset_vocab
 
 try:
     from .playbook import craft as _craft
@@ -138,6 +139,7 @@ def sync_frames():
 
 sync_frames()
 fact_store.ON_RELOAD.append(sync_frames)
+fact_store.ON_RELOAD.append(reset_vocab)          # todo/50: memory.voice_repeat's view of our case's own words
 
 # Yes arguments citizens repeat, our answer (grant the concern first), and the facts the answer states (it isn't used
 # while one is paused). Added to reply prompts when matched.
@@ -509,6 +511,16 @@ STYLE_RULES = (
     "resorts. Don't open with agreement or comfort (Exactly, Spot on, Fair point, I hear you, I understand). Facts in "
     "your own words, never the wording above."
 )
+# todo/50 (prompt critique, 28 Oct): 20% of replies named someone the reader can't know ("Mrs Rees", "Jacqui"), against
+# 8% for citizens, who mostly name the person they answer. In a fixes block replies get this rule, and the reply voices
+# lose the sentences that asked for a named person or a detail from the week (FIXES_VOICE_SUBS).
+STRANGER_RULE = ("You're talking to a stranger: they don't know your people, so say 'my daughter' or 'a mate at work', "
+                 "never a first name they'd have to know.")
+FIXES_VOICE_SUBS = (
+    (re.compile(r"Write in the first person about one named person or moment from your week; in a new post, open on "
+                r"what they stand to lose, not on the scenery\."), "Write in the first person."),
+    (re.compile(r", with one detail from your work or week\."), "."),
+)
 # The situation, first in every system prompt. Why: replies argued with citizens' conditions, not their reason for
 # leaning Yes, and the activity log shows ~14 "towards neither side" changes to 2 towards No (todo/13, "Evidence").
 # No numbers and labelled as background (todo/14): with seven figures in it, drafts packed in every one. The figures
@@ -615,27 +627,40 @@ VOTE_SENTENCE = re.compile(r"\s*Say (?:you're voting No as a settled fact|plainl
 NO_VERDICT_MODES = ("reply", "second_voice", "reply_back")
 
 
-def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_PARTS, mode=None):
+def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_PARTS, mode=None, fixes=None):
     """Who is speaking (character + voice), the facts they may use, and the rules. With a pulse, the pulse_block
     of `pulse_parts` goes right after WORLD. `mode`: the job's kind; the replies in NO_VERDICT_MODES are not told to
-    state their vote."""
+    state their vote. `fixes` (todo/50, a "fixes" block of arm_style): {colour: carry the profile colour at all,
+    spent: item keys (memory.item_key) this voice has used up today}; the reply voices lose their "named person from
+    your week" sentence and get STRANGER_RULE. meta["items"] lists the item keys the prompt carried (always)."""
     f, register = FRAMES[frame_key], register_of(persona)
     off = (meta or {}).get("style") == "off_topic"
     facts = "; ".join(FACT_NOTES[k] for k in fact_store.active(f["facts"])[:3])
     age = f", {persona['age']}" if persona.get("age") else ""
-    people = random.sample(usable(persona.get("people")), k=min(2, len(usable(persona.get("people")))))
-    now = random.choice(usable(persona.get("now"), now=True)) if usable(persona.get("now"), now=True) else None
-    details = [d for d in persona["details"] if not fact_store.paused_in(d)]
+    spent = set((fixes or {}).get("spent") or ())
+    plain = fixes is not None and not fixes.get("colour", True)     # todo/50: a reply with no profile colour at all
+    fresh = (lambda xs: [x for x in xs if item_key(x) not in spent]) if spent else (lambda xs: xs)
+    people = fresh(usable(persona.get("people")))
+    people = random.sample(people, k=min(2, len(people)))
+    nows = fresh(usable(persona.get("now"), now=True))
+    now = random.choice(nows) if nows else None
+    details = fresh([d for d in persona["details"] if not fact_store.paused_in(d)])
     details = details if not now else random.sample(details, k=min(1, len(details)))
     covid = persona.get("covid") if "covid_business" in f["facts"] or random.random() < 0.3 else None
-    covid = covid if usable([covid]) and not off else None
+    covid = covid if usable([covid]) and not off and item_key(covid) not in spent else None
     problem = persona.get("problem") if usable([persona.get("problem")]) and not off else None
+    problem = problem if item_key(problem) not in spent else None
+    if plain:
+        people, now, details, covid, problem = [], None, [], None, None
     heat = f.get("heat") if register == "fed_up" and not fact_store.paused_in(f.get("heat")) and not off else None
-    touch = touches.draft_pick(persona, random) if config.TOUCHES_ON and not off else None   # todo/37; flag first
+    touch = touches.draft_pick(persona, random) if config.TOUCHES_ON and not off and not plain else None   # todo/37
     heat = None if touch and register == "fed_up" else heat          # a touch replaces the frame's heat line, never both
     instruction = VOICES[register]["instruction"]
     if mode in NO_VERDICT_MODES:
         instruction = VOTE_SENTENCE.sub("", instruction)
+    if fixes is not None and mode in NO_VERDICT_MODES:
+        for pattern, repl in FIXES_VOICE_SUBS:
+            instruction = pattern.sub(repl, instruction)
     voice = instruction + (f" Your sharpest take on today's point, in your own words: {heat}"
                                                if heat else "")
     doses = fact_store.ok(["first_doses"])
@@ -645,14 +670,15 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
             f"health claims): {facts}.\n"
             f"Rules: money is K$. {LOGISTICS_RULE} {SAFETY_RULE} {JAB_RULE if doses else JAB_RULE_PAUSED} {jab} "
             f"{NO_ADVOCACY_RULE + ' ' if config.NO_VACCINE_ADVOCACY else ''}"
-            f"{TAG_RULE} {STYLE_RULES} "
+            f"{TAG_RULE} {STYLE_RULES} {STRANGER_RULE + ' ' if fixes is not None else ''}"
             f"Output only the text you would post.")
     if off:
         rest = f"Rules: money is K$. {OFF_TOPIC_RULE} No hashtags. {STYLE_RULES} Output only the text you would post."
 
     def profile():
+        about = f" About you: {'; '.join(details)}." if details else ""
         out = [f"You are {persona['name']}{age} ({persona['role']}, {persona['place']}), in Kingstonia, a small "
-               f"Pacific island nation. About you: {'; '.join(details)}."]
+               f"Pacific island nation.{about}"]
         if people:
             out.append(f"People in your life: {' '.join(clip(x, 80, keep=0.2) for x in people)}")
         if problem:
@@ -681,9 +707,11 @@ def system_prompt(persona, frame_key, meta=None, pulse=None, pulse_parts=PULSE_P
         else:
             problem = None
         text = f"{head}\n{profile()}\n{rest}"
+    items = [item_key(x) for x in [*details, *people, now, covid, problem] if x]
     _fill(meta, persona=persona["key"], voice=register, now=now, people=[x.split(",")[0] for x in people],
           heat=bool(heat), covid=bool(covid), problem=bool(problem), **({"pulse": pulse["id"]} if block else {}),
-          **({"touch": touch[1]} if touch else {}))
+          **({"touch": touch[1]} if touch else {}), items=items,
+          **({"colour": not plain} if fixes is not None else {}))
     return text
 
 
@@ -1026,8 +1054,22 @@ def exempt_note(target_text):
     return EXEMPT_NOTE if re.search(r"exempt", target_text or "", re.I) and fact_store.ok(EXEMPT_REQUIRES) else ""
 
 
-def _reply_voice(persona):
-    return f"{VOICES[register_of(persona)].get('reply_instruction', '')} " if persona else ""
+# todo/50: in a fixes block the reply voices answer the point instead of first restating it (the echo opener)
+FIXES_REPLY_VOICE_SUBS = (
+    (re.compile(r"Pick up their own point in a few words, then answer it"), "Answer their point"),
+    (re.compile(r"Name the thing they raised in a few of their own words, then answer it"), "Answer what they raised"),
+)
+
+
+def _reply_voice(persona, fixes=None):
+    if not persona:
+        return ""
+    line = VOICES[register_of(persona)].get("reply_instruction", "")
+    for pattern, repl in FIXES_REPLY_VOICE_SUBS if fixes else ():
+        line = pattern.sub(repl, line)
+    if fixes and fixes.get("personal"):          # they said something personal: a short human line is wanted
+        line = line.replace("no sympathy lines, ", "")
+    return f"{line} "
 
 
 # ---- the light read (todo/20 step 2): one drafting call reads the citizen and answers them ----
@@ -1057,7 +1099,10 @@ def read_block(hint=None, rng=random):
     # targets that named a condition, F14 drew a citizen reply 12.1% [8.6-16.7] of the time, F10 9.1% [7.7-10.8]
     # (931 vs 174 replies, 24 h): when the keywords say F14, the read is told to stay with what they asked for.
     if hint == "F14_no_yes_but":
-        hint = ("They named what they want written in (an end date, a review, exemptions or safeguards): pick "
+        # todo/50: the paused-fact sweep now builds read prompts too; "exemptions" goes while that fact is paused
+        wanted = "an end date, a review, exemptions or safeguards" if fact_store.ok(EXEMPT_REQUIRES) else \
+            "an end date, a review or safeguards"
+        hint = (f"They named what they want written in ({wanted}): pick "
                 "F14_no_yes_but, which answers exactly that, unless their doubt is clearly about something else. "
                 "Hospitals coming up in the same comment is not that.\n")
     else:
@@ -1144,16 +1189,84 @@ def off_topic_prompt(target_text, context=None, persona=None):
         f"real one about their topic.")
 
 
+# ---- todo/50 fixes 2-4 (docs/06-strategy/prompt-critique-2026-10-28.md): what a reply in a "fixes" block adds ----
+# The echo openers ("Open with their own words...", "naming the exact thing they asked for") made "You want X." the
+# opening of 14% of replies; these open on a full sentence. The gate's echo_open check backs them up.
+FIXES_OPENERS = [
+    "Open with your own reaction to what they said, in a normal full sentence.",
+    "Open with the fact itself, plainly.",
+    "Open by answering their point or question straight away, in a normal full sentence.",
+    "If a moment from your own life really bears on their point, open with it; otherwise open with your answer.",
+]
+FULL_SENTENCE_OPEN = "Open on a full sentence of your own, not a few words naming their topic. "
+
+
+def own_context_line(context):
+    """The context line when the post they answered is this voice's own (fixes block): they are answering you."""
+    return f"They were answering your own earlier post: <<<{context[:200]}>>>\n" if context else ""
+
+
+def conversation_lines(fx, me=None):
+    """The fixes block's lines about this conversation (fx: bot.style_context): something personal they said, who they
+    are talking to, what we have already told them, and how they write. "" without fx."""
+    if not fx:
+        return ""
+    out = []
+    said = fx.get("personal")
+    if said and (fx.get("own_parent") or fx.get("addressed_me")):
+        out.append(f"They said something personal to you («{said}»): answer that first, briefly and in kind, then "
+                   f"your point only if it still fits.")
+    elif said:
+        out.append(f"Their «{said}» was meant for the person they answered, not you: don't take it as yours, and "
+                   f"don't ignore it either; one short human line about it first is fine.")
+    name = fx.get("addressed")
+    if name and fx.get("addressed_me"):
+        out.append("They're talking to you by name.")
+    elif name:
+        out.append(f"They're talking to {name}, not you: you're joining in, so don't answer as {name} or speak for them.")
+    n, hist = fx.get("history") or (0, [])
+    if n:
+        said_before = "; ".join(f"{'you' if u == me else 'another neighbour'} said «{clip(x, 140, keep=0.3)}»"
+                                for u, x in hist[-config.CITIZEN_HISTORY_N:])
+        out.append(f"People on your side have replied to them {n} time{'s' if n != 1 else ''} before"
+                   f"{f'; the latest: {said_before}' if said_before else ''}. Don't tell them the same thing again: "
+                   f"build on it or make a new point.")
+    line = reg_mod.line(fx.get("register"))
+    return " ".join(out) + (" " if out else "") + line
+
+
+def fixes_length(target_text):
+    """(sentences, lo, hi words, character cap) for a fixes-block reply: about as long as what they wrote."""
+    cap = max(120, min(CHAR_CAP["reply"], int(len(target_text or "") * 1.3) + 40))
+    hi = int(cap / experiment.WORDS_TO_CHARS)
+    return ("1 or 2" if hi <= 28 else "2"), max(8, hi // 2), hi, cap
+
+
+def fixes_ask_weights(weights):
+    """The ask weights with closing questions at config.REPLY_QUESTION_SHARE (base: about 40% of replies end on one)."""
+    q = {k: w for k, w in weights.items() if k != "none" and w > 0}
+    total = sum(q.values()) or 1.0
+    return {**{k: w / total * config.REPLY_QUESTION_SHARE for k, w in q.items()},
+            "none": 1.0 - config.REPLY_QUESTION_SHARE}
+
+
+def conditional_rebuttal(reb):
+    """A rebuttal note as a condition the light read checks (fixes block): the keyword match only suggests it."""
+    return f"If (and only if) their post really shows it: {reb[0].lower()}{reb[1:]} If they're asking a question or " \
+           f"doubting the pass, answer what they asked instead."
+
+
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,
-                 style="current", read=False, hint=None, recent=(), spent=(), news=True):
+                 style="current", read=False, hint=None, recent=(), spent=(), news=True, fixes=None):
     """Deep-canvass shape (playbook §7): their words -> one dense fact or a swapped story -> a question back. A
     `theme` (implicit or echo only) rides on the point, through a detail of the persona's own life.
     todo/20: style "mirror_concede" is the other arm (mirror_prompt). read=True asks for the light read: the reply
     comes back inside JSON with the citizen's stance, doubt and the frame the model picked (parse_read); `hint` is
     the frame a keyword match picked. `news`: the context is a news item, not a neighbour's post (context_line)."""
     if style == "mirror_concede":
-        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent, spent, news)
-    ctx = context_line(context, news)
+        return mirror_prompt(target_text, frame_key, wants, context, meta, read, hint, recent, spent, news, fixes)
+    fx = fixes
+    ctx = own_context_line(context) if fx and fx.get("own_parent") else context_line(context, news)
     ally = opposes_pass(target_text)
     arms = {}
     # H1 (todo/13): reason_first answers the reason they lean Yes, whatever the frame: arguing with their conditions
@@ -1166,62 +1279,191 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
     else:
         reb = None if frame_key in CORE_FRAMES else rebuttal_for(target_text)       # (None for an ally)
         asks = f"The specific thing they raised: {', '.join(wants)}. Use their terms.\n" if wants else ""
-    opener = opener or random.choice(OPENERS)
+    opener = opener or random.choice(FIXES_OPENERS if fx else OPENERS)
     # with their reason known, it replaces the frame's angle (one instruction, not two that pull apart)
     lever = experiment.draw("lever", lever_weights(exclude={"fear_answer"} if reb and reason_first else ()), arms)
     # an ally is not asked to defend the status quo: a question back to someone who agrees reads as a challenge
     ask_weights = {"none": 1.0} if ally else {**{k: w for k, w in experiment.ASK_WEIGHTS.items() if k != "frame"},
                                               "none": experiment.REPLY_NO_ASK_WEIGHT}
-    ask_kind = experiment.draw("ask_kind", ask_weights, arms)
+    ask_kind = experiment.draw("ask_kind", fixes_ask_weights(ask_weights) if fx and not ally else ask_weights, arms)
     sentences, lo, hi = experiment.length_line("reply", arms)
+    cap = CHAR_CAP["reply"]
+    if fx:                                      # todo/50: about as long as what they wrote
+        sentences, lo, hi, cap = fixes_length(target_text)
+        arms["length_band"] = "register"
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=opener, rebuttal=bool(reb), style=style,
           **arms, **({"ally": True} if ally else {}))       # ally: not a reason_first draw, whatever reply_mode says
     gist = "the angle you pick below" if read else FRAMES[frame_key]["gist"]
-    undecided = "" if read or ally else "They haven't fully decided. "   # the light read finds out instead
+    undecided = "" if read or ally or fx else "They haven't fully decided. "   # the light read finds out instead
     if ally:                                    # already on our side: no Yes-leaner's reason to answer
         point, why = gist, ALLY_WHY
         reb = f"Note: {reb}\n" if reb else ""
+    elif reason_first and fx:                   # todo/50 fix 3: a keyword match is a suggestion, not their stance
+        point = "answer their reason, or what they asked" if reb else gist
+        why = ("If they lean Yes, answer WHY (the fear or hope underneath, not the conditions they list); if they "
+               "don't, answer what they said. " if reb else "")
+        reb = f"{conditional_rebuttal(reb)}\n" if reb else ""
     elif reason_first:
         point = "answer the reason above" if reb else gist
         why = "Answer WHY they lean Yes (the fear or hope underneath, not the conditions they list). " if reb else ""
         reb = f"{reb}\n" if reb else ""
     else:
         point, why = gist, ""
-        reb = f"Note: {reb}\n" if reb else ""
+        reb = f"Note: {(conditional_rebuttal(reb) if fx else reb)}\n" if reb else ""
+    if fx:
+        middle = ("Then one plain reason or fact, or a moment from your own life only if it bears on their point"
+                  if fx.get("colour") else "Then one plain reason or fact")
+    else:
+        middle = "Then a short moment from your own life or one dense fact"
+    convo = conversation_lines(fx, (fx or {}).get("me"))
+    # todo/50: in a fixes block no lever line. Each lever is a scene to fill in ("the same check at your grandkids' school
+    # gate years from now"), so every voice told it: "school gate" was in 15% of replies, and no lever moved a number.
+    land = "" if fx else f"Make it land through this: {LEVERS[lever]} "
+    if fx and meta is not None:
+        meta["lever"] = None
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{reb}{asks}{exempt_note(target_text)}"
-        f"{ANSWER_FIRST}{undecided}{why}Reply in {sentences} short sentences, between {lo} "
-        f"and {hi} words, {CHAR_CAP['reply']} characters at most in all. "
-        f"{opener} Then a short moment from your own life or one dense fact; the point: {point}. Make it land "
-        f"through this: {LEVERS[lever]} {theme_line(theme) + ' ' if theme else ''}"
+        f"{ANSWER_FIRST}{convo}{undecided}{why}Reply in {sentences} short sentences, between {lo} "
+        f"and {hi} words, {cap} characters at most in all. "
+        f"{opener} {FULL_SENTENCE_OPEN if fx else ''}{middle}; the point: {point}. "
+        f"{land}{theme_line(theme) + ' ' if theme else ''}"
         f"{REPLY_ASK_NONE if ask_kind == 'none' else experiment.ASK_KINDS[ask_kind]} "
-        f"{_reply_voice(persona)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text, spent)}"
-        f"{REPLY_RULES}" + (read_block(hint) if read else "")
+        f"{_reply_voice(persona, fx)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text, spent)}"
+        f"{REPLY_RULES}" + (f" {STRANGER_RULE}" if fx else "") + (read_block(hint) if read else "")
     )
 
 
 def mirror_prompt(target_text, frame_key, wants, context=None, meta=None, read=False, hint=None, recent=(), spent=(),
-                  news=True):
+                  news=True, fixes=None):
     """todo/20 step 4, the mirror_concede arm: what citizens answered in another team's replies (research D §8):
     mirror one detail they wrote, concede what's fair, one anchor (a detail of your own life or one fact) to end on
     (since 2026-10-22 no closing "I'm voting No": NO_VERDICT_RULE); 150-280 characters and no question. No lever, theme
     or opener: three beats only."""
-    ctx = context_line(context, news)
+    ctx = own_context_line(context) if fixes and fixes.get("own_parent") else context_line(context, news)
     asks = f"What they raised: {', '.join(wants)}.\n" if wants else ""
     reb = rebuttal_for(target_text)
     point = ("the angle you pick below" if read else FRAMES[frame_key]["gist"]) + (
-        f" (their reason is fear: {reb})" if reb else "")
+        (f" ({conditional_rebuttal(reb)})" if fixes else f" (their reason is fear: {reb})") if reb else "")
     lo, hi = MIRROR_CHARS
     _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], style="mirror_concede", rebuttal=bool(reb),
           opener=None, lever=None, ask_kind="none", length_band="mirror", reply_mode=None)
     return (
         f"{ctx}A neighbour wrote:\n<<<{target_text[:600]}>>>\n{asks}{exempt_note(target_text)}"
+        f"{conversation_lines(fixes, (fixes or {}).get('me'))}"
         f"Reply in 2 or 3 short sentences, {lo} to {hi} characters in all, in this order. First, mirror one concrete "
         f"detail they wrote, in a few of your own words (never their whole sentence). Then concede what is fair in it, "
         f"in 8 words or fewer (if they lean No, agree with their reason instead). Then one anchor that carries the "
         f"point: a detail from your own life or one of your facts; the point: {point}. End on that anchor. No question "
         f"anywhere, and no closing question. {FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} "
-        f"{worn_line(target_text, spent)}{REPLY_RULES}" + (read_block(hint) if read else "")
+        f"{worn_line(target_text, spent)}{REPLY_RULES}" + (f" {STRANGER_RULE}" if fixes else "") +
+        (read_block(hint) if read else "")
+    )
+
+
+# ---- todo/50 fix 5: the lean reply prompt (docs/06-strategy/prompt-critique-2026-10-28.md §5) ----
+# The prompt it replaces was ~8,600 characters with ~60 don't/never rules for a 35-word reply, contradicting itself in
+# places, naming the phrases it banned, and 41% of sent replies still needed a repair call. This one says who is
+# speaking, the conversation, one point, one fact, how they write and one shape; the bans the gate already enforces
+# (worn and stock phrases, recent openings, concession length, hashtags, quotation marks, emojis, links, @, names
+# off-limits) are left to the gate. Same JSON read, same "\n\nFirst read them" marker for the lines bot.py inserts.
+LEAN_SHAPES = {
+    "one_line": (0.35, "Answer in one sentence, under 120 characters."),
+    "two": (0.55, "Answer in two plain sentences, under 220 characters."),
+    "question_back": (0.10, "Ask them one real question about what they said, with your own view in a few words, under "
+                            "160 characters."),
+}
+LEAN_RULES = ("Never say when, where or how to vote. Nothing on vaccine safety or side effects. No insults and no "
+              "conspiracy talk; any edge is for the rule and the government, never for people. Invent no facts, "
+              "numbers, names or health claims; money is K$ and numbers are digits.")
+
+
+def lean_system_prompt(persona, frame_key, meta=None, fixes=None, pulse=None, pulse_parts=PULSE_PARTS):
+    """Who is speaking, the stance and the hard rules, in a few lines. fixes: {colour, spent} as for system_prompt;
+    with colour, ONE profile item not used up today, offered for use only where it bears on their point."""
+    fx = fixes or {}
+    spent = set(fx.get("spent") or ())
+    age = f", {persona['age']}" if persona.get("age") else ""
+    pool = [x for x in (usable(persona.get("people")) + usable(persona.get("now"), now=True) +
+                        [d for d in persona["details"] if not fact_store.paused_in(d)] + usable([persona.get("problem")]))
+            if x and item_key(x) not in spent] if fx.get("colour") else []
+    item = random.choice(pool) if pool else None
+    doses = fact_store.ok(["first_doses"])
+    jab = JAB_RULE if doses else JAB_RULE_PAUSED
+    advocacy_rule = f" {NO_ADVOCACY_RULE}" if config.NO_VACCINE_ADVOCACY else ""
+    block = pulse_block(pulse, pulse_parts)
+    text = (f"You are {persona['name']}{age}, {persona['role']}, in {persona['place']}, Kingstonia, a small Pacific "
+            f"island nation. Your style: {persona['voice']}."
+            + (f" Something true about you, for use only if it bears on their point: {clip(item, 150)}" if item else "")
+            + f"\nYou're voting No in the referendum on requiring proof of H2D2 (Dolphin Flu) vaccination to enter "
+              f"public spaces: against the pass, not the vaccine.\n"
+            + (f"{block}\n" if block else "")
+            + f"Rules: {LEAN_RULES} {jab}{advocacy_rule} {STRANGER_RULE} Output only what you would post.")
+    _fill(meta, persona=persona["key"], voice=register_of(persona), now=None, people=[], heat=False, covid=False,
+          problem=False, items=[item_key(item)] if item else [], colour=bool(item), lean=True,
+          **({"pulse": pulse["id"]} if block else {}))
+    return text
+
+
+def lean_menu(hint, rng=random):
+    """(lines, keys): at most three live frames for the light read: the keyword hint, its second voice, one more."""
+    live = live_frames()
+    keys = [hint] if hint in live else []
+    second = FRAMES[hint]["second"] if hint in FRAMES else None
+    for k in ([second] if isinstance(second, str) else list(second or [])):
+        if k in live and k not in keys and len(keys) < 2:
+            keys.append(k)
+    rest = [k for k in live if k not in keys]
+    while len(keys) < 3 and rest:
+        k = weighted_frame(rest)
+        keys.append(k)
+        rest.remove(k)
+    return "\n".join(f"- {k}: {FRAMES[k]['gist']}" for k in keys), keys
+
+
+def lean_read_block(hint):
+    menu, _ = lean_menu(hint)
+    return (f"\n\nFirst read them, then write. Output one JSON object and nothing else: {{\"stance\": one of "
+            f"{'|'.join(READ_STANCES)}, \"doubt\": their concern in 10 words or fewer, \"frame\": the key of the "
+            f"angle you use, \"reply\": your reply}}. Only if the post is hostile, or has nothing to do with the vote, "
+            f"output {{\"skip\": why}} instead.\nAngles:\n{menu}")
+
+
+def lean_reply_prompt(target_text, frame_key, wants, context=None, meta=None, persona=None, read=False, hint=None,
+                      news=True, fixes=None, rng=random):
+    """The lean first reply: the conversation, who they're talking to and what we told them before, one point, one fact,
+    their register and one shape (LEAN_SHAPES, drawn as the lean_shape arm). The gate enforces the rest."""
+    fx = fixes or {}
+    arms = {}
+    shape = experiment.draw("lean_shape", {k: w for k, (w, _) in LEAN_SHAPES.items()}, arms, rng)
+    ally = opposes_pass(target_text)
+    reb = None if ally else rebuttal_for(target_text)
+    if fx.get("own_parent"):
+        before = f"  you, earlier: <<<{context[:200]}>>>\n" if context else ""
+    elif context:
+        who = "a paper" if news else "another neighbour (not you)"
+        before = f"  {who}: <<<{context[:200]}>>>\n"
+    else:
+        before = ""
+    keys = fact_store.active(FRAMES[frame_key]["facts"])
+    theirs = set(_WORD.findall((target_text or "").lower()))       # the fact that shares most words with their post
+    keys = sorted(keys, key=lambda k: -len(theirs & set(_WORD.findall(f"{FACTS[k]} {FACT_NOTES[k]}".lower()))))
+    fact = FACT_NOTES[keys[0]] if keys else None
+    point = ("the angle you pick below" if read else FRAMES[frame_key]["gist"])
+    asks = f"What they raised: {', '.join(wants)}. " if wants else ""
+    _fill(meta, frame=frame_key, pillar=FRAMES[frame_key]["pillar"], opener=None, lever=None, rebuttal=bool(reb),
+          style="lean", ask_kind="question" if shape == "question_back" else "none", length_band="lean",
+          reply_mode=None, **arms, **({"ally": True} if ally else {}))
+    return (
+        f"The conversation (newest last):\n{before}  them: <<<{target_text[:600]}>>>\n"
+        f"{conversation_lines(fx, fx.get('me'))}"
+        f"{asks}{exempt_note(target_text)}"
+        + (ALLY_WHY if ally else "")
+        + (f"{conditional_rebuttal(reb)} " if reb else "")
+        + f"Your point, if it fits what they said: {point}."
+        + (f" One fact you may use, in plain everyday words: {fact}." if fact else "")
+        + f" If they said something personal, answer that first. {LEAN_SHAPES[shape][1]} Don't say how you'll vote; "
+          f"your reason shows it. No hashtags."
+        + (lean_read_block(hint) if read else "")
     )
 
 
@@ -1252,11 +1494,14 @@ AGREE_CLOSE = ("They agree with you. Reply in at most 25 words, all lowercase an
                "\"so i'm ticking no\"). No question, no list of facts, no story about someone you know.")
 
 
-def reply_back_prompt(our_text, their_text, style=None, agree_close=False, spent=()):
+def reply_back_prompt(our_text, their_text, style=None, agree_close=False, spent=(), fixes=None):
     """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7). style: the
-    style of our reply they answered; a mirror_concede conversation goes on in that style (todo/20 step 3)."""
+    style of our reply they answered; a mirror_concede conversation goes on in that style (todo/20 step 3).
+    fixes (todo/50, a fixes block): their register, and the stranger rule, after the conversation."""
     said = (f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
             if our_text else f"A neighbour mentioned you in this post:\n<<<{their_text[:500]}>>>\n")
+    if fixes:
+        said += f"{reg_mod.line(fixes.get('register'))}{STRANGER_RULE} "
     if agree_close:                                   # todo/32: replaces NO_VERDICT_RULE here only
         return f"{said}{AGREE_CLOSE} {worn_line(their_text, spent)}No hashtags."
     if style == "mirror_concede":

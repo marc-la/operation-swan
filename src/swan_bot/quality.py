@@ -11,7 +11,7 @@ without it the built-in defaults below apply.
 """
 import re
 
-from . import config, content
+from . import config, content, memory
 from . import facts as fact_store
 
 try:
@@ -638,8 +638,16 @@ def drop_vote(text, kind):
     return out if out and len(out) >= LENGTHS[kind][0] and not VOTES_NO.search(out) else None
 
 
+# todo/50 (prompt critique, 28 Oct): "You want X." opened 14% of replies; a list of their topic words ("Sunset, review,
+# privacy.") the same way. Checked in a fixes block only (echo_open=True); fix() drops the opening clause.
+ECHO_OPEN = re.compile(r"^(?:you(?:'re| are)? (?:want|wanting|after|asking for|need)\b|(?:[\w']+,\s){1,3}(?:and\s)?[\w']+\.\s)",
+                       re.I)
+VOICE_REPEAT = "voice_repeat_"
+
+
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
-          same=(), phrase_texts=None, phrase_exempt=(), known_caps=(), mention=None):
+          same=(), phrase_texts=None, phrase_exempt=(), known_caps=(), mention=None, voice_texts=None, floor=None,
+          echo_open=False):
     """kind: 'post' | 'reply' | 'second_voice' | 'reply_back' | 'journalist' | 'thread' | 'thread_answer'.
     same: our texts to this citizen or in this thread (todo/24), held to the strict near-duplicate threshold.
     phrase_texts: our latest citizen-facing texts (todo/27): a citizen-facing draft is held to PHRASE_BUDGETS over
@@ -648,7 +656,9 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
     of the vote (VOTE_TALK) unless the citizen's own post has some.
     known_caps: the capitalised words of the system prompt (the voice's own people), for invented_name.
-    mention: the one @username this reply is meant to name (todo/46, src/swan_bot/mention.py); that handle alone is allowed."""
+    mention: the one @username this reply is meant to name (todo/46, src/swan_bot/mention.py); that handle alone is allowed.
+    todo/50 (a fixes block): voice_texts: the writing voice's own latest texts (memory.voice_repeat); floor: a lower
+    length floor for this kind; echo_open: reject an opening that restates their topic (ECHO_OPEN)."""
     t = normalise(text)
     if kind != "post":
         t = TRAILING_TAGS.sub("", t).strip()
@@ -681,6 +691,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     if not specific and not OFF_TOPIC_LEN[0] <= len(t) <= OFF_TOPIC_LEN[1]:
         return None, f"off_topic_length_{len(t)}"
     lo, hi = LENGTHS[kind]
+    lo = min(lo, floor) if floor else lo
     short_ok = kind != "post" and len(t) >= SHORT_OK and VOTES_NO.search(t)     # todo/20 G9: short but says No
     if specific and (len(t) > hi or (len(t) < lo and not short_ok)):     # off-topic: OFF_TOPIC_LEN, above
         return None, f"length_{len(t)}"
@@ -737,6 +748,12 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         run = repeated_run(body, recent_texts, target_text)
         if run:
             return None, "repeat_run_" + run.replace(" ", "_").replace("'", "")
+    if echo_open and kind in PERSONAL_KINDS and ECHO_OPEN.match(t):
+        return None, "echo_open"
+    if voice_texts and kind in PERSONAL_KINDS:
+        run = memory.voice_repeat(body, voice_texts, target_text)
+        if run:
+            return None, VOICE_REPEAT + run.replace(" ", "_").replace("'", "")
     over = (over_budget(t, phrase_texts, phrase_exempt, echoed(target_text))
             if phrase_texts is not None and kind in PERSONAL_KINDS else [])
     if over:
@@ -881,8 +898,13 @@ def fix(text, why, kind, recent=(), same=()):
         return out if parts and len(out) >= OFF_TOPIC_LEN[0] else None
     if why.startswith("off_topic_length_") and int(why.rsplit("_", 1)[1]) > OFF_TOPIC_LEN[1]:
         return trim(text, kind, hi=OFF_TOPIC_LEN[1], keep_no=False)
-    if why == "same_opening":
+    if why in ("same_opening", "echo_open"):
         return drop_first_clause(text)
+    if why.startswith(VOICE_REPEAT) and kind in PERSONAL_KINDS:      # todo/50: the voice's own script goes
+        run = why[len(VOICE_REPEAT):].replace("_", " ")
+        parts = sentences(TRAILING_TAGS.sub("", normalise(text)))
+        drop = {i for i, s in enumerate(parts) if run in " ".join(re.findall(r"[a-z']+|\d+", s.lower()))}
+        return _without(parts, drop, kind) if drop and len(drop) < len(parts) else None
     if why.startswith("unapproved_number_"):
         return drop_number(text, why[len("unapproved_number_"):], kind)
     if why == "vaccine_advocacy":
@@ -981,6 +1003,13 @@ def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), s
         return (f"The words «{run}» are in something we already posted, so a reader sees one script. Make the same "
                 f"point in different words, or make a different one; keep the rest. Say who or what you mean in the "
                 f"first sentence (the government, the plan, the list): never start on They, Them or Those.")
+    if why.startswith(VOICE_REPEAT):
+        run = why[len(VOICE_REPEAT):].replace("_", " ")
+        return (f"You have said «{run}» to many people today; nobody tells the same story to every stranger. Say "
+                f"something else in its place, or leave that part out; keep the rest.")
+    if why == "echo_open":
+        return ("Don't open by naming their topic back to them in a few words. Start on a full sentence of your own "
+                "that answers them; keep the rest.")
     if why == "bare_they_open":
         return ("The reply starts on They, Them or Those with nobody for it to mean. Start again from the citizen's "
                 "own point, naming who or what you mean (the government, the plan, the list). Keep the rest.")

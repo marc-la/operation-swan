@@ -37,7 +37,7 @@ import urllib.error
 
 import openai
 import capturethenarrative as ctn
-
+from . import batch, config, content, engage, experiment, feeds, humanize, memory, mention, pool_runner, pulse, quality, register, stealth, themes, watch
 from . import batch, config, content, engage, experiment, feeds, humanize, mention, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .analysis import ts_of
@@ -730,9 +730,10 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
-        "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block")     # todo/48: arm_npc with NPC_EXTRA_ARM
+        "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block",     # todo/48: arm_npc with NPC_EXTRA_ARM
+        "arm_style", "colour", "lean", "lean_shape")                                       # todo/50: the prompt fixes
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
-               "pulse", "theme", "theme_level")
+               "pulse", "theme", "theme_level", "arm_style", "lean_shape")
 
 
 def queue_arm(t=None, late_sends=()):
@@ -820,6 +821,37 @@ def context_is_news(job):
     return job.get("source") == "news" if author is None else author <= config.OFFICIAL_MAX_ID
 
 
+STYLE_MODES = ("reply", "reply_back", "second_voice")      # todo/50: the citizen-facing kinds arm_style is drawn for
+
+
+def style_memory(state, job):
+    """job["memory"] for a citizen-facing draft (todo/50): what the voice has used up today, its latest texts, and our
+    history with the citizen. Read under mu, from bot.py's state (memory.py has the layout)."""
+    rec, target = job["rec"], job.get("target") or {}
+    return dict(spent=memory.spent_items(state, rec["username"]), voice_texts=memory.voice_texts(state, rec["username"]),
+                history=memory.history(state, target["author_id"]) if target.get("author_id") is not None else (0, []))
+
+
+def style_context(job, persona, meta):
+    """The fixes for this draft (todo/50), or None: base block, STYLE_FIXES off, or not a citizen-facing kind.
+    Sets meta["arm_style"] for the citizen-facing kinds and job["fixes"] (the gate and the hand read it)."""
+    if job["mode"] not in STYLE_MODES:
+        return None
+    meta["arm_style"] = memory.arm()
+    job["fixes"] = meta["arm_style"] == "fixes"
+    if not job["fixes"]:
+        return None
+    rec, mem = job["rec"], job.get("memory") or {}
+    body = (job.get("target") or {}).get("body") or ""
+    reg = register.read(body)
+    parent = job.get("parent_author")
+    me = dict(persona, username=rec.get("username"))
+    return dict(colour=memory.colour(), spent=mem.get("spent") or (), history=mem.get("history") or (0, []),
+                me=rec.get("username"), register=reg, addressed=reg["addressed"],
+                addressed_me=register.is_me(reg["addressed"], me), personal=register.personal(body),
+                own_parent=parent is not None and parent == rec.get("account_id"))
+
+
 def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, recent_texts=()):
     """(persona, system, user). The choices made (shape, voice, tag, theme, event...) land in job["meta"].
     recent_texts: our latest drafts, so replies and second voices don't open the way they did (todo/20).
@@ -849,7 +881,12 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         job["style"] = ("mirror_concede" if job.get("arm") == "firm_yes" else
                         experiment.alternate("style", config.REPLY_STYLES))
         job["read"] = config.LIGHT_READ
-    mirror = job.get("style") in ("mirror_concede", "off_topic")  # four beats, or not about the vote: no theme
+    fx = style_context(job, persona, meta)                         # todo/50: a fixes block of arm_style, else None
+    lean = bool(fx and config.LEAN_PROMPT and mode == "reply" and job.get("style") == "current")
+    # four beats, not about the vote, or the lean prompt (todo/50: no theme line): no theme
+    mirror = job.get("style") in ("mirror_concede", "off_topic") or lean
+    if lean:
+        job["theme"] = None
     theme = pick_theme(job, ledger, meta) if mode in themes.MODES and not mirror else job.setdefault("theme", None)
     if mode == "post":
         headline = targeter.headline if random.random() < 0.3 else None
@@ -874,9 +911,15 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         meta["style"] = "off_topic"
     elif mode == "reply":
         parts = ("yes_lines",) if pulse_now and (soft_yes(body) or YES_REASON.search(body)) else ()
-        user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta, persona=persona,
-                                    theme=theme, style=job["style"], read=job["read"], hint=job["frame_in"],
-                                    recent=recent_texts, spent=spent, news=context_is_news(job))
+        if lean:                                                  # todo/50 fix 5
+            user = content.lean_reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
+                                             persona=persona, read=job["read"], hint=job["frame_in"],
+                                             news=context_is_news(job), fixes=fx)
+        else:
+            user = content.reply_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
+                                        persona=persona, theme=theme, style=job["style"], read=job["read"],
+                                        hint=job["frame_in"], recent=recent_texts, spent=spent,
+                                        news=context_is_news(job), fixes=fx)
         if meta.get("arm_conv") == "fresh_facts" and job["style"] != "off_topic":     # todo/25: news first
             fresh = content.fresh_line(body, meta)
             user = user.replace("\n\nFirst read them", f" {fresh}\n\nFirst read them", 1) \
@@ -891,7 +934,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     elif mode == "journalist":
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
-        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"), spent=spent)
+        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"), spent=spent, fixes=fx)
         meta["style"] = job.get("style")
         if meta.get("arm_conv") == "agree_close":                 # todo/32: close on our vote when they agree
             meta["agree"] = agrees(body)
@@ -907,8 +950,13 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # todo/46: name one other citizen
         line = mention.prompt_line(job["mention"])
         user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job.get("read") else f"{user} {line}"
-    system = content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
-                                   pulse_parts=parts, mode=mode)
+    if lean:
+        system = content.lean_system_prompt(persona, job["frame"], meta=meta, fixes=fx,
+                                            pulse=pulse_now if parts else None, pulse_parts=parts)
+    else:
+        system = content.system_prompt(persona, job["frame"], meta=meta, pulse=pulse_now if parts else None,
+                                       pulse_parts=parts, mode=mode,
+                                       fixes=dict(colour=fx["colour"], spent=fx["spent"]) if fx else None)
     if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # the style rule bans @mentions: Haiku obeyed it
         system = system.replace(" @mentions,", "", 1)                                    # 1 of 44 drafts wrote the handle (25 Oct)
     return persona, system, user
@@ -946,7 +994,9 @@ def gate(raw, job, user, recent_texts, ledger=None):
               specific=job.get("group") != "off_topic", same=job.get("same_texts") or (),
               phrase_texts=job.get("phrase_texts"),
               phrase_exempt=("concede_open",) if job.get("style") == "mirror_concede" else (),   # firm_yes concedes
-              mention=(job.get("mention") or {}).get("username"))                                # todo/46: the one handle allowed
+              mention=(job.get("mention") or {}).get("username"),                                # todo/46: the one handle allowed
+              **(dict(voice_texts=(job.get("memory") or {}).get("voice_texts"), echo_open=True,  # todo/50: a fixes block
+                      floor=config.FIXES_REPLY_FLOOR) if job.get("fixes") else {}))
     draft, fixes = raw, []
     text, why = quality.check(draft, mode, recent_texts, **kw)
     while why and len(fixes) < 3:
@@ -1921,6 +1971,8 @@ def main():
                                                           if (d["job"].get("meta") or {}).get("shape")]
                 if mode in quality.PERSONAL_KINDS and target and config.writes_to_citizen(target.get("author_id")):
                     job["phrase_texts"] = citizen_texts(state.get("recent_sent", []), ready)     # todo/27
+                if mode in STYLE_MODES:                                                  # todo/50
+                    job["memory"] = style_memory(state, job)
                 persona, system, user = build_prompt(job, targeter, recent_shapes, pulse_now, recent_texts=recent_texts)
 
             def rejected(why, raw, backend, repaired):
@@ -2018,7 +2070,9 @@ def main():
                 return
         clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
         if text and not args.no_humanize:
-            text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode)
+            text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode,
+                                        target_text=(target or {}).get("body") if job.get("fixes") else None,
+                                        mirror=bool(job.get("fixes")))                  # todo/50: their register
             if mention.used(clean, job.get("mention")) and f"@{job['mention']['username']}" not in text:
                 text, hand = clean, []             # the hand must not touch a handle: send the clean text
 
@@ -2111,6 +2165,10 @@ def main():
                 if target:                            # todo/24: who it went to (quality.near_duplicate)
                     state["recent_sent"] = (state.get("recent_sent", []) + [
                         [target["author_id"], thread_root(target), clean]])[-300:]
+                if mode in STYLE_MODES:               # todo/50: the voice's own texts and items, the citizen's history
+                    memory.record(state, rec["username"],
+                                  target["author_id"] if target and config.writes_to_citizen(target["author_id"]) else None,
+                                  clean, items=(job.get("meta") or {}).get("items"))
                 ledger.record(clean, persona["key"], job.get("theme"), thread or post_id, mode)
             meta = job.get("meta") or {}
             if mode == "post" and meta.get("shape"):

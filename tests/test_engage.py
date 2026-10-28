@@ -303,7 +303,8 @@ LIVE_SWITCHBACK = list(config.SWITCHBACK)          # read at import: conftest cl
 def test_the_live_switchback_runs_the_engagement_arms_and_not_the_conversion_arms():
     assert LIVE_SWITCHBACK == [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S),
                                ("arm_queue", config.QUEUE_ARMS, config.QUEUE_BLOCK_S),      # 26 Oct: the send-queue arms
-                               ("arm_npc", config.NPC_ARMS, config.NPC_BLOCK_S)]            # todo/48: rotates only with NPC_EXTRA_ARM
+                               ("arm_npc", config.NPC_ARMS, config.NPC_BLOCK_S),            # todo/48: rotates only with NPC_EXTRA_ARM
+                               ("arm_style", config.STYLE_ARMS, config.STYLE_BLOCK_S)]      # todo/50: on 28 Oct
     assert config.ENG_ARMS == ["mention"] and "arm_eng" in bot.ARMS      # engagers_first killed 25 Oct (todo/46)
 
 

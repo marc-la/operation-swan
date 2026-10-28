@@ -181,6 +181,13 @@ def _prompts(persona, frame, seed):
            content.reply_prompt(TARGET, frame, [], persona=persona),
            content.second_voice_prompt(TARGET, frame, [], persona=persona),
            content.journalist_prompt(3, NEUTRAL, persona=persona)]
+    fx = dict(colour=True, spent=(), history=(0, []), register=None)        # todo/50: the fixes block and the lean prompt
+    out += [content.system_prompt(persona, frame, fixes=fx, mode="reply"),
+            content.reply_prompt(TARGET, frame, [], persona=persona, fixes=fx),
+            content.reply_prompt(TARGET, frame, [], persona=persona, fixes=fx, read=True, hint=frame),
+            content.lean_system_prompt(persona, frame, fixes=fx),
+            content.lean_reply_prompt(TARGET, frame, [], persona=persona, fixes=fx),
+            content.lean_reply_prompt(TARGET, frame, [], persona=persona, fixes=fx, read=True, hint=frame)]
     for key, t in themes.live().items():                 # a theme whose fact is paused is not live
         for level in ("implicit", "echo", "attributed", "verbatim"):
             theme = dict(key=key, level=level, belief=t["belief"], echo=t["echo"][0], position="middle",

@@ -807,6 +807,39 @@ VALUE_TABLE_FILE = DATA / "value_table.json"
 FREEZE_PIN["arm_pick"] = "base"
 if VALUE_PICK:
     SWITCHBACK = SWITCHBACK + [("arm_pick", PICK_ARMS, PICK_BLOCK_S)]
+# todo/50 (28 Oct, Marc): the prompt critique's fixes 1-5 (docs/06-strategy/prompt-critique-2026-10-28.md), as one arm.
+# In a "fixes" block, citizen-facing drafts get (1) per-voice memory: profile colour (people, fortnight events, the Yes
+# cost, COVID years, details) in PROFILE_SHARE of replies, each item at most ITEM_MAX_PER_DAY times a voice a day, and the
+# gate rejects a story run of VOICE_RUN_WORDS words (memory.voice_repeat) already in VOICE_RUN_MAX of the voice's last
+# VOICE_MEMORY_N texts; (2) the thread and our history with the citizen in the reply prompt, personal remarks answered
+# first, who they are talking to; (3) the "they lean Yes because of X" rebuttal only as a condition the light read
+# checks; (4) the citizen's register mirrored (case, final stop, length), no keyboard slips, closing questions about
+# REPLY_QUESTION_SHARE, no echo opener; and with LEAN_PROMPT (5) the lean reply prompt (content.lean_reply_prompt).
+# Shipped OFF; on since 28 Oct (below). STYLE_FIXES = True puts arm_style (base / fixes, 2.5 h blocks so it lines up with neither the 2 h nor the 3 h
+# blocks) on the switchback; the memory is recorded on every write either way. Frozen to "base" from 1 Nov (ARMS_FREEZE)
+# unless FREEZE_PIN["arm_style"] says "fixes". Read: hides, away events and citizen replies by arm_style (logged on writes).
+# 28 Oct (Marc: on if the offline A/B passes): it passed. scripts/style_ab.py, 100 live targets, Sonnet raters blind, 2
+# passes, paired against base: P(bot) -4.8 [-7.9, -1.6], engage +4.0 [+1.9, +6.1], shift +0.03, misread -0.03 (fixes);
+# results in docs/06-strategy/prompt-critique-2026-10-28.md §9. Off: STYLE_FIXES = False.
+STYLE_FIXES = True
+STYLE_ARMS = ["base", "fixes"]
+STYLE_BLOCK_S = 9000
+# The lean arm passed the same criteria (P(bot) -4.4, engage +3.4) but 67% of its drafts used a worn phrase ("blank
+# cheque", "locks it in") against 20% for base, and the phrase budgets would reject 16% of them in a row: off.
+LEAN_PROMPT = False                 # fix 5: in "fixes" blocks, first replies use the lean prompt (needs STYLE_FIXES)
+PROFILE_SHARE = 0.25                # share of fixes-block replies whose prompt carries the voice's profile colour
+ITEM_MAX_PER_DAY = 3                # one profile item (a person, an event, the Yes cost...) in a voice's prompts per 24 h
+VOICE_MEMORY_N = 50
+VOICE_RUN_WORDS = 3
+VOICE_RUN_MAX = 4                   # a story run already in this many of the voice's last VOICE_MEMORY_N texts is rejected
+                                    # (replay 26-28 Oct: 11% of drafts as written; 3 would be 15%, 30% with the case's words)
+CITIZEN_HISTORY_N = 2               # our latest texts to a citizen that the reply prompt quotes (any voice)
+CITIZEN_HISTORY_MAX = 3000          # citizens kept in state["citizen_sent"] (the least recent go; ~1 MB in the saved state)
+REPLY_QUESTION_SHARE = 0.10         # fixes blocks: replies that end on a question (base: about 40%)
+FIXES_REPLY_FLOOR = 40              # fixes blocks: a reply may be this short (quality.LENGTHS floor is 80; citizens' median 157)
+FREEZE_PIN["arm_style"] = "base"
+if STYLE_FIXES:
+    SWITCHBACK = SWITCHBACK + [("arm_style", STYLE_ARMS, STYLE_BLOCK_S)]
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
 # Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
 # picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes
