@@ -150,10 +150,11 @@ def test_swarm_reposts_are_off(monkeypatch):
     assert [p for p, _ in s.plan_reposts(found)] == [10]
 
 
-def test_the_engagement_arms_are_base_and_mention(monkeypatch):
-    assert config.ENG_ARMS == ["base", "mention"]          # tests/conftest.py empties SWITCHBACK; the live line is built from ENG_ARMS
+def test_mention_is_the_only_engagement_arm_and_survives_the_freeze(monkeypatch):
+    assert config.ENG_ARMS == ["mention"]                  # promoted 28 Oct (Marc); tests/conftest.py empties SWITCHBACK, the live line is built from ENG_ARMS
     monkeypatch.setattr(config, "SWITCHBACK", [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S)])
-    assert {experiment.block("arm_eng", 7200 * n)[1] for n in range(4)} == {"base", "mention"}
+    assert {experiment.block("arm_eng", 7200 * n)[1] for n in range(4)} == {"mention"}
+    assert config.FREEZE_PIN["arm_eng"] == "mention"       # the x4 days must not fall back to base
 
 
 # ---- late replies (todo/46 lever 3) ----

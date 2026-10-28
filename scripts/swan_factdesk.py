@@ -70,6 +70,11 @@ def mongo_mirror(state):
     return send
 
 
+# 28 Oct: the first three models (3.8 and 3.6 Flash, gpt-oss) were all out of quota for hours, so every hourly run ended "contradiction
+# check: no answer". A parked model costs no call, so the walk goes on to the bot's own chain (Kimi, Haiku) for these few calls a day.
+TOUCHES_MODELS = 8
+
+
 def touches_ask(gen):
     """ask(system, user) for touches.refresh (todo/37): the desk's models in config.FACTDESK_MODELS order, JSON mode, no
     strict schema (the clause call has one key per persona), the desk's own parser. The parsed answer, or None."""
@@ -77,7 +82,7 @@ def touches_ask(gen):
     order = [m for m in config.FACTDESK_MODELS if m in chain] + [m for m in chain if m not in config.FACTDESK_MODELS]
 
     def ask(system, user):
-        for m in order[:3]:
+        for m in order[:TOUCHES_MODELS]:
             out, _ = gen.complete(system, user, json_mode=True, models=[m], temperature=0.2)
             obj = factdesk._parse(out) if out is not None else None
             if obj is not None:

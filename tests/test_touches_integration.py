@@ -290,6 +290,21 @@ def test_run_touches_asks_the_desk_models_in_order(desk, monkeypatch):
     assert seen[0] == ["model-b"]
 
 
+def test_the_walk_goes_past_three_parked_models(desk, monkeypatch):
+    """28 Oct: gemini 3.8, 3.6 and gpt-oss all out of quota, so every hourly run failed; the bot's own chain answers."""
+    sd = desk_script()
+    assert sd.TOUCHES_MODELS > 3
+    names = ["m1", "m2", "m3", "kimi"]
+    monkeypatch.setattr(config, "FACTDESK_MODELS", names[:3])
+
+    class Gen:
+        chain = [("p", m) for m in names]
+
+        def complete(self, system, user, json_mode=True, models=(), temperature=0.2):
+            return ('{"ok": 1}', models[0]) if models[0] == "kimi" else (None, None)
+    assert sd.touches_ask(Gen())("s", "u") == {"ok": 1}
+
+
 def test_a_touches_exception_never_fails_the_run(desk, monkeypatch, capsys):
     def boom(*a, **k):
         raise RuntimeError("model fell over")

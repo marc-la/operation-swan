@@ -304,10 +304,10 @@ def test_the_live_switchback_runs_the_engagement_arms_and_not_the_conversion_arm
     assert LIVE_SWITCHBACK == [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S),
                                ("arm_queue", config.QUEUE_ARMS, config.QUEUE_BLOCK_S),      # 26 Oct: the send-queue arms
                                ("arm_npc", config.NPC_ARMS, config.NPC_BLOCK_S)]            # todo/48: rotates only with NPC_EXTRA_ARM
-    assert config.ENG_ARMS == ["base", "mention"] and "arm_eng" in bot.ARMS      # engagers_first killed 25 Oct (todo/46)
+    assert config.ENG_ARMS == ["mention"] and "arm_eng" in bot.ARMS      # engagers_first killed 25 Oct (todo/46)
 
 
-def test_blocks_rotate_through_both_engagement_arms(monkeypatch):
+def test_blocks_rotate_through_the_engagement_arms(monkeypatch):
     monkeypatch.setattr(config, "SWITCHBACK", [("arm_eng", config.ENG_ARMS, config.ENG_BLOCK_S)])
     assert {experiment.block("arm_eng", t=h * 3600)[1] for h in range(0, 24, 2)} == set(config.ENG_ARMS)
 

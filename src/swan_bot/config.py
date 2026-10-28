@@ -750,7 +750,10 @@ CONV_MODES = {"reply", "reply_back", "second_voice", "post"}   # arm_conv is log
 # Budget lever, 2 h switchback blocks (experiment.block("arm_eng"), logged as arm_eng on citizen-facing writes):
 #   base            today's order (todo/21 score);
 #   engagers_first  citizens who answered us before first, then unsure, then the freshest posts, then the rest.
-ENG_ARMS = ["base", "mention"]    # 25 Oct: engagers_first killed (away events beat base); the mention arm is todo/46 (src/swan_bot/mention.py)
+# 28 Oct (Marc): mention PROMOTED. 24 h read-out 27-28 Oct: 15.76 portal points a write in 6 blocks against 9.95 for base in 7
+# (thin, but the blocks alternate and Marc made the call). The switchback keeps one arm so arm_eng and block_id still log; MENTION_SHARE
+# (0.5, as measured) is unchanged. Back out: ENG_ARMS = ["base", "mention"] and FREEZE_PIN["arm_eng"] = "base".
+ENG_ARMS = ["mention"]            # 25 Oct: engagers_first killed (away events beat base); the mention arm is todo/46 (src/swan_bot/mention.py)
 ENG_BLOCK_S = 2 * 3600
 # 26 Oct (engagement audit of the last hour): a reply waits ~68 s in the send queue (DRAFT_AHEAD 4, first in first out) and
 # reply rate falls with the target's age (<2 min 2.45 6 h points a write, 2-5 min 1.13). Second switchback, 3 h blocks so it
@@ -787,7 +790,7 @@ SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEU
 # FREEZE_PIN's arm (its first arm when not listed). Before the freeze, set each dimension's pin to its read-out winner
 # (scripts/engagement_report.py --hours 48, by arm). None: never freeze.
 ARMS_FREEZE = 1793451600            # 2026-10-31T13:00:00Z = 2026-11-01 00:00 Sydney (AEDT)
-FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "base", "arm_npc": "base"}   # arm_npc: set to "extra" if its read-out wins
+FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "mention", "arm_npc": "base"}   # arm_npc: set to "extra" if its read-out wins
 # todo/49 (27 Oct): the value pick. In a "value" block next_target ranks the candidates of one tier by expected points when
 # the reply lands (swan_bot/value.py: class group x landing age, from the 6 h outcomes, hour-adjusted, never rising with age)
 # instead of newest-first under FRESH_MIN and then the score; tiers, caps, the recontact gap and session limits are unchanged.

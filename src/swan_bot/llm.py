@@ -471,6 +471,8 @@ class Generator:
                     print(f"{prov} {model}: no JSON mode; parsing plain text")
                 continue
             self._count(model)
+            if not getattr(r, "choices", None):             # 28 Oct 00:02 UTC: a provider answered with choices=None and the TypeError killed drafter-3 and the bot
+                raise Unavailable("empty response", 120, str(getattr(r, "error", ""))[:120])
             self._local.finish = r.choices[0].finish_reason
             text = (r.choices[0].message.content or "").strip()
             self._charge(model, getattr(r, "usage", None), system, user, text)

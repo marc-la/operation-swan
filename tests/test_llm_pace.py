@@ -41,6 +41,22 @@ def test_reasoning_model_empty_at_cap_is_asked_again_uncapped():
     assert g._call("groq", "gpt-oss", "s", "u", False, max_tokens=600) == "a draft" and sent[-1] == 4096
 
 
+def test_a_response_without_choices_parks_the_model_instead_of_raising_typeerror():
+    """28 Oct 00:02 UTC: a provider answered with choices=None; r.choices[0] killed a drafter thread and so the bot."""
+    import types
+    g = llm.Generator.__new__(llm.Generator)
+    g._lock, g.last_call, g.min_gap, g._local, g.calls = threading.Lock(), {}, 0.0, threading.local(), {}
+    g.no_cap, g.no_reasoning, g.no_schema, g.no_json_mode = set(), set(), set(), set()
+    g._count = lambda model: None
+    create = lambda **kw: types.SimpleNamespace(choices=None, error={"message": "upstream"})
+    g.clients = {"groq": types.SimpleNamespace(chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=create)))}
+    try:
+        g._call("groq", "m", "s", "u", False)
+        raise AssertionError("expected Unavailable")
+    except llm.Unavailable as e:
+        assert e.why == "empty response" and e.seconds == 120
+
+
 def test_park_records_why_and_status_hides_expired():
     g = llm.Generator.__new__(llm.Generator)
     g.chain = [("gemini", "a"), ("groq", "b"), ("groq", "c")]
