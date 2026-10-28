@@ -190,12 +190,14 @@ def test_agree_close_block_gives_an_agreeing_answer_the_closing_prompt(monkeypat
     assert job["meta"]["agree"] is True and job["meta"]["arm_conv"] == "agree_close"
     assert "25 words" in user and content.NO_VERDICT_RULE not in user
     assert job["meta"]["agree_by"] == "keywords" and not job.get("read")           # keywords agree: no read needed
+    monkeypatch.setitem(config.PIN, "rb_open", job["meta"]["rb_open"])             # todo/51: the opener this job drew
     assert job["gate_policy"]["phrase_"] == dict(fix=False, redraft=content.reply_back_prompt("Nursing shortage, exactly.", AGREES))
 
 
 def test_agree_close_block_leaves_the_other_answers_on_the_base_prompts(monkeypatch):
     from swan_bot import content
     job, user = prompt_for("agree_close", DISAGREES, monkeypatch)
+    monkeypatch.setitem(config.PIN, "rb_open", job["meta"]["rb_open"])             # todo/51: the opener this job drew
     base = content.reply_back_prompt("Nursing shortage, exactly.", DISAGREES)
     assert job["meta"]["agree"] is False and job["read"] and user == base + content.reply_back_read_block()   # the light read
     assert content.NO_VERDICT_RULE in user and "25 words" not in user

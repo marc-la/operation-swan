@@ -413,7 +413,10 @@ THREAD_MAX_DEPTH = 8
 # reply-backs (a hash of the citizen's post id, so a re-poll keeps its arm) use THREAD_DEPTH_TEST_CAP instead of THREAD_MAX_DEPTH.
 # Every reply-back is logged with its thread depth and arm; scripts/depth_report.py reads out how often the citizen answers
 # again by depth. Off: SWAN_THREAD_DEPTH_TEST=0 (+ restart).
-THREAD_DEPTH_TEST = True
+# 28 Oct (todo/51, docs/06-strategy/replyback-persuasion-2026-10-28.md): off. Citizens answered our reply-back 15% of the
+# time at depth 2, 5% at 6, 8% at 7, and once in 129 writes at depths 8-9 (all in the deep arm, 23-28 Oct): the cap stays
+# at THREAD_MAX_DEPTH (a reply at depth 8 or more is skipped as deep_thread), and those ~25 writes a day go to fresher targets.
+THREAD_DEPTH_TEST = False
 THREAD_DEPTH_TEST_CAP = 11
 # Levers, 2026-10-22: fear_answer cut (0 citizen replies in 21 writes); in_group (18%) and permanence (16%) up. Others 1.
 # 2026-10-23: switching 0 (the "was Yes, now No" story: hidden 3.4% of the time against 1.4% for the rest).
@@ -492,6 +495,7 @@ PREMIUM_MODELS = ()
 # converges on the same wording (16% of its drafts would hit the phrase budgets against 2%), ~$0.01 a reply. Not for
 # journalists, posts or the lean prompt (59% first-try pass), and it never fills in for other models (draft_models).
 # Needs SONNET in deploy/llm_chain.txt. () turns it off. Read by `backend` on writes, with arm_style: hides, away events.
+# 28 Oct (todo/51): reply-backs left the lane (PREMIUM_REPLY_MODES, below): worse than Kimi/Haiku on their brief.
 PREMIUM_REPLY_MODELS = (SONNET,)
 PREMIUM_CLASSES = {"unsure", "unclear", "conditions", "yes_reason"}
 REPLY_NEVER = {"zai.glm-5"}
@@ -850,6 +854,30 @@ FIXES_REPLY_FLOOR = 40              # fixes blocks: a reply may be this short (q
 FREEZE_PIN["arm_style"] = "fixes"
 if STYLE_FIXES:
     SWITCHBACK = SWITCHBACK + [("arm_style", STYLE_ARMS, STYLE_BLOCK_S)]
+# ---- todo/51 reply-back fixes (28 Oct, Marc; docs/06-strategy/replyback-persuasion-2026-10-28.md §9) ----
+# Reply-backs only: first replies are under the todo/50 read, so nothing here changes them. No switchback arm (two
+# offline rounds found no wording arm worth one); each fix has its own off switch.
+# (1) The Sonnet lane (PREMIUM_REPLY_MODELS) leads fixes-block drafts of these kinds only; reply-backs left it. Offline
+#     (scripts/rb_ab.py, 60 live conversations, Sonnet raters blind): on the reply-back brief Sonnet moved the stand-in
+#     less than Kimi/Haiku, shift -0.19 [-0.30, -0.09], and read more like a bot, P(bot) +6.0 [+1.2, +10.7]; live, 0 citizen
+#     answers in its first 41 reply-backs (28 Oct). {"reply", "reply_back"} puts reply-backs back.
+PREMIUM_REPLY_MODES = {"reply"}
+# (3) A reply-back to a citizen who'd back Yes with conditions (quality.conditional_yes: sunset, venue list, exemptions,
+#     oversight...) may not grant that those conditions are good or would make it fine ("a sunset clause would help",
+#     "those protections would be welcome"): quality.check rejects it as concede_condyes, and quality.fix keeps what follows
+#     "but" or drops the sentence. 21% of the 806 such reply-backs 23-28 Oct conceded; after one, 4 of 95 readable
+#     follow-ups moved toward Yes and none toward No, against 5 and 2 of 362 without (p ~ 0.06; the Sonnet stand-in
+#     never shows backfire, so this is the live hint only). The old concede_open budget only saw the first sentence, so
+#     "Cheers. A sunset clause would help, but..." passed. Tuned on 1,210 labelled reply-backs: the target detector
+#     0.93 precision, 0.93 recall; it would have rejected 13% of reply-backs. () turns it off.
+CONCEDE_CHECK_KINDS = ("reply_back",)
+# (4) The reply-back prompt says what a Yes or a No leads to only as the facts put it (content.OUTCOME_RULE): "they
+#     *can't* add a sunset later", "we get to write those conditions in". False: the line goes.
+REPLY_BACK_OUTCOME_RULE = True
+# (5) The reply-back opener, drawn per draft (was "If they agreed, start with a short thanks (Cheers, Thanks, Ta)": 78% of
+#     reply-backs opened with one, a stream-level fingerprint): own = a brief reaction in their own words, thanks = a
+#     short thanks is fine, none = straight to the point. Logged as rb_open on the write. {"thanks": 1.0} is the old line.
+REPLY_BACK_OPENERS = {"own": 0.4, "thanks": 0.3, "none": 0.3}
 ENG_UNSURE = ("unsure", "unclear")         # target classes engagers_first puts after the citizens who answered us
 # Free levers (follow, like), randomised per citizen, not per block: engage.cell(citizen_id), a pure function of the id,
 # picks one of these four, logged as eng_cell on every citizen-facing write. They cost no write: follows and likes

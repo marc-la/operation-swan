@@ -731,9 +731,10 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 # the experiment arms (todo/13) logged on every write; the rest of meta is logged as before
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
         "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block",     # todo/48: arm_npc with NPC_EXTRA_ARM
-        "arm_style", "colour", "lean", "lean_shape")                                       # todo/50: the prompt fixes
+        "arm_style", "colour", "lean", "lean_shape",                                       # todo/50: the prompt fixes
+        "rb_open")                                                                         # todo/51: the reply-back opener
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
-               "pulse", "theme", "theme_level", "arm_style", "lean_shape")
+               "pulse", "theme", "theme_level", "arm_style", "lean_shape", "rb_open")
 
 
 def queue_arm(t=None, late_sends=()):
@@ -934,7 +935,7 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     elif mode == "journalist":
         user = content.journalist_prompt(target["author_id"], body, meta=meta, persona=persona)
     else:
-        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"), spent=spent, fixes=fx)
+        user = content.reply_back_prompt(job["our_text"], body, style=job.get("style"), spent=spent, fixes=fx, meta=meta)
         meta["style"] = job.get("style")
         if meta.get("arm_conv") == "agree_close":                 # todo/32: close on our vote when they agree
             meta["agree"] = agrees(body)
@@ -1037,8 +1038,8 @@ def draft_models(job, gen):
         return [m for m in dict.fromkeys(order) if m not in config.REPLY_NEVER and (m in chain)], True
     if job["mode"] in config.STRONG_MODES:                      # where minds change
         lead = list(config.PREMIUM_MODELS) if high_value(job) else []
-        if job.get("fixes") and high_value(job):               # 28 Oct: Sonnet on the fixes prompt (config.PREMIUM_REPLY_MODELS)
-            lead += [m for m in config.PREMIUM_REPLY_MODELS if m in full_chain]
+        if job.get("fixes") and high_value(job) and job["mode"] in config.PREMIUM_REPLY_MODES:   # 28 Oct: Sonnet on the
+            lead += [m for m in config.PREMIUM_REPLY_MODELS if m in full_chain]                 # fixes prompt; todo/51: not reply-backs
         replies = list(config.REPLY_MODELS)
         if config.LEAD_HAIKU_SHARE and "lead" not in job:      # 24 Oct: a random lead, so hide rates compare cleanly
             job["lead"] = config.HAIKU if random.random() < config.LEAD_HAIKU_SHARE else replies[0]

@@ -460,6 +460,82 @@ BARE_OPEN = re.compile(r"(?:they|them|those)\b", re.I)
 GROUP_WORDS = re.compile(r"\b(?:they|them|their|those|government|govt|gov|assembly|ministers?|ministry|council|politicians?|"
                          r"authorities|officials?|people|folks|everyone|businesses|shops|venues|employers|bosses|staff)\b", re.I)
 
+# ---- todo/51 (28 Oct): no conceding a conditional Yes in a reply-back (config.CONCEDE_CHECK_KINDS) ----
+# Two-thirds of the citizens who answer us would back Yes with conditions. Granting that the conditions are good or would
+# make it fine ("a sunset clause would help, but...") validates Yes-with-conditions. Patterns tuned on 1,210 labelled
+# reply-backs, 23-28 Oct (docs/06-strategy/replyback-persuasion-2026-10-28.md): conditional_yes 0.93 precision, 0.93 recall.
+CONDITIONAL_YES = re.compile(
+    r"\bif (?:a |the )?yes\b|\bif (?:this|it|we|the pass|a pass|the rule|the certificate|they|the government)\b[^.?!]{0,30}"
+    r"\b(?:goes ahead|go(?:es)? ahead|passes|pass|moves? (?:ahead|forward)|go(?:es)? forward|wins?|happens|proceed|is to)\b"
+    r"|\bif we (?:vote|go|move|do|proceed)\b|\bonly (?:with|if)\b|\byes,? but\b"
+    r"|\b(?:could|would|i'?d|might) (?:back|support|accept)\b|\bopen to (?:a )?yes\b|\b(?:still )?lean(?:ing)? yes\b"
+    r"|\bbefore (?:i|we)(?:'?d| would| could)? (?:back|vote|support|sign)"
+    r"|\b(?:we|it|they|the rule|the plan|regulations?|the law|this) (?:need|needs|must|should|has to|have to|ha(?:s|ve) got to)\b"
+    r"[^.?!]{0,60}\b(?:sunset|end date|expiry|venue|list|exemption|oversight|review|guardrail|safeguard|timetable|scope|"
+    r"privacy|watchdog|published|written|in law|statute|plan)|\block (?:it |this |these |those )?in\b|\bbake[ds]? in", re.I)
+SAFEGUARD = re.compile(r"\bsunset|\bend[- ]?dates?\b|\bexpir(?:y|es|ation)\b|\bfinish line\b|\btime[- ](?:limit|bound)|"
+                       r"\bvenues?\b|\bspaces? (?:list|map)|\blist of (?:places|venues|spaces)\b|\bexemptions?\b|"
+                       r"\boversight\b|\bwatchdog\b|\breviews?\b|\bguardrails?\b|\bsafeguards?\b|\bscope\b|"
+                       r"\btimetable\b|\btriggers?\b|\bmilestones?\b|\bprivacy\b", re.I)
+DEMANDS = re.compile(r"\b(?:need|needs|must|should|want|wants|require|requires|publish|written|write|lock|codify|"
+                     r"firm|hard|clear|real|proper|essential|before|first|minimum|non-negotiable|deserve)\b", re.I)
+SAYS_NO = re.compile(r"\b(?:i'?m|i am|we'?re|i'?ll be)\s+(?:voting|a|going)\s+no\b|\bno from me\b|\bvote no\b|"
+                     r"\bthat'?s a no\b|\bvoting no\b", re.I)
+CONCEDES = re.compile(
+    r"\b(?:would|could|might) (?:help|fix|be (?:welcome|good|great|nice|ideal|fair|sensible|a start|reasonable|better))\b"
+    r"|'d (?:help|be (?:welcome|good|great|nice|ideal|fair|sensible|a start|reasonable|better))\b"
+    r"|\bsounds? (?:fair|fine|sensible|good|reasonable|grand|lovely|tidy|kind|wise|ideal|great|right|solid|workable|nice)"
+    r"|\b(?:is|are|seems?|look) (?:fair|sensible|reasonable|ideal|essential|welcome)\b|\ba fine idea\b"
+    r"|\bfair (?:enough|ask|point|to want|call)\b|\bmakes? sense\b|\breasonable ask\b|\bgood (?:to want|idea|call|start)\b"
+    r"|\bwould (?:have )?made? (?:it|this) (?:workable|acceptable|fair|fine|ok|okay|better|work)\b|\b(?:a|the) fine system\b"
+    r"|\bthat version\b|\bi'?d (?:back|support|vote for|feel differently)\b|\bthose (?:three )?protections\b"
+    r"|\b(?:guardrails|safeguards|protections|conditions)[^.?!]{0,25}\b(?:matter|are (?:right|good|smart|needed))\b"
+    r"|\byou'?re right that (?:th(?:ose|ese|at)|it|they)\b[^.?!]{0,25}\bmatters?\b|\byou want what i want\b", re.I)
+CONCEDE_BACKREF = re.compile(
+    r"\b(?:th(?:ose|ese|at)|your|all (?:of )?th(?:ose|ese)|both)\b[^.?!]{0,20}\b(?:things?|fix(?:es)?|protections?|"
+    r"conditions?|guardrails?|safeguards?|ideas?|points?|asks?|limits?|rules?|version|plan|framework|system|changes?)\b"
+    r"|\bwould (?:have )?made? (?:it|this) |\bthat version\b|\bfine system\b|\bi'?d back\b|\bfeel differently\b"
+    r"|\bthat'?d be ideal\b|\byou want what i want\b", re.I)
+_BUT = re.compile(r"(?:,\s*|\s+)but\s+", re.I)
+
+
+def conditional_yes(target_text):
+    """True when the citizen's post would back Yes with conditions, or talks about how a Yes should be done (todo/51)."""
+    t = re.sub(r"https?://\S+", "", target_text or "")
+    if SAYS_NO.search(t):
+        return False
+    n = len({m.group(0).lower()[:5] for m in SAFEGUARD.finditer(t)})
+    return bool(CONDITIONAL_YES.search(t)) or n >= 2 or (n >= 1 and bool(DEMANDS.search(t)))
+
+
+def conceding_sentence(text):
+    """The first sentence of text that grants a safeguard or the citizen's conditions (CONCEDES next to a SAFEGUARD
+    word or a reference back to their list), or None. Conceding something else ("better pay would help") is fine."""
+    for s in sentences(TRAILING_TAGS.sub("", normalise(text))):
+        if CONCEDES.search(s) and (SAFEGUARD.search(s) or CONCEDE_BACKREF.search(s)):
+            return s
+    return None
+
+
+def drop_concession(text, kind):
+    """A code fix for concede_condyes: the conceding sentence keeps only what follows its "but" ("A sunset would help,
+    but they won't say which shops" -> "They won't say which shops"), or goes; None when nothing usable is left."""
+    parts = sentences(TRAILING_TAGS.sub("", normalise(text)))
+    for i, s in enumerate(parts):
+        if s != conceding_sentence(s):
+            continue
+        m = _BUT.search(s)
+        rest = _cap(s[m.end():]) if m and CONCEDES.search(s[:m.start()]) else ""
+        if rest and len(rest) >= 20 and not conceding_sentence(rest):
+            out = " ".join(parts[:i] + [rest] + parts[i + 1:])
+        else:                                      # the sentence goes; one sentence left is enough for a reply-back
+            kept = parts[:i] + parts[i + 1:]
+            if not kept or (i < len(parts) - 1 and _BACKREF.match(parts[i + 1])):    # "That's why..." leans on it
+                return None
+            out = _cap(" ".join(kept))
+        return out if out and len(out) >= LENGTHS[kind][0] and not conceding_sentence(out) else None
+    return None
+
 
 def near_duplicate(body, kind, recent_texts=(), same=()):
     """True when body is too close to one of our texts (5-word shingles, quality.similar), as above."""
@@ -493,6 +569,9 @@ PHRASE_BUDGETS = {                  # key: (pattern, share of the window)
     "papers": (re.compile(r"\bpapers\b", re.I), 0.18),
     "half_four": (re.compile(r"\bhalf (?:past )?four\b|\b4[:.]?30\b", re.I), 0.03),
     "who_in_your": (re.compile(r"\bwho in your\b", re.I), 0.05),
+    # 28 Oct (todo/51): "until it's too late to argue" came up in 3 of 40 offline reply-back drafts (live: 14 of 4,313 writes
+    # in 24 h, 0.3%), so it is held to the budget of a stock phrase before it becomes one.
+    "too_late": (re.compile(r"\btoo late to (?:argue|ask|object|change|take it back|say no)\b", re.I), 0.05),
     # 23 Oct hidden-post audit (docs/06-strategy/hidden-post-audit-2026-10-23.md): posts with one of these were hidden
     # 3-5x as often as the rest (since 21 Oct 12:00 UTC: closing "know anyone who moved from Yes" 7 of 131, a story of
     # someone who was Yes and is now No 9 of 264, a conceding opener 11 of 280; the other 2,116 writes 25). No share.
@@ -744,6 +823,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, "near_duplicate"
     if kind in PERSONAL_KINDS and BARE_OPEN.match(t) and not GROUP_WORDS.search(target_text or ""):
         return None, "bare_they_open"
+    if kind in config.CONCEDE_CHECK_KINDS and conditional_yes(target_text) and conceding_sentence(t):
+        return None, "concede_condyes"                # todo/51: granting a conditional Yes its conditions
     if kind in PERSONAL_KINDS:
         run = repeated_run(body, recent_texts, target_text)
         if run:
@@ -881,7 +962,8 @@ def fix(text, why, kind, recent=(), same=()):
     """A code fix for a rejected draft (no LLM call), or None when this reason has none or nothing usable is left.
     Too long -> trim; same opening -> drop the first clause; an unapproved number -> drop its sentence; 2026-10-23: a
     leading "Sure," goes; a budgeted phrase (or a conceding opener) -> drop the sentences saying it; near_duplicate ->
-    drop the sentences that repeat our earlier wording (recent / same: our texts, as for check)."""
+    drop the sentences that repeat our earlier wording (recent / same: our texts, as for check); todo/51: a conceded
+    conditional Yes -> keep what follows its "but", or drop the sentence."""
     why = why or ""
     if why == "llm_artefact":
         return strip_filler(text)
@@ -900,6 +982,8 @@ def fix(text, why, kind, recent=(), same=()):
         return trim(text, kind, hi=OFF_TOPIC_LEN[1], keep_no=False)
     if why in ("same_opening", "echo_open"):
         return drop_first_clause(text)
+    if why == "concede_condyes":                   # todo/51: what follows the "but", or the sentence goes
+        return drop_concession(text, kind)
     if why.startswith(VOICE_REPEAT) and kind in PERSONAL_KINDS:      # todo/50: the voice's own script goes
         run = why[len(VOICE_REPEAT):].replace("_", " ")
         parts = sentences(TRAILING_TAGS.sub("", normalise(text)))
@@ -1010,6 +1094,11 @@ def repair_note(why, raw, kind, tag=None, recent=(), target_text="", wants=(), s
     if why == "echo_open":
         return ("Don't open by naming their topic back to them in a few words. Start on a full sentence of your own "
                 "that answers them; keep the rest.")
+    if why == "concede_condyes":
+        said = conceding_sentence(raw)
+        return ((f"Cut «{said[:160]}»: " if said else "Cut the part that grants their conditions: ") +
+                "don't say their sunset, list or safeguards would help, sound fair or would make a Yes fine. Say plainly "
+                "that they aren't in what we're voting on, or answer something else they said. Keep the rest.")
     if why == "bare_they_open":
         return ("The reply starts on They, Them or Those with nobody for it to mean. Start again from the citizen's "
                 "own point, naming who or what you mean (the government, the plan, the list). Keep the rest.")

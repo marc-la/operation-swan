@@ -211,7 +211,8 @@ def test_sonnet_leads_high_value_replies_in_fixes_blocks_only_and_is_never_a_fal
     hv = dict(mode="reply", target_class="unsure")
     fixes = bot.draft_models(dict(hv, fixes=True), Chain(up={KIMI}))[0]
     assert fixes[0] == config.SONNET and KIMI in fixes and config.HAIKU in fixes
-    assert bot.draft_models(dict(mode="reply_back", fixes=True), Chain(up={KIMI}))[0][0] == config.SONNET
+    rb = bot.draft_models(dict(mode="reply_back", fixes=True), Chain(up={KIMI}))[0]      # todo/51: reply-backs left the lane
+    assert config.SONNET not in rb and rb[0] in (KIMI, config.HAIKU)
     assert config.SONNET not in bot.draft_models(dict(hv, fixes=False), Chain(up={KIMI}))[0], "base prompt: no Sonnet"
     assert config.SONNET not in bot.draft_models(dict(hv), Chain(up={KIMI}))[0]
     bulk = bot.draft_models(dict(mode="reply", target_class="firm_yes", fixes=True), Chain(up={KIMI}))[0]

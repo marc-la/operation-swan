@@ -1494,28 +1494,49 @@ AGREE_CLOSE = ("They agree with you. Reply in at most 25 words, all lowercase an
                "\"so i'm ticking no\"). No question, no list of facts, no story about someone you know.")
 
 
-def reply_back_prompt(our_text, their_text, style=None, agree_close=False, spent=(), fixes=None):
+# todo/51 (28 Oct; config.REPLY_BACK_OUTCOME_RULE): drafts said "they *can't* add a sunset later" and "we get to write those
+# conditions in". The rule names no fact itself, so there is nothing in it to copy and no paused fact to leak. Its first
+# wording ("never claim that something can't happen, or will happen, later") put "too late to argue" in 3 of 40 offline drafts.
+OUTCOME_RULE = "Claim no more about what a Yes or a No would lead to than the facts you were given say."
+# todo/51 (config.REPLY_BACK_OPENERS): the opening line, drawn per draft as rb_open. "thanks" is the old wording, which
+# opened 78% of reply-backs with Cheers, Ta or Thanks.
+REPLY_BACK_OPENS = {
+    "own": "Open with a brief reaction of your own to what they said, in your own words, not a stock thanks;",
+    "thanks": "If they agreed, start with a short thanks (Cheers, Thanks, Ta) or go straight to one small new thing;",
+    "none": "Go straight to your point, with no thanks and no greeting;",
+}
+
+
+def outcome_rule():
+    """OUTCOME_RULE plus a space, or "" while config.REPLY_BACK_OUTCOME_RULE is off."""
+    return f"{OUTCOME_RULE} " if config.REPLY_BACK_OUTCOME_RULE else ""
+
+
+def reply_back_prompt(our_text, their_text, style=None, agree_close=False, spent=(), fixes=None, meta=None, rng=random):
     """A citizen who replied to us, or (no our_text) mentioned us in a post of their own (todo/20 G7). style: the
     style of our reply they answered; a mirror_concede conversation goes on in that style (todo/20 step 3).
-    fixes (todo/50, a fixes block): their register, and the stranger rule, after the conversation."""
+    fixes (todo/50, a fixes block): their register, and the stranger rule, after the conversation. todo/51: every
+    reply-back carries outcome_rule(); the current style draws its opener (REPLY_BACK_OPENS) into meta["rb_open"]."""
     said = (f"You posted:\n<<<{our_text[:500]}>>>\nA neighbour replied to you:\n<<<{their_text[:500]}>>>\n"
             if our_text else f"A neighbour mentioned you in this post:\n<<<{their_text[:500]}>>>\n")
     if fixes:
         said += f"{reg_mod.line(fixes.get('register'))}{STRANGER_RULE} "
     if agree_close:                                   # todo/32: replaces NO_VERDICT_RULE here only
-        return f"{said}{AGREE_CLOSE} {worn_line(their_text, spent)}No hashtags."
+        return f"{said}{AGREE_CLOSE} {outcome_rule()}{worn_line(their_text, spent)}No hashtags."
     if style == "mirror_concede":
         return (
             f"{said}Reply to them in 1 or 2 sentences, between 60 and 220 characters: pick up one thing they actually "
             f"said, grant what is fair in it in a few words, then stay with your No with one detail from your own life "
             f"or one fact. If they asked a question, answer it with one fact; otherwise no question. Never start with "
-            f"Spot on, Exactly or Too right. {NO_VERDICT_RULE} {worn_line(their_text, spent)}No hashtags.")
+            f"Spot on, Exactly or Too right. {NO_VERDICT_RULE} {outcome_rule()}{worn_line(their_text, spent)}No hashtags.")
+    opener = REPLY_BACK_OPENS.get(experiment.draw("rb_open", config.REPLY_BACK_OPENERS, meta, rng),
+                                  REPLY_BACK_OPENS["thanks"])
     return (
         f"{said}"
         f"Reply to them in 1 or 2 sentences, between 40 and 220 characters: answer what they actually said, kindly "
-        f"and specifically, and stay with your view. If they agreed, start with a short thanks (Cheers, Thanks, "
-        f"Ta) or go straight to one small new thing; never start with Spot on, Exactly or Too right. "
-        f"If they asked a question, answer it with one fact. {NO_VERDICT_RULE} {worn_line(their_text, spent)}No hashtags."
+        f"and specifically, and stay with your view. {opener} never start with Spot on, Exactly or Too right. "
+        f"If they asked a question, answer it with one fact. {NO_VERDICT_RULE} {outcome_rule()}"
+        f"{worn_line(their_text, spent)}No hashtags."
     )
 
 
