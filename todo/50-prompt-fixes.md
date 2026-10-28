@@ -20,3 +20,8 @@ Salience (fix 6), invented history, dashes, one hot voice's volume, roles that d
 - Why: offline A/B on 100 targets (same prompt, Sonnet vs Kimi/Haiku, Sonnet raters blind): fixes prompt engage +3.8 [+2.1, +5.5], misread -5 pts, first-try gate pass 85% vs 62%, repeats what we told the citizen 9% vs 17%; P(bot) not lower; on the base prompt P(bot) +5.0, hence fixes only. Lean prompt on Sonnet: 59% first-try pass. Caveat: the rater is also Sonnet; shift did not move for any set.
 - Cost to watch: it converges on the same wording (16% of drafts would hit the phrase budgets vs 2%); about $0.01 a reply, est. $5-10 a day.
 - Read-out at 24 h: `backend` = Sonnet vs not, within fixes blocks: hides, away events, citizen replies, engagement per write, `voice_repeat`/phrase-budget rejects. Kill: `PREMIUM_REPLY_MODELS = ()`.
+
+## Checkpoints (28 Oct, Marc: hold other changes until these are read)
+- **~10:00 UTC 28 Oct (6 pm Perth):** 6 h read, fixes against base (`python scripts/engagement_report.py --hours 24` on the box, or the join of `arm_style` with `logs/swan_outcomes.jsonl`). The 1 h read at 06:20 UTC had 83 fixes writes at 2.4% citizen replies against 7.7% base (thin).
+- **~04:00 UTC 29 Oct (noon Perth):** 24 h read incl. Sonnet (`backend`). **Kill rule:** fixes citizen replies per write below about 6% against base's ~8%, or hides/away events above base: `STYLE_FIXES = False` (this also removes the Sonnet lane) and drop the `FREEZE_PIN["arm_style"]` line. Sonnet had written nothing by 06:20 UTC (runs in fixes blocks only): confirm `backend` shows it in the first fixes block.
+- Three changes landed within 3 hours on 28 Oct (fixes 03:32, pin 06:03, Sonnet 06:06 UTC), so attribute with care; no other behaviour changes until the 29 Oct read.

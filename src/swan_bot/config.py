@@ -38,10 +38,10 @@ NPC_TARGET_MIN = 0.9
 NPC_BLUE_MIN = 0.3
 # The extra arm: with it on, Targeter._consider admits a likely citizen (score >= NPC_TARGET_MIN) in the "extra" blocks of
 # arm_npc (SWITCHBACK below; "base" blocks are as now), logged with npc_score; reply-backs answer them in any block.
-NPC_EXTRA_ARM = True                # ON 27 Oct (Marc): the 28-30 Oct test; hourly scan = deploy/swan-npcscan.timer. Off: SWAN_NPC_EXTRA_ARM=0
+NPC_EXTRA_ARM = False               # OFF 28 Oct (Marc): ON 27 Oct; 145 matured writes to these accounts got 0 citizen replies and 1 like (8% expected), ~7% of slots, ~-7% points. On: SWAN_NPC_EXTRA_ARM=1
 # Blue's final check: with it on, evidence.py / fleets.py never count an account scoring >= NPC_BLUE_MIN as a competitor,
 # and a report whose author or target scores that high is skipped and logged ("skip", reason "npc", with the score).
-BLUE_NPC_GUARD = True               # ON 27 Oct (Marc), after the first scan. Off: SWAN_BLUE_NPC_GUARD=0
+BLUE_NPC_GUARD = False              # OFF 28 Oct (Marc): ON 27 Oct; same premise as the extra arm, which did not hold (those accounts never answer us). On: SWAN_BLUE_NPC_GUARD=1
 _NPC = {"mtime": None, "built": 0.0, "scores": {}}
 
 
@@ -451,7 +451,7 @@ SV_DELAY_PER_VOICE_DAY = True
 OWN_LIKE_ARM = True
 # 2026-10-22 read-out: with an own like 12% citizen replies [10-13] vs 9% [8-11] without, portal the same. Kept on
 # every reply; list [True, False] to test again.
-OWN_LIKE_VARIANTS = [True, False]    # 25 Oct (todo/46 audit): alternate again. 1 like vs none: 5.6% vs 7.7% citizen replies, 6.5% vs 5% likes (n=7,544 / 1,002); halves the booster footprint
+OWN_LIKE_VARIANTS = [False]          # 28 Oct (Marc): own like 6.9% citizen replies vs 7.8% without (n=2,927 / 2,931), so none. Was [True, False]. 25 Oct (todo/46 audit): alternate again. 1 like vs none: 5.6% vs 7.7% citizen replies, 6.5% vs 5% likes (n=7,544 / 1,002); halves the booster footprint
 OWN_LIKE_DELAY_S = (60, 4 * 60)
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -790,7 +790,7 @@ QUEUE_MAX_WAIT_S = 150              # a ready draft older than this goes first w
 QUEUE_LATE_S = 8                    # a send this many seconds after its slot opened counts as late
 QUEUE_GUARD_N = 3                   # this many late sends within QUEUE_GUARD_S: shallow falls back to fresh
 QUEUE_GUARD_S = 15 * 60
-# todo/48: the extra-citizens arm (NPC_EXTRA_ARM, off): in "extra" blocks likely citizens above id 2343 are candidates too.
+# todo/48: the extra-citizens arm (NPC_EXTRA_ARM, off since 28 Oct): in "extra" blocks likely citizens above id 2343 are candidates too.
 # 3 h blocks; it only rotates anything while NPC_EXTRA_ARM is on. Read: scripts/engagement_report.py (arm_npc table).
 NPC_ARMS = ["base", "extra"]
 NPC_BLOCK_S = 3 * 3600
@@ -997,4 +997,4 @@ MENTION_MODES = ("reply",)
 # an ordinary candidate in the group "late", handed out BEFORE every other candidate, answered by a live voice as a first reply
 # (on their topic when it is off topic), at most LATE_PER_H an hour. Off: LATE_REPLY = False (the old behaviour).
 LATE_REPLY = True
-LATE_PER_H = 30
+LATE_PER_H = 10                     # 28 Oct (Marc): was 30. Late replies got 4.2% citizen replies (n=867) against 7.7-8.8% for ordinary ones, success line 8%+; served before every fresh target

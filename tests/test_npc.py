@@ -107,8 +107,8 @@ def test_likely_citizen_reads_the_cut_and_is_citizen_stays_the_id_rule(scores, m
     assert config.blue_citizen(4580) == 0.97                                # ...Blue never does (recall)
 
 
-def test_both_switches_are_on_and_the_arm_is_in_the_switchback():     # shipped off 27 Oct, switched on the same day
-    assert LIVE_FLAGS == (True, True)
+def test_both_switches_are_off_and_the_arm_is_in_the_switchback():     # on 27 Oct, off 28 Oct: 0 replies in 145 writes
+    assert LIVE_FLAGS == (False, False)
     switchback, pins = LIVE_SWITCH
     assert ("arm_npc", ["base", "extra"], 3 * 3600) in switchback and pins["arm_npc"] == "base"
     assert {"NPC_EXTRA_ARM", "BLUE_NPC_GUARD"} <= set(config.STEALTH_ENV)
