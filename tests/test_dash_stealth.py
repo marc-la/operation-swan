@@ -411,6 +411,17 @@ def test_team_pace_uses_the_line_nearest_24_h_back_and_needs_one_six_hours_old()
     assert build.team_pace(lines[2:3], rows, NOW) is None and build.team_pace([], rows, NOW) is None
 
 
+def test_team_pace_does_not_move_between_board_changes_and_counts_from_when_scores_showed():
+    rows = [dict(team="A", score=124_000)]
+    seen = at(NOW, 0.5)                                                  # the board last changed 30 min ago; hourly lines hold their own `seen`
+    lines = [dict(ts=at(NOW, h + 0.0), seen=at(NOW, h + 0.5), scores=dict(A=100_000 + (24 - h) * 1000)) for h in range(1, 30)]
+    runs = [build.team_pace(lines, rows, NOW + dt.timedelta(minutes=m), seen=build.ts(seen)) for m in (0, 15, 40)]
+    assert all(r["per_hour"] == runs[0]["per_hour"] and r["span"] == 24 for r in runs)       # same all hour, exactly 24 h
+    assert runs[0]["as_of"] == build.ts(seen)
+    after = build.team_pace(lines, rows, NOW + dt.timedelta(minutes=40), seen=build.ts(seen) + dt.timedelta(hours=1))
+    assert after["span"] == 24 and after["as_of"] > runs[0]["as_of"]                          # a board change moves it a whole hour
+
+
 def test_leaderboard_shows_each_teams_pace_and_who_is_gaining_on_us(tmp_path):
     full = dict(leaderboard_portal(), rows=leaderboard_portal()["top"] + [
         dict(rank=9, team="Nine", score=33_000), dict(rank=10, team="Operation Swan", score=32_000),

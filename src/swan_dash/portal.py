@@ -1,9 +1,12 @@
-"""Read our standing from the CTN portal for the dashboard (todo/09). swan-portal.timer runs it every 15 min.
+"""Read our standing from the CTN portal for the dashboard (todo/09). swan-portal.timer runs it every minute with --auto,
+which reads only when one is due (plan(): a full read at :02 and :32, and a short one a minute apart for up to 12 min
+after the portal posts the hour's points, until the board's scores change).
 
-    python -m swan_dash.portal          # (from src/) one read of the leaderboard and our points log
+    python -m swan_dash.portal          # (from src/) one full read of the leaderboard, team page and points log
+    python -m swan_dash.portal --auto   # what the timer runs: reads only when plan() says one is due
 
 Logs in with the session cookie in secrets/portal_cookie (one line, name=value, copied from a logged-in browser), so
-no portal password is stored. Three read-only GETs per run. It writes numbers and points-log lines only, to
+no portal password is stored. Three read-only GETs per full run, two per short run (no team page). It writes numbers and points-log lines only, to
 data/portal.json, appends to data/score.json when the score or rank changes, and adds one line an hour to
 data/leaderboard.jsonl (rank, our score, the 1st and 3rd place scores, team count: the gap to 3rd over time, todo/42) and
 one line an hour to data/team_scores.jsonl (every team's score: the dashboard's points-an-hour column per team, 25 Oct).
@@ -35,6 +38,14 @@ KEEP_EVENTS_H = 24 * 16                        # the whole competition (19 Oct -
 LEADERBOARD_LOG = "leaderboard.jsonl"
 LEADERBOARD_KEEP = 24 * 14                     # hourly lines kept (two weeks): the file never grows past this
 TEAM_SCORES_LOG = "team_scores.jsonl"          # {ts, scores: {team: score}} an hour, same bound (about 5 KB a line)
+
+
+POLL_STATE = "portal_poll.json"                # {last_try, last_full}: written before a read, so a failing read is not retried every minute
+FULL_SLOTS = (2, 32)                           # minutes past the hour of the full reads; the first in a UTC hour makes the hourly history lines
+BURST_FROM_S = 40                              # the portal posts the hour's points at about :19:10; read from 40 s after that minute starts
+BURST_FOR_S = 12 * 60                          # ... for at most 12 min
+BURST_GAP_S = 55                               # ... and no more than once a minute
+SCHEDULE_H = 3                                 # hours of points events that tell us which minute of the hour the portal posts at
 
 
 class SessionExpired(Exception):
@@ -165,8 +176,23 @@ def leaderboard_line(result, now):
 
 
 def team_scores_line(result, now):
-    """One hourly point of the whole board: {ts, scores: {team name: score}} (rank is the order of the scores)."""
-    return dict(ts=now.isoformat(), scores={r["team"]: r["score"] for r in result.get("rows") or []})
+    """One hourly point of the whole board: {ts, seen, scores: {team name: score}} (rank is the order of the scores).
+    `seen` is when these scores first showed on the board (the site changes them once an hour, we poll every 15 min),
+    so a pace is measured between two board changes, not between two poll times."""
+    return dict(ts=now.isoformat(), seen=result.get("scores_ts") or now.isoformat(),
+                scores={r["team"]: r["score"] for r in result.get("rows") or []})
+
+
+def board_scores(rows):
+    return {r["team"]: r["score"] for r in rows or []}
+
+
+def scores_seen(previous, rows, now):
+    """When the board's scores last changed, as our poll saw it: `now` if any team's score differs from the previous
+    read, else the time carried over from it (the previous read's own time when it predates this field)."""
+    if previous.get("rows") and board_scores(previous["rows"]) == board_scores(rows):
+        return previous.get("scores_ts") or previous.get("ts") or now.isoformat()
+    return now.isoformat()
 
 
 def append_leaderboard(path, line, banned, keep=LEADERBOARD_KEEP):
@@ -187,7 +213,51 @@ def append_leaderboard(path, line, banned, keep=LEADERBOARD_KEEP):
     return True
 
 
-def run(root, now, get=fetch, pause=2):
+def parse_time(s):
+    try:
+        return dt.datetime.fromisoformat(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def update_minute(events, now):
+    """The minute of the hour at which the portal posts its hourly points, from the score events of the last SCHEDULE_H
+    hours: the minute that turns up in the most distinct hours (a single poll award does not outvote the hourly rows;
+    a tie goes to the newest). None without events. The minute moved four times in the first three days (:53, :47,
+    :16, :19), so it is read from the log each time, never fixed in code."""
+    hours = {}
+    for e in events or []:
+        t = parse_time(e.get("ts"))
+        if t and dt.timedelta(0) <= now - t <= dt.timedelta(hours=SCHEDULE_H):
+            hours.setdefault(t.minute, set()).add(t.replace(minute=0, second=0, microsecond=0))
+    newest = {m: max(h) for m, h in hours.items()}
+    return max(hours, key=lambda m: (len(hours[m]), newest[m]), default=None)
+
+
+def plan(now, previous, state):
+    """What the timer's run should read now: 'full' (leaderboard, team page, points log), 'short' (leaderboard and points
+    log) or None. Full at each :02 and :32 slot; short once a minute from BURST_FROM_S after the portal's posting minute
+    until the board's scores have changed since it (at most BURST_FOR_S; not while the session is expired)."""
+    last_full, last_try = parse_time(state.get("last_full")), parse_time(state.get("last_try"))
+    if last_full is None:
+        return "full"
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    slot = max(t for t in (hour + dt.timedelta(hours=k, minutes=m) for k in (-1, 0) for m in FULL_SLOTS) if t <= now)
+    if last_full < slot:
+        return "full"
+    minute = update_minute(previous.get("events"), now)
+    if minute is None or previous.get("error"):  # (no history, or a failed first read: wait for the next slot)
+        return None
+    due = now.replace(minute=minute, second=0, microsecond=0)
+    due -= dt.timedelta(hours=1) if due > now else dt.timedelta(0)
+    changed = parse_time(previous.get("scores_ts")) or parse_time(previous.get("ts"))
+    if (dt.timedelta(seconds=BURST_FROM_S) <= now - due <= dt.timedelta(seconds=BURST_FOR_S)
+            and (changed is None or changed < due) and (last_try is None or (now - last_try).total_seconds() >= BURST_GAP_S)):
+        return "short"
+    return None
+
+
+def run(root, now, get=fetch, pause=2, full=True):
     data = root / "data"
     data.mkdir(exist_ok=True)
     out_path = data / "portal.json"
@@ -198,9 +268,12 @@ def run(root, now, get=fetch, pause=2):
     cookie, banned = read_secrets(root)
     try:
         board = parse_leaderboard(get(LEADERBOARD, cookie))
-        time.sleep(pause)                            # be gentle: two requests, a moment apart
-        accounts = parse_accounts(get(TEAM_PAGE, cookie))      # the page shows the team code: parse one table only
-        time.sleep(pause)
+        time.sleep(pause)                            # be gentle: requests a moment apart
+        if full:
+            accounts = parse_accounts(get(TEAM_PAGE, cookie))  # the page shows the team code: parse one table only
+            time.sleep(pause)
+        else:
+            accounts = previous.get("accounts")
         events = parse_activity(get(ACTIVITY_CSV, cookie))
     except SessionExpired as e:
         write_atomic(out_path, checked({**previous, "error": f"{e}: paste a new cookie into secrets/portal_cookie",
@@ -209,7 +282,8 @@ def run(root, now, get=fetch, pause=2):
     if not board:
         raise RuntimeError("leaderboard table not found (page layout changed?)")
     keep_from = (now - dt.timedelta(hours=KEEP_EVENTS_H)).isoformat()
-    result = dict(ts=now.isoformat(), error=None, **standing(board), accounts=accounts,
+    result = dict(ts=now.isoformat(), error=None, **standing(board), scores_ts=scores_seen(previous, board, now),
+                  accounts=accounts,
                   events=[e for e in events if e["ts"] >= keep_from and e["type"].startswith("SCORE")],
                   account_log=account_log(events))
     write_atomic(out_path, checked(result, banned))
@@ -237,12 +311,28 @@ def run(root, now, get=fetch, pause=2):
     return result
 
 
-def main():
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    now = dt.datetime.now(dt.timezone.utc)
+    data = ROOT / "data"
+    kind = "full"
+    if "--auto" in argv:
+        read = lambda name: json.loads((data / name).read_text()) if (data / name).exists() else {}
+        try:
+            previous, state = read("portal.json"), read(POLL_STATE)
+        except ValueError:                                  # a damaged file: do a full read, which rewrites it
+            previous, state = {}, {}
+        kind = plan(now, previous, state)
+        if kind is None:
+            return
+        data.mkdir(exist_ok=True)
+        write_atomic(data / POLL_STATE, json.dumps(dict(last_try=now.isoformat(),
+                                                        last_full=now.isoformat() if kind == "full" else state.get("last_full"))))
     try:
-        r = run(ROOT, dt.datetime.now(dt.timezone.utc))
+        r = run(ROOT, now, full=kind == "full")
     except SessionExpired as e:
         sys.exit(f"{e}: paste a new cookie into secrets/portal_cookie")
-    print(f"portal: rank {r['rank']} of {r['teams']}, score {r['score']}, {len(r['events'])} points events")
+    print(f"portal: {kind} read, rank {r['rank']} of {r['teams']}, score {r['score']}, {len(r['events'])} points events")
 
 
 if __name__ == "__main__":

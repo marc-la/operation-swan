@@ -48,7 +48,7 @@ LOG_TAIL_BYTES = 6_000_000                     # likes are logged one per line; 
 STALE_STATUS_S = 300
 DEGRADED_FROM = 5                              # index in the LLM chain: the 6th model or lower is degraded (Marc, 22 Oct)
 STALL_S = 5 * 60                               # every LLM parked this long or longer: red
-PORTAL_STALE_S = 45 * 60                       # swan-portal.timer runs every 15 min
+PORTAL_STALE_S = 45 * 60                       # swan-portal.timer checks every minute; a full read is due at :02 and :32
 PULSE_MAX_AGE_S = 2 * 3600                     # swan_bot config.PULSE_MAX_AGE_S: older, the bot doesn't use it
 ACTIVITY_TOP, ACTIVITY_OLDER = 12, 40        # rows always shown / most rows behind "Older activity"
 CRITICAL_KINDS = {"susp", "hidden", "deployfail", "bad", "blue"}   # older activity keeps these and the budget / ring alerts
@@ -1466,22 +1466,28 @@ PACE_HOURS = 24                                # the window of the leaderboard's
 PACE_MIN_HOURS = 6                             # until a line this old exists there is no pace to show
 
 
-def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS):
+def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen=None):
     """Points an hour per team over the last `hours`, from the hourly all-teams series (data/team_scores.jsonl lines
-    {ts, scores: {team: score}}) and the board's current rows [{team, score}]. One reference line for everybody: the
-    one nearest `hours` back, at least `min_hours` old (a shorter history gives the longest span it has). A 24 h window
+    {ts, seen, scores: {team: score}}) and the board's current rows [{team, score}]. The site changes its scores once an
+    hour, so time is counted from when the scores first showed (`seen` for the current rows, each line's own `seen`, or
+    its `ts` for lines written before that field): dividing by the wall clock instead made the rate fall all hour
+    between board changes and jump when one arrived. One reference line for everybody: the one nearest `hours` before
+    `seen`, at least `min_hours` older than it (a shorter history gives the longest span it has). A 24 h window
     spans a whole Sydney day, so the daily rhythm of citizens does not show as a change of pace; a 6 h one would, and a 6,000
     poll award inside it would look like 1,000 an hour. A team not in the reference line (new, or renamed) has no pace.
-    {span: hours the reference is back, per_hour: {team: points an hour}} or None when no line is old enough."""
-    old = [(t, r) for t, r in ((ts(r.get("ts")), r) for r in lines)
-           if t and isinstance(r.get("scores"), dict) and (now - t).total_seconds() >= min_hours * 3600]
+    {span: hours the reference is back, as_of: when the current scores showed, per_hour: {team: points an hour}} or None
+    when no line is old enough."""
+    end = seen or now
+    old = [(t, r) for t, r in ((ts(r.get("seen")) or ts(r.get("ts")), r) for r in lines)
+           if t and isinstance(r.get("scores"), dict) and (end - t).total_seconds() >= min_hours * 3600]
     if not old:
         return None
-    want = now - dt.timedelta(hours=hours)
+    want = end - dt.timedelta(hours=hours)
     t, ref = min(old, key=lambda p: abs((p[0] - want).total_seconds()))
-    span = (now - t).total_seconds() / 3600
-    return dict(span=span, per_hour={r["team"]: round((r["score"] - ref["scores"][r["team"]]) / span)
-                                      for r in rows if _num(ref["scores"].get(r["team"])) is not None})
+    span = (end - t).total_seconds() / 3600
+    return dict(span=span, as_of=end,
+                per_hour={r["team"]: round((r["score"] - ref["scores"][r["team"]]) / span)
+                          for r in rows if _num(ref["scores"].get(r["team"])) is not None})
 
 
 def signed(x):
@@ -2043,8 +2049,10 @@ def gather(root, now, service):
         third = next(r for r in board["finalists"] if r["rank"] == 3)
         board["trend"] = gap_trend(tail_jsonl(data / "leaderboard.jsonl", 500_000), now, board["score"], third["score"])
     if board:                                  # every team's points an hour (data/team_scores.jsonl, ~5 KB a line: 400 KB is about 3 days)
-        board["pace"] = team_pace(tail_jsonl(data / "team_scores.jsonl", 400_000), portal.get("rows") or [], now)
+        board["pace"] = team_pace(tail_jsonl(data / "team_scores.jsonl", 400_000), portal.get("rows") or [], now,
+                                  seen=ts(portal.get("scores_ts")))
         if board["pace"]:
+            board["pace"]["as_of_label"] = hm(board["pace"]["as_of"])
             pace_of = board["pace"]["per_hour"]
             ours = pace_of.get(TEAM_NAME)
             for r in board["finalists"] + board["near"] + board["between"]:

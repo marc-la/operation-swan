@@ -1,9 +1,9 @@
 [Unit]
-Description=Portal score every 15 minutes (the portal posts points hourly, at about :53)
+Description=Portal poll check every minute (reads only when due: full at :02 and :32, and a minute apart after the hourly points)
 
 [Timer]
-OnCalendar=*:02,17,32,47
-RandomizedDelaySec=60
+OnCalendar=minutely
+AccuracySec=1s
 
 [Install]
 WantedBy=timers.target

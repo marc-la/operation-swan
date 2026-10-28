@@ -7,7 +7,7 @@ Type=oneshot
 User=ec2-user
 WorkingDirectory=/home/ec2-user/ctn/src
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/home/ec2-user/ctn/.venv/bin/python -m swan_dash.portal
+ExecStart=/home/ec2-user/ctn/.venv/bin/python -m swan_dash.portal --auto
 # Sandbox: writes only data/; the bot's account passwords and SSH keys are invisible to it.
 NoNewPrivileges=yes
 PrivateTmp=yes

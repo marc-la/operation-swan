@@ -187,6 +187,24 @@ def test_team_scores_history_has_every_team_once_an_hour_and_never_the_team_code
     assert not (tmp_path / "b" / "data" / "team_scores.jsonl").exists()
 
 
+def test_scores_seen_moves_only_when_the_board_changes_and_is_saved_with_each_hourly_line(tmp_path):
+    root = make_root(tmp_path)
+    moved = BOARD.replace("39113", "39500")
+    first = portal.run(root, NOW, get=fake(PAGES), pause=0)
+    assert first["scores_ts"] == NOW.isoformat()
+    again = portal.run(root, NOW + dt.timedelta(minutes=15), get=fake(PAGES), pause=0)
+    assert again["scores_ts"] == NOW.isoformat()                                         # same scores: still the first sighting
+    later = portal.run(root, NOW + dt.timedelta(minutes=70), get=fake({**PAGES, portal.LEADERBOARD: moved}), pause=0)
+    assert later["scores_ts"] == (NOW + dt.timedelta(minutes=70)).isoformat()
+    lines = [json.loads(x) for x in (root / "data" / "team_scores.jsonl").read_text().splitlines()]
+    assert [x["seen"] for x in lines] == [NOW.isoformat(), (NOW + dt.timedelta(minutes=70)).isoformat()]
+    legacy = json.loads((root / "data" / "portal.json").read_text())
+    del legacy["scores_ts"]                                                              # a portal.json from before this field
+    (root / "data" / "portal.json").write_text(json.dumps(legacy))
+    same = portal.run(root, NOW + dt.timedelta(minutes=85), get=fake({**PAGES, portal.LEADERBOARD: moved}), pause=0)
+    assert same["scores_ts"] == legacy["ts"]
+
+
 def test_leaderboard_history_is_bounded_and_survives_a_damaged_line(tmp_path):
     path = tmp_path / "leaderboard.jsonl"
     path.write_text("not json\n")
@@ -211,3 +229,84 @@ def test_no_leaderboard_line_when_we_are_not_on_the_board(tmp_path):
     away = BOARD.replace("Operation Swan", "Someone Else")
     portal.run(root, NOW, get=fake({**PAGES, portal.LEADERBOARD: away}), pause=0)
     assert not (root / "data" / "leaderboard.jsonl").exists()
+
+
+# ---- adaptive polling (28 Oct): read when the portal's hourly points are due, not every 15 min ----
+U = dt.timezone.utc
+
+
+def hourly_events(minute, hours, now=None):
+    """The portal's hourly points rows (two a minute apart in seconds, as in the real log) for the last `hours` hours."""
+    top = (now or dt.datetime(2026, 10, 28, 12, 0, tzinfo=U)).replace(minute=0, second=0, microsecond=0)
+    return [dict(ts=(top - dt.timedelta(hours=h) + dt.timedelta(minutes=minute, seconds=s)).isoformat(),
+                 type="SCORE_NARRATIVE", points=1) for h in range(1, hours + 1) for s in (10, 11)]
+
+
+def prior(**kw):
+    return dict(dict(ts="2026-10-28T11:47:00+00:00", events=hourly_events(19, 3), scores_ts="2026-10-28T11:20:00+00:00"), **kw)
+
+
+def at_(h, m, s=0):
+    return dt.datetime(2026, 10, 28, h, m, s, tzinfo=U)
+
+
+def test_update_minute_is_the_one_in_the_most_hours_and_a_poll_award_does_not_outvote_it():
+    now = at_(12, 5)
+    assert portal.update_minute(hourly_events(19, 3), now) == 19
+    award = dict(ts=at_(10, 9, 30).isoformat(), type="SCORE_NARRATIVE", points=6000)
+    assert portal.update_minute(hourly_events(19, 3) + [award], now) == 19
+    moved = hourly_events(19, 3)[2:] + hourly_events(25, 1)                     # one hour at :25 and two at :19: still :19 ...
+    assert portal.update_minute(moved, now) == 19
+    assert portal.update_minute(hourly_events(19, 1) + hourly_events(25, 3)[2:], now) == 25   # ... until :25 is in more hours
+    assert portal.update_minute([], now) is None and portal.update_minute([dict(ts="x")], now) is None
+
+
+def test_plan_reads_fully_at_the_two_slots_and_shortly_after_the_points_until_the_board_changes():
+    state = dict(last_try="2026-10-28T12:02:05+00:00", last_full="2026-10-28T12:02:05+00:00")
+    before = prior(scores_ts="2026-10-28T11:20:00+00:00")
+    assert portal.plan(at_(12, 10), before, state) is None                       # nothing due between slots
+    assert portal.plan(at_(12, 19, 20), before, state) is None                   # 20 s into the posting minute: too soon
+    assert portal.plan(at_(12, 19, 45), before, state) == "short"                # points are out, board not changed yet
+    assert portal.plan(at_(12, 19, 45), before, dict(state, last_try=at_(12, 18, 40).isoformat())) == "short"
+    assert portal.plan(at_(12, 19, 45), before, dict(state, last_try=at_(12, 19, 10).isoformat())) is None   # a minute apart
+    assert portal.plan(at_(12, 21), dict(before, scores_ts=at_(12, 19, 50).isoformat()), state) is None      # changed: done
+    assert portal.plan(at_(12, 32), before, state) == "full"                     # the slot is full whatever else
+    assert portal.plan(at_(12, 32, 30), before, dict(state, last_full=at_(12, 32, 1).isoformat())) is None
+    assert portal.plan(at_(12, 32), before, dict(state, last_full=at_(12, 2, 5).isoformat())) == "full"
+    assert portal.plan(at_(13, 1), before, dict(state, last_full=at_(12, 32, 5).isoformat())) is None
+    assert portal.plan(at_(13, 2), before, dict(state, last_full=at_(12, 32, 5).isoformat())) == "full"
+    assert portal.plan(at_(12, 40), before, state) == "full"                     # a missed :32 read is made up
+    assert portal.plan(at_(12, 40), before, dict(state, last_full=at_(12, 33).isoformat())) is None
+
+
+def test_plan_stops_after_twelve_minutes_when_expired_and_without_history():
+    state = dict(last_try="2026-10-28T12:02:05+00:00", last_full="2026-10-28T12:02:05+00:00")
+    assert portal.plan(at_(12, 31, 30), prior(), state) is None                      # 12 min after :19 and the board never moved
+    assert portal.plan(at_(12, 19, 45), prior(error="portal session expired"), state) is None
+    assert portal.plan(at_(12, 19, 45), {}, state) is None                       # no history yet: wait for the next slot, never hammer
+    assert portal.plan(at_(12, 19, 45), {}, {}) == "full" and portal.plan(at_(12, 19, 45), prior(), {}) == "full"
+    assert portal.plan(at_(12, 19, 45), dict(prior(), events=[]), state) is None
+
+
+def test_a_short_read_skips_the_team_page_and_keeps_the_accounts(tmp_path):
+    root = make_root(tmp_path)
+    portal.run(root, NOW, get=fake(PAGES), pause=0)
+    asked = []
+    pages = dict(PAGES)
+    def get(path, cookie):
+        asked.append(path)
+        return pages[path]
+    r = portal.run(root, NOW + dt.timedelta(minutes=1), get=get, pause=0, full=False)
+    assert asked == [portal.LEADERBOARD, portal.ACTIVITY_CSV] and r["accounts"] == dict(registered=47, banned=1, max_total=200, max_active=50)
+
+
+def test_auto_main_reads_only_when_due_and_saves_its_state_before_reading(tmp_path, monkeypatch):
+    root = make_root(tmp_path)
+    monkeypatch.setattr(portal, "ROOT", root)
+    monkeypatch.setattr(portal, "fetch", lambda path, cookie: PAGES[path])
+    monkeypatch.setattr(portal, "run", lambda r, now, full: (_ for _ in ()).throw(RuntimeError("down")))
+    with pytest.raises(RuntimeError):
+        portal.main(["--auto"])                                                   # no history: a full read, which fails
+    state = json.loads((root / "data" / portal.POLL_STATE).read_text())
+    assert state["last_full"] == state["last_try"]
+    portal.main(["--auto"])                                                       # the failed read is not retried in the same slot
