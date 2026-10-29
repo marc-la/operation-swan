@@ -529,7 +529,8 @@ FIXES_VOICE_SUBS = (
 WORLD_PARTS = [
     ("Background (don't restate it): Kingstonia votes in a binding referendum on requiring proof of H2D2 (Dolphin "
      "Flu) vaccination to enter public spaces.", [], ""),
-    (" The latest poll has Yes ahead, but over a quarter are still unsure, and they will decide it.", ["polls_1025"], ""),
+    (" The latest poll has Yes just ahead, the gap narrowing, and over a quarter still unsure: they will decide it.",
+     ["polls_1029"], ""),                       # 29 Oct: polls_1025 retired (fact desk proposal 95)
     (" Most who lean Yes are afraid, after what COVID did to the hospitals; a No keeps life as it is, with the jab "
      "free either way.", ["free_either_way"], " Most who lean Yes are afraid, after what COVID did to the hospitals."),
 ]

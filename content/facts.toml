@@ -290,9 +290,9 @@ frames = []
 [definitely_no_rises]
 text = "Definitely No: 19.3%; definitely Yes: 11.7%, down from 16.0% in the previous poll."
 note = "definite No 19.3% vs definite Yes 11.7% (was 16.0%)"
-status = "active"
+status = "paused"
 source = "daily-kingstonia/no-campaign-gains-slight-edge-in-new-referendum-polling"
-checked = 2026-10-21T08:26:06+00:00
+checked = 2026-10-29T04:53:40+00:00
 numbers = ["19.3%", "11.7%", "16.0%"]
 says = []
 frames = ["F1_blank_cheque", "F2_no_end"]
@@ -378,9 +378,9 @@ frames = []
 [polls_1025]
 text = "Polls (latest): Yes 39.3%, No 34.1%, Unsure 25.9%; Yes ahead, but a quarter are still unsure."
 note = "Yes ahead in the new poll; over a quarter still unsure"
-status = "active"
+status = "paused"
 source = "daily-kingstonia/yes-campaign-surges-ahead-in-new-referendum-polling"
-checked = 2026-10-25T04:17:23+00:00
+checked = 2026-10-29T04:52:51+00:00
 added = 2026-10-25T04:17:23+00:00
 numbers = []
 says = ["\\b39\\.3\\b", "\\b34\\.1\\b", "\\b25\\.9\\b"]
@@ -445,3 +445,63 @@ added = 2026-10-26T01:50:06+00:00
 numbers = []
 says = []
 frames = ["F10_staff_and_livelihoods", "F5_not_here_yet"]
+
+# replaces polls_1025 (contradicted: fact desk proposal 95), accepted 2026-10-29
+[polls_1029]
+text = "Polls (latest): Yes 38.5%, No 35.4%, Unsure 25.9%; Yes lead narrowed to 3.1 points, with over a quarter still undecided."
+note = "Latest poll: Yes 38.5%, No 35.4%, Unsure 25.9%; the Yes lead is down to 3.1 points"
+status = "active"
+source = "kingstonia-herald/yes-campaign-lead-narrows-as-undecided-voters-remain-decisive-in-h2d2-poll"
+checked = 2026-10-29T04:52:51+00:00
+added = 2026-10-29T04:52:51+00:00
+numbers = []
+says = []
+frames = []
+
+# replaces definitely_no_rises (contradicted: fact desk proposal 96), accepted 2026-10-29
+[definitely_no_rises_1029]
+text = "Latest poll: definitely No stands at 16.1%, while definitely Yes has dropped to 5.1%."
+note = "Definitely No at 16.1%, definitely Yes at 5.1%."
+status = "active"
+source = "daily-kingstonia/yes-campaign-lead-narrows-as-undecided-voters-remain-key-to-referendum-outcome"
+checked = 2026-10-29T04:53:40+00:00
+added = 2026-10-29T04:53:40+00:00
+numbers = []
+says = []
+frames = ["F1_blank_cheque", "F2_no_end"]
+
+# fact desk proposal 97, accepted 2026-10-29
+[poll_lead_narrowed]
+text = "The Yes lead has narrowed to 3.1 points in the latest poll, down from 5.2 points in the previous survey."
+note = "Yes lead narrowed from 5.2 to 3.1 points."
+status = "active"
+source = "kingstonia-herald/yes-campaign-lead-narrows-as-undecided-voters-remain-decisive-in-h2d2-poll"
+checked = 2026-10-29T04:53:40+00:00
+added = 2026-10-29T04:53:40+00:00
+numbers = ["3.1", "5.2"]
+says = []
+frames = []
+
+# fact desk proposal 98, accepted 2026-10-29
+[leaning_voters]
+text = "In the latest poll, 33.4% of respondents lean toward Yes while 19.3% lean toward No, indicating soft support for the mandate."
+note = "Leaning voters: 33.4% Yes, 19.3% No."
+status = "active"
+source = "daily-kingstonia/yes-campaign-lead-narrows-as-undecided-voters-remain-key-to-referendum-outcome"
+checked = 2026-10-29T04:53:40+00:00
+added = 2026-10-29T04:53:40+00:00
+numbers = ["33.4%", "19.3%"]
+says = []
+frames = ["F1_blank_cheque"]
+
+# fact desk proposal 81, accepted 2026-10-29
+[designated_spaces_scope]
+text = "The scope of public spaces subject to potential vaccination requirements includes shops, schools, workplaces, public transport, and parks."
+note = "the pass would cover shops, schools, workplaces, buses and parks"
+status = "active"
+source = "daily-kingstonia/early-voting-opens-across-kingstonia-for-h2d2-referendum"
+checked = 2026-10-29T04:54:43+00:00
+added = 2026-10-29T04:54:43+00:00
+numbers = []
+says = []
+frames = ["F13_age12", "F7_livelihoods", "F5_not_here_yet"]

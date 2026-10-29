@@ -402,8 +402,9 @@ def test_every_background_duty_fires(run):
     assert s["facts"].calls, "the fact desk's pauses (facts.refresh)"
     assert s["amp_tick"].calls, "amp.tick"
     assert s["refresh"].calls >= 2 and s["reply_backs"].calls >= 2, "targets and reply-backs are read again and again"
-    assert s["own_likes"].calls and any(a["act"] == "like" and a.get("purpose") == "reply_like" for a in acts), \
-        "own_likes (todo/20 step 8)"
+    assert s["own_likes"].calls, "own_likes (todo/20 step 8)"
+    if True in config.OWN_LIKE_VARIANTS:              # off since 28 Oct (06e0d0b): the duty runs, no like is due
+        assert any(a["act"] == "like" and a.get("purpose") == "reply_like" for a in acts), "own_likes (todo/20 step 8)"
     status = json.loads((tmp / "data" / "status.json").read_text())
     assert status["accounts"]["voices"] >= VOICES
     if run["split"]:                        # written at the start of the run (every 30 s): the writer is there first
