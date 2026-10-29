@@ -1026,9 +1026,9 @@ def flip_line(choice):
     """The fear behind a Yes, flipped (swan_bot/flip.py, 29 Oct): a No is not doing nothing, the protection is already
     working without a pass, and what a Yes adds is the check at the door, which nobody manages."""
     return (f"Their worry underneath is {choice['fear']['label']}. Answer it with this one point, in plain words: "
-            f"{choice['fear']['core']} The proof: {choice['evidence']['line']}. The turn: what a Yes adds is the check "
-            f"at the door, and {choice['pivot']['line']}. Don't open by agreeing and don't lecture: their worry in their "
-            f"words, then the proof and the turn in yours.")
+            f"{choice['fear']['core']} Show it with what's already happening ({choice['evidence']['line']}), then say "
+            f"what a Yes adds is the check at the door, and {choice['pivot']['line']}. Don't open by agreeing, don't "
+            f"lecture and don't label the parts: their worry in their words, then the point in yours.")
 
 
 def news_line(story):
