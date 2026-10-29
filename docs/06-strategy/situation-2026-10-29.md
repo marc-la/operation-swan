@@ -238,6 +238,61 @@ It takes the hospital/COVID rebuttals' slot (`content.rebuttal_for`), so the lig
 
 **The fear dial** (`FLIP_FEAR`, `SWAN_FLIP_FEAR`): 0 states the turn plainly; 1 (the default, tasteful) says it as a loss they'd feel, one concrete picture from their own post or life, with a No as the way to keep it; 2 adds that the loss is lasting (no off switch). A fear appeal works with the way out and backfires without one, so the threat never comes alone, and nothing is invented or exaggerated.
 
+### 13c. Read the room, live (todo/52, 29 Oct 12:00-13:30 UTC)
+
+[todo/52](../../todo/52-read-the-room.md) built on the flip, without a parallel system and without arms. What went live, and how each was checked on the box after its deploy:
+
+| commit, live (UTC) | what | checked on the box |
+|---|---|---|
+| d819a76, 12:48 | **WS1, the room** (`swan_bot/room.py`, `content/room.toml`): every citizen post on the vote the targeter judges, by driver x stance, the fear index, rising phrases; `data/room.json` every 10 min, the dashboard's Room tile; the counts survive a restart, and a first start seeds 27 h from the log. A driver at 2x its share of the day before weights its flip proof or turn x1.5. **WS2, the panel** (`scripts/panel.py`, `swan-panel.timer`). **WS3**: three core lines for every fear, stability split from lockdown, turns for exemptions, phased rules, the regulations later and "show us the evidence", the poll story with its margin of error; every flip line and news story now requires the facts its words state. **The Conversion tile's fix** (below) | room seeded from 4,464 answered posts in 6 s; `room.json` at 12:49 (374 posts in 3 h, 2,913 the day before); `panel.json` at 12:48; flip on 24 of 27 replies, `flip_fear` logged |
+| 06c2faa, 12:55 | **WS5**: `scripts/news_story.py` and four staged stories (below); the wastewater proof without its case clause (below) | the room came back with 27 h of counts; no `false_claim` reject since |
+| 8d64278, 13:02 | **WS6**: the pulse reads 50 citizen posts and returns their worries; a flipped first reply gets one, the nearest to its post | the first worries come with the 13:31 pulse |
+| 3b9d454, 13:09 | **WS8**: the audit's fixes (below) and `scripts/flip_audit.py` | the room came back with 27 h of counts |
+
+**The room's first read** (12:49 UTC; the day before is the 27 h seeded from the posts we answered):
+- The posts we answered in 24 h, by the light read: **74% Yes-but, 16.7% lean No, 4.9% firm No**, 1.4% firm Yes, 1.3% unsure (n 3,898). The KPI is this Yes-but share falling and lean No rising.
+- The fear index (posts voicing a fear behind a Yes): 33% of the last 3 h, 30% the day before.
+- Rising phrases (their words, shown and never put in a prompt): "medical exemptions" (28 posts, x2.3), "strong privacy", "staffing plan", "non digital" (new: paper proof), "privacy safeguards", "venues map". The only rising driver is two-tier exclusion, a No-case driver, which lifts nothing.
+
+**The panel's baseline.** A light read is a model's judgement of one post, so between two reads of one citizen about 30 in 100 "move" each way every day: noise, symmetric. The net is the signal (`scripts/panel.py --days 4 --touch --deploys`):
+
+| Sydney day | re-read citizens | toward No / 100 | toward Yes / 100 | **net / 100** | portal contributions toward / away |
+|---|---|---|---|---|---|
+| 27 Oct | 1,040 | 30.9 | 28.9 | **+2.0** | 30 / 124 |
+| 28 Oct | 952 | 31.9 | 28.9 | **+3.0** | 17 / 99 |
+| 29 Oct | 1,097 | 37.0 | 28.7 | **+8.3** | 5 / 115 |
+
+The two measures disagree on 29 Oct: the panel's net rose while the portal's contributions toward No fell to 5. They measure different things (the stance in a citizen's next post we answer, against the portal's session changes of mind, which every team's posts in the session feed), and most of that Sydney day ran before the flip went live (11:06 UTC). Read both at the 24 h read, the portal as the ground truth.
+
+**Fixed on the way.**
+- **The Conversion tile undercounted changes of mind since the x2 of 26 Oct.** `build._minds` stripped only "NPC engagement: ", so the first item of every "NPC engagement (×2 points): …" line was lost (17 contributions away read as none). The counts above are after the fix.
+- **"No cases" since the flip.** The wastewater proof said "it isn't linked to any case", which the drafts turned into "no cases linked": 44 rejects in 2 h (12-28 `false_claim` an hour against none before 11:00), each a repair call or a lost citizen. The line now ends at the retest.
+- **Flip lines that stated facts they didn't rest on.** "The isolation" is `no_spread`'s claim by the fact table and "doses" is `first_doses`'s, so a pause of either would have left them in prompts (the slow paused-fact sweep caught one). The core lines say "the tracing"; the items that keep the claim require the fact. A fast test now checks every flip line and news story against the fact table.
+
+**WS5, staged stories** (commented out at the end of `content/news.toml`, each passing the news tests once its fact is in): the Crown Harbour retest coming back clear ("a false alarm, caught and checked") or confirmed (inoculation: it names the Yes argument, "this proves we need a pass", and answers it, never playing the signal down), the campaigns' close before the silence, and a final poll if one runs. `scripts/news_story.py SITE SLUG` drafts a block from an article on the box and runs the news tests on it. The 07:00 UTC cyclone watch for the outer islands is not a story for us: tying a storm to the vote reads as point-scoring.
+
+**WS8, the audit** (40 random flip replies of 11:10-12:55 UTC against the rubric, judged offline). It found:
+1. Turns for conditions the post never named: a hospital post got the islands turn, and the new turns would do the same. The islands, exemptions, phased, regulations and evidence turns are now chosen only when the post names them.
+2. False fear matches: "protect people's privacy" was read as the safety fear, "help teams prepare" as acting early.
+3. Invented details: "last month", "last week", "caught at the airport". The flip line now says to add no date, time, place or figure beyond its notes.
+4. Invented losses from the fear dial: "you'd lose that early-warning system", though a Yes doesn't stop the testing. Both levels now name only the loss a Yes really brings.
+5. A few flips landed on No-leaners. The conditional now says to leave it out for them.
+
+Repeat it daily: `scripts/flip_audit.py sample`, then `tally`.
+
+**Not shipped, on the evidence.**
+- **WS4 (reply-back arcs).** The 28 Oct offline test ([replyback-persuasion](replyback-persuasion-2026-10-28.md) §8) tried this shape, a plan or a one-line hint that turns the citizen's own test into a decision. It failed twice: no shift toward No, 5-10 fewer answers per 100, and the judge's P(bot) +14 to +24. Its one gain, with citizens still leaning Yes, needs a way to pick them out that neither the strategist nor the light read gives (the panel's 30-in-100 noise).
+- **WS7 (targeting by movability).** By what their earlier post voiced (48 h, net per 100 pairs): a fear and a condition +2.4, a condition only +3.1, a fear only +6.8. Fear-and-condition posts don't move more, so the targeter stays as it is. Groups by the first read also carry regression to the mean (the `lean_no` class shows −51), so none of these is a lever without a control.
+
+**For the 24 h read (Fri 30 Oct 12:00 UTC).**
+- `scripts/panel.py --days 3 --touch --deploys`: the net per 100, the portal's toward/away by day, and the 24 h before and after d819a76.
+- The Room tile: the Yes-but share and lean No.
+- Engagement per write against the same hours a day earlier.
+- `false_claim` and `repeat_run` rejects an hour.
+- A fresh `flip_audit` sample.
+
+Kill switches, each needing a restart: `SWAN_ROOM_LIFT_ON=0`, `SWAN_PULSE_CITIZENS=0`, `SWAN_FLIP_ON=0`, `SWAN_FLIP_FEAR=0/1/2`.
+
 ## How to repeat the reads
 
 Scratch scripts for these reads were not committed. They are short and follow `scripts/engagement_recon.py`:

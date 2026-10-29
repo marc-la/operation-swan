@@ -15,13 +15,15 @@ def at(hours_ago):
     return (NOW - dt.timedelta(hours=hours_ago)).isoformat()
 
 
-def reply(author, their_post, our_post, stance, hours_ago, flip=None, news=None, flip_fear=None, live=True):
+def reply(author, their_post, our_post, stance, hours_ago, flip=None, news=None, flip_fear=None, live=True, text="",
+          cls=None):
     return dict(ts=at(hours_ago), act="reply", live=live, target_author=author, target_post=their_post, post_id=our_post,
-                read_stance=stance, flip=flip, news=news, flip_fear=flip_fear)
+                read_stance=stance, flip=flip, news=news, flip_fear=flip_fear, target_text=text, target_class=cls)
 
 
 ROWS = [
-    reply(501, 100, 150, "yes_but", 30, flip="hospitals/surge_drill/no_end", flip_fear=1),
+    reply(501, 100, 150, "yes_but", 30, flip="hospitals/surge_drill/no_end", flip_fear=1,
+          text="Yes, but our hospital wards need a sunset on this", cls="yes_reason"),
     reply(501, 200, 250, "lean_no", 10),                                       # to No, after the hospitals flip
     reply(502, 300, 350, "lean_no", 20, news="poll_narrows"),
     reply(502, 400, 450, "firm_no", 5),                                        # lean to firm
@@ -97,3 +99,12 @@ def test_main_writes_json_quietly(tmp_path, capsys):
     panel.main(["--log", str(log), "--deploy-log", str(deploys), "--portal", str(portal), "--touch", "--deploys"], now=NOW)
     printed = capsys.readouterr().out
     assert "re-read 4: net +0" in printed and "around the last 10 deploys" in printed
+
+
+def test_who_moves_by_what_they_voiced(tmp_path):
+    log, _, _ = files(tmp_path)
+    pairs = panel.moves(*panel.load(log, NOW - dt.timedelta(days=3)))
+    k = panel.by_kind(pairs)
+    assert ("fear+but", 1, 1, 0, 100.0) in k["voiced"] and ("yes_reason", 1, 1, 0, 100.0) in k["class"]
+    assert sum(n for _, n, _, _, _ in k["voiced"]) == 4                       # every pair: 501, 502, 503, 505
+    assert panel.voices("Yes, but publish the venue list") == "but" and panel.voices("hello there") == "other"

@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from swan_bot import jsonl  # noqa: E402
+from swan_bot import jsonl, room  # noqa: E402
 
 SYDNEY = ZoneInfo("Australia/Sydney")        # competition days roll over at midnight Sydney (the portal's days)
 SCALE = dict(firm_yes=0, yes_but=1, unsure=2, lean_no=3, firm_no=4)     # unclear: no position, skipped
@@ -57,9 +57,9 @@ def ts(s):
 
 
 def load(path, since):
-    """(reads, touches) since `since` (aware datetime): reads {author: [(their post id, write time, stance)]} from live
-    first replies with a light read; touches {author: [(our post id, write time, flip, news, flip_fear)]} from every
-    live write to them."""
+    """(reads, touches) since `since` (aware datetime): reads {author: [(their post id, write time, stance, their text,
+    target_class)]} from live first replies with a light read; touches {author: [(our post id, write time, flip, news,
+    flip_fear)]} from every live write to them."""
     reads, touches = collections.defaultdict(list), collections.defaultdict(list)
     for x in jsonl.Reader(path, contains=b'"live": true'):
         if x.get("live") is not True or x.get("act") not in TOUCHES or x.get("target_author") is None:
@@ -74,7 +74,7 @@ def load(path, since):
         if x.get("post_id") is not None:
             touches[a].append((x["post_id"], t, x.get("flip"), x.get("news"), x.get("flip_fear")))
         if x["act"] == "reply" and x.get("read_stance") in SCALE and x.get("target_post") is not None:
-            reads[a].append((x["target_post"], t, x["read_stance"]))
+            reads[a].append((x["target_post"], t, x["read_stance"], x.get("target_text") or "", x.get("target_class")))
     return reads, touches
 
 
@@ -83,11 +83,11 @@ def moves(reads, touches):
     flip_fear of our last write before the later post). Each citizen's reads in the order they wrote the posts."""
     out = []
     for a, rs in reads.items():
-        rs = sorted({p: (p, t, s) for p, t, s in rs}.values())            # one read per post, by post id
+        rs = sorted({r[0]: r for r in rs}.values(), key=lambda r: r[0])     # one read per post, by post id
         ts_ = sorted(touches.get(a, []), key=lambda x: x[0])
-        for (p0, _, s0), (p1, t1, s1) in zip(rs, rs[1:]):
+        for (p0, _, s0, text0, cls0), (p1, t1, s1, _, _) in zip(rs, rs[1:]):
             last = next((x for x in reversed(ts_) if x[0] < p1), None)  # our last write before their later post
-            out.append(dict(author=a, t=t1, a=s0, b=s1, kind=kind(s0, s1), post=p1,
+            out.append(dict(author=a, t=t1, a=s0, b=s1, kind=kind(s0, s1), post=p1, text0=text0, cls0=cls0,
                             flip=last and last[2], news=last and last[3], flip_fear=last and last[4]))
     return out
 
@@ -141,6 +141,29 @@ def by_touch(pairs):
     return out
 
 
+def voices(text):
+    """What the earlier post voiced, by the room's drivers (content/room.toml): "fear+but", "but", "fear" or "other"."""
+    fams = {room.drivers()[k]["family"] for k in room.voiced(text)}
+    return "fear+but" if {"fear", "but"} <= fams else "but" if "but" in fams else "fear" if "fear" in fams else "other"
+
+
+def by_kind(pairs):
+    """todo/52 WS7: who moves, by what the earlier post voiced and by its target_class: {field: [(value, pairs, toward No,
+    toward Yes, net per 100 pairs)]}, the biggest first. Over all pairs, not only those from Yes-but: an unclear post is
+    read differently from one touch to the next far more often, so its gross moves are mostly the read's noise, and only
+    the net (toward No minus toward Yes) compares groups."""
+    out = {}
+    for field, get in (("voiced", lambda p: voices(p["text0"])), ("class", lambda p: p["cls0"] or "?")):
+        c = collections.defaultdict(collections.Counter)
+        for p in pairs:
+            c[get(p)]["n"] += 1
+            c[get(p)][p["kind"] or "-"] += 1
+        out[field] = sorted(((v, x["n"], x["to_no"] + x["lean_firm"], x["to_yes"] + x["firm_lean"],
+                              round(100 * (x["to_no"] + x["lean_firm"] - x["to_yes"] - x["firm_lean"]) / x["n"], 1))
+                             for v, x in c.items()), key=lambda r: -r[1])
+    return out
+
+
 def deploys(path, since, now):
     """[(time, short sha)] of the good deploys since `since`."""
     out = []
@@ -165,7 +188,7 @@ def build(log, deploy_log, portal, now, days=4):
     for d in day_list:
         lo = dt.datetime.combine(d, dt.time(), SYDNEY).astimezone(dt.timezone.utc)
         rows.append(dict(day=d.isoformat(), **window(pairs, lo, lo + dt.timedelta(days=1)),
-                         reads=sum(1 for rs in reads.values() for _, t, _ in rs if lo <= t < lo + dt.timedelta(days=1)),
+                         reads=sum(1 for rs in reads.values() for r in rs if lo <= r[1] < lo + dt.timedelta(days=1)),
                          portal=minds.get(d) or {}))
     h24 = dt.timedelta(hours=24)
     recent = [p for p in pairs if p["t"] >= now - 2 * h24]
@@ -173,8 +196,8 @@ def build(log, deploy_log, portal, now, days=4):
               for t, sha in deploys(deploy_log, now - dt.timedelta(days=days), now)]
     return dict(ts=now.isoformat(timespec="seconds"), last24=window(pairs, now - h24, now + dt.timedelta(minutes=1)),
                 day_before=window(pairs, now - 2 * h24, now - h24), days=rows,
-                by_touch=by_touch([p for p in recent if p["t"] >= now - h24]), deploys=around,
-                panel=dict(citizens=len(reads), on_panel=sum(1 for rs in reads.values() if len({p for p, _, _ in rs}) >= 2)))
+                by_touch=by_touch([p for p in recent if p["t"] >= now - h24]), by_kind=by_kind(recent), deploys=around,
+                panel=dict(citizens=len(reads), on_panel=sum(1 for rs in reads.values() if len({r[0] for r in rs}) >= 2)))
 
 
 def pct(x):
@@ -189,6 +212,7 @@ def main(argv=None, now=None):
     ap.add_argument("--portal", default=str(ROOT / "data" / "portal.json"))
     ap.add_argument("--touch", action="store_true", help="also the moves by what our last write carried (last 24 h)")
     ap.add_argument("--deploys", action="store_true", help="also the 24 h before and after each deploy")
+    ap.add_argument("--kinds", action="store_true", help="also who moves, by what their earlier post voiced (WS7, 48 h)")
     ap.add_argument("--json", help="write the panel to this file (data/panel.json: the dashboard reads it)")
     ap.add_argument("--quiet", action="store_true", help="print nothing (the timer)")
     a = ap.parse_args(argv)
@@ -219,6 +243,10 @@ def main(argv=None, now=None):
         print("\nby our last write before the move, last 24 h (pairs, toward No, toward Yes):")
         for field, rows in out["by_touch"].items():
             print(f"  {field}: " + " · ".join(f"{v} {n} ({tn}/{ty})" for v, n, tn, ty in rows[:10]))
+    if a.kinds:
+        print("\nby what the earlier post voiced and its class, last 48 h (pairs, toward No, toward Yes, net/100):")
+        for field, rows in out["by_kind"].items():
+            print(f"  {field}: " + " · ".join(f"{v} {n} ({tn}/{ty}, {net:+.1f})" for v, n, tn, ty, net in rows[:8]))
     if a.deploys:
         print("\naround the last 10 deploys (net per 100 re-read, the 24 h before -> after; n re-read):")
         for d in out["deploys"][-10:]:

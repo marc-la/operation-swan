@@ -4,6 +4,8 @@ Written 2026-10-29 ~12:00 UTC (Marc + Claude). **The aim:** our replies should a
 
 **Hard deadline: the last deploy is Sat 31 Oct 06:00 UTC (2pm Perth).** The ×4 days run from 31 Oct 13:00 UTC to 2 Nov 07:00 UTC; after the last deploy, kill switches only. Marc's rule for the final days ([memory: final-days-conviction-over-arms]): no new switchback arms. Ship what the evidence supports, judge it on the portal, and make sure each metric can actually see the effect.
 
+**Status (29 Oct 13:30 UTC, Claude):** WS1, WS2, WS3 (d819a76), WS5 (06c2faa), WS6 (8d64278) and WS8 (3b9d454) are live and were checked on the box. **WS4 is held:** the 28 Oct offline test of the same move failed twice. **WS7 makes no change:** fear-plus-condition posts don't move more on the panel. Next: **the 24 h read, Fri 30 Oct 12:00 UTC**. What shipped, the first numbers and what to read are in [situation §13c](../docs/06-strategy/situation-2026-10-29.md#13c-read-the-room-live-todo52-29-oct-1200-1330-utc).
+
 Read first: CLAUDE.md, [situation-2026-10-29](../docs/06-strategy/situation-2026-10-29.md) (§1-2 the race, §13 the Yes surge, §13b the room read, §10b what shipped), [literature-notes](../docs/06-strategy/literature-notes.md), [npc-lab](../docs/06-strategy/npc-lab.md) (what failed offline).
 
 ## 1. Where things stand (don't redo this)
