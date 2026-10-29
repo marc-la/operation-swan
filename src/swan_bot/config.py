@@ -38,10 +38,16 @@ NPC_TARGET_MIN = 0.9
 NPC_BLUE_MIN = 0.3
 # The extra arm: with it on, Targeter._consider admits a likely citizen (score >= NPC_TARGET_MIN) in the "extra" blocks of
 # arm_npc (SWITCHBACK below; "base" blocks are as now), logged with npc_score; reply-backs answer them in any block.
-NPC_EXTRA_ARM = False               # OFF 28 Oct (Marc): ON 27 Oct; 145 matured writes to these accounts got 0 citizen replies and 1 like (8% expected), ~7% of slots, ~-7% points. On: SWAN_NPC_EXTRA_ARM=1
+# 29 Oct (Marc): ON for good, in every block (NPC_ARMS below) and the x4 days (FREEZE_PIN). The 28 Oct "0 citizen replies"
+# was the counter: citizen_replies counted ids up to 2343 only. The targets answered 13.8% of the time (247 matured
+# writes) against 6.6% for ordinary ones, and the portal books their follows as citizen follows (25 of them 23-29 Oct;
+# rival bots' 508 not). docs/06-strategy/situation-2026-10-29.md §4. Off: SWAN_NPC_EXTRA_ARM=0.
+NPC_EXTRA_ARM = True
 # Blue's final check: with it on, evidence.py / fleets.py never count an account scoring >= NPC_BLUE_MIN as a competitor,
 # and a report whose author or target scores that high is skipped and logged ("skip", reason "npc", with the score).
-BLUE_NPC_GUARD = False              # OFF 28 Oct (Marc): ON 27 Oct; same premise as the extra arm, which did not hold (those accounts never answer us). On: SWAN_BLUE_NPC_GUARD=1
+# 29 Oct (Marc): ON again with the extra arm (its premise holds: the portal scores them). Both post reports we filed on an
+# account scoring 0.9+ were ruled genuine, and a genuine ruling locks all our reporting for 6 h. Off: SWAN_BLUE_NPC_GUARD=0.
+BLUE_NPC_GUARD = True
 _NPC = {"mtime": None, "built": 0.0, "scores": {}}
 
 
@@ -806,14 +812,14 @@ QUEUE_GUARD_N = 3                   # this many late sends within QUEUE_GUARD_S:
 QUEUE_GUARD_S = 15 * 60
 # todo/48: the extra-citizens arm (NPC_EXTRA_ARM, off since 28 Oct): in "extra" blocks likely citizens above id 2343 are candidates too.
 # 3 h blocks; it only rotates anything while NPC_EXTRA_ARM is on. Read: scripts/engagement_report.py (arm_npc table).
-NPC_ARMS = ["base", "extra"]
+NPC_ARMS = ["extra"]                # 29 Oct (Marc): every block (was base/extra); one strategy, no blocks
 NPC_BLOCK_S = 3 * 3600
 SWITCHBACK = [("arm_eng", ENG_ARMS, ENG_BLOCK_S), ("arm_queue", QUEUE_ARMS, QUEUE_BLOCK_S), ("arm_npc", NPC_ARMS, NPC_BLOCK_S)]
 # 27 Oct (Marc): every test stops at midnight Sydney on 1 Nov, when x4 starts; from then each switchback dimension runs
 # FREEZE_PIN's arm (its first arm when not listed). Before the freeze, set each dimension's pin to its read-out winner
 # (scripts/engagement_report.py --hours 48, by arm). None: never freeze.
 ARMS_FREEZE = 1793451600            # 2026-10-31T13:00:00Z = 2026-11-01 00:00 Sydney (AEDT)
-FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "mention", "arm_npc": "base"}   # arm_npc: set to "extra" if its read-out wins
+FREEZE_PIN = {"arm_queue": "shallow", "arm_eng": "mention", "arm_npc": "extra"}   # arm_npc: "extra" since 29 Oct (Marc)
 # todo/49 (27 Oct): the value pick. In a "value" block next_target ranks the candidates of one tier by expected points when
 # the reply lands (swan_bot/value.py: class group x landing age, from the 6 h outcomes, hour-adjusted, never rising with age)
 # instead of newest-first under FRESH_MIN and then the score; tiers, caps, the recontact gap and session limits are unchanged.
@@ -846,7 +852,10 @@ if VALUE_PICK:
 # passes, paired against base: P(bot) -4.8 [-7.9, -1.6], engage +4.0 [+1.9, +6.1], shift +0.03, misread -0.03 (fixes);
 # results in docs/06-strategy/prompt-critique-2026-10-28.md §9. Off: STYLE_FIXES = False.
 STYLE_FIXES = True
-STYLE_ARMS = ["base", "fixes"]
+# 29 Oct (Marc): fixes in every block. 6 h reads 28 Oct 06:34-29 Oct, targets up to id 2343: fixes 1.97 proxy points a
+# write against 1.65 for base (+19%), 9.0 against 7.4 citizen replies per 100 (n = 1,228 / 1,081); todo/50's kill rule
+# not met. Was ["base", "fixes"].
+STYLE_ARMS = ["fixes"]
 STYLE_BLOCK_S = 9000
 # The lean arm passed the same criteria (P(bot) -4.4, engage +3.4) but 67% of its drafts used a worn phrase ("blank
 # cheque", "locks it in") against 20% for base, and the phrase budgets would reject 16% of them in a row: off.
@@ -1034,5 +1043,7 @@ MENTION_MODES = ("reply",)
 # expired:reply_back, and replies read as off topic were skipped). With LATE_REPLY a citizen's reply to such a voice's post is
 # an ordinary candidate in the group "late", handed out BEFORE every other candidate, answered by a live voice as a first reply
 # (on their topic when it is off topic), at most LATE_PER_H an hour. Off: LATE_REPLY = False (the old behaviour).
-LATE_REPLY = True
+# 29 Oct (Marc): off. On 27 Oct they took 15% of first replies at 0.71 proxy points a write against 1.62; at 10 an hour
+# (28 Oct) still 0.1-1.0 against 1.6-1.9 for fresh targets. Back: LATE_REPLY = True.
+LATE_REPLY = False
 LATE_PER_H = 10                     # 28 Oct (Marc): was 30. Late replies got 4.2% citizen replies (n=867) against 7.7-8.8% for ordinary ones, success line 8%+; served before every fresh target

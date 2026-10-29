@@ -54,6 +54,7 @@ def test_a_dry_tick_runs_the_new_reads_and_writes_the_status(tmp_path, monkeypat
     b.social = Platform()
     for k in ("BLUE_SCAN_EVERY_S", "BLUE_SCAN_FILE", "BLUE_ACCOUNT_LIVE_H", "BLUE_FLEET_EVERY_S", "BLUE_SIBLINGS"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BLUE_SCAN_FILE", "0")       # these tests start from "logged only" (the live default is 1 since 29 Oct)
     monkeypatch.setattr(S, "SNAPSHOT_FILE", tmp_path / "latest_snapshot.json")
     monkeypatch.setattr(S, "PORTAL_FILE", tmp_path / "portal.json")
     monkeypatch.setattr(S, "FEED_LOG", tmp_path / "feed.jsonl")

@@ -52,6 +52,7 @@ def scan_blue(tmp_path, monkeypatch, pages, **kw):
     b.social = ScanSocial(clock, pages, **kw)
     for k in ("BLUE_SCAN_EVERY_S", "BLUE_SCAN_FILE"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BLUE_SCAN_FILE", "0")       # these tests start from "logged only" (the live default is 1 since 29 Oct)
     return b, clock
 
 
@@ -332,3 +333,10 @@ def test_eval_script_lists_candidates_from_two_snapshots():
     # 5003 posted 10 new posts: its old page is still inside the new one and nothing vanished
     leads2, summary2 = m.evaluate(snap1, _rows({5001: ids(1000, 50)}, t2 - 60), t2 + 7 * 3600)
     assert leads2 == [] and summary2["live"] == 0                            # 7 h on and still quiet: not live
+
+
+def test_scan_leads_file_by_default_since_29_oct(monkeypatch):
+    monkeypatch.delenv("BLUE_SCAN_FILE", raising=False)
+    assert S.policy()["scan_file"] == 1
+    monkeypatch.setenv("BLUE_SCAN_FILE", "0")
+    assert S.policy()["scan_file"] == 0                                   # the .env switch still turns it off

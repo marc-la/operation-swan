@@ -16,7 +16,7 @@ Being first pays 25 against 5 (by order, not time; nobody can see others' report
 
 Live targets (todo/43, blue-reporting section 10): an account report files only on an account that posted within
 BLUE_ACCOUNT_LIVE_H (read at filing); awards are counted per fleet of neighbouring ids and creation times (fleets.py);
-scan.py finds live accounts' vanished posts from reads alone and files only with BLUE_SCAN_FILE=1.
+scan.py finds live accounts' vanished posts from reads alone; they file unless BLUE_SCAN_FILE=0 (on by default since 29 Oct).
 
 Modes: auto from the start; approve (files only posts a person approved, scripts/blue.sh approve ...) once 10+
 rulings show under BLUE_MIN_RATE inauthentic; account reports are rule-based and always go. off: BLUE_OFF exists,
@@ -164,11 +164,14 @@ FLEET_ERR_S = 5 * 60          # after a failed page read, wait this long
 # todo/43 item 2, the live-lead scanner (scan.py): a pass reads the newest page of each tracked live rival account every
 # BLUE_SCAN_EVERY_S (0 = never), SCAN_READS_PER_TICK a minute (the 300/min account_posts route is shared with the bot's
 # sweep, about 30 a minute, and Blue's other reads), and diffs it with the last one. Vanished posts become leads after
-# two 404s 10 minutes apart. Leads are logged and shown in blue_status.json; they file only with BLUE_SCAN_FILE=1.
+# two 404s 10 minutes apart. Leads are logged and shown in blue_status.json; they file unless BLUE_SCAN_FILE=0.
 SCAN_EVERY_S = 3 * 3600
 SCAN_READS_PER_TICK = 40
 SCAN_CONFIRMS_PER_TICK = 10
 SCAN_PROMOTE_S = 12 * 3600    # a logged lead is still fresh enough to file when the flag goes on, this long after it was found
+# 29 Oct (Marc): scan and sibling leads file by default. The scanner found 211-300 accounts a day with a hidden post
+# (24-28 Oct) and none filed; an account report cannot lock us. BLUE_SCAN_FILE=0 in .env logs them only, as before.
+SCAN_FILE_DEFAULT = 1
 SIB_PER_TICK = 5              # todo/43 item 5: siblings of a live lead read per tick (each: one page and a few get_post checks)
 SIB_MAX = 30                  # siblings looked at per lead event
 SIB_CHECKS = 6                # recent posts of one sibling checked for a hide (those the bot's Latest snapshot saw)
@@ -1590,7 +1593,7 @@ def policy():
             return default
     return dict(pg_max=num("BLUE_POST_PG_MAX", PG_MAX), per_day=num("BLUE_PG_PER_DAY", PG_PER_DAY),
                 live_h=num("BLUE_ACCOUNT_LIVE_H", LIVE_H), fleet_every=num("BLUE_FLEET_EVERY_S", FLEET_EVERY_S),
-                scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", 0),
+                scan_every=num("BLUE_SCAN_EVERY_S", SCAN_EVERY_S), scan_file=num("BLUE_SCAN_FILE", SCAN_FILE_DEFAULT),
                 siblings=num("BLUE_SIBLINGS", 1), fleet_gap_s=num("BLUE_FLEET_GAP_S", fleets_mod.FLEET_GAP_S),
                 team_by=os.environ.get("BLUE_TEAM_BY", TEAM_BY).strip().lower(),
                 thread_max=int(num("BLUE_THREAD_MAX", THREAD_MAX)),

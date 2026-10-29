@@ -107,11 +107,12 @@ def test_likely_citizen_reads_the_cut_and_is_citizen_stays_the_id_rule(scores, m
     assert config.blue_citizen(4580) == 0.97                                # ...Blue never does (recall)
 
 
-def test_both_switches_are_off_and_the_arm_is_in_the_switchback():     # on 27 Oct, off 28 Oct: 0 replies in 145 writes
-    assert LIVE_FLAGS == (False, False)
+def test_both_switches_are_on_in_every_block_and_through_the_freeze():   # on 27 Oct, off 28 Oct, on for good 29 Oct
+    assert LIVE_FLAGS == (True, True)
     switchback, pins = LIVE_SWITCH
-    assert ("arm_npc", ["base", "extra"], 3 * 3600) in switchback and pins["arm_npc"] == "base"
-    assert {"NPC_EXTRA_ARM", "BLUE_NPC_GUARD"} <= set(config.STEALTH_ENV)
+    assert ("arm_npc", ["extra"], 3 * 3600) in switchback and pins["arm_npc"] == "extra"
+    assert ("arm_style", ["fixes"], config.STYLE_BLOCK_S) in switchback and pins["arm_style"] == "fixes"
+    assert {"NPC_EXTRA_ARM", "BLUE_NPC_GUARD"} <= set(config.STEALTH_ENV)       # SWAN_NPC_EXTRA_ARM=0 still turns it off
 
 
 def test_npc_target_needs_the_arm(scores, monkeypatch):
@@ -192,9 +193,18 @@ def test_outcome_counts_likely_citizens_apart(scores):
     scores({4580: 0.97, 9000: 0.1})
     r = dict(post_id=7, act="reply", ts=iso(time.time() - 7200), target_author=4580)
     o = followup.Reader(_Social(), gap=0).outcome(r, 0, time.time(), {})
-    assert o["citizen_replies"] == 1 and o["citizen_likes"] == 0               # the id rule, as before
-    assert o["npc_replies"] == 1 and o["npc_likes"] == 1 and o["npc_repliers"] == [4580]
+    assert o["cit_def"] == "likely"                                             # 29 Oct: citizen_* include them
+    assert o["citizen_replies"] == 2 and o["citizen_likes"] == 1 and o["citizen_repliers"] == [100, 4580]
+    assert o["npc_replies"] == 1 and o["npc_likes"] == 1 and o["npc_repliers"] == [4580]   # still apart
     assert o["target_replied"] == 1
+
+
+def test_the_report_counts_a_likely_citizen_once():
+    import engagement_report as er
+    w = dict(post_id=1)
+    old = {1: dict(citizen_replies=1, citizen_likes=0, npc_replies=1, npc_likes=1)}          # before 29 Oct: id rule
+    new = {1: dict(cit_def="likely", citizen_replies=2, citizen_likes=1, npc_replies=1, npc_likes=1)}
+    assert er.proxy(w, old) == er.proxy(w, new) == 2 * 15 + 1 * 5
 
 
 def test_engagement_report_reads_the_arm_out_with_the_npc_writes_apart():

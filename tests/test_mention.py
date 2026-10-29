@@ -166,6 +166,7 @@ def _reply(pid, author, parent, body, minutes=2):
 def _late_targeter(monkeypatch, dead):
     monkeypatch.setattr(config, "SWITCHBACK", [])
     monkeypatch.setattr(config, "TURNOUT_ARM", False)
+    monkeypatch.setattr(config, "LATE_REPLY", True)                # the mechanism under test (off live since 29 Oct)
     t = targeting.Targeter(None, log=lambda r: None)
     t.dead_ids = set(dead)
     ours = dict(post_id=900, author_id=7001, body="You're right that Central's stretched thin.", reply_to_post_id=None,

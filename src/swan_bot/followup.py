@@ -99,15 +99,18 @@ class Reader:
             raise
         likers = self.read(self.social.likers, pid, limit=100) if c.get("like_count") else []
         replies = self.read(self.social.replies, pid, limit=100) if c.get("reply_count") else []
-        cit_replies = [x for x in replies if is_citizen_id(x.get("author_id"))]
-        # todo/48: likely citizens above id 2343 (the cached npc score) counted apart, so the extra arm's writes get their
-        # replies and likes without touching the citizen_* numbers every metric reads; and whether the target answered
+        # todo/48: likely citizens above id 2343 (the cached npc score) are also counted apart, as npc_*; and whether the
+        # target answered. 29 Oct (Marc): citizen_* include them too, marked cit_def "likely". The portal books their
+        # follows as citizen follows, and a citizen_* without them read the extra arm as dead on 28 Oct (0 replies, when
+        # the targets had answered 13.8% of the time). Rows without cit_def count ids up to 2343 only.
         npc = lambda a: not is_citizen_id(a) and config.likely_citizen(a)      # noqa: E731
+        cit = lambda a: is_citizen_id(a) or npc(a)                              # noqa: E731
+        cit_replies = [x for x in replies if cit(x.get("author_id"))]
         npc_replies = [x for x in replies if npc(x.get("author_id"))]
         return {**rec, "views": c.get("view_count"), "likes": c.get("like_count"), "replies": c.get("reply_count"),
-                "reposts": c.get("repost_count"),
-                "citizen_likes": sum(is_citizen_id(x.get("account_id")) for x in likers),
-                "citizen_likers": sorted({x["account_id"] for x in likers if is_citizen_id(x.get("account_id"))}),
+                "reposts": c.get("repost_count"), "cit_def": "likely",
+                "citizen_likes": sum(bool(cit(x.get("account_id"))) for x in likers),
+                "citizen_likers": sorted({x["account_id"] for x in likers if cit(x.get("account_id"))}),
                 "citizen_replies": len(cit_replies), "citizen_repliers": sorted({x["author_id"] for x in cit_replies}),
                 "npc_likes": sum(bool(npc(x.get("account_id"))) for x in likers), "npc_replies": len(npc_replies),
                 "npc_repliers": sorted({x["author_id"] for x in npc_replies}),

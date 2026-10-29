@@ -121,6 +121,7 @@ def _order(monkeypatch, arm, posts, scores=None, nets=None):
     monkeypatch.setattr(config, "VALUE_PICK", bool(arm))
     monkeypatch.setattr(config, "UNSURE_FIRST", False)
     monkeypatch.setattr(config, "TURNOUT_ARM", False)
+    monkeypatch.setattr(config, "LATE_REPLY", True)                # nets={...: "late"} needs it (off live since 29 Oct)
     t = targeting.Targeter(None, log=lambda r: None)
     for pid, (minutes, cls) in posts.items():
         created = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).isoformat()

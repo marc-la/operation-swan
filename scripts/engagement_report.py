@@ -228,12 +228,14 @@ def fmt(x, nd=1):
 
 def proxy(w, outcomes):
     """Our points proxy for one write from its latest outcome read, at x1: likes 5, replies 15, by citizens and (todo/48)
-    by likely citizens above id 2343. None when unread."""
+    by likely citizens above id 2343. None when unread. Since 29 Oct (cit_def "likely") citizen_* already include
+    them, so npc_* is added only to older rows."""
     o = outcomes.get(w["post_id"])
     if not o or o.get("hidden_or_gone"):
         return None
-    return (BASE["likes"] * ((o.get("citizen_likes") or 0) + (o.get("npc_likes") or 0))
-            + BASE["replies"] * ((o.get("citizen_replies") or 0) + (o.get("npc_replies") or 0)))
+    extra = 0 if o.get("cit_def") else 1
+    return (BASE["likes"] * ((o.get("citizen_likes") or 0) + extra * (o.get("npc_likes") or 0))
+            + BASE["replies"] * ((o.get("citizen_replies") or 0) + extra * (o.get("npc_replies") or 0)))
 
 
 def npc_section(rows, points, outcomes):

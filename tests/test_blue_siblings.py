@@ -17,6 +17,7 @@ def sib_blue(tmp_path, monkeypatch, pages):
     b.make_fleets()
     for k in ("BLUE_SCAN_EVERY_S", "BLUE_SCAN_FILE", "BLUE_SIBLINGS"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BLUE_SCAN_FILE", "0")       # these tests start from "logged only" (the live default is 1 since 29 Oct)
     return b, clock
 
 
