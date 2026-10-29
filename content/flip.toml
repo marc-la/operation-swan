@@ -116,8 +116,10 @@ core = ["A No isn't doing nothing: the testing, the tracing and the free vaccine
 
 [evidence.wastewater_caught]
 requires = ["wastewater_inconclusive"]
-line = ["routine wastewater testing picked up a weak signal early, it's being retested, and it isn't linked to any case",
-        "routine testing of the wastewater caught a faint signal early, a retest is under way, and no case is linked to it"]
+# 29 Oct: no case clause. "isn't linked to any case" came back as "no cases linked" in 44 drafts in two hours, which the
+# gate refuses (there has been a case since 21 Oct): every one a repair call or a lost citizen
+line = ["routine wastewater testing picked up a weak signal early, and it's being retested to check it",
+        "routine testing of the wastewater caught a faint signal early, and a retest is already under way"]
 keywords = ['wastewater', 'sewage', '\bsignal\b', '\btest']
 weight = 3.0
 

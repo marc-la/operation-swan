@@ -57,3 +57,47 @@ requires = ["first_case_confirmed", "contacts_negative_results", "emergency_serv
 line = "This fortnight's health news: the first case was isolated and every close contact tested negative, the hospitals ran a surge drill without dropping a service, the first doses went by choice to the people most at risk, and routine wastewater testing caught a weak signal early."
 reading = "The protection is already working without a pass, and a No keeps every bit of it; what a Yes adds is a check at the door, with no list of doors and no end date."
 keywords = ['hospital', '\bwards?\b', '\bsurges?\b', 'outbreak', 'wastewater', '\bsignal\b', '\bcases?\b', '\bprotect', '\bsafe', '\brisk', 'vulnerable', 'lockdown', 'act (now|early)', 'the virus']
+
+# ---- staged (todo/52 WS5, 29 Oct): stories the papers are likely to run, written ahead and commented out ----
+# To use one: the fact desk adds the article's fact (or add it by hand to content/facts.toml); point `requires` at it in
+# place of the CAPS placeholder; set `published` to the article's real UTC (scripts/news_story.py SITE SLUG prints it);
+# uncomment; run scripts/t.sh; commit and push. A reading never denies what the paper reports, and never names a day,
+# a date or how to vote.
+#
+# The Crown Harbour wastewater retest (repeat testing under way since 29 Oct), if it comes back clear:
+# [wastewater_retest_clear]
+# published = 2026-10-30T00:00:00Z
+# impact = 3
+# requires = ["RETEST_FACT"]
+# line = "The repeat wastewater tests in Crown Harbour came back clear: the weak signal was checked and nothing was found."
+# reading = "A false alarm, caught and checked: the system works without a pass, and a No keeps it working."
+# keywords = ['wastewater', 'sewage', '\bsignal\b', '\bretest', 'all clear', 'false alarm', 'crown harbour']
+#
+# ...if it confirms the signal. Inoculation: the reading names the Yes argument before it lands and answers it, and
+# never plays the signal down:
+# [wastewater_retest_confirmed]
+# published = 2026-10-30T00:00:00Z
+# impact = 4
+# requires = ["RETEST_FACT", "first_shipment_voluntary", "first_doses"]
+# line = "The repeat wastewater tests in Crown Harbour confirmed the H2D2 signal."
+# reading = "A confirmed signal is what routine testing is for: catch it early, trace it, and get the first doses to the people most at risk. The Yes side will say it proves we need a pass, but a check at the shop door caught none of it and adds nothing to any of that."
+# keywords = ['wastewater', 'sewage', '\bsignal\b', '\bretest', '\bconfirm', 'crown harbour']
+#
+# The campaigns' last pitches before the campaign silence (it begins at midnight before polling day: setting.md):
+# [campaign_close]
+# published = 2026-10-31T00:00:00Z
+# impact = 2
+# requires = ["CLOSE_FACT", "no_end", "list_later", "no_binds"]
+# line = "The campaigns have made their final pitches before the campaign silence."
+# reading = "After all the promises, the question still has no end date and no list of places, and a No keeps things as they are for the life of this Assembly."
+# keywords = ['\bcampaigns?\b', '\bfinal (pitch|push|day)', '\bsilence\b', '\blast (pitch|push)']
+#
+# A final poll, if the papers run one (none is announced: use the desk's own figures, and drop the story if No fell back):
+# [final_poll]
+# published = 2026-10-31T00:00:00Z
+# impact = 3
+# turnout = true
+# requires = ["POLL_FACT"]
+# line = "The final poll has Yes on X and No on Y, with Z still unsure."
+# reading = "It's within reach and the No voters are the surer ones, so every No counts."
+# keywords = ['\bpolls?\b', '\bpolling\b', '\bfinal poll', '\bundecided\b', '\bunsure\b', '\bmargin\b']
