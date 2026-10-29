@@ -82,6 +82,7 @@ td.rk { width: 3.2em; text-align: right; padding-right: 10px; }
 .light .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--muted); }
 .light.blue-tile .bar i { background: var(--blue); }
 .light.blue-tile.amber .val, .light.blue-tile.red .val { color: var(--ink); }   /* Blue is a track, not a red alert: the dot says how it is */
+.lights > .light.room-tile { grid-column: 1 / -1; }       /* todo/52: the room spans the row under the nine */
 details.reach .grp { break-inside: avoid; margin: 0 0 8px; }
 details.reach .cols { column-width: 22em; column-gap: 24px; padding: 0 12px 8px; }
 details.reach h4 { margin: 6px 0 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
@@ -102,7 +103,7 @@ details.reach[open] .cols { margin-top: 6px; padding: 8px 14px 6px; background: 
 .lb .c-rk { width: 2.6em; } .lb .c-score { width: 5.5em; } .lb .c-pace { width: 3.8em; }
 .lb table.board td:nth-child(2) { overflow-wrap: anywhere; }     /* a name with no spaces (I.use.arc.by.the.way) ran into its score */
 .lb tr:first-child td { border-top: 0; }
-@media (max-width: 560px) { .lights { grid-template-columns: repeat(2, 1fr); } .lights > .light:last-child { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .lights { grid-template-columns: repeat(2, 1fr); } .lights > .light.blue-tile, .lights > .light:last-child { grid-column: 1 / -1; } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
 .kpi .sub { min-height: 1.4em; }
 .kpi .val { font-size: 40px; font-weight: 700; line-height: 1.1; margin: 4px 0 2px; }
@@ -321,7 +322,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 
 <div class="lights">
 {% for i in reach.lights %}
-  <div class="light {{ i.light }}{{ ' blue-tile' if i.key == 'blue' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
+  <div class="light {{ i.light }}{{ ' blue-tile' if i.key == 'blue' }}{{ ' room-tile' if i.key == 'room' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
 {% endfor %}
 </div>
 <details class="reach" id="reach">

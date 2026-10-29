@@ -50,6 +50,13 @@ def test_story_text_passes_the_gate_and_names_no_voting_logistics():
             assert factdesk.text_problems(text) == [], (key, text)          # forbidden, wrong claims, logistics...
 
 
+def test_every_story_states_only_the_facts_it_requires():
+    """todo/52: a line that says a fact (facts.SAYS) must rest on it, so a paused fact takes the story out."""
+    gaps = [(key, k) for key, s in news.stories().items() for text in (s["line"], s["reading"])
+            for k, rx in fact_store.SAYS.items() if rx.search(text) and k not in s["requires"]]
+    assert not gaps, gaps
+
+
 def test_published_times_are_real_utc_not_the_papers_sydney_stamp():
     for key, s in news.stories().items():
         published = dt.datetime.fromtimestamp(s["t"], dt.timezone.utc)

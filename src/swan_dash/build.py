@@ -979,7 +979,15 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
                f"Views (capped at 500 a day), changes of mind and Blue are left out. Every write counts, reposts too: each one spends a slot of the team's {TEAM_CAP_PER_MIN} a minute.\n"
                f"Writes are those of the window ending {ENG_LAG_H} h earlier, because the portal books an hour's engagement about an hour late. "
                f"Most replies and likes arrive hours after the write (7 in 10 after 6 h), so the last day's writes are not finished paying; the figure is a rate, not a verdict on one change.\n"
-               f"Green: {ENG_GREEN:g} or more · amber: {ENG_AMBER:g}-{ENG_GREEN:g} · red: under {ENG_AMBER:g} · grey: under {ENG_MIN_WRITES} writes or {ENG_MIN_LINES} portal lines. Goal {ENG_GOAL:g}, one point above the median of the first days at the cap.")
+               f"Green: {ENG_GREEN:g} or more · amber: {ENG_AMBER:g}-{ENG_GREEN:g} · red: under {ENG_AMBER:g} · grey: under {ENG_MIN_WRITES} writes or {ENG_MIN_LINES} portal lines. Goal {ENG_GOAL:g}, one point above the median of the first days at the cap.",
+    room="The room (todo/52): what the citizens say about the vote. Big number: the share of the citizen posts we answered in the last 24 h that our light read "
+         "calls a conditional Yes ('I'm voting Yes, but…'); the aim is that share falling and lean No rising. The fear index is the share of every citizen "
+         "post on the vote (last 3 h) that voices a fear behind a Yes (the hospitals, acting early, a lockdown…).\n"
+         "Rising: a worry whose share of the last 3 h is twice its share of the day before; the flip then weights its proof or turn x1.5 (SWAN_ROOM_LIFT_ON=0 stops that). "
+         "Rising phrases are the citizens' own words of the moment: shown, never put in a prompt.\n"
+         "Panel: of the citizens we read twice in the last 24 h, those who moved from 'Yes, but' to lean or firm No, minus those who moved back, per 100 "
+         "(scripts/panel.py). About 30 in 100 'move' each way every day, mostly the read's noise; the net is the signal.\n"
+         "Shown, not graded: grey. Amber only when the bot has not written data/room.json for 30 min.")
 
 
 # ---- drafting starved: the drafter found no model (23 Oct, 27,800 jobs lost as no_model in 3 h) ----
@@ -1088,13 +1096,15 @@ def _median(xs):
 
 
 def _minds(points, since):
-    """Changes of mind in the portal's messages since `since`: toward / away / neither, primary or contribution."""
+    """Changes of mind in the portal's messages since `since`: toward / away / neither, primary or contribution. The
+    message's head goes whatever it says (29 Oct: since the x2 of 26 Oct it reads "NPC engagement (×2 points): ", and
+    the first item of every such line was being dropped)."""
     out = dict(toward=0, away=0, neither=0, primary_toward=0)
     for e in points:
         if e["_t"] < since:
             continue
-        for part in re.split(r",| and ", e.get("message") or ""):
-            m = MIND.match(part.strip().removeprefix("NPC engagement: "))
+        for part in re.split(r",| and ", (e.get("message") or "").partition(": ")[2]):
+            m = MIND.match(part.strip())
             if not m or "mind" not in m.group(2):
                 continue
             n, what = int(m.group(1)), m.group(2)
@@ -1103,7 +1113,7 @@ def _minds(points, since):
             if side is None:
                 continue
             out[side] += n
-            if side == "toward" and "contribution" not in what:
+            if side == "toward" and ("contribution" not in what or "primary" in what):     # a "primary contribution" is primary (_part)
                 out["primary_toward"] += n
     return out
 
@@ -1943,6 +1953,77 @@ def blue_tile(blue):
                 sub=f"{c['success']} successful · {c['failed']} failed" + (f" · locked until {blue['locked']}" if blue["locked"] else ""))
 
 
+ROOM_STALE_S = 30 * 60         # swan-bot writes data/room.json every 10 min (todo/52 WS1)
+PANEL_STALE_S = 2 * 3600       # scripts/panel.py (swan-panel.timer) writes data/panel.json every 30 min (todo/52 WS2)
+ROOM_SHOWN = 5                 # drivers and phrases named in the Room tile's detail
+STANCE_WORDS = dict(yes_but="Yes, but", lean_no="lean No", firm_no="firm No", firm_yes="firm Yes", unsure="unsure", unclear="unclear")
+
+
+def room_tile(room, panel, now):
+    """The Room tile (todo/52 WS1, WS2): what the citizens say about the vote, from data/room.json (swan-bot, every 10 min)
+    and data/panel.json (scripts/panel.py, every 30 min). Head: the conditional-Yes share of the posts we answered over
+    the last day (the light read: our own poll); sub: lean No, firm No and the fear index. The detail: both stance mixes,
+    the fear index, the drivers rising and the biggest, the rising phrases, what the flip lifts, and the panel's moves
+    to No per 100 re-read citizens. Shown, never graded: grey, amber only when the bot stopped writing the file."""
+    rows = []
+    row = lambda name, text, light="grey", target="", fix="": rows.append(
+        dict(group="room", name=name, light=light, now=text, target=target, fix=fix, note=""))
+    tile = dict(key="room", name="The room", light="grey", tip=LIGHT_TIPS["room"], row=3, rows=rows, head="—", sub="no room read yet")
+    t = ts((room or {}).get("ts"))
+    if not room or t is None:
+        row("Room read", "data/room.json not written yet (swan-bot writes it every 10 min)")
+        return tile
+    pct = lambda x: "—" if x is None else f"{100 * x:.0f}%"
+    mix = lambda m: " · ".join(f"{STANCE_WORDS.get(k, k)} {pct(v)}" for k, v in sorted(m.items(), key=lambda kv: -kv[1]))
+    stale = (now - t).total_seconds() > ROOM_STALE_S
+    if stale:
+        tile["light"] = "amber"
+        row("Room read", f"last written {ago(now - t)}", "amber", "every 10 min",
+            "swan-bot stopped writing data/room.json: the room thread may have failed (journalctl -u swan-bot -n 50).")
+    reads, wh = room.get("reads") or {}, room.get("window_h", 3)
+    day, recent = reads.get("day") or {}, reads.get("recent") or {}
+    dm = day.get("mix") or {}
+    if day.get("n"):
+        tile["head"] = f"{pct(dm.get('yes_but', 0))} Yes, but"
+        tile["sub"] = (f"lean No {pct(dm.get('lean_no', 0))} · firm No {pct(dm.get('firm_no', 0))} · "
+                       f"fear {pct((room.get('fear') or {}).get('recent'))} · posts we answered, 24 h")
+    row("Posts we answered (light read)", f"{mix(dm)} (n {day.get('n', 0):,}, 24 h)" if day.get("n") else "none in 24 h",
+        target=f"last {wh} h: {mix(recent.get('mix') or {})} (n {recent.get('n', 0):,})" if recent.get("n") else "")
+    posts, st = room.get("posts") or {}, room.get("stance") or {}
+    row("Every citizen post on the vote (keyword read)",
+        f"{posts.get('recent', 0):,} in {wh} h, {posts.get('day', 0):,} in 24 h · {mix(st.get('day') or {})}",
+        target=f"last {wh} h: {mix(st.get('recent') or {})}")
+    fear = room.get("fear") or {}
+    row("Fear index (posts voicing a fear)", f"{pct(fear.get('recent'))} last {wh} h · {pct(fear.get('base'))} the day before")
+    drivers = room.get("drivers") or []
+    up = [d for d in drivers if d.get("rising")]
+    row("Rising (2x the day before's share)",
+        "baseline building (under a day of posts)" if room.get("building") else
+        " · ".join(f"{d['label']} {pct(d['share'])} from {pct(d['base'])}" for d in up) or "nothing")
+    big = sorted((d for d in drivers if d.get("family") in ("but", "fear") and d.get("share")), key=lambda d: -d["share"])
+    row(f"Biggest worries, last {wh} h", " · ".join(f"{d['label']} {pct(d['share'])}" for d in big[:ROOM_SHOWN]) or "—")
+    ph = room.get("phrases") or []
+    row("Rising phrases (their words)", " · ".join(f"“{p['phrase']}” {p['n']}" for p in ph[:ROOM_SHOWN]) or "none")
+    lift = room.get("lift") or {}
+    row("The flip lifts", (", ".join(room.get("lifted") or []) or "nothing") + (f" (x{lift.get('x')})" if room.get("lifted") else "")
+        + ("" if lift.get("on", True) else " · lift off (SWAN_ROOM_LIFT_ON=0)"))
+    if room.get("error"):
+        row("Room file", room["error"], "amber", "content/room.toml parses", "The bot kept the last good drivers: fix the file.")
+        tile["light"] = "amber"
+    pt = ts((panel or {}).get("ts"))
+    last, before = (panel or {}).get("last24") or {}, (panel or {}).get("day_before") or {}
+    rate = lambda w, k: "—" if w.get(k) is None else f"{w[k]:.1f}"
+    net = lambda w: "—" if w.get("per100_net") is None else f"{w['per100_net']:+.1f}"
+    row("Panel: net moves to No per 100 re-read citizens",
+        (f"{net(last)} last 24 h (to No {rate(last, 'per100_to_no')}, to Yes {rate(last, 'per100_to_yes')}; "
+         f"{last.get('reread', 0):,} re-read) · {net(before)} the day before"
+         + (f" · as of {ago(now - pt)}" if (now - pt).total_seconds() > PANEL_STALE_S else ""))
+        if pt else "scripts/panel.py has not run yet",
+        target="a citizen read twice: Yes-but (or unsure) to lean or firm No, minus the reverse; the moves either way are "
+               "mostly the read's noise, the net is the signal")
+    return tile
+
+
 def gather(root, now, service):
     """Everything the page shows, as plain values. root is the repo checkout (logs/ and data/ under it)."""
     logs, data = root / "logs", root / "data"
@@ -2185,6 +2266,7 @@ def gather(root, now, service):
     tiles = cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, rc["rows"], pool, status, now)
     rc["lights"] += tiles
     rc["lights"].append(blue_tile(blue))
+    rc["lights"].append(room_tile(read_json(data / "room.json"), read_json(data / "panel.json"), now))     # todo/52
     seen = {id(r) for r in rc["rows"]}
     new_rows = [r for t in tiles for r in t["rows"] if id(r) not in seen] + [r for r in extra_rows if id(r) not in seen]
     rc["rows"] += list({id(r): r for r in new_rows}.values())

@@ -49,7 +49,7 @@ def test_every_line_passes_the_gate_and_names_no_voting_logistics():
     d = flip.data()
     texts = [f["label"] for f in d["fear"].values()]
     texts += [c for f in d["fear"].values() for c in (f["core"] if isinstance(f["core"], list) else [f["core"]])]
-    texts += [i["line"] for part in ("evidence", "pivot") for i in d[part].values()]
+    texts += [line for part in ("evidence", "pivot") for i in d[part].values() for line in flip.as_list(i["line"])]
     for text in texts:
         assert quality.unapproved_number(text) is None, text
         assert factdesk.text_problems(text) == [], text            # forbidden, wrong claims, logistics...
@@ -73,7 +73,7 @@ def test_the_fact_desk_counts_the_flip_facts_as_named():
     ("A Yes is how we protect people.", "protection"),
     ("The doctors and the advisory panel say get vaccinated.", "doctors"),
     ("It's about doing our part for each other.", "community"),
-    ("A Yes keeps things running and predictable for business.", "lockdown"),
+    ("A Yes keeps things running and predictable for business.", "stability"),      # todo/52: split from lockdown
     ("I'm voting Yes, but only with a hard sunset and the venue list published.", "conditional_yes"),
     (HOSPITAL_SUNSET, "hospitals"),                          # a fear beats the conditions-only fallback
 ])
@@ -170,3 +170,54 @@ def test_the_fear_dial(monkeypatch):
     assert "Make the turn bite" in lines[2] and "no off switch" in lines[2]
     for line in lines.values():
         assert line.startswith("Their worry underneath is") and "nothing invented" in line or "no exaggeration" in line or line == lines[0]
+
+
+# ---- todo/52 WS3: every driver of the room flipped ----------------------------------------------------------------------
+@pytest.mark.parametrize("text,pivot", [
+    ("I'm voting Yes, but only with clear, simple medical exemptions.", "exemptions_in"),     # in the plan: never "missing"
+    ("Yes from me if it's a phased rule, a measured rollout.", "phased_later"),
+    ("Yes, as long as it's all baked into the regulations.", "regs_later"),
+    ("I'd vote yes if a pass makes a clear difference, so show us the evidence.", "no_proof"),
+    ("Yes, as long as nobody is shut out: paper options for people with no phone.", "islands"),
+])
+def test_their_own_condition_is_the_turn(text, pivot):
+    assert flip.fear_of(text)["key"] == "conditional_yes"
+    assert {flip.choose(t)["pivot"]["key"] for t in variants(text, 20)} == {pivot}
+
+
+def test_every_fear_has_two_or_more_core_lines():
+    assert not [k for k, f in flip.data()["fear"].items() if len(flip.as_list(f["core"])) < 2]
+
+
+def test_a_fear_whose_core_states_a_paused_fact_goes(monkeypatch):
+    text = "A Yes gives us stability and certainty."
+    assert flip.fear_of(text)["key"] == "stability"
+    real = fact_store.ok
+    monkeypatch.setattr(fact_store, "ok", lambda keys: "no_binds" not in keys and real(keys))
+    assert (flip.fear_of(text) or {}).get("key") != "stability"
+    assert "flip fear stability" in content.requiring("no_binds")
+
+
+def test_a_line_is_one_of_its_wordings_and_the_same_post_gets_the_same_one():
+    d = flip.data()
+    for t in variants(HOSPITAL_SUNSET, 30):
+        c = flip.choose(t)
+        assert c["evidence"]["line"] in flip.as_list(d["evidence"][c["evidence"]["key"]]["line"])
+        assert c["pivot"]["line"] in flip.as_list(d["pivot"][c["pivot"]["key"]]["line"])
+        assert flip.choose(t)["pivot"]["line"] == c["pivot"]["line"]
+    lines = collections.Counter(flip.choose(t)["pivot"]["line"] for t in variants(HOSPITAL_SUNSET, 90))
+    assert len(lines) == len(d["pivot"]["no_end"]["line"])          # their own "but" (sunset): every wording drawn
+
+
+def test_every_line_states_only_the_facts_its_item_requires():
+    """todo/52: a line that says a fact (facts.SAYS: "isolat" is no_spread, "doses" first_doses) must rest on it, so a
+    paused fact takes the line out (the slow test_a_paused_fact_reaches_no_prompt only samples a few draws)."""
+    d = flip.data()
+    gaps = []
+    for part in ("fear", "evidence", "pivot"):
+        for key, item in d[part].items():
+            texts = flip.as_list(item["core"]) + [item["label"]] if part == "fear" else flip.as_list(item["line"])
+            for text in texts:
+                gaps += [(part, key, k, text) for k, rx in fact_store.SAYS.items()
+                         if rx.search(text) and k not in (item.get("requires") or ())]
+    assert not gaps, gaps

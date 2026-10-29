@@ -27,7 +27,7 @@ import zoneinfo
 
 import capturethenarrative as ctn
 
-from . import config, content, experiment, feeds, news, value
+from . import config, content, experiment, feeds, news, room, value
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption|"
@@ -259,6 +259,21 @@ def target_class(text, context=None):
 
 def soft_yes(text):
     return bool(FIRM_YES.search(text or "") and hedged(text or ""))
+
+
+def room_stance(text, cls):
+    """todo/52: the room's cheap stance for a citizen post (room.observe), in the light read's words, from the keyword
+    rules and its target_class; None off the vote."""
+    text = text or ""
+    if cls == "off_topic":
+        return None
+    if cls == "lean_no":
+        return "firm_no" if FIRM_NO.search(text) else "lean_no"
+    if cls == "firm_yes":
+        return "firm_yes"
+    if cls in ("conditions", "conditions_flat") or soft_yes(text) or (cls == "yes_reason" and yes_stated(text)):
+        return "yes_but"
+    return "unsure" if cls in ("unsure", "yes_reason") else "unclear"
 
 
 def age_h(post):
@@ -608,6 +623,7 @@ class Targeter:
         if context is None and parent:
             context = (parent.get("body") or "")[:200] or None
         cls = target_class(body, context)
+        room.observe(pid, body, cheap=room_stance(body, cls), made=it["c"])     # todo/52: the room, every post on the vote
         why = (hard_skip(body, context) or ("deep_thread" if d >= config.DEEP_THREAD else None)
                or ("firm_yes" if cls == "firm_yes" and not config.FIRM_YES_ARM else None))
         group = None

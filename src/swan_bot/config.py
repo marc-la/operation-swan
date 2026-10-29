@@ -373,6 +373,18 @@ FLIP_ON = True
 # concrete picture from their own post or life, a No as the way to keep it. 2: the loss is also lasting (no off switch).
 # Never anything invented or exaggerated. SWAN_FLIP_FEAR=0/1/2 (+ restart).
 FLIP_FEAR = 1
+# ---- the room (todo/52 WS1, 29 Oct, Marc; swan_bot/room.py, content/room.toml) ----
+# Every citizen post on the vote the targeter judges is counted by driver (their conditions, their fears, the No case)
+# and stance, with its phrases: data/room.json every ROOM_EVERY_S, the dashboard's Room tile. Read-only but for the lift:
+# a driver rising in the room (its share of the last 3 h ROOM_RISE times its share in the 24 h before) weights its flip
+# items (content/room.toml `lifts`) x ROOM_LIFT, like the news trend. Off: SWAN_ROOM_LIFT_ON=0 (the lift, + restart);
+# ROOM_ON = False (all of it).
+ROOM_ON = True
+ROOM_EVERY_S = 10 * 60
+ROOM_RISE = 2.0
+ROOM_LIFT = 1.5
+ROOM_LIFT_ON = True
+ROOM_SILENT_S = 30 * 60             # the room thread is not vital: silent this long, the watchdog only alerts
 
 # ---- fact desk (todo/16, swan_bot/factdesk.py): new articles checked against content/facts.toml, hourly ----
 # A few calls a day (one per batch of new articles), so the strongest models go first; the rest of the chain after.
@@ -614,7 +626,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S",
                "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
                "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN",
-               "FLIP_ON", "FLIP_FEAR")                                          # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
+               "FLIP_ON", "FLIP_FEAR",                                          # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
+               "ROOM_LIFT_ON")                                                  # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance

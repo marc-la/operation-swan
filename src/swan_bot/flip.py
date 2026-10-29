@@ -10,7 +10,13 @@ when the post names one, else by weight). content.rebuttal_for gives it in place
 rebuttal slot does (a reply-back) and logs `flip`.
 
 The same post always gets the same choice (seeded by its text), so a redraft says the same thing. No network call: the
-file is re-read when it changes, the facts come from facts.ok (a paused fact drops its item).
+file is re-read when it changes, the facts come from facts.ok (a paused fact drops its item, or a fear whose core
+names one).
+
+todo/52 (29 Oct): the room lifts what citizens are raising now. An evidence or turn item of a driver rising in the room
+(room.lift: its share of the last 3 h twice the day before's) weighs x config.ROOM_LIFT; the lifted items of a choice
+are logged as `flip_lift`. An evidence or turn line may be a list of wordings, drawn after the items, so the 80% of
+replies that carry a flip don't all say the big turns alike.
 """
 import random
 import re
@@ -18,7 +24,7 @@ import threading
 import tomllib
 import zlib
 
-from . import config
+from . import config, room
 from . import facts as fact_store
 
 FILE = config.ROOT / "content" / "flip.toml"
@@ -70,12 +76,13 @@ def hits(item, text):
 
 def fear_of(text, d=None):
     """The fear the post voices (most keyword matches; the file's order on a tie), or None. A fallback fear
-    (conditional_yes) only when no other one matches."""
+    (conditional_yes) only when no other one matches; a fear whose `requires` names a paused fact never."""
     d = d or data()
     if not d:
         return None
     for fallback in (False, True):
-        fears = [f for f in d["fear"].values() if bool(f.get("fallback")) == fallback]
+        fears = [f for f in d["fear"].values() if bool(f.get("fallback")) == fallback
+                 and fact_store.ok(f.get("requires") or ())]
         best = max(fears, key=lambda f: hits(f, text), default=None)  # max keeps the first of equals
         if best and hits(best, text):
             return best
@@ -97,13 +104,20 @@ def choose(text):
         return None
     rng = random.Random(zlib.crc32((text or "").encode()))
     ew = [e["weight"] * (KEYWORD_GAIN if hits(e, text) else 1) * (FIRST_GAIN if i == 0 else 1)
-          for i, e in enumerate(evidence)]
+          * room.lift("evidence", e["key"]) for i, e in enumerate(evidence)]
     own = [p for p in pivots if hits(p, text)]                   # their own "but" is the turn when they name one
     pivots = own or pivots
-    pw = [p["weight"] for p in pivots]
-    cores = fear["core"] if isinstance(fear["core"], list) else [fear["core"]]
-    return dict(fear=fear, core=rng.choice(cores), evidence=rng.choices(evidence, weights=ew)[0],
-                pivot=rng.choices(pivots, weights=pw)[0])
+    pw = [p["weight"] * room.lift("pivot", p["key"]) for p in pivots]
+    out = dict(fear=fear, core=rng.choice(as_list(fear["core"])), evidence=rng.choices(evidence, weights=ew)[0],
+               pivot=rng.choices(pivots, weights=pw)[0])
+    out["lifted"] = [f"{part}.{out[part]['key']}" for part in ("evidence", "pivot") if room.lift(part, out[part]["key"]) > 1]
+    for part in ("evidence", "pivot"):                           # a wording of the item's line (drawn last: same items)
+        out[part] = dict(out[part], line=rng.choice(as_list(out[part]["line"])))
+    return out
+
+
+def as_list(x):
+    return x if isinstance(x, list) else [x]
 
 
 def key(choice):

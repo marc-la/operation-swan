@@ -1,0 +1,157 @@
+# The room (todo/52 WS1, 29 Oct, Marc): what citizens say about the vote, by driver. src/swan_bot/room.py reads it
+# (the live tracker, data/room.json) and so does scripts/room_read.py (the read of the posts we answered, §13b of
+# docs/06-strategy/situation-2026-10-29.md). The families and patterns are the ones that read used, so its numbers carry
+# over; b9 and b10 are new with the todo/52 flip rows.
+#
+# [driver.*]  family: "but" (what holds a Yes back), "fear" (why Yes), "no" (the No case: allies), "meta".
+#             label: a few words. keywords: regex (any case); a post matching any of them voices the driver (a post can
+#             voice several). lifts: the content/flip.toml items ("evidence.KEY", "pivot.KEY") weighted x
+#             config.ROOM_LIFT in the flip while the driver is rising in the room (its share over the last 3 h at least
+#             config.ROOM_RISE times its share in the 24 h before). The No case lifts nothing: allies are never flipped.
+# Change a pattern, run scripts/t.sh (tests/test_room.py checks that every lift names a flip item).
+
+# ---- the "but": what holds a Yes back ----
+[driver.b1_places]
+family = "but"
+label = "which places, scope"
+keywords = ['which (places|venues|spaces|doors)', '\bvenues?\b', '\blist\b', 'designated', '\bscope\b', 'where it applies', 'defined']
+lifts = ["pivot.no_list"]
+
+[driver.b2_end]
+family = "but"
+label = "end date, sunset, review"
+keywords = ['sunset', 'end date', 'end point', 'expir', 'temporary', 'forever', 'permanent', '\breview', 'time.limit', '\bexit\b', 'renew']
+lifts = ["pivot.no_end"]
+
+[driver.b3_privacy]
+family = "but"
+label = "privacy, ID card, data"
+keywords = ['privacy', 'id cards?', 'biometric', 'health data', 'surveillance', '\btrack']
+lifts = ["pivot.promises"]
+
+[driver.b4_exemptions]
+family = "but"
+label = "exemptions"
+keywords = ['exemption', 'medical reasons', 'can.t (get|have) the (jab|vaccine)', 'allerg']
+lifts = ["pivot.exemptions_in"]
+
+[driver.b5_door]
+family = "but"
+label = "who checks at the door"
+keywords = ['gatekeep', 'who checks', 'checking (papers|passes|certificates)', 'on the door', 'at the door', 'enforce', 'police (it|this)', 'doormen', 'bouncer']
+lifts = ["pivot.who_checks"]
+
+[driver.b6_access]
+family = "but"
+label = "access, equity, the islands"
+keywords = ['outer islands?', '\bferry', 'remote', 'digital divide', 'accessib', '\bcost', 'afford', 'village', 'no phone', 'internet']
+lifts = ["pivot.islands"]
+
+[driver.b7_staffing]
+family = "but"
+label = "staffing, funding"
+keywords = ['\bnurses?\b', 'staffing', 'recruit', '\brosters?', 'rostering', 'funding', 'burnout', '\bshifts?\b']
+lifts = ["pivot.no_staff"]
+
+[driver.b8_writing]
+family = "but"
+label = "safeguards in writing, promises, trust"
+keywords = ['in writing', 'written', 'guarantee', 'safeguard', 'promise', 'trust (the )?(government|ministry|hawthorne|them)', 'ironclad', 'binding']
+lifts = ["pivot.promises", "pivot.regs_later"]
+
+[driver.b9_phased]
+family = "but"
+label = "phased, measured, tailored"
+keywords = ['phased', 'in (stages|phases)', 'staged', 'gradual', 'measured (rollout|roll.out|approach|start|rule)', 'tailored', 'step by step', 'targeted (rule|approach|pass|requirement)']
+lifts = ["pivot.phased_later"]
+
+[driver.b10_proof]
+family = "but"
+label = "show us the evidence"
+keywords = ['show (us|me) (the )?(evidence|data|proof|it works)', 'if (a |the )?pass(es)? (makes?|made|would make) a (clear |real )?difference', 'proof (that|it)', 'evidence (that|it|a pass|passes)', 'does (it|a pass) (actually )?(work|stop)']
+lifts = ["pivot.no_proof"]
+
+# ---- the fear: why Yes ----
+[driver.y1_hospitals]
+family = "fear"
+label = "hospitals, the health system"
+keywords = ['hospital', '\bwards?\b', '\bicu\b', 'intensive care', 'capacity', 'overwhelm', '\bbeds?\b', '\bsurges?\b', 'frontline', 'health system', 'clinics?']
+lifts = ["evidence.surge_drill"]
+
+[driver.y2_early]
+family = "fear"
+label = "acting early, the spread, the first case"
+keywords = ['\bact(ing)? (now|early|fast|first|before|in time)', '\bearly\b', '\bprevent', 'before it (spreads|gets|arrives|hits)', 'too late', 'waiting (has|is|costs)', 'first case', 'wastewater', '\bsignal\b', 'outbreak', '\bspread', 'it.s (here|coming)']
+lifts = ["evidence.wastewater_caught", "evidence.contained_case"]
+
+[driver.y3_vulnerable]
+family = "fear"
+label = "the people most at risk"
+keywords = ['vulnerable', 'elderly', 'immunocompromised', 'grand(ma|pa|parents?|mother|father|kids)', '\bnan\b', 'at.risk', 'aged.care', 'newborn']
+lifts = ["evidence.voluntary_doses"]
+
+[driver.y4_stability]
+family = "fear"
+label = "stability, avoiding a lockdown"
+keywords = ['lockdowns?', 'shut ?downs?', 'stabil', 'predictab', 'keep (things|life|schools|shops|businesses|everything|us) (open|running|going|flowing|moving)', 'harsher', 'stricter', '\broutines?\b', 'disruption']
+lifts = ["evidence.contained_case"]
+
+[driver.y5_doctors]
+family = "fear"
+label = "the doctors, the science"
+keywords = ['\bdoctors?\b', 'scientist', '\bexperts?\b', '\bevidence\b', 'advisory panel', '\btrials?\b', '\bscience\b', 'medical officers', '\bmouk\b', 'amara', 'dr\.? singh', 'immune response']
+lifts = ["evidence.voluntary_doses"]
+
+[driver.y6_community]
+family = "fear"
+label = "doing our part"
+keywords = ['\bcommunity\b', 'together', 'our part', 'do (my|our|their) (bit|part)', 'responsib', 'solidarity', 'look(ing)? after (each other|one another|others)', 'common good', 'for everyone', 'each other']
+lifts = ["evidence.voluntary_doses"]
+
+[driver.y7_covid]
+family = "fear"
+label = "the COVID memory"
+keywords = ['\bcovid\b', 'last time', 'pandemic', 'remember (when|how)']
+lifts = ["evidence.contained_case"]
+
+# ---- the No case: what No-leaners say (allies: affirmed, never flipped) ----
+[driver.n1_choice]
+family = "no"
+label = "choice, freedom, consent"
+keywords = ['\bchoice\b', 'freedom', 'liberty', 'my body', 'bodily', 'consent', 'voluntary', 'coerc', 'forced']
+
+[driver.n2_two_tier]
+family = "no"
+label = "two-tier, division, exclusion"
+keywords = ['two.tier', 'divid', 'division', 'discriminat', 'second.class', 'exclu', 'shut (people |them |us )?out', 'segregat']
+
+[driver.n3_overreach]
+family = "no"
+label = "overreach, blank cheque"
+keywords = ['blank cheque', 'blank check', 'overreach', 'slippery', 'creep', 'precedent', 'keys to the kingdom', 'power grab']
+
+[driver.n4_livelihoods]
+family = "no"
+label = "livelihoods, business, tourism"
+keywords = ['business', '\bshops?\b', 'caf[eé]', 'tourism', 'tourists?', 'bookings', 'livelihood', '\bjobs?\b', 'customers', '\btrade\b', 'economy', 'markets?']
+
+[driver.n5_doubts]
+family = "no"
+label = "doubts about the vaccine"
+keywords = ['side effects', 'data gaps', 'rushed', 'unproven', 'long.term', '\bmrna\b', 'limitations', 'doesn.t (stop|prevent) (spread|transmission)']
+
+[driver.n6_proportion]
+family = "no"
+label = "proportionality, one case"
+keywords = ['one case', 'single case', 'proportion', 'overkill', 'too much', 'not here', 'no community transmission', '\bisolated\b', 'measured']
+
+# ---- meta ----
+[driver.m1_undecided]
+family = "meta"
+label = "undecided, need details"
+keywords = ['undecided', 'not sure', 'unsure', '\btorn\b', 'on the fence', 'need (more )?(info|details|clarity)', 'haven.t decided', 'clarity']
+
+[driver.m2_politics]
+family = "meta"
+label = "politics, the campaigns"
+keywords = ['hawthorne', 'assembly', 'campaign', 'spending', 'k\$1\.6', '\bkitb\b', 'castillo', 'political', 'politicians']

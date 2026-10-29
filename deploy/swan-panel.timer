@@ -1,0 +1,9 @@
+[Unit]
+Description=The panel every 30 minutes
+
+[Timer]
+OnBootSec=12min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target

@@ -14,13 +14,14 @@
 # how to vote (quality.WRONG_LOGISTICS; tests/test_news.py).
 # Add a story: copy a block, cite the facts it rests on (add them to facts.toml first), run scripts/t.sh.
 
+# todo/52 (29 Oct): the lead is no bigger than the poll's own margin of error (the momentum row, for No-leaners).
 [poll_narrows]
 published = 2026-10-28T20:00:00Z
 impact = 3
 turnout = true
-requires = ["polls_1029", "poll_lead_narrowed", "definitely_no_rises_1029"]
-line = "The new poll has the Yes lead down to 3.1 points from 5.2, with a quarter still unsure, and 16.1% definitely No against 5.1% definitely Yes."
-reading = "It's close and moving towards No, and No voters are the surer ones, so every No counts."
+requires = ["polls_1029", "poll_lead_narrowed", "definitely_no_rises_1029", "poll_margin_error"]
+line = "The new poll has the Yes lead down to 3.1 points from 5.2, no bigger than the poll's own margin of error, with a quarter still unsure, and 16.1% definitely No against 5.1% definitely Yes."
+reading = "It's inside the margin and moving towards No, and No voters are the surer ones, so every No counts."
 keywords = ['\bpolls?\b', '\bpolling\b', '\bnarrow', '\bmargin\b', '\bundecided\b', '\bunsure\b', '\bclose (race|vote|call|one)\b', '\bmomentum\b']
 
 [no_is_this_assembly]
@@ -42,7 +43,7 @@ keywords = ['\bid cards?\b', '\bbiometric\b', '\bprivacy\b', '\bsurveillance\b',
 [jabs_arrive_voluntary]
 published = 2026-10-28T06:00:00Z
 impact = 2
-requires = ["first_shipment_voluntary"]
+requires = ["first_shipment_voluntary", "first_doses"]
 line = "The first 120,000 doses have arrived, under a strictly voluntary programme for health workers and high-risk people."
 reading = "The people who need it most are getting it, by choice, and a pass at the shop door adds nothing to that."
 keywords = ['\bdoses?\b', '\bshipment\b', '\barrived\b', '\bvoluntary\b', '\brollout\b', '\bhigh.risk\b', '\bfirst jabs?\b']
@@ -52,7 +53,7 @@ keywords = ['\bdoses?\b', '\bshipment\b', '\barrived\b', '\bvoluntary\b', '\brol
 [health_handled]
 published = 2026-10-29T10:00:00Z
 impact = 4
-requires = ["first_case_confirmed", "contacts_negative_results", "emergency_services_maintained", "first_shipment_voluntary", "wastewater_inconclusive", "free_either_way", "list_later", "no_end"]
+requires = ["first_case_confirmed", "contacts_negative_results", "emergency_services_maintained", "first_shipment_voluntary", "wastewater_inconclusive", "free_either_way", "list_later", "no_end", "first_doses", "no_spread"]
 line = "This fortnight's health news: the first case was isolated and every close contact tested negative, the hospitals ran a surge drill without dropping a service, the first doses went by choice to the people most at risk, and routine wastewater testing caught a weak signal early."
 reading = "The protection is already working without a pass, and a No keeps every bit of it; what a Yes adds is a check at the door, with no list of doors and no end date."
 keywords = ['hospital', '\bwards?\b', '\bsurges?\b', 'outbreak', 'wastewater', '\bsignal\b', '\bcases?\b', '\bprotect', '\bsafe', '\brisk', 'vulnerable', 'lockdown', 'act (now|early)', 'the virus']

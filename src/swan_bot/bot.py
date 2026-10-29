@@ -37,12 +37,12 @@ import urllib.error
 
 import openai
 import capturethenarrative as ctn
-from . import batch, config, content, engage, experiment, feeds, flip, humanize, memory, mention, news, pool_runner, pulse, quality, register, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, flip, humanize, memory, mention, news, pool_runner, pulse, quality, register, room, stealth, themes, watch
 from . import batch, config, content, engage, experiment, feeds, humanize, mention, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .analysis import ts_of
 from .llm import Generator
-from .targeting import YES_REASON, agrees, Targeter, classify, contact, messengers, sessions, soft_yes, stance, target_class
+from .targeting import YES_REASON, agrees, Targeter, classify, contact, messengers, room_stance, sessions, soft_yes, stance, target_class
 
 AGREE_STANCES = ("lean_no", "firm_no")      # todo/32: a light read that says they lean or stand No agrees with us
 REPLY_BACK_JOBS = 10          # reply-back jobs read per poll (todo/20 G7; was 3)
@@ -733,7 +733,8 @@ ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode",
         "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block",     # todo/48: arm_npc with NPC_EXTRA_ARM
         "arm_style", "colour", "lean", "lean_shape",                                       # todo/50: the prompt fixes
         "rb_open",                                                                         # todo/51: the reply-back opener
-        "news", "flip")                                                                    # 29 Oct: today's news (news.py), the flip (flip.py)
+        "news", "flip",                                                                    # 29 Oct: today's news (news.py), the flip (flip.py)
+        "flip_fear", "flip_lift")                                                          # todo/52: the fear dial, the room's lift
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level", "arm_style", "lean_shape", "rb_open")
 
@@ -856,12 +857,13 @@ def style_context(job, persona, meta):
 
 def flip_choice(job, body, meta):
     """29 Oct (Marc): the flip for this reply (flip.choose), or None: never off-topic, never to a citizen who already
-    opposes the pass. Its key is logged as meta["flip"]."""
+    opposes the pass. Its key is logged as meta["flip"], with the fear dial (flip_fear) and the items the room lifted
+    (flip_lift, todo/52), so the panel can join a move to what we said."""
     if job.get("style") == "off_topic" or content.opposes_pass(body):
         return None
     choice = flip.choose(body)
     if choice:
-        meta["flip"] = flip.key(choice)
+        meta.update(flip=flip.key(choice), flip_fear=config.FLIP_FEAR, flip_lift=",".join(choice["lifted"]) or None)
     return choice
 
 
@@ -1554,6 +1556,9 @@ def main():
     if args.live:                                       # todo/31: the last day's writes count from the first minute,
         stealth.seed(accounts.records, state, config.ACTIONS_LOG)      # and the voices start at their own times
         stealth.stagger(accounts.voices())
+        hours = room.load()                             # todo/52: the room's counts survive a restart; the first start
+        seeded = 0 if hours else room.seed(config.ACTIONS_LOG, lambda text: room_stance(text, target_class(text)))
+        print(f"room: {hours} hours of counts back from {room.STATE_NAME}" + (f", {seeded} answered posts from the log" if seeded else ""))
 
     amp = None
     if args.amplify:
@@ -1774,6 +1779,14 @@ def main():
                                        tries=j.get("tries", 0), depth=j.get("depth"), depth_arm=j.get("depth_arm"))
                                   for j in queue + held() if j["mode"] == "reply_back"]
                 save_json(config.STATE_FILE, {**state, "targeter": targeter.dump()})
+
+    def save_room():
+        """todo/52: the room's read and counts at the end of a run, so a deploy's restart keeps them (room.load)."""
+        if args.live and config.ROOM_ON:
+            try:
+                room.write()
+            except (OSError, ValueError) as e:
+                print("room not saved:", e)
 
     end = time.time() + args.hours * 3600
     next_write = next_notif = 0.0
@@ -2168,6 +2181,8 @@ def main():
             if target:
                 state["replied_posts"] = (state["replied_posts"] + [target["post_id"]])[-5000:]
                 targeter.answered(target, mode)          # the funnel (todo/21 G12)
+            if target and mode == "reply" and args.live:  # todo/52: the light read of a post we answered, for the room
+                room.observe(target["post_id"], target.get("body") or "", stance=(job.get("meta") or {}).get("read_stance"))
             if mode in ("reply", "reply_back", "second_voice"):   # the session cap counts our voices (todo/21)
                 contact(state["contacted"], target["author_id"], persona["key"])
             if mode == "reply_back":                      # a conversation turn (todo/20: TURNS_PER_SESSION)
@@ -2377,6 +2392,7 @@ def main():
                     queue.insert(0, job)                  # stopped mid-draft: keep the citizen's reply for next run
                 break
         save_state()
+        save_room()
 
     # ---- the split loop (todo/22): the reader and the drafter work ahead; the writer only sends ----
     reader_sessions = Sessions(rsocial)
@@ -2481,6 +2497,21 @@ def main():
         with mu:
             state.update(kept)
 
+    room_next = [time.time() + 60]       # todo/52: the first room read a minute after the start
+
+    def room_step():
+        """The room thread (todo/52, non-critical): data/room.json and the counts behind it every ROOM_EVERY_S. Read-only,
+        no network: a failed write is logged and tried again next time."""
+        wait = room_next[0] - time.time()
+        if wait > 0 or not config.ROOM_ON:
+            stop.wait(min(PULSE_POLL_S, max(1.0, wait)))
+            return
+        room_next[0] = time.time() + config.ROOM_EVERY_S
+        try:
+            room.write()
+        except (OSError, ValueError) as e:
+            log({"act": "room_error", "why": type(e).__name__, "detail": str(e)[:200]})
+
     def pool_step():
         """The pool thread (todo/38, non-critical): one tick of the pool orchestrator every POOL_TICK_S (30-60 s). It never
         holds mu across a network call (pool_runner), a failing tick is logged and the 5th in a row ends the thread, which
@@ -2504,7 +2535,9 @@ def main():
                     if args.live:
                         alert(f"BOT THREAD FAILED (not fatal): {w.name} ({why}); "
                               + ("no accounts are added or activated until a restart; the bot keeps writing. "
-                                 if w.name == "pool" else "drafts use the last pulse. ")
+                                 if w.name == "pool" else
+                                 "data/room.json stops updating and the room lifts nothing; the bot keeps writing. "
+                                 if w.name == "room" else "drafts use the last pulse. ")
                               + "Restart when convenient. Logs: journalctl -u swan-bot -n 50")
                 elif not why:
                     w.reported = False
@@ -2531,6 +2564,7 @@ def main():
                     targeter.requeue(j["cand"], "held")
                 accounts.reserved.discard(j["rec"]["persona"])
         save_state()
+        save_room()
 
     def write_loop():
         while time.time() < end and not stop.is_set() and not (args.samples and stats["accepted"] >= args.samples):
@@ -2591,6 +2625,8 @@ def main():
             workers += [Worker(f"drafter-{i}", drafter_step, stop, beats, config.DRAFTER_SILENT_S)
                         for i in range(1, max(1, int(config.DRAFTERS)) + 1)]
             workers += [Worker("pulse", pulse_step, stop, beats, config.PULSE_SILENT_S, critical=False)]
+            if args.live:                                # todo/52: a dry run reads a fixture; its room is not the room
+                workers += [Worker("room", room_step, stop, beats, config.ROOM_SILENT_S, critical=False)]
             if pool_run:
                 workers += [Worker("pool", pool_step, stop, beats, config.POOL_SILENT_S, critical=False)]
             for w in workers:

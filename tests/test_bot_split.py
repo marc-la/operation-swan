@@ -408,7 +408,7 @@ def test_every_background_duty_fires(run):
     status = json.loads((tmp / "data" / "status.json").read_text())
     assert status["accounts"]["voices"] >= VOICES
     if run["split"]:                        # written at the start of the run (every 30 s): the writer is there first
-        assert "writer" in status["threads"] and set(status["threads"]) <= {"reader", "writer", "pulse", "pool", *DRAFTER_NAMES}
+        assert "writer" in status["threads"] and set(status["threads"]) <= {"reader", "writer", "pulse", "pool", "room", *DRAFTER_NAMES}
         assert DRAFTER_NAMES <= set(status["threads"]), "every drafter has its own heartbeat"
         assert s["pulse"].threads == {"pulse"}, f"pulse.update only runs in the pulse thread: {s['pulse'].threads}"
         assert set(status["queue"]) == {"reply_backs", "candidates", "drafts_ready", "drafts_inflight"}
@@ -416,6 +416,7 @@ def test_every_background_duty_fires(run):
     state = json.loads((tmp / "data" / "swan_state.json").read_text())
     assert state["targeter"]["items"] and state["replied_posts"], "save_state with the targeter's queue and funnel"
     assert (tmp / "data" / "latest_snapshot.json").exists(), "the Latest snapshot for swan-blue (todo/21 G1)"
+    assert json.loads((tmp / "data" / "room.json").read_text())["posts"]["recent"], "the room, saved at shutdown (todo/52)"
     assert any(json.loads(line)["proc"] == "swan-bot" for line in (tmp / "logs" / "feed_reads.jsonl").read_text().splitlines())
 
 

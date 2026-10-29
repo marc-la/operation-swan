@@ -564,8 +564,8 @@ def requiring(key):
     """What in this file states the fact (its `requires` lists): frames, rebuttals, storylines, levers, rules."""
     out = [k for k, f in FRAMES.items() if key in f["requires"]]
     out += [f"rebuttal {i + 1}" for i, (_, _, req) in enumerate(REBUTTALS) if key in req]
-    out += [f"flip {part} {k}" for part, items in (flip.data() or {}).items() if part != "fear"
-            for k, item in items.items() if key in item["requires"]]
+    out += [f"flip {part} {k}" for part, items in (flip.data() or {}).items()
+            for k, item in items.items() if key in (item.get("requires") or ())]     # a fear's own facts too (todo/52)
     out += [f"storyline {k}" for k, _, req in STORYLINES if key in req]
     out += [f"lever {k}" for k, req in LEVER_REQUIRES.items() if key in req]
     out += ["WORLD"] if any(key in req for _, req, _ in WORLD_PARTS) else []
