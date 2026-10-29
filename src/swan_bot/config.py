@@ -294,7 +294,10 @@ CHEAP_MODES = {"thread", "thread_answer"}
 # load 0.00, so no unlimited-CPU surcharge) + ~$7 tolerance (Bedrock calls made off the box with the same key aren't
 # counted here; the bill lags by hours). With LLM_PRICES padded ~25%, the real spend should come in under this.
 # 2026-10-23: 85 -> 170 with the credit at $200 (EC2 ~$7.50 and ~$22 tolerance for the lag and for calls made off the box)
-LLM_BUDGET_USD = 170.0              # all priced models together, 21 Oct to 2 Nov
+# 2026-10-29 (Marc): 170 -> 195. AWS said $109 credit left (billed $74, Cost Explorer a day behind); 195 ledger dollars is
+# ~$162 billed + EC2, about $180 of the $200 by 2 Nov (scripts/aws_cost.py). The ledger stood at $106.6 with 29 Oct's
+# allowance down to $1.42, below the amplified-post reserve.
+LLM_BUDGET_USD = 195.0              # all priced models together, 21 Oct to 2 Nov
 # USD per million tokens (input, output). us-west-2 list prices padded ~25% (Kimi $0.60/$3.00, GLM-5 $1.00/$3.20 from
 # third-party listings, 2026-10-21; eu-west-2 runs ~20% over us-west-2). Replace with the console's Sydney prices.
 # 2026-10-23: Claude on Bedrock (Converse, global. profiles), list prices padded 25%: Haiku 4.5 $1/$5, Sonnet 4.6 $3/$15
@@ -313,7 +316,11 @@ LLM_BUDGET_DAYS = [("2026-10-21", "2026-10-25", 1), ("2026-10-26", "2026-10-31",
 # never below it. The bot spends ~$6-7 a day (ledger dollars) at 2.2-2.4 writes/min and about $8-9 at 2.9, so the weighted
 # share of $6.80 (21-25 Oct) left no margin: on 23 Oct the allowance ran out by ~06:30 Sydney and 7 h of drafts found no
 # model. LLM_BUDGET_USD still caps the total. Billed dollars are ~0.82 of ledger dollars (scripts/aws_cost.py).
-LLM_DAILY_FLOOR_USD = 12.0
+# 2026-10-29 (Marc): 12 -> 18. The bot spent $15-20 a day from 25 Oct; at 12 a day the floor set the allowance (above the
+# weighted share) and left 30 Oct, 31 Oct and the x4 day of 1 Nov about $12 each, so paid models would park by midday
+# Sydney. From 31 Oct 18 x days passes LLM_BUDGET_USD, so the total cap binds and what is left of it carries the last days
+# (about $64 for 31 Oct-2 Nov at $16-18 a day until then).
+LLM_DAILY_FLOOR_USD = 18.0
 # Priority lane: this share of each day's share stays for amplified posts. Other drafts use the paid models only
 # while more than it is left, then the free ones.
 LLM_AMP_RESERVE_SHARE = 0.25
@@ -496,7 +503,10 @@ PREMIUM_MODELS = ()
 # journalists, posts or the lean prompt (59% first-try pass), and it never fills in for other models (draft_models).
 # Needs SONNET in deploy/llm_chain.txt. () turns it off. Read by `backend` on writes, with arm_style: hides, away events.
 # 28 Oct (todo/51): reply-backs left the lane (PREMIUM_REPLY_MODES, below): worse than Kimi/Haiku on their brief.
-PREMIUM_REPLY_MODELS = (SONNET,)
+# 29 Oct (Marc): off. Live 6 h reads in fixes blocks (28 Oct 06:06 on): Sonnet 8.2 citizen replies per 100 (n=684), Haiku
+# 11.2 (n=205), Kimi 6.9; it was the largest Bedrock line on the 28 Oct bill and ran today's LLM allowance out by 03:00 UTC.
+# Its line in deploy/llm_chain.txt is commented out too, or () would make it an ordinary fallback.
+PREMIUM_REPLY_MODELS = ()
 PREMIUM_CLASSES = {"unsure", "unclear", "conditions", "yes_reason"}
 REPLY_NEVER = {"zai.glm-5"}
 # 2026-10-23 load spreading (llm.Generator.complete_in_order). Pacing is OUR cap per model (llm.DEFAULT_RPM = 10 a

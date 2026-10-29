@@ -25,8 +25,11 @@ bedrock:moonshotai.kimi-k2.5
 # 2026-10-28 (Marc): Sonnet 4.6 is in the chain ONLY so config.PREMIUM_REPLY_MODELS can lead the high-value replies in
 # "fixes" blocks (bot.draft_models); everywhere else it is filtered out, so it is never a fallback (Marc, 23 Oct: not even
 # as a last resort). To take it out again: PREMIUM_REPLY_MODELS = () in config.py.
+# 2026-10-29 (Marc): out again. With PREMIUM_REPLY_MODELS = () a Sonnet line here would be an ordinary fallback, so it is
+# commented out. It was the largest Bedrock line on the 28 Oct bill and drew 8.2 citizen replies per 100 in fixes blocks
+# against 11.2 for Haiku (6 h reads, 28 Oct 06:06 on). Back: uncomment and set PREMIUM_REPLY_MODELS = (SONNET,).
 bedrock-converse:global.anthropic.claude-haiku-4-5-20251001-v1:0
-bedrock-converse:global.anthropic.claude-sonnet-4-6
+# bedrock-converse:global.anthropic.claude-sonnet-4-6
 gemini:gemini-3.8-flash
 gemini:gemini-3.6-flash
 groq:openai/gpt-oss-120b

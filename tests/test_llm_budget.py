@@ -106,8 +106,8 @@ def test_tiering(monkeypatch):
     assert not config.PREMIUM_MODELS, "premium routing is off until a test shows it pays (23 Oct)"
     assert config.SONNET not in config.AMP_MODELS and config.SONNET not in config.REPLY_MODELS
     live = [l.split("#")[0].strip() for l in llm.CHAIN_FILE.read_text().splitlines()]
-    assert [l for l in live if "sonnet" in l] == [f"bedrock-converse:{config.SONNET}"] == (
-        [f"bedrock-converse:{m}" for m in config.PREMIUM_REPLY_MODELS]), "Sonnet is in the chain only as the premium lead (28 Oct)"
+    assert [l for l in live if "sonnet" in l] == [f"bedrock-converse:{m}" for m in config.PREMIUM_REPLY_MODELS], \
+        "Sonnet is in the chain only as the premium lead (28 Oct), never a fallback (out of both 29 Oct)"
     assert models_for(dict(mode="reply", target_class="unsure"), monkeypatch) == (KIMI,)
     assert models_for(dict(mode="reply"), monkeypatch) == (KIMI,), "replies try Kimi first (todo/24)"
     assert models_for(dict(mode="reply_back"), monkeypatch) == (KIMI,)
@@ -203,11 +203,11 @@ def test_premium_routing_when_switched_on(monkeypatch):
     assert models_for(dict(mode="reply_back"), monkeypatch) == (config.SONNET,)
 
 
-def test_sonnet_leads_high_value_replies_in_fixes_blocks_only_and_is_never_a_fallback():
+def test_sonnet_leads_high_value_replies_in_fixes_blocks_only_and_is_never_a_fallback(monkeypatch):
     class Chain(OrderGen):
         chain = [("gemini", "gemini-3.5-flash-lite"), ("bedrock", KIMI), ("bedrock-converse", config.HAIKU),
                  ("bedrock-converse", config.SONNET)]
-    assert config.PREMIUM_REPLY_MODELS == (config.SONNET,)
+    monkeypatch.setattr(config, "PREMIUM_REPLY_MODELS", (config.SONNET,))       # the lane as it ran 28 Oct (off 29 Oct)
     hv = dict(mode="reply", target_class="unsure")
     fixes = bot.draft_models(dict(hv, fixes=True), Chain(up={KIMI}))[0]
     assert fixes[0] == config.SONNET and KIMI in fixes and config.HAIKU in fixes

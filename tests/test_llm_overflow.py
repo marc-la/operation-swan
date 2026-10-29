@@ -172,8 +172,9 @@ def test_bot_complete_in_order_delegates_and_plain_fakes_keep_the_old_loop(gen):
     assert bot.complete_in_order(Plain(), "s", "u", ORDER) == (f"from {HAIKU}", HAIKU)
 
 
-def test_a_premium_reply_model_is_called_only_when_named(gen):
+def test_a_premium_reply_model_is_called_only_when_named(gen, monkeypatch):
     """28 Oct: Sonnet sits in the chain file so bot.draft_models can name it; an unrestricted call never reaches it."""
+    monkeypatch.setattr(config, "PREMIUM_REPLY_MODELS", (config.SONNET,))     # the lane as it ran 28 Oct (off 29 Oct)
     sonnet = config.SONNET
     gen.chain = gen.chain + [("bedrock-converse", sonnet)]
     for m in (LITE, KIMI, GLM, HAIKU, FREE):
