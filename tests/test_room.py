@@ -252,3 +252,12 @@ def test_a_first_start_seeds_the_day_from_the_log(tmp_path):
     s = room.summary(NOW)
     assert s["posts"]["recent"] + s["posts"]["base"] == 26 and s["reads"]["day"]["n"] == 23     # reads 1-23 h back: the hours of the day
     assert room.seed(tmp_path / "nope.jsonl", cheap, t=NOW) == 0
+
+
+def test_the_pulse_s_sample_is_the_newest_posts_on_the_vote():
+    for i in range(10):
+        room.observe(i, f"post {i} about the vote", cheap="yes_but", made=NOW - i * 600, t=NOW)
+    room.observe(99, "off the vote", cheap=None, made=NOW, t=NOW)
+    got = room.sample(5, max_age_s=3600, t=NOW, rng=__import__("random").Random(1))
+    assert len(got) == 5 and all(int(g.split()[1]) <= 6 for g in got)                 # written in the last hour
+    assert room.sample(50, max_age_s=3600, t=NOW) == [f"post {i} about the vote" for i in range(7)]   # newest first

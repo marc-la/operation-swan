@@ -14,9 +14,11 @@ is config.ROOM_RISE times its share in the BASE_H hours before (with one post of
 is x config.ROOM_LIFT in flip.choose, like the news trend. A rising phrase is their vocabulary of the moment: shown, never
 put in a prompt. No network call, no LLM call, and nothing here is ever posted.
 """
+import collections
 import datetime as dt
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -37,11 +39,13 @@ BASE_MIN = 300                  # posts in the day before, under which nothing r
 SHOWN = 8                       # rising phrases in room.json
 STALE_S = 3 * 600               # a lift worked out longer ago than this (the room thread stopped) lifts nothing
 SEED_BYTES = 120_000_000        # seed() reads this much of the action log's tail (~40 MB a day of rows)
+KEEP = 400                      # the newest posts kept for the pulse's sample (sample(), todo/52 WS6)
 
 _lock, _file_lock = threading.Lock(), threading.Lock()
 _cache = {"mtime": None, "drivers": {}}
 _buckets = {}                   # hour (unix time // 3600) -> counts (_new)
 _seen, _read = set(), set()     # post ids counted at first sight / with a light read, this run
+_recent = collections.deque(maxlen=KEEP)     # (when written, text) of the posts counted at first sight, newest last
 _lifted = {"t": 0.0, "keys": frozenset()}
 
 
@@ -135,6 +139,7 @@ def observe(post_id, text, cheap=None, stance=None, made=None, t=None):
             b["fear"] += fear
             for g in grams:
                 _add(b["grams"], g)
+            _recent.append((t if made is None else made, text))
         if stance in STANCES and post_id not in _read:
             _read.add(post_id)
             b = _buckets.setdefault(int(t // 3600), _new())
@@ -242,6 +247,17 @@ def summary(t=None):
                 error=_cache.get("error"))
 
 
+def sample(n=50, max_age_s=2 * 3600, t=None, rng=random):
+    """Up to n of the citizen posts on the vote written in the last max_age_s (counted at first sight), drawn at random
+    when there are more, newest first: the pulse's read of the room (pulse.py, todo/52 WS6). Their text as they wrote
+    it: the caller cleans it."""
+    t = time.time() if t is None else t
+    with _lock:
+        fresh = [(w, text) for w, text in _recent if t - w <= max_age_s]
+    picked = fresh if len(fresh) <= n else rng.sample(fresh, n)
+    return [text for _, text in sorted(picked, key=lambda x: -x[0])]
+
+
 def lift(part, key, t=None):
     """What the room multiplies a flip item's weight by now: config.ROOM_LIFT while a driver that lifts it ("pivot.no_end")
     is rising (the last summary, under STALE_S old), else 1."""
@@ -326,6 +342,7 @@ def reset():
         _buckets.clear()
         _seen.clear()
         _read.clear()
+        _recent.clear()
         _lifted.update(t=0.0, keys=frozenset())
     with _file_lock:
         _cache.update(mtime=None, drivers={}, error=None)

@@ -18,6 +18,7 @@ import itertools
 import json
 import random
 import re
+import zlib
 from zoneinfo import ZoneInfo
 
 from . import config, experiment, flip, register as reg_mod, touches
@@ -1040,6 +1041,24 @@ def flip_line(choice):
             f"what a Yes adds is the check at the door, and {choice['pivot']['line']}."
             f"{FLIP_FEAR_LINES.get(config.FLIP_FEAR, FLIP_FEAR_LINES[1])} Don't open by agreeing, don't "
             f"lecture and don't label the parts: their worry in their words, then the point in yours.")
+
+
+def worry_for(worries, target_text):
+    """todo/52 WS6: the one worry of the pulse's (their top 3) a reply gets: the one sharing most words with the post,
+    else one drawn by the post's text (the same on a redraft). One a reply, so the replies of a pulse don't all echo
+    the same three lines (the papers wrote up bot clusters)."""
+    words = set(_WORD.findall((target_text or "").lower()))
+    shared = [len(words & set(_WORD.findall(w.lower()))) for w in worries]
+    if worries and max(shared) > 0:
+        return worries[shared.index(max(shared))]
+    return random.Random(zlib.crc32((target_text or "").encode())).choice(worries) if worries else None
+
+
+def worries_line(worry):
+    """todo/52 WS6: what citizens are saying about the vote right now (the pulse's read of a sample of their posts), next
+    to the flip, so the reply meets the worry in the words people use. Never quoted, never cited."""
+    return (f"Right now people are saying: {worry}. Where it fits their post, meet that worry in those everyday words; "
+            f"don't quote this or say what others are saying.")
 
 
 def news_line(story):

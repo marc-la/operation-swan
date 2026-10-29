@@ -9,6 +9,12 @@ LLM is told the posts are data to summarise. The summary is checked before use: 
 with any other number is dropped), no 6-word run copied from any input post (copying other teams trips our
 near-duplicate gate and is Blue evidence against us), at most config.PULSE_MAX_CHARS. A failed pulse keeps the
 previous one; a pulse older than config.PULSE_MAX_AGE_S is not used at all.
+
+todo/52 WS6 (29 Oct): the pulse also reads the citizens, not just Trending. The same call gets a sample of
+config.PULSE_CITIZENS recent citizen posts on the vote (room.sample: citizens and likely citizens only, never other
+teams' bots; cleaned and injection-filtered like the feed) and returns `worries` (their top 3, in their everyday words)
+and `rising` (a phrase or two). Those go through the same item checks; one that copies 6 words from a citizen's post is
+dropped (the item, not the pulse). First replies that carry a flip get the worries beside it (content.worries_line).
 """
 import datetime as dt
 import hashlib
@@ -16,12 +22,16 @@ import json
 import re
 import time
 
-from . import config, content, quality
+from . import config, content, quality, room
 from .amplify import side_of
 
 MAX_NO, MAX_YES, MAX_HEADLINES, BODY_CHARS = 8, 5, 5, 300
-LIMITS = {"hooks": 100, "no_shapes": 140, "yes_lines": 140, "avoid": 40}    # characters per item, 3 items each
+MAX_CITIZENS, CITIZEN_CHARS = 60, 200        # todo/52 WS6: the citizen sample the pulse reads
+LIMITS = {"hooks": 100, "no_shapes": 140, "yes_lines": 140, "avoid": 40,       # characters per item, 3 items each
+          "worries": 120, "rising": 50}                                       # todo/52 WS6, from the citizens' posts
+ITEMS = {"rising": 2}                        # items kept where not 3
 FIELDS = tuple(LIMITS)
+CITIZEN_FIELDS = ("worries", "rising")       # outside PULSE_MAX_CHARS: they never go in a system prompt
 
 URL = re.compile(r"https?://\S+|www\.\S+|\b[\w-]+\.(com|net|org|io|ly|co|au|nz)\b\S*", re.I)
 MENTION = re.compile(r"@\w+")
@@ -54,6 +64,8 @@ SCHEMA = {
         "no_shapes": {"type": "array", "items": {"type": "string"}},
         "yes_lines": {"type": "array", "items": {"type": "string"}},
         "avoid": {"type": "array", "items": {"type": "string"}},
+        "worries": {"type": "array", "items": {"type": "string"}},
+        "rising": {"type": "array", "items": {"type": "string"}},
     },
     "required": list(FIELDS),
 }
@@ -88,6 +100,17 @@ def pick(trending, headlines, our_ids=()):
     return no, yes, news
 
 
+def citizen_posts(texts):
+    """todo/52 WS6: the citizen sample (room.sample) as the pulse reads it: links, tags and markup out, injection-like
+    posts dropped, each cut to CITIZEN_CHARS, no repeats, at most MAX_CITIZENS."""
+    out = []
+    for raw in texts or ():
+        body = clean(raw, CITIZEN_CHARS)
+        if not (INJECTION.search(raw or "") or INJECTION.search(body)) and len(body) >= 20 and body not in out:
+            out.append(body)
+    return out[:MAX_CITIZENS]
+
+
 def _ago(iso, t):
     try:
         h = (t - dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()) / 3600
@@ -96,22 +119,27 @@ def _ago(iso, t):
     return "under 1 h ago" if h < 1 else f"{h:.0f} h ago"
 
 
-def prompt(no, yes, news, t=None):
+def prompt(no, yes, news, t=None, citizens=()):
     t = t or time.time()
     heads = "\n".join(f"{i}. [{_ago(h['ts'], t)}] {h['title']}" for i, h in enumerate(news, 1)) or "(none)"
     posts = lambda ps: "\n".join(f"- {p['body']}" for p in ps) or "(none)"
+    cit = "".join(f"- {c}\n" for c in citizens)
     return (
         f"Headlines from the local papers, newest first:\n{heads}\n\n"
         f"Posts for the No side now trending, top first:\n{posts(no)}\n\n"
         f"Posts for the Yes side now trending, top first:\n{posts(yes)}\n\n"
-        "Return a JSON object with these keys, at most 3 short items each, about 500 characters of text in all:\n"
+        + (f"Posts by ordinary citizens about the vote, the last two hours (a sample, in no order):\n{cit}\n" if citizens else "")
+        + "Return a JSON object with these keys, at most 3 short items each, about 500 characters of text in all:\n"
         "hooks: news events people are reacting to right now, each a plain note of the event itself, at most 100 "
         "characters, with the number of the headline it comes from (0 if it comes only from the posts).\n"
         "no_shapes: what the trending No posts have in common, described not quoted (the opening, the person, the "
         "kind of detail, the voice), e.g. \"named worker + concrete inconvenience + official's quote\"; each at most "
         "120 characters.\n"
         "yes_lines: the arguments the trending Yes posts lead with, in your own words, each at most 120 characters.\n"
-        "avoid: phrases that several No posts now repeat, 2 to 5 words each.")
+        "avoid: phrases that several No posts now repeat, 2 to 5 words each."
+        + ("\nworries: what the citizens' posts worry about most right now, their top 3, each said the everyday way they "
+           "say it (never more than 3 words in a row from one post), at most 120 characters.\n"
+           "rising: one or two short phrases, 2 to 4 words each, that several of the citizens use right now." if citizens else ""))
 
 
 def _parse(raw):
@@ -135,57 +163,59 @@ def _item(text, limit):
     return t
 
 
-def check(obj, no, yes, news, t=None):
+def check(obj, no, yes, news, t=None, citizens=()):
     """(fields, why): the summary's items that pass (fields["dropped"]: the items that didn't, for the log), or
-    (None, why) for a summary not to use."""
+    (None, why) for a summary not to use. An item with 6 words in a row from a citizen's post is dropped (todo/52)."""
     if not obj:
         return None, "unparsed"
     out, dropped = {k: [] for k in FIELDS}, []
+    theirs = set().union(*(quality._shingles(c, 6) for c in citizens)) if citizens else set()
     for k in FIELDS:
         items = obj.get(k) if isinstance(obj.get(k), list) else []
-        for it in items[:3]:
+        for it in items[:ITEMS.get(k, 3)]:
             if k == "hooks":
                 text = _item(it.get("text") if isinstance(it, dict) else it, LIMITS[k])
                 n = it.get("headline") if isinstance(it, dict) else 0
                 ts = news[n - 1]["ts"] if isinstance(n, int) and 1 <= n <= len(news) else None
-                if text:
+                if text and not quality._shingles(text, 6) & theirs:
                     out[k].append(dict(text=text, ts=ts))
                 else:
                     dropped.append(str(it.get("text") if isinstance(it, dict) else it)[:160])
             else:
                 text = _item(it, LIMITS[k])
-                if text:
+                if text and not quality._shingles(text, 6) & theirs:
                     out[k].append(text)
                 else:
                     dropped.append(str(it)[:160])
     texts = lambda: [h["text"] for h in out["hooks"]] + out["no_shapes"] + out["yes_lines"] + out["avoid"]
     seen = set().union(*(quality._shingles(p["body"], 6) for p in no + yes)) if no or yes else set()
-    for x in texts():
+    for x in texts() + out["worries"] + out["rising"]:
         if quality._shingles(x, 6) & seen:
             return None, "copied"
     order = ("avoid", "yes_lines", "no_shapes", "hooks")            # too long: the least useful items go first
     while sum(map(len, texts())) > config.PULSE_MAX_CHARS:
         k = next((k for k in order if len(out[k]) > 1), None) or next(k for k in order if out[k])
         out[k].pop()
-    if not (out["hooks"] or out["no_shapes"] or out["yes_lines"]):
+    if not (out["hooks"] or out["no_shapes"] or out["yes_lines"] or out["worries"]):
         return None, "empty"
     return dict(out, dropped=dropped), None
 
 
-def build(trending, headlines, our_ids, gen, log=None, t=None):
-    """A new pulse dict from the latest Trending read and headlines, or None (nothing to read, no model free, or
-    the summary failed its checks; rejects are logged)."""
+def build(trending, headlines, our_ids, gen, log=None, t=None, citizens=()):
+    """A new pulse dict from the latest Trending read and headlines (and todo/52's citizen sample), or None (nothing to
+    read, no model free, or the summary failed its checks; rejects are logged)."""
     t = t or time.time()
     no, yes, news = pick(trending, headlines, our_ids)
-    if not (no or yes or news):
+    citizens = citizen_posts(citizens)
+    if not (no or yes or news or citizens):
         return None
     strong = getattr(config, "AMP_MODELS", ())                 # kept for the amplified posts themselves
     models = [m for _, m in getattr(gen, "chain", []) if m not in strong] or None
-    raw, backend = gen.complete(SYSTEM, prompt(no, yes, news, t), json_mode=True, schema=SCHEMA, models=models,
+    raw, backend = gen.complete(SYSTEM, prompt(no, yes, news, t, citizens), json_mode=True, schema=SCHEMA, models=models,
                                 temperature=0.3)
     if raw is None:
         return None
-    fields, why = check(_parse(raw), no, yes, news, t)
+    fields, why = check(_parse(raw), no, yes, news, t, citizens)
     if not fields:
         if log:
             log({"act": "pulse_reject", "why": why, "backend": backend, "raw": raw[:600]})
@@ -193,7 +223,8 @@ def build(trending, headlines, our_ids, gen, log=None, t=None):
     dropped = fields.pop("dropped")
     pid = hashlib.sha1(json.dumps(fields, sort_keys=True).encode()).hexdigest()[:8]
     return dict(id=pid, ts=t, at=dt.datetime.fromtimestamp(t, dt.timezone.utc).isoformat(), **fields,
-                posts=[p["post_id"] for p in no + yes], headlines=len(news), backend=backend, dropped=dropped)
+                posts=[p["post_id"] for p in no + yes], headlines=len(news), citizens=len(citizens), backend=backend,
+                dropped=dropped)
 
 
 def current(state, t=None):
@@ -208,7 +239,8 @@ def update(state, targeter, our_ids, gen, log, t=None):
     """Every PULSE_EVERY_S, try for a fresh pulse (a third of that after a failure). Returns current(state)."""
     t = t or time.time()
     if config.PULSE_ON and t >= state.get("pulse_next", 0):
-        p = build(getattr(targeter, "trending_posts", []), getattr(targeter, "headlines", []), our_ids, gen, log, t)
+        p = build(getattr(targeter, "trending_posts", []), getattr(targeter, "headlines", []), our_ids, gen, log, t,
+                  citizens=room.sample(config.PULSE_CITIZENS, t=t) if config.PULSE_CITIZENS else ())     # todo/52 WS6
         state["pulse_next"] = t + (config.PULSE_EVERY_S if p else config.PULSE_EVERY_S / 3)
         if p:
             state["pulse"] = p

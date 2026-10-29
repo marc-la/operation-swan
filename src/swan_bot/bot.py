@@ -734,7 +734,7 @@ ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode",
         "arm_style", "colour", "lean", "lean_shape",                                       # todo/50: the prompt fixes
         "rb_open",                                                                         # todo/51: the reply-back opener
         "news", "flip",                                                                    # 29 Oct: today's news (news.py), the flip (flip.py)
-        "flip_fear", "flip_lift")                                                          # todo/52: the fear dial, the room's lift
+        "flip_fear", "flip_lift", "worries")                                               # todo/52: the fear dial, the room's lift, the pulse's worries (its id)
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level", "arm_style", "lean_shape", "rb_open")
 
@@ -959,6 +959,10 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         fl = flip_choice(job, body, meta)                         # 29 Oct: the fear behind a Yes, flipped (flip.py)
         line = content.flip_line(fl) if fl else None
         if line and line[1:] not in user:                         # (the rebuttal slot carries it, unless the frame took it)
+            user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job["read"] else f"{user} {line}"
+        if fl and (pulse_now or {}).get("worries"):               # todo/52 WS6: what the room is saying, beside the flip
+            meta["worries"] = pulse_now.get("id")
+            line = content.worries_line(content.worry_for(pulse_now["worries"], body))
             user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job["read"] else f"{user} {line}"
         story = None if fl else news_story(job, body, meta)       # 29 Oct: today's news (news.py)
         if story:

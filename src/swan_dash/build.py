@@ -2237,7 +2237,9 @@ def gather(root, now, service):
                        hooks=[short(h.get("text")) for h in p.get("hooks") or [] if isinstance(h, dict)],
                        no_shapes=[short(x) for x in p.get("no_shapes") or []],
                        yes_lines=[short(x) for x in p.get("yes_lines") or []],
-                       avoid=[short(x) for x in p.get("avoid") or []])
+                       avoid=[short(x) for x in p.get("avoid") or []],
+                       worries=[short(x) for x in p.get("worries") or []],        # todo/52 WS6: from the citizens' posts
+                       rising=[short(x) for x in p.get("rising") or []], citizens=p.get("citizens") or 0)
 
     every = tail_jsonl(logs / "deploys.jsonl", 200_000)
     deploys = [d for d in every if d.get("result") == "ok"]

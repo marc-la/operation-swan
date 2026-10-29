@@ -496,7 +496,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 </div></details>
 
 <p class="sub" id="pulse">Trending pulse (what the bot's amplified posts lean on):
-  {% if pulse %}<span class="{{ 'warn' if pulse.stale else '' }}">updated {{ pulse.ago }}{% if pulse.stale %} (too old: not used){% endif %}</span>, from Trending #{{ pulse.id }}: {{ pulse.hooks | length }} hook{{ 's' if pulse.hooks | length != 1 }}, {{ pulse.no_shapes | length }} for No, {{ pulse.yes_lines | length }} Yes line{{ 's' if pulse.yes_lines | length != 1 }}, {{ pulse.avoid | length }} overused{% if pulse.hooks %}; first hook “{{ pulse.hooks[0] | short(80) }}”{% endif %}.
+  {% if pulse %}<span class="{{ 'warn' if pulse.stale else '' }}">updated {{ pulse.ago }}{% if pulse.stale %} (too old: not used){% endif %}</span>, from Trending #{{ pulse.id }}: {{ pulse.hooks | length }} hook{{ 's' if pulse.hooks | length != 1 }}, {{ pulse.no_shapes | length }} for No, {{ pulse.yes_lines | length }} Yes line{{ 's' if pulse.yes_lines | length != 1 }}, {{ pulse.avoid | length }} overused{% if pulse.hooks %}; first hook “{{ pulse.hooks[0] | short(80) }}”{% endif %}.{% if pulse.worries %} From {{ pulse.citizens }} citizen posts, their worries: {% for w in pulse.worries %}{{ '; ' if not loop.first }}“{{ w }}”{% endfor %}{% if pulse.rising %}; rising: {% for r in pulse.rising %}{{ ', ' if not loop.first }}“{{ r }}”{% endfor %}{% endif %}.{% endif %}
   {% else %}none logged yet.{% endif %}</p>
 
 <footer>Times are Perth (AWST). The competition day rolls over at {{ day_start }} Perth. Page built {{ built }}, refreshes every minute.</footer>

@@ -352,6 +352,9 @@ PULSE_MAX_AGE_S = 2 * 3600          # an older pulse is not used
 PULSE_MAX_CHARS = 600               # all its notes together
 PULSE_HOOK_FRESH_S = 6 * 3600       # a hook from a headline this new may open an amplified post (the news shape)...
 PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
+PULSE_CITIZENS = 50                 # todo/52 WS6: the pulse also reads this many recent citizen posts (room.sample) for their
+                                    # worries, which first replies with a flip get beside it (one each); 0: Trending and the
+                                    # news only, no worries line (SWAN_PULSE_CITIZENS=0 + restart)
 # ---- today's news in replies (29 Oct, Marc; swan_bot/news.py, content/news.toml) ----
 # None of our replies used the week's news. A share of first replies and reply-backs gets one story that favours No,
 # picked by salience (weight by impact, a half-life, lifted by what citizens are posting about), to use only if it
@@ -627,7 +630,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
                "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN",
                "FLIP_ON", "FLIP_FEAR",                                          # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
-               "ROOM_LIFT_ON")                                                  # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items
+               "ROOM_LIFT_ON", "PULSE_CITIZENS")                                # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items; SWAN_PULSE_CITIZENS=0 the worries
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance

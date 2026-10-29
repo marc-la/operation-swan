@@ -221,3 +221,25 @@ def test_every_line_states_only_the_facts_its_item_requires():
                 gaps += [(part, key, k, text) for k, rx in fact_store.SAYS.items()
                          if rx.search(text) and k not in (item.get("requires") or ())]
     assert not gaps, gaps
+
+
+def test_the_pulse_s_worries_go_beside_the_flip_only(monkeypatch):
+    pulse_now = dict(id="ab12cd34", ts=0, worries=["an end date before anything else", "the hospitals filling up again"])
+    j = job(HOSPITAL_SUNSET)
+    _, _, user = bot.build_prompt(j, TARGETER, pulse_now=pulse_now)
+    assert "Right now people are saying: the hospitals filling up again." in user      # the one nearest their post
+    assert j["meta"]["worries"] == "ab12cd34" and "worries" in bot.ARMS
+    j = job("Who's going to the cup final on the referendum weekend?")
+    _, _, user = bot.build_prompt(j, TARGETER, pulse_now=pulse_now)
+    assert "Right now people are saying" not in user and "worries" not in j["meta"]          # no flip, no worries
+    j = job(HOSPITAL_SUNSET, group="off_topic")
+    _, _, user = bot.build_prompt(j, TARGETER, pulse_now=pulse_now)
+    assert "Right now people are saying" not in user
+
+
+def test_one_worry_a_reply_the_nearest_else_drawn_by_the_post():
+    worries = ["an end date before anything else", "wards filling up again", "paper options for the islands"]
+    assert content.worry_for(worries, "Our wards are full, I'm voting Yes") == "wards filling up again"
+    drawn = {content.worry_for(worries, f"Yes from me ({i})") for i in range(40)}
+    assert drawn == set(worries) and content.worry_for(worries, "Yes x") == content.worry_for(worries, "Yes x")
+    assert content.worry_for([], "anything") is None

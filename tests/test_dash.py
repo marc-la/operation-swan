@@ -601,6 +601,10 @@ def test_trending_pulse_is_one_line_at_the_bottom(tmp_path):
     _, html = page(make_root(tmp_path, [write(3), p]))
     assert '<details id="pulse"' not in html and html.index('id="pulse"') > html.index('id="facts"')
     assert "from Trending #77: 2 hooks, 1 for No, 2 Yes lines, 0 overused; first hook “ferry cuts”" in html
+    assert "their worries" not in html
+    p.update(worries=["an end date first"], rising=["paper options"], citizens=48)          # todo/52 WS6
+    _, html = page(make_root(tmp_path / "w", [write(3), p]))
+    assert "From 48 citizen posts, their worries: “an end date first”; rising: “paper options”." in html
 
 
 def test_activity_alert_colours_repost_text_and_portal_accounts(tmp_path):
