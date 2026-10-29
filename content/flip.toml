@@ -14,7 +14,9 @@
 # [evidence.*] requires: facts in content/facts.toml (a paused fact drops the item). keywords: the post naming one
 #              lifts it (flip.KEYWORD_GAIN). weight: how likely it is otherwise. line: a string, or a list of wordings
 #              (one is drawn).
-# [pivot.*]    the same; keywords are the citizen's own condition (sunset, the list, staffing, privacy).
+# [pivot.*]    the same; keywords are the citizen's own condition (sunset, the list, staffing, privacy). own_only = true:
+#              only when the post names it (a turn about exemptions, the islands or the regulations makes no sense
+#              to someone who never raised them; 29 Oct audit: a hospital post got the islands turn).
 # todo/52 (29 Oct): every driver of the room (content/room.toml) has a flip, in its moral language (Feinberg & Willer:
 # the conditional Yes speaks care, for the hospitals and the vulnerable, and fairness, for exemptions and access), and
 # every threat comes with its way out (Witte): what a Yes would cost them, and a No as the way to keep what works.
@@ -24,7 +26,7 @@
 
 [fear.act_early]
 label = "acting before it spreads"
-keywords = ['\bact(ing)? (now|early|fast|quickly|first|before|in time)', '\bearly\b', 'before it (spreads|gets|arrives|hits|takes)', 'too late', 'waiting (has|is|costs)', 'wait(ing)? (and see|until|for it)', 'can.t (afford to )?wait', '\binaction\b', 'do(ing)? nothing', '\bprevent', '(get|stay) ahead', '\bprepar']
+keywords = ['\bact(ing)? (now|early|fast|quickly|first|before|in time)', '\b(get|move|go|step) in early\b', '\bearly (action|intervention|response|enough)\b', 'before it (spreads|gets|arrives|hits|takes)', 'too late', 'waiting (has|is|costs)', 'wait(ing)? (and see|until|for it)', 'can.t (afford to )?wait', '\binaction\b', 'do(ing)? nothing', '\bprevent', '(get|stay) ahead', '\bprepar\w* (for|before) (it|this|the (virus|outbreak|spread|worst))']
 evidence = ["wastewater_caught", "contained_case", "voluntary_doses"]
 requires = ["free_either_way"]
 core = ["A No isn't waiting or doing nothing: the testing, the tracing and the free vaccine all carry on whatever the result.",
@@ -77,7 +79,7 @@ core = ["The uncertainty is the Yes: nobody can say which doors it covers or for
 
 [fear.protection]
 label = "keeping people safe"
-keywords = ['protect\w* (the )?(people|us|everyone|lives|kids|children|families|patients|community|communities|public)', 'keep\w* (us|people|everyone|kids|families|patients) (safe|healthy|well)', 'public health', 'health risks?', 'dolphin flu', 'the virus']
+keywords = ['protect\w* (the )?(people|us|everyone|lives|kids|children|families|patients|community|communities|public)\b(?!.{0,4}(privacy|data|rights|freedom|choice))', 'keep\w* (us|people|everyone|kids|families|patients) (safe|healthy|well)', 'public health', 'health risks?', 'dolphin flu', 'the virus']
 evidence = ["contained_case", "surge_drill", "voluntary_doses", "wastewater_caught"]
 core = ["The protection is already happening, and a No keeps every bit of it.",
         "Keeping people safe is the testing, the tracing and the jabs, and a No keeps all three running.",
@@ -176,6 +178,7 @@ weight = 1.5
 
 # fairness (todo/52): "paper options, the islands, nobody shut out"
 [pivot.islands]
+own_only = true
 requires = ["islands"]
 line = ["a certificate costs far more out on the islands, with a GP once a week and a K$14 ferry",
         "the cost of a certificate falls hardest where the clinics are furthest away: out on the islands it's a GP once a week and a K$14 ferry"]
@@ -192,6 +195,7 @@ weight = 1.5
 # todo/52: the exemptions are in the plan (never say they're missing): their safeguard is the one part already promised,
 # and the parts they can't see are the rest
 [pivot.exemptions_in]
+own_only = true
 requires = ["exemptions", "list_later", "no_end"]
 line = ["the exemptions they want are already in the plan; what isn't is an end date or the list of places, and those are decided after the result",
         "medical exemptions are the one safeguard already promised, while the end date and the list of places are left until after the result"]
@@ -200,6 +204,7 @@ weight = 2.0
 
 # todo/52: "a phased rule", "a measured rollout"
 [pivot.phased_later]
+own_only = true
 requires = ["phased", "list_later"]
 line = ["a phased rule means the stages and the places are set by regulation after a Yes, once the ballot is already in",
         "the stages come in by regulation after a Yes, so which places and when is decided after they've voted"]
@@ -208,6 +213,7 @@ weight = 1.5
 
 # todo/52 (20% of the Yes posts): "the safeguards will follow in the regulations"
 [pivot.regs_later]
+own_only = true
 requires = ["referendum_binding", "list_later", "no_end"]
 line = ["the regulations come after the result and can be changed, while the ballot, with no end date in it, is the part that binds",
         "whatever goes in the regulations is written after the vote and can be rewritten; the binding part is the ballot, and it has no end date"]
@@ -216,6 +222,7 @@ weight = 1.5
 
 # todo/52: "if a pass makes a clear difference, show us"
 [pivot.no_proof]
+own_only = true
 requires = ["wastewater_inconclusive", "contacts_negative_results"]
 line = ["nobody has shown what a check at the door adds to the testing and tracing that caught this early",
         "what's been shown to work here is the testing and the tracing, and nobody has shown a check at the door adds to them"]

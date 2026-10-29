@@ -1024,12 +1024,17 @@ def fresh_line(target_text, meta=None):
 
 
 # The fear dial (config.FLIP_FEAR, 29 Oct): how the flip's turn lands. The threat always comes with the way out.
+# 29 Oct audit (todo/52 WS8): the loss must be one a Yes brings. "You'd lose that early-warning system" (the testing
+# carries on either way) was an invented harm.
 FLIP_FEAR_LINES = {
     0: "",
-    1: " Say the turn as something they'd lose under a Yes, in one concrete picture from their own post or life, and "
-       "leave them with a No as the way to keep it; no exaggeration.",
-    2: " Make the turn bite: what they'd lose under a Yes is concrete to their own life and lasting, since once it's in "
-       "there's no off switch, and a No is the way to stop it; nothing invented, no exaggeration.",
+    1: " Say the turn as something a Yes would really cost them (the check at their own door, with nobody able to say "
+       "which doors or until when), in one concrete picture from their own post or life, and leave them with a No as "
+       "the way to keep things as they are. Never a loss a Yes doesn't bring (the testing, the jabs and the care carry "
+       "on either way); no exaggeration.",
+    2: " Make the turn bite: what a Yes would really cost them is concrete to their own life and lasting, since once it's "
+       "in there's no off switch, and a No is the way to stop it. Never a loss a Yes doesn't bring (the testing, the "
+       "jabs and the care carry on either way); nothing invented, no exaggeration.",
 }
 
 
@@ -1040,7 +1045,8 @@ def flip_line(choice):
             f"{choice['core']} Show it with what's already happening ({choice['evidence']['line']}), then say "
             f"what a Yes adds is the check at the door, and {choice['pivot']['line']}."
             f"{FLIP_FEAR_LINES.get(config.FLIP_FEAR, FLIP_FEAR_LINES[1])} Don't open by agreeing, don't "
-            f"lecture and don't label the parts: their worry in their words, then the point in yours.")
+            f"lecture and don't label the parts: their worry in their words, then the point in yours. Add no date, time, "
+            f"place or figure that isn't in these notes.")
 
 
 def worry_for(worries, target_text):
@@ -1306,8 +1312,8 @@ def fixes_ask_weights(weights):
 
 def conditional_rebuttal(reb):
     """A rebuttal note as a condition the light read checks (fixes block): the keyword match only suggests it."""
-    return f"If (and only if) their post really shows it: {reb[0].lower()}{reb[1:]} If they're asking a question or " \
-           f"doubting the pass, answer what they asked instead."
+    return f"If (and only if) their post really shows it: {reb[0].lower()}{reb[1:]} If they already lean No, or are " \
+           f"asking a question or doubting the pass, leave this out and answer what they said."
 
 
 def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=None, persona=None, theme=None,

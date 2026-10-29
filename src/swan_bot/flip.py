@@ -106,7 +106,7 @@ def choose(text):
     ew = [e["weight"] * (KEYWORD_GAIN if hits(e, text) else 1) * (FIRST_GAIN if i == 0 else 1)
           * room.lift("evidence", e["key"]) for i, e in enumerate(evidence)]
     own = [p for p in pivots if hits(p, text)]                   # their own "but" is the turn when they name one
-    pivots = own or pivots
+    pivots = own or [p for p in pivots if not p.get("own_only")]   # else a general one (todo/52 audit)
     pw = [p["weight"] * room.lift("pivot", p["key"]) for p in pivots]
     out = dict(fear=fear, core=rng.choice(as_list(fear["core"])), evidence=rng.choices(evidence, weights=ew)[0],
                pivot=rng.choices(pivots, weights=pw)[0])

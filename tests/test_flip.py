@@ -166,7 +166,8 @@ def test_the_fear_dial(monkeypatch):
         monkeypatch.setattr(config, "FLIP_FEAR", level)
         lines[level] = content.flip_line(choice)
     assert "lose under a Yes" not in lines[0]
-    assert "something they'd lose under a Yes" in lines[1] and "a No as the way to keep it" in lines[1]
+    assert "something a Yes would really cost them" in lines[1] and "a No as the way to keep things as they are" in lines[1]
+    assert all("Never a loss a Yes doesn't bring" in lines[k] for k in (1, 2))         # todo/52 audit: no invented harm
     assert "Make the turn bite" in lines[2] and "no off switch" in lines[2]
     for line in lines.values():
         assert line.startswith("Their worry underneath is") and "nothing invented" in line or "no exaggeration" in line or line == lines[0]
@@ -243,3 +244,26 @@ def test_one_worry_a_reply_the_nearest_else_drawn_by_the_post():
     drawn = {content.worry_for(worries, f"Yes from me ({i})") for i in range(40)}
     assert drawn == set(worries) and content.worry_for(worries, "Yes x") == content.worry_for(worries, "Yes x")
     assert content.worry_for([], "anything") is None
+
+
+def test_a_turn_for_a_condition_they_never_raised_is_never_drawn():
+    """todo/52 audit: a hospital post with no condition got the islands turn; the new turns are the same."""
+    d = flip.data()
+    only = {k for k, p in d["pivot"].items() if p.get("own_only")}
+    assert {"islands", "exemptions_in", "phased_later", "regs_later", "no_proof"} <= only
+    drawn = collections.Counter(flip.choose(t)["pivot"]["key"] for t in variants("Our hospital wards are full, I'm voting Yes.", 200))
+    assert not set(drawn) & only and len(drawn) >= 3
+    assert flip.choose("I'm voting Yes, but only with simple medical exemptions.")["pivot"]["key"] == "exemptions_in"
+
+
+@pytest.mark.parametrize("text,fear", [
+    ("Keeping it separate from the ID card rules is the only way to protect people's privacy.", "conditional_yes"),
+    ("I'd add that publishing the exact venue list and the exemptions well in advance would help frontline teams and "
+     "patients prepare.", "hospitals"),                        # the audit's post: frontline teams, not "acting early"
+    ("Publish the venue list early, please.", "conditional_yes"),
+    ("We have to prepare for the outbreak before it's too late.", "act_early"),
+    ("A Yes is how we protect people.", "protection"),
+])
+def test_the_audit_s_false_fear_matches(text, fear):
+    """todo/52 audit: "protect people's privacy" is not the safety fear, "help teams prepare" not acting early."""
+    assert (flip.fear_of(text) or {}).get("key") == fear
