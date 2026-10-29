@@ -1,0 +1,47 @@
+# Today's news for replies (29 Oct, Marc; docs/06-strategy/situation-2026-10-29.md §6). src/swan_bot/news.py reads it.
+# Only stories that favour No. Each rests on active facts in content/facts.toml (`requires`): a paused or missing fact
+# drops the story, so a reply never states a figure the gate would refuse.
+#
+# published: real UTC. The papers stamp Sydney clock time with a "Z" (the fact desk saw the 29 Oct 07:00 "Z" poll at
+# 28 Oct 20:49 UTC), so subtract 11 h.
+# impact: 1 a passing item; 2 talked about for a day; 3 stays in the cycle (a poll, a promise that looks like a
+# climb-down). It sets the story's weight and half-life (news.WEIGHT, news.HALF_LIFE_H).
+# keywords: what a citizen post about the story says (regex, any case). They are used for relevance to the post being
+# answered, and for what is trending: citizen posts that match, over the last 6 h.
+# turnout: the story every No-leaner reply (group "turnout") prefers.
+# line: the news, as the prompt gives it. reading: what it means for a No. Neither may name a day, a date, a place or
+# how to vote (quality.WRONG_LOGISTICS; tests/test_news.py).
+# Add a story: copy a block, cite the facts it rests on (add them to facts.toml first), run scripts/t.sh.
+
+[poll_narrows]
+published = 2026-10-28T20:00:00Z
+impact = 3
+turnout = true
+requires = ["polls_1029", "poll_lead_narrowed", "definitely_no_rises_1029"]
+line = "The new poll has the Yes lead down to 3.1 points from 5.2, with a quarter still unsure, and 16.1% definitely No against 5.1% definitely Yes."
+reading = "It's close and moving towards No, and No voters are the surer ones, so every No counts."
+keywords = ['\bpolls?\b', '\bpolling\b', '\bnarrow', '\bmargin\b', '\bundecided\b', '\bunsure\b', '\bclose (race|vote|call|one)\b', '\bmomentum\b']
+
+[no_is_this_assembly]
+published = 2026-10-27T22:00:00Z
+impact = 3
+requires = ["no_binds", "no_end"]
+line = "The papers point out that a No only blocks a pass for the life of the current National Assembly, while a Yes has no end date in the question."
+reading = "A No is the option with its own end date: a better question, with a sunset clause in it, can come back later."
+keywords = ['\bsunset\b', '\bend date\b', '\bexpir', '\btemporary\b', '\bforever\b', '\bpermanent', '\breview\b', '\btime ?limit']
+
+[id_card_promise]
+published = 2026-10-28T02:00:00Z
+impact = 2
+requires = ["id_card_promise"]
+line = "The Cabinet has promised health status could only be added to the new ID cards after fresh legislation, a separate vote and a public privacy assessment."
+reading = "It's a promise about later, not something in the question we vote on: they're patching the Yes with promises."
+keywords = ['\bid cards?\b', '\bbiometric\b', '\bprivacy\b', '\bsurveillance\b', '\bmy data\b', '\bhealth data\b', '\btrack(ed|ing)?\b']
+
+[jabs_arrive_voluntary]
+published = 2026-10-28T06:00:00Z
+impact = 2
+requires = ["first_shipment_voluntary"]
+line = "The first 120,000 doses have arrived, under a strictly voluntary programme for health workers and high-risk people."
+reading = "The people who need it most are getting it, by choice, and a pass at the shop door adds nothing to that."
+keywords = ['\bdoses?\b', '\bshipment\b', '\barrived\b', '\bvoluntary\b', '\brollout\b', '\bhigh.risk\b', '\bfirst jabs?\b']

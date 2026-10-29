@@ -27,7 +27,7 @@ import zoneinfo
 
 import capturethenarrative as ctn
 
-from . import config, content, experiment, feeds, value
+from . import config, content, experiment, feeds, news, value
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption|"
@@ -595,6 +595,7 @@ class Targeter:
         if it["why"] not in ("new", "unjudged"):
             return                                    # judged before and waiting (handed out, routed...)
         body = post.get("body") or ""
+        news.observe(pid, body)                       # 29 Oct: what citizens post about lifts a news story (news.py)
         if parent and parent.get("post_id") == post.get("reply_to_post_id"):
             self.posts[parent["post_id"]] = parent
         elif post.get("reply_to_post_id"):

@@ -352,6 +352,14 @@ PULSE_MAX_AGE_S = 2 * 3600          # an older pulse is not used
 PULSE_MAX_CHARS = 600               # all its notes together
 PULSE_HOOK_FRESH_S = 6 * 3600       # a hook from a headline this new may open an amplified post (the news shape)...
 PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
+# ---- today's news in replies (29 Oct, Marc; swan_bot/news.py, content/news.toml) ----
+# None of our replies used the week's news. A share of first replies and reply-backs gets one story that favours No,
+# picked by salience (weight by impact, a half-life, lifted by what citizens are posting about), to use only if it
+# bears on the citizen's point; every turnout reply (a No-leaner) gets one, the poll story first. Logged as `news`.
+# Off: NEWS_ON = False (the prompts are then as before).
+NEWS_ON = True
+NEWS_SHARE = 0.3
+NEWS_TURNOUT_SHARE = 1.0
 
 # ---- fact desk (todo/16, swan_bot/factdesk.py): new articles checked against content/facts.toml, hourly ----
 # A few calls a day (one per batch of new articles), so the strongest models go first; the rest of the chain after.

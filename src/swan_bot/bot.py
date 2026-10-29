@@ -37,7 +37,7 @@ import urllib.error
 
 import openai
 import capturethenarrative as ctn
-from . import batch, config, content, engage, experiment, feeds, humanize, memory, mention, pool_runner, pulse, quality, register, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, humanize, memory, mention, news, pool_runner, pulse, quality, register, stealth, themes, watch
 from . import batch, config, content, engage, experiment, feeds, humanize, mention, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .analysis import ts_of
@@ -732,7 +732,8 @@ def reply_back_jobs(social, accounts, targeter, limit=REPLY_BACK_JOBS, roots=Non
 ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close", "theme_level",
         "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block",     # todo/48: arm_npc with NPC_EXTRA_ARM
         "arm_style", "colour", "lean", "lean_shape",                                       # todo/50: the prompt fixes
-        "rb_open")                                                                         # todo/51: the reply-back opener
+        "rb_open",                                                                         # todo/51: the reply-back opener
+        "news")                                                                            # 29 Oct: today's news (news.py)
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level", "arm_style", "lean_shape", "rb_open")
 
@@ -853,6 +854,20 @@ def style_context(job, persona, meta):
                 own_parent=parent is not None and parent == rec.get("account_id"))
 
 
+def news_story(job, body, meta, rng=random):
+    """29 Oct (Marc): the news story for this reply (news.pick), or None. NEWS_SHARE of first replies and reply-backs,
+    every turnout reply (NEWS_TURNOUT_SHARE), never an off-topic one. Its key is logged as meta["news"]."""
+    if not config.NEWS_ON or job.get("style") == "off_topic":
+        return None
+    turnout = job.get("group") == "turnout"
+    if rng.random() >= (config.NEWS_TURNOUT_SHARE if turnout else config.NEWS_SHARE):
+        return None
+    story = news.pick(body, rng=rng, turnout=turnout)
+    if story:
+        meta["news"] = story["key"]
+    return story
+
+
 def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, recent_texts=()):
     """(persona, system, user). The choices made (shape, voice, tag, theme, event...) land in job["meta"].
     recent_texts: our latest drafts, so replies and second voices don't open the way they did (todo/20).
@@ -928,6 +943,10 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         if content.group_style(job):                              # todo/23's groups: one line of guidance
             user = user.replace("\n\nFirst read them", f" {content.group_style(job)}\n\nFirst read them", 1) \
                 if job["read"] else f"{user} {content.group_style(job)}"
+        story = news_story(job, body, meta)                       # 29 Oct: today's news (news.py)
+        if story:
+            line = content.news_line(story)
+            user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job["read"] else f"{user} {line}"
     elif mode == "second_voice":
         user = content.second_voice_prompt(body, job["frame"], job.get("wants"), job.get("context"), meta=meta,
                                            persona=persona, recent=recent_texts, spent=spent,
@@ -948,6 +967,9 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
                 user += content.reply_back_read_block()
         if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
             user = f"{user} {content.fresh_line(body, meta)}".rstrip()
+        story = news_story(job, body, meta)                       # 29 Oct: today's news (news.py)
+        if story and not job.get("read"):
+            user = f"{user} {content.news_line(story)}"
     if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # todo/46: name one other citizen
         line = mention.prompt_line(job["mention"])
         user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job.get("read") else f"{user} {line}"

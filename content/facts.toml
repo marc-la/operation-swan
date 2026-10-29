@@ -505,3 +505,27 @@ added = 2026-10-29T04:54:43+00:00
 numbers = []
 says = []
 frames = ["F13_age12", "F7_livelihoods", "F5_not_here_yet"]
+
+# added by hand 2026-10-29 (Marc + Claude), from the papers of 28 Oct; content/news.toml rests on it
+[id_card_promise]
+text = "The Cabinet promised health status could only be added to the national ID cards with fresh legislation, a separate vote and a public privacy assessment."
+note = "Cabinet: health status joins the ID cards only after new law, a separate vote and a privacy assessment"
+status = "active"
+source = "daily-kingstonia/cabinet-promises-separate-vote-before-id-cards-could-ever-carry-health-status"
+checked = 2026-10-29T05:00:00Z
+added = 2026-10-29T05:00:00Z
+numbers = []
+says = []
+frames = []
+
+# added by hand 2026-10-29 (Marc + Claude), from the papers of 28 Oct; content/news.toml rests on it
+[first_shipment_voluntary]
+text = "The first shipment, about 120,000 H2D2 doses, has arrived under a strictly voluntary programme for health workers and high-risk residents."
+note = "first 120,000 doses arrived, strictly voluntary, for health workers and the high-risk"
+status = "active"
+source = "daily-kingstonia/first-national-shipment-of-h2d2-vaccine-arrives-under-voluntary-programme"
+checked = 2026-10-29T05:00:00Z
+added = 2026-10-29T05:00:00Z
+numbers = ["120,000"]
+says = []
+frames = []

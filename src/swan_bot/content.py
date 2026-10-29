@@ -1016,6 +1016,14 @@ def fresh_line(target_text, meta=None):
             f"news means for it, in your own words, and name the paper; it's news they may not have seen. ")
 
 
+def news_line(story):
+    """One story from content/news.toml for a reply prompt (swan_bot/news.py, 29 Oct): the news, what it means for a
+    No, and when to leave it out."""
+    return (f"In the news this week: {story['line']} What it means for a No: {story['reading']} Bring it in only if "
+            f"it bears on their point: once, in your own words, as something you read in the paper. Add no detail "
+            f"that isn't here.")
+
+
 def worn_line(target_text, spent=()):
     """Keep off our worn phrases, except those the citizen used first (then they're their words, not our template)
     and those that say a paused fact (the prompt never brings that fact up, and must not name it).
