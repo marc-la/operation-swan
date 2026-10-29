@@ -434,9 +434,52 @@ def test_leaderboard_shows_each_teams_pace_and_who_is_gaining_on_us(tmp_path):
     assert pace == {"Alpha": 1000, "Beta": 1000, "Gamma": 500, "Nine": 1000, "Operation Swan (us)": 1000, "Eleven": 0}
     assert [r["pace_vs_us"] for r in ctx["board"]["near"]] == [0, None, -1000]
     text = plain(html)
-    assert "pts/h, 24 h" in text and "+1,000/h" in text and "+0/h" in text
+    assert "pts/h, last 24 h" in text and "1.00k" in text and "500" in text and "/h" not in text.split("pts/h")[1]
+    assert ctx["board"]["pace_now"] is None and " 3 h" not in text                         # no line 2-5 h back: no 3 h column
     ctx, html = gather(build_root(tmp_path / "b", NOW, [td.write(3)], extra_portal=full), NOW)       # no history yet: no column
     assert ctx["board"]["pace"] is None and "pts/h" not in html
+
+
+def test_pace_figures_have_three_significant_figures():
+    assert [build.rate(x) for x in (2094, 2095, 1816, 999, 1000, 9996, 12_345, 850, 87, 0, -40, -1234, None)] == [
+        "2.09k", "2.10k", "1.82k", "999", "1.00k", "10.0k", "12.3k", "850", "87", "0", "−40", "−1.23k", "—"]
+    assert build.sig3(2094) == 2090 and build.sig3(None) is None and build.sig3(0) == 0
+
+
+def top_board(n=12, ours=1):
+    """A board with us at rank `ours` and every team's score in the portal, for the top-ten fold."""
+    names = [f"T{i}" for i in range(1, n + 1)]
+    names[ours - 1] = "Operation Swan"
+    rows = [dict(rank=i + 1, team=t, score=100_000 - 1000 * i) for i, t in enumerate(names)]
+    near = lambda k: rows[k - 1] if 1 <= k <= n else None
+    return dict(leaderboard_portal(), rank=ours, score=rows[ours - 1]["score"], top=rows[:3], leader=rows[0], rows=rows,
+                above=near(ours - 1), below=near(ours + 1))
+
+
+def test_leaderboard_folds_five_to_ten_under_fourth_and_shows_the_last_3_hours(tmp_path):
+    board = top_board()
+    root = build_root(tmp_path, NOW, [td.write(3)], extra_portal=board)
+    (root / "data" / "team_scores.jsonl").write_text("".join(json.dumps(dict(ts=at(NOW, h), scores={
+        r["team"]: r["score"] - k * h * 100 * (r["rank"] % 3 + 1) for r in board["rows"]})) + "\n" for h, k in ((24, 1), (3, 2))))
+    ctx, html = gather(root, NOW)
+    b = ctx["board"]
+    assert b["fourth"]["rank"] == 4 and [r["rank"] for r in b["rest"]] == [5, 6, 7, 8, 9, 10]
+    us, t2 = b["finalists"][0], b["finalists"][1]
+    assert (us["pace"], us["pace_now"], t2["pace"], t2["pace_now"]) == (200, 400, 300, 600)
+    assert (t2["pace_vs_us"], t2["pace_now_vs_us"], us["pace_now_vs_us"]) == (100, 200, None)
+    assert b["pace_now"]["span"] == 3 and "pts/h, last 24 h 3 h" in plain(html)
+    fold = html.split('<details id="lb-rest">')[1].split("</details>")[0]          # closed by default; the page keeps it open by id
+    assert "<summary>#5–#10</summary>" in fold and "#10" in fold and "#11" not in html.split('id="leaderboard"')[1].split("</table>\n</div>")[0]
+    assert html.index('<details id="lb-rest">') > html.index(">#4<")
+
+
+def test_the_fold_starts_below_the_last_row_shown(tmp_path):
+    def rest(ours):
+        ctx, html = gather(build_root(tmp_path / str(ours), NOW, [td.write(3)], extra_portal=top_board(ours=ours)), NOW)
+        return [r["rank"] for r in ctx["board"]["rest"]], 'id="lb-rest"' in html
+    assert rest(3) == ([5, 6, 7, 8, 9, 10], True)                           # #4 is shown under the line
+    assert rest(4) == ([6, 7, 8, 9, 10], True)                              # us at #4 and #5 below us
+    assert rest(8) == ([10], True) and rest(9) == ([], False)               # #10 is our neighbour: nothing to fold
 
 
 # ---- secrets and missing files ----

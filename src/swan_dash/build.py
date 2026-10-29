@@ -1464,22 +1464,26 @@ def gap_trend(rows, now, ours, third):
 
 PACE_HOURS = 24                                # the window of the leaderboard's points-an-hour column
 PACE_MIN_HOURS = 6                             # until a line this old exists there is no pace to show
+PACE_NOW_HOURS, PACE_NOW_MIN_HOURS, PACE_NOW_MAX_HOURS = 3, 2, 5    # the column beside it: who is speeding up or slowing down
+                                                                    # (Marc, 29 Oct); no line 2-5 h back, no column
+BOARD_TOP = 10                                 # the rest of the top ten folds under the last row shown (Marc, 29 Oct)
 
 
-def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen=None):
+def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen=None, max_hours=None):
     """Points an hour per team over the last `hours`, from the hourly all-teams series (data/team_scores.jsonl lines
     {ts, seen, scores: {team: score}}) and the board's current rows [{team, score}]. The site changes its scores once an
     hour, so time is counted from when the scores first showed (`seen` for the current rows, each line's own `seen`, or
     its `ts` for lines written before that field): dividing by the wall clock instead made the rate fall all hour
     between board changes and jump when one arrived. One reference line for everybody: the one nearest `hours` before
-    `seen`, at least `min_hours` older than it (a shorter history gives the longest span it has). A 24 h window
+    `seen`, at least `min_hours` older than it (a shorter history gives the longest span it has) and, with `max_hours`, no
+    older than that (so a gap in the series cannot turn a 3 h column into a 24 h one). A 24 h window
     spans a whole Sydney day, so the daily rhythm of citizens does not show as a change of pace; a 6 h one would, and a 6,000
     poll award inside it would look like 1,000 an hour. A team not in the reference line (new, or renamed) has no pace.
     {span: hours the reference is back, as_of: when the current scores showed, per_hour: {team: points an hour}} or None
     when no line is old enough."""
     end = seen or now
     old = [(t, r) for t, r in ((ts(r.get("seen")) or ts(r.get("ts")), r) for r in lines)
-           if t and isinstance(r.get("scores"), dict) and (end - t).total_seconds() >= min_hours * 3600]
+           if t and isinstance(r.get("scores"), dict) and min_hours * 3600 <= (end - t).total_seconds() <= (max_hours or math.inf) * 3600]
     if not old:
         return None
     want = end - dt.timedelta(hours=hours)
@@ -1488,6 +1492,21 @@ def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen
     return dict(span=span, as_of=end,
                 per_hour={r["team"]: round((r["score"] - ref["scores"][r["team"]]) / span)
                           for r in rows if _num(ref["scores"].get(r["team"])) is not None})
+
+
+def sig3(x):
+    """x to three significant figures (2,094 -> 2,090; 87 -> 87; None stays None): the leaderboard's pace columns, where
+    four figures were hard to follow (Marc, 29 Oct)."""
+    return x if not x else round(x, 2 - math.floor(math.log10(abs(x))))
+
+
+def rate(x):
+    """A pace as the leaderboard prints it, to three significant figures: 2.09k, 12.3k, 850, −40, and — for none."""
+    if x is None:
+        return "—"
+    a = abs(sig3(x))
+    s = f"{a / 1000:.{2 if a < 10_000 else 1 if a < 100_000 else 0}f}k" if a >= 1000 else f"{a:.0f}"
+    return ("−" if x < 0 else "") + s
 
 
 def signed(x):
@@ -2048,27 +2067,27 @@ def gather(root, now, service):
     if board and board["cutoff"] is not None:      # behind 3rd: is the gap closing? (data/leaderboard.jsonl, hourly, from the portal poll)
         third = next(r for r in board["finalists"] if r["rank"] == 3)
         board["trend"] = gap_trend(tail_jsonl(data / "leaderboard.jsonl", 500_000), now, board["score"], third["score"])
-    if board:                                  # every team's points an hour (data/team_scores.jsonl, ~5 KB a line: 400 KB is about 3 days)
-        board["pace"] = team_pace(tail_jsonl(data / "team_scores.jsonl", 400_000), portal.get("rows") or [], now,
-                                  seen=ts(portal.get("scores_ts")))
-        if board["pace"]:
-            board["pace"]["as_of_label"] = hm(board["pace"]["as_of"])
-            pace_of = board["pace"]["per_hour"]
-            ours = pace_of.get(TEAM_NAME)
-            for r in board["finalists"] + board["near"] + board["between"]:
-                name = TEAM_NAME if r.get("us") else r["team"]
-                r["pace"] = pace_of.get(name)
-                r["pace_vs_us"] = (None if r["pace"] is None or ours is None or r.get("us") else r["pace"] - ours)
+    if board:                                  # every team's points an hour (data/team_scores.jsonl, ~5 KB a line: 400 KB is about 3 days),
+        lines, seen = tail_jsonl(data / "team_scores.jsonl", 400_000), ts(portal.get("scores_ts"))    # over a day and the last 3 h
+        for key, hours, least, most in (("pace", PACE_HOURS, PACE_MIN_HOURS, None),
+                                        ("pace_now", PACE_NOW_HOURS, PACE_NOW_MIN_HOURS, PACE_NOW_MAX_HOURS)):
+            board[key] = team_pace(lines, portal.get("rows") or [], now, hours=hours, min_hours=least, seen=seen, max_hours=most)
+            if board[key]:
+                board[key]["as_of_label"] = hm(board[key]["as_of"])
     if board:                                  # Yes / No / ? after each name (data/team_sides.json, from the polls' awards: swan_dash/sides.py)
         state = read_json(data / team_sides.SIDES_FILE) or {}
-        pace_of = (board.get("pace") or {}).get("per_hour") or {}
         rows_all = portal.get("rows") or []
-        mark = lambda r: dict(r, side=team_sides.label(team_sides.side_of(state, r["team"])), pace=pace_of.get(r["team"]),
-                              pace_vs_us=None if pace_of.get(r["team"]) is None or pace_of.get(TEAM_NAME) is None else pace_of[r["team"]] - pace_of[TEAM_NAME])
-        for r in board["finalists"] + board["near"] + board["between"]:
-            r["side"] = team_sides.label(team_sides.side_of(state, TEAM_NAME if r.get("us") else r["team"]))
         shown = {r["rank"] for r in board["finalists"] + board["near"]}
-        board["fourth"] = next((mark(r) for r in rows_all if r["rank"] == 4 and r["rank"] not in shown), None) if board["rank"] <= 3 else None
+        board["fourth"] = next((dict(r) for r in rows_all if r["rank"] == 4 and r["rank"] not in shown), None) if board["rank"] <= 3 else None
+        last = max(shown | {board["fourth"]["rank"] if board["fourth"] else 0})
+        board["rest"] = [dict(r) for r in rows_all if last < r["rank"] <= BOARD_TOP]
+        for r in board["finalists"] + board["near"] + board["between"] + ([board["fourth"]] if board["fourth"] else []) + board["rest"]:
+            name = TEAM_NAME if r.get("us") else r["team"]
+            r["side"] = team_sides.label(team_sides.side_of(state, name))
+            for key in ("pace", "pace_now"):   # red / green against ours on the figures as printed (3 significant figures)
+                of = (board[key] or {}).get("per_hour") or {}
+                r[key], ours = sig3(of.get(name)), sig3(of.get(TEAM_NAME))
+                r[key + "_vs_us"] = None if r[key] is None or ours is None or r.get("us") else r[key] - ours
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
         return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
@@ -2206,6 +2225,7 @@ def render(ctx, template="index.html.j2"):
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent / "templates"),
                              autoescape=True, undefined=jinja2.StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     env.filters["n"] = lambda x: "—" if x is None else f"{x:,}"
+    env.filters["rate"] = rate
     env.filters["short"], env.filters["hm"], env.filters["signed"], env.filters["pl"] = short, hm, signed, plural
     return env.get_template(template).render(ctx)
 
