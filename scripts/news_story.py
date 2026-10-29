@@ -37,6 +37,9 @@ TODO = "TODO"
 STOP = set("""about after again against ahead amid before being between calls could during first from have into made more
 most news over said says than that their them then there these they this those under very were what when where which
 while will with would your""".split())
+# words nearly every citizen post on the vote has: as a keyword they would match everything (news.observe's trend)
+GENERIC = set("""referendum kingstonia kingstonian campaign campaigns vaccination vaccine vaccines government public health
+voters voting h2d2 dolphin""".split())
 FILE_TESTS = ("test_every_story_parses_and_rests_on_active_facts", "test_story_text_passes_the_gate_and_names_no_voting_logistics",
               "test_every_story_states_only_the_facts_it_requires", "test_published_times_are_real_utc_not_the_papers_sydney_stamp")
 IMPACT = ((3, re.compile(r"\bpolls?\b|survey|lead (narrow|widen)|undecided", re.I)),
@@ -67,7 +70,8 @@ def impact_guess(title):
 
 def keywords_of(title, n=6):
     """Up to n keyword patterns from the headline's longest content words (a prefix match: '\\bferr' for ferries)."""
-    words = sorted({w for w in re.findall(r"[a-z]{5,}", (title or "").lower()) if w not in STOP}, key=lambda w: (-len(w), w))
+    words = sorted({w for w in re.findall(r"[a-z]{5,}", (title or "").lower()) if w not in STOP | GENERIC},
+                   key=lambda w: (-len(w), w))
     return [rf"\b{w[:max(5, len(w) - 2)]}" for w in words[:n]]
 
 

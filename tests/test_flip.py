@@ -267,3 +267,12 @@ def test_a_turn_for_a_condition_they_never_raised_is_never_drawn():
 def test_the_audit_s_false_fear_matches(text, fear):
     """todo/52 audit: "protect people's privacy" is not the safety fear, "help teams prepare" not acting early."""
     assert (flip.fear_of(text) or {}).get("key") == fear
+
+
+def test_the_fixed_lines_around_the_flip_state_no_fact():
+    """The dial, the conditional and the worries line rest on no fact, so a paused fact's words can't be in them (the
+    slow paused-fact sweep caught "which doors" and "either way" in the dial)."""
+    fixed = list(content.FLIP_FEAR_LINES.values()) + [content.conditional_rebuttal("X."), content.worries_line("x")]
+    fixed += [content.flip_line(dict(fear=dict(label=""), core="", evidence=dict(line=""), pivot=dict(line="")))]
+    hits = [(k, rx.search(text).group(0)) for text in fixed for k, rx in fact_store.SAYS.items() if rx.search(text)]
+    assert not hits, hits

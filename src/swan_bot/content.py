@@ -1028,14 +1028,15 @@ def fresh_line(target_text, meta=None):
 # carries on either way) was an invented harm.
 FLIP_FEAR_LINES = {
     0: "",
-    1: " Say the turn as something a Yes would really cost them (the check at their own door, with nobody able to say "
-       "which doors or until when), in one concrete picture from their own post or life, and leave them with a No as "
-       "the way to keep things as they are. Never a loss a Yes doesn't bring (the testing, the jabs and the care carry "
-       "on either way); no exaggeration.",
+    1: " Say the turn as something a Yes would really cost them (a check at their own door), in one concrete picture "
+       "from their own post or life, and leave them with a No as the way to keep things as they are. Never a loss a Yes "
+       "doesn't bring (the testing, the jabs and the care don't hang on the vote); no exaggeration.",
     2: " Make the turn bite: what a Yes would really cost them is concrete to their own life and lasting, since once it's "
        "in there's no off switch, and a No is the way to stop it. Never a loss a Yes doesn't bring (the testing, the "
-       "jabs and the care carry on either way); nothing invented, no exaggeration.",
+       "jabs and the care don't hang on the vote); nothing invented, no exaggeration.",
 }
+# The dial and the other fixed lines rest on no fact, so they may state none (facts.SAYS; tests/test_flip.py): the
+# turn's own facts come with the pivot line, which a paused fact takes out.
 
 
 def flip_line(choice):

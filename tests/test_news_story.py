@@ -35,6 +35,8 @@ def test_key_impact_and_keywords_from_the_headline():
     assert news_story.impact_guess("Electoral Commission discloses K$1.6 million in referendum campaign spending") == 2
     assert news_story.impact_guess("Cyclone watch issued for outer islands") == 1
     assert news_story.keywords_of("Cyclone watch issued for outer islands")[:2] == [r"\bcyclo", r"\bislan"]
+    kw = news_story.keywords_of("Electoral Commission discloses K$1.6 million in referendum campaign spending")
+    assert not any("referend" in k or "campai" in k for k in kw) and r"\bcommissi" in kw     # not words every post has
 
 
 def test_a_draft_rests_on_the_article_s_facts_and_waits_for_its_words():
