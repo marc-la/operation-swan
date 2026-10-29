@@ -529,3 +529,15 @@ added = 2026-10-29T05:00:00Z
 numbers = ["120,000"]
 says = []
 frames = []
+
+# added by hand 2026-10-29 (Marc + Claude), from the papers of 29 Oct; content/flip.toml and news.toml rest on it
+[wastewater_inconclusive]
+text = "A weak, inconclusive H2D2 signal turned up in routine wastewater testing in Crown Harbour; repeat testing is underway, and no clinical cases or community transmission are linked to it."
+note = "routine monitoring found a weak signal, now being retested; not linked to any case"
+status = "active"
+source = "kingstonia-herald/weak-h2d2-wastewater-signal-detected-in-crown-harbour"
+checked = 2026-10-29T11:00:00Z
+added = 2026-10-29T11:00:00Z
+numbers = []
+says = []
+frames = []

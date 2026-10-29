@@ -1,0 +1,99 @@
+# Flip the script (29 Oct, Marc; docs/06-strategy/situation-2026-10-29.md §13). src/swan_bot/flip.py reads it.
+# The Yes side wins on fear: the first case, the wastewater signal, the hospitals, "waiting has a cost". Of the citizen
+# posts we answer that talk about a Yes, most are a conditional Yes ("I'm voting Yes, but publish the venues and an end
+# point") and their reason is that fear. A reply to a post that voices it answers the fear, not the conditions:
+#   core      a No is not doing nothing (one plain sentence, for this fear)
+#   evidence  the protection is already working, with no pass at any door (one item, the fear's best first)
+#   pivot     what a Yes adds is the check at the door, and nobody manages it (one item, their own "but" first)
+#
+# [fear.*]     label: the worry in a few words. keywords: regex (any case) that voice it; the post's best match is its
+#              fear. evidence: the keys that answer it, best first. core: the one thing to tell them.
+# [evidence.*] requires: facts in content/facts.toml (a paused fact drops the item). keywords: the post naming one
+#              lifts it (flip.KEYWORD_GAIN). weight: how likely it is otherwise.
+# [pivot.*]    the same; keywords are the citizen's own condition (sunset, the list, staffing, privacy).
+# No line may name a figure that isn't in a fact, a day, a date, a place to vote or how to vote (quality.WRONG_LOGISTICS,
+# factdesk.text_problems; tests/test_flip.py). Change a line, run scripts/t.sh.
+
+[fear.act_early]
+label = "acting before it spreads"
+keywords = ['\bact(ing)? (now|early|fast|quickly|first|before|in time)', '\bearly\b', 'before it (spreads|gets|arrives|hits|takes)', 'too late', 'waiting (has|is|costs)', 'wait(ing)? (and see|until|for it)', 'can.t (afford to )?wait', '\binaction\b', 'do(ing)? nothing', '\bprevent', '(get|stay) ahead', '\bprepar']
+evidence = ["wastewater_caught", "contained_case", "voluntary_doses"]
+core = "A No isn't waiting or doing nothing: the testing, the isolation and the free vaccine all carry on whatever the result."
+
+[fear.spread]
+label = "the new signal and the first case"
+keywords = ['wastewater', 'sewage', '\bsignal\b', '(first|new|confirmed|imported|more) cases?', '\boutbreaks?\b', '\bspread', 'community transmission', 'it.s (here|coming)', 'so fast']
+evidence = ["wastewater_caught", "contained_case"]
+core = "It's being caught early and contained, and none of that needed a pass at anyone's door."
+
+[fear.hospitals]
+label = "the hospitals being overwhelmed"
+keywords = ['hospital', '\bwards?\b', '\bicu\b', 'intensive care', 'capacity', 'overwhelm', '\bbeds?\b', '\bsurges?\b', 'frontline', 'health system']
+evidence = ["surge_drill", "voluntary_doses", "contained_case"]
+core = "What protects the hospitals is staff, beds and jabs for the people most at risk, not a check at the shop door."
+
+[fear.vulnerable]
+label = "the people most at risk"
+keywords = ['vulnerable', 'elderly', 'immunocompromised', 'grand(ma|pa|parents?|mother|father|kids)', '\bnan\b', 'at.risk', 'aged.care', 'newborn']
+evidence = ["voluntary_doses", "contained_case"]
+core = "The people most at risk are first in line for the vaccine, by choice, and a No changes nothing about that."
+
+[fear.lockdown]
+label = "a lockdown like last time"
+keywords = ['lockdowns?', 'shut ?downs?', 'harsher', 'stricter', '\bcovid\b', 'last time', 'pandemic']
+evidence = ["contained_case", "wastewater_caught"]
+core = "What keeps a lockdown away is catching cases early, and that's already working; a check at the door doesn't do it."
+
+[fear.protection]
+label = "keeping people safe"
+keywords = ['protect\w* (the )?(people|us|everyone|lives|kids|children|families|patients|community|communities|public)', 'keep\w* (us|people|everyone|kids|families|patients) (safe|healthy|well)', 'public health', 'health risks?', 'dolphin flu', 'the virus']
+evidence = ["contained_case", "surge_drill", "voluntary_doses", "wastewater_caught"]
+core = "The protection is already happening, and a No keeps every bit of it."
+
+[evidence.wastewater_caught]
+requires = ["wastewater_inconclusive"]
+line = "routine wastewater testing picked up a weak signal early, it's being retested, and it isn't linked to any case"
+keywords = ['wastewater', 'sewage', '\bsignal\b', '\btest']
+weight = 3.0
+
+[evidence.contained_case]
+requires = ["first_case_confirmed", "contacts_negative_results"]
+line = "the first case, a traveller, was isolated and every close contact tested negative"
+keywords = ['\bcases?\b', 'contacts?', 'isolat', 'traveller', '\bspread', 'transmission']
+weight = 2.0
+
+[evidence.surge_drill]
+requires = ["emergency_services_maintained"]
+line = "the hospitals ran a full surge drill and kept every ordinary service going"
+keywords = ['hospital', '\bwards?\b', '\bsurges?\b', 'capacity', '\bicu\b', '\bbeds?\b', 'overwhelm']
+weight = 2.0
+
+[evidence.voluntary_doses]
+requires = ["first_shipment_voluntary", "free_either_way"]
+line = "the first 120,000 doses went by choice to health workers and the people most at risk, and the vaccine stays free whatever the result"
+keywords = ['vaccin', '\bdoses?\b', '\bjabs?\b', 'vulnerable', 'elderly', 'at.risk', 'health workers']
+weight = 2.0
+
+[pivot.no_list]
+requires = ["list_later"]
+line = "nobody can say which doors the check covers, because the list of places comes after the result"
+keywords = ['which (places|venues|spaces|doors)', '\bvenues?\b', '\blist\b', 'designated', '\bshops?\b', '\bschools?\b', '\bbuses\b', 'workplaces?', '\bgyms?\b', '\bparks?\b', 'publish']
+weight = 3.0
+
+[pivot.no_end]
+requires = ["no_end"]
+line = "the question has no end date and no review, so once it's in there's no off switch"
+keywords = ['sunset', 'end date', 'end point', 'expir', 'temporary', 'forever', 'permanent', '\breview', 'time.limit', '\bexit\b', 'renew']
+weight = 3.0
+
+[pivot.no_staff]
+requires = ["nurses"]
+line = "a check at the door adds no nurse and no bed, and Central still has 40 empty nursing posts"
+keywords = ['nurse', '\bstaff', '\bbeds?\b', 'burnout', '\bshifts?\b']
+weight = 2.0
+
+[pivot.promises]
+requires = ["id_card_promise"]
+line = "the safeguards people want are promises made outside the question, and the ballot carries none of them"
+keywords = ['privacy', 'id cards?', 'health data', 'safeguard', 'guarantee', 'promise', 'ironclad', 'in writing', 'written']
+weight = 1.5

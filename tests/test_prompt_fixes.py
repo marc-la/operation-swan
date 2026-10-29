@@ -194,12 +194,16 @@ def test_build_prompt_in_a_base_block_is_today_s(monkeypatch):
 
 def test_the_rebuttal_is_conditional_in_a_fixes_block(monkeypatch):
     monkeypatch.setattr(config, "PIN", {"reply_mode": "reason_first"})
+    monkeypatch.setattr(config, "FLIP_ON", False)                 # the fixed rebuttals (29 Oct: the flip replaces them)
     fx = dict(colour=False, history=(0, []), register=register.read(SCEPTIC))
     user = content.reply_prompt(SCEPTIC, "F10_staff_and_livelihoods", [], persona=P["paulo"], fixes=fx, meta={})
     assert "If (and only if) their post really shows it: they are worried" in user
     assert "Answer WHY they lean Yes" not in user and "If they lean Yes, answer WHY" in user
     base = content.reply_prompt(SCEPTIC, "F10_staff_and_livelihoods", [], persona=P["paulo"], meta={})
     assert "They are worried about the hospitals" in base and "Answer WHY they lean Yes" in base
+    monkeypatch.setattr(config, "FLIP_ON", True)
+    user = content.reply_prompt(SCEPTIC, "F10_staff_and_livelihoods", [], persona=P["paulo"], fixes=fx, meta={})
+    assert "If (and only if) their post really shows it: their worry underneath is the hospitals" in user
 
 
 # ---- fix 4: shape, register and typing --------------------------------------------------------------------------------

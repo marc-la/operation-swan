@@ -28,7 +28,7 @@ import time
 import tomllib
 from zoneinfo import ZoneInfo
 
-from . import config, content, quality
+from . import config, content, flip, quality
 from . import facts as fact_store
 from .pulse import HASHTAG, INJECTION, MENTION, URL, _parse
 
@@ -691,6 +691,8 @@ def validate(table):
         named |= set(f["facts"]) | set(f["requires"])
     for _, _, req in content.REBUTTALS:
         named |= set(req)
+    for part, items in (flip.data() or {}).items():               # 29 Oct: the flip's evidence and pivots
+        named |= {k for item in items.values() for k in item.get("requires") or ()}
     for _, _, req in content.STORYLINES + [content.STORYLINE_FALLBACK]:
         named |= set(req)
     for _, req, _ in content.WORLD_PARTS:

@@ -182,6 +182,32 @@ Early voting stays out of replies: `quality.WRONG_LOGISTICS` rejects any voting 
 - The dashboard's pts/h per team includes poll awards. Read Yeah as 2,377 an hour (net), not 2,627.
 - The feed's `X-RateLimit-Limit` read 200 a minute on 29 Oct (300 in CLAUDE.md). Pace still comes from the headers.
 
+## 13. The Yes surge and the flip (29 Oct evening)
+
+**The surge is the whole Yes side.** Every team's hourly score, added up by side (Poll 3's award taken out), in the 24 h to 10:00 UTC:
+
+| 24 h to | Yes side (30 teams) | No side (19 teams) | us |
+|---|---|---|---|
+| 27 Oct 10:00 | 18.6k pts/h | 7.7k | 2.29k |
+| 28 Oct 10:00 | 18.2k | 7.0k | 2.19k |
+| 29 Oct 10:00 | 20.9k | 7.4k | 2.09k |
+
+From 22:00 UTC on 28 Oct (the hour the papers ran the wastewater signal) the Yes side ran 19-24% above the same hours a day earlier, and the No side was flat. In our own log the changes of mind toward No that we contributed to fell to 2 since 13:00 UTC on 28 Oct, against 18-34 a day before. The citizens we answer almost never name the wastewater story (3 of about 3,900 posts), so the link is timing only. It could also be Yes teams taking a bigger share of the same citizens: our citizen replies a day on the portal fell from 1,192 to 1,066 to about 970.
+
+**How the papers source stories** (all 100 articles, the four journalists' 226 posts):
+- Each news story runs in both papers in the same minute (Rivera at the Herald, Wong at Daily Kingstonia), at fixed slots 2-4 times a day: an organiser timeline. The two stories about Legit Social (the dolphin video, the bot repost clusters) ran the same way, and both cast the posts as fake.
+- Columns (Morales 5, Podworth 3) are all No-leaning and follow a scripted story. None carries wording from the threads its author had answered in the 8 h before.
+- Journalists reply in bursts every 1-3 days, 99 of 184 replies inside their own threads, mostly to other teams' bots (138); they have replied to us 9 times and agree with most No points. Journalist replies are left off (Marc): the flip goes to citizens.
+
+**What the citizens fear.** Of the citizen posts we answered from 28 Oct 10:00 UTC, 24% talk about a Yes, nearly all a conditional Yes ("I'm voting YES, but publish the venues, exemptions and an end point"). Their reason: the hospitals (13% of those posts), acting early ("that first case is here now, waiting has a cost"), the spread and the signal, the people most at risk, a lockdown. 17% of all the posts we answer voice that fear.
+
+**The flip** (`swan_bot/flip.py`, `content/flip.toml`, `FLIP_ON`; off with `SWAN_FLIP_ON=0` and a restart). A reply to a post that voices the fear answers it with one point in three moves:
+1. **A No is not doing nothing** (the fear's own core line, e.g. "the testing, the isolation and the free vaccine all carry on whatever the result").
+2. **The proof**: one piece of the health news, the fear's best first and the one the post names lifted: the weak wastewater signal caught early by routine testing, the first case isolated and every contact negative, the surge drill with every service kept, the first 120,000 doses going by choice to the people most at risk.
+3. **The turn**: what a Yes adds is the check at the door, and nobody manages it. The citizen's own "but" picks it: the list comes after the result, no end date and no review, no nurse and no bed, promises outside the question.
+
+It takes the hospital/COVID rebuttals' slot (`content.rebuttal_for`), so the light read still checks that the post really shows the fear; a reply-back to such a post gets it too, and an ally (`opposes_pass`) or an off-topic reply never does. The rest of the replies meet the same news as the lead story (`health_handled` in `content/news.toml`, impact 4: weight 4, half-life 48 h), so about half of the 30% news slot. Expected reach: about 17% of first replies by the fear, plus about 12% through the news slot. Every item rests on active facts (`wastewater_inconclusive` added by hand); the lines pass the gate (no "no cases": a false claim since 21 Oct). Logged as `flip` (fear/evidence/pivot).
+
 ## How to repeat the reads
 
 Scratch scripts for these reads were not committed. They are short and follow `scripts/engagement_recon.py`:

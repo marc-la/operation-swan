@@ -37,7 +37,7 @@ import urllib.error
 
 import openai
 import capturethenarrative as ctn
-from . import batch, config, content, engage, experiment, feeds, humanize, memory, mention, news, pool_runner, pulse, quality, register, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, flip, humanize, memory, mention, news, pool_runner, pulse, quality, register, stealth, themes, watch
 from . import batch, config, content, engage, experiment, feeds, humanize, mention, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .analysis import ts_of
@@ -733,7 +733,7 @@ ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode",
         "block_id", "arm_conv", "arm_eng", "fresh", "agree", "arm_npc", "npc_block",     # todo/48: arm_npc with NPC_EXTRA_ARM
         "arm_style", "colour", "lean", "lean_shape",                                       # todo/50: the prompt fixes
         "rb_open",                                                                         # todo/51: the reply-back opener
-        "news")                                                                            # 29 Oct: today's news (news.py)
+        "news", "flip")                                                                    # 29 Oct: today's news (news.py), the flip (flip.py)
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level", "arm_style", "lean_shape", "rb_open")
 
@@ -854,6 +854,17 @@ def style_context(job, persona, meta):
                 own_parent=parent is not None and parent == rec.get("account_id"))
 
 
+def flip_choice(job, body, meta):
+    """29 Oct (Marc): the flip for this reply (flip.choose), or None: never off-topic, never to a citizen who already
+    opposes the pass. Its key is logged as meta["flip"]."""
+    if job.get("style") == "off_topic" or content.opposes_pass(body):
+        return None
+    choice = flip.choose(body)
+    if choice:
+        meta["flip"] = flip.key(choice)
+    return choice
+
+
 def news_story(job, body, meta, rng=random):
     """29 Oct (Marc): the news story for this reply (news.pick), or None. NEWS_SHARE of first replies and reply-backs,
     every turnout reply (NEWS_TURNOUT_SHARE), never an off-topic one. Its key is logged as meta["news"]."""
@@ -943,7 +954,11 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         if content.group_style(job):                              # todo/23's groups: one line of guidance
             user = user.replace("\n\nFirst read them", f" {content.group_style(job)}\n\nFirst read them", 1) \
                 if job["read"] else f"{user} {content.group_style(job)}"
-        story = news_story(job, body, meta)                       # 29 Oct: today's news (news.py)
+        fl = flip_choice(job, body, meta)                         # 29 Oct: the fear behind a Yes, flipped (flip.py)
+        line = content.flip_line(fl) if fl else None
+        if line and line[1:] not in user:                         # (the rebuttal slot carries it, unless the frame took it)
+            user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job["read"] else f"{user} {line}"
+        story = None if fl else news_story(job, body, meta)       # 29 Oct: today's news (news.py)
         if story:
             line = content.news_line(story)
             user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job["read"] else f"{user} {line}"
@@ -967,7 +982,10 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
                 user += content.reply_back_read_block()
         if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
             user = f"{user} {content.fresh_line(body, meta)}".rstrip()
-        story = news_story(job, body, meta)                       # 29 Oct: today's news (news.py)
+        fl = None if job.get("read") else flip_choice(job, body, meta)     # 29 Oct: the fear behind a Yes, flipped
+        if fl:
+            user = f"{user} {content.flip_line(fl)}"
+        story = None if fl else news_story(job, body, meta)       # 29 Oct: today's news (news.py)
         if story and not job.get("read"):
             user = f"{user} {content.news_line(story)}"
     if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # todo/46: name one other citizen

@@ -27,8 +27,8 @@ from . import config
 from . import facts as fact_store
 
 FILE = config.ROOT / "content" / "news.toml"
-WEIGHT = {1: 1.0, 2: 2.0, 3: 3.0}
-HALF_LIFE_H = {1: 6.0, 2: 12.0, 3: 30.0}
+WEIGHT = {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0}                     # 4: the lead story (29 Oct: health_handled, the flip)
+HALF_LIFE_H = {1: 6.0, 2: 12.0, 3: 30.0, 4: 48.0}
 MAX_AGE_H = 72.0
 TREND_WINDOW_S = 6 * 3600
 TREND_CAP = 20                  # matches in the window at which the trend lift is full
@@ -54,7 +54,7 @@ def parse(text):
     for key, s in tomllib.loads(text).items():
         missing = [f for f in ("published", "impact", "line", "reading", "keywords") if not s.get(f)]
         if missing or s["impact"] not in WEIGHT:
-            raise ValueError(f"[{key}] needs {', '.join(missing) or 'impact 1, 2 or 3'}")
+            raise ValueError(f"[{key}] needs {', '.join(missing) or 'impact 1 to 4'}")
         out[key] = dict(s, key=key, t=_ts(s["published"]), requires=list(s.get("requires") or []),
                         turnout=bool(s.get("turnout")),
                         rx=[re.compile(k, re.I) for k in s["keywords"]])

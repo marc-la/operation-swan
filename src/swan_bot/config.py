@@ -360,6 +360,13 @@ PULSE_NEWS_SHARE = 0.5              # ...about this share of the time
 NEWS_ON = True
 NEWS_SHARE = 0.3
 NEWS_TURNOUT_SHARE = 1.0
+# ---- flip the script (29 Oct, Marc; swan_bot/flip.py, content/flip.toml) ----
+# Yes wins on fear (the first case, the wastewater signal, the hospitals, "waiting has a cost"). Every reply to a post
+# that voices that fear (about 1 in 5) answers it: a No is not doing nothing, the protection is already working
+# without a pass (one piece of evidence), and what a Yes adds is the check at the door, with no list and no end date
+# (one turn). It takes the hospital/COVID rebuttals' place and the news line's; logged as `flip`. The rest of the
+# replies meet it as the lead news story (health_handled in content/news.toml, impact 4). Off: SWAN_FLIP_ON=0 (+ restart).
+FLIP_ON = True
 
 # ---- fact desk (todo/16, swan_bot/factdesk.py): new articles checked against content/facts.toml, hourly ----
 # A few calls a day (one per batch of new articles), so the strongest models go first; the rest of the chain after.
@@ -600,7 +607,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
                "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S",
                "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
-               "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN")    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
+               "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN",
+               "FLIP_ON")                                                       # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance

@@ -20,7 +20,7 @@ import random
 import re
 from zoneinfo import ZoneInfo
 
-from . import config, experiment, register as reg_mod, touches
+from . import config, experiment, flip, register as reg_mod, touches
 from . import facts as fact_store
 from .memory import item_key, reset_vocab
 
@@ -564,6 +564,8 @@ def requiring(key):
     """What in this file states the fact (its `requires` lists): frames, rebuttals, storylines, levers, rules."""
     out = [k for k, f in FRAMES.items() if key in f["requires"]]
     out += [f"rebuttal {i + 1}" for i, (_, _, req) in enumerate(REBUTTALS) if key in req]
+    out += [f"flip {part} {k}" for part, items in (flip.data() or {}).items() if part != "fear"
+            for k, item in items.items() if key in item["requires"]]
     out += [f"storyline {k}" for k, _, req in STORYLINES if key in req]
     out += [f"lever {k}" for k, req in LEVER_REQUIRES.items() if key in req]
     out += ["WORLD"] if any(key in req for _, req, _ in WORLD_PARTS) else []
@@ -928,9 +930,13 @@ ALLY_WHY = ("They already oppose the pass. Don't argue with them or treat them a
 
 
 def rebuttal_for(text):
-    """The first matching rebuttal that states no paused fact, or None. None for a citizen who opposes the pass."""
+    """The first matching rebuttal that states no paused fact, or None. None for a citizen who opposes the pass.
+    29 Oct (Marc): a post that voices the fear behind a Yes gets the flip (flip.py) in place of the fixed lines."""
     if opposes_pass(text):
         return None
+    choice = flip.choose(text)
+    if choice:
+        return flip_line(choice)
     return next((line for pattern, line, req in REBUTTALS if pattern.search(text or "") and fact_store.ok(req)), None)
 
 
@@ -1014,6 +1020,15 @@ def fresh_line(target_text, meta=None):
     return (f"New this week in the papers: {rows}. Build your reply on the one that bears most on their point, in "
             f"place of a story about someone you know: agree first with what's fair in their post, then say what the "
             f"news means for it, in your own words, and name the paper; it's news they may not have seen. ")
+
+
+def flip_line(choice):
+    """The fear behind a Yes, flipped (swan_bot/flip.py, 29 Oct): a No is not doing nothing, the protection is already
+    working without a pass, and what a Yes adds is the check at the door, which nobody manages."""
+    return (f"Their worry underneath is {choice['fear']['label']}. Answer it with this one point, in plain words: "
+            f"{choice['fear']['core']} The proof: {choice['evidence']['line']}. The turn: what a Yes adds is the check "
+            f"at the door, and {choice['pivot']['line']}. Don't open by agreeing and don't lecture: their worry in their "
+            f"words, then the proof and the turn in yours.")
 
 
 def news_line(story):
