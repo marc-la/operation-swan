@@ -7,7 +7,9 @@
 #   pivot     what a Yes adds is the check at the door, and nobody manages it (one item, their own "but" first)
 #
 # [fear.*]     label: the worry in a few words. keywords: regex (any case) that voice it; the post's best match is its
-#              fear. evidence: the keys that answer it, best first. core: the one thing to tell them.
+#              fear. evidence: the keys that answer it, best first. core: the one thing to tell them (a list: one is
+#              drawn, so the many replies to one fear don't all say it alike). fallback = true:
+#              only when no other fear matches (conditional_yes: the "Yes, but" posts that name no fear, 29 Oct room read).
 # [evidence.*] requires: facts in content/facts.toml (a paused fact drops the item). keywords: the post naming one
 #              lifts it (flip.KEYWORD_GAIN). weight: how likely it is otherwise.
 # [pivot.*]    the same; keywords are the citizen's own condition (sunset, the list, staffing, privacy).
@@ -18,7 +20,8 @@
 label = "acting before it spreads"
 keywords = ['\bact(ing)? (now|early|fast|quickly|first|before|in time)', '\bearly\b', 'before it (spreads|gets|arrives|hits|takes)', 'too late', 'waiting (has|is|costs)', 'wait(ing)? (and see|until|for it)', 'can.t (afford to )?wait', '\binaction\b', 'do(ing)? nothing', '\bprevent', '(get|stay) ahead', '\bprepar']
 evidence = ["wastewater_caught", "contained_case", "voluntary_doses"]
-core = "A No isn't waiting or doing nothing: the testing, the isolation and the free vaccine all carry on whatever the result."
+core = ["A No isn't waiting or doing nothing: the testing, the isolation and the free vaccine all carry on whatever the result.",
+        "We're already acting early, and a No doesn't stop any of it: only the check at the door."]
 
 [fear.spread]
 label = "the new signal and the first case"
@@ -30,7 +33,8 @@ core = "It's being caught early and contained, and none of that needed a pass at
 label = "the hospitals being overwhelmed"
 keywords = ['hospital', '\bwards?\b', '\bicu\b', 'intensive care', 'capacity', 'overwhelm', '\bbeds?\b', '\bsurges?\b', 'frontline', 'health system']
 evidence = ["surge_drill", "voluntary_doses", "contained_case"]
-core = "What protects the hospitals is staff, beds and jabs for the people most at risk, not a check at the shop door."
+core = ["What protects the hospitals is staff, beds and jabs for the people most at risk, not a check at the shop door.",
+        "Hospitals are protected by nurses, beds and jabs for the people most at risk, and a No keeps every one of those."]
 
 [fear.vulnerable]
 label = "the people most at risk"
@@ -39,8 +43,8 @@ evidence = ["voluntary_doses", "contained_case"]
 core = "The people most at risk are first in line for the vaccine, by choice, and a No changes nothing about that."
 
 [fear.lockdown]
-label = "a lockdown like last time"
-keywords = ['lockdowns?', 'shut ?downs?', 'harsher', 'stricter', '\bcovid\b', 'last time', 'pandemic']
+label = "a lockdown, or life grinding to a halt again"
+keywords = ['lockdowns?', 'shut ?downs?', 'harsher', 'stricter', '\bcovid\b', 'last time', 'pandemic', 'stabil', 'predictab', 'keep (things|life|schools|shops|businesses|everything|us|the island) (open|running|going|flowing|moving)', '\broutines?\b', 'disruption', '(shut|close)\w* (down )?again']
 evidence = ["contained_case", "wastewater_caught"]
 core = "What keeps a lockdown away is catching cases early, and that's already working; a check at the door doesn't do it."
 
@@ -49,6 +53,30 @@ label = "keeping people safe"
 keywords = ['protect\w* (the )?(people|us|everyone|lives|kids|children|families|patients|community|communities|public)', 'keep\w* (us|people|everyone|kids|families|patients) (safe|healthy|well)', 'public health', 'health risks?', 'dolphin flu', 'the virus']
 evidence = ["contained_case", "surge_drill", "voluntary_doses", "wastewater_caught"]
 core = "The protection is already happening, and a No keeps every bit of it."
+
+[fear.doctors]
+label = "following the doctors' advice"
+keywords = ['\bdoctors?\b', 'scientists?', '\bexperts?\b', 'advisory panel', '\bthe science\b', 'medical (advice|officers)', '\bmouk\b', 'amara', 'dr\.? singh', 'immune response', 'health advice']
+evidence = ["voluntary_doses", "contained_case"]
+core = "The doctors' advice is to get vaccinated, and a No doesn't stop a single jab: the ballot is only about the check at the door."
+
+[fear.community]
+label = "doing our part for each other"
+keywords = ['our part', 'do (my|our|their|your) (bit|part)', 'responsib', 'solidarity', 'look(ing)? after (each other|one another|others|our own)', 'common good', 'each other', 'for everyone', 'community spirit']
+evidence = ["voluntary_doses", "contained_case"]
+core = "Doing our part is the jab if you want it and staying home when you're sick, and a No keeps all of that without turning neighbours into door checkers."
+
+# The room (29 Oct): 73% of the posts we answer are a conditional Yes, and most name only their conditions (an end date
+# in 69% of them, the list of places 44%). Underneath is the fear that a No means doing nothing, so a Yes with
+# safeguards feels safer: that is the half our replies never answered. Their own condition picks the turn.
+[fear.conditional_yes]
+fallback = true
+label = "that a Yes with conditions feels safer than a No"
+keywords = ['sunset', 'end date', 'end point', 'expir', '\btemporary\b', 'time.limit', '\breview', 'which (places|venues|spaces)', '\bvenues?\b', '\blist\b', 'designated', 'safeguard', 'in writing', 'written (into|in)', 'guarantee', 'ironclad', 'privacy', 'exemption', 'oversight', 'phased', 'only if', 'as long as']
+evidence = ["contained_case", "wastewater_caught", "surge_drill", "voluntary_doses"]
+core = ["A No isn't doing nothing: the testing, the isolation and the free vaccine all carry on whatever the result, and the safeguards they want aren't in the question.",
+        "Their safeguards are a reason to wait for a better question, and waiting costs nothing here: the testing, the isolation and the free jabs carry on either way.",
+        "A Yes asks them to sign before the safeguards exist, while a No keeps every protection running and leaves room for a question that has them."]
 
 [evidence.wastewater_caught]
 requires = ["wastewater_inconclusive"]
@@ -91,6 +119,18 @@ requires = ["nurses"]
 line = "a check at the door adds no nurse and no bed, and Central still has 40 empty nursing posts"
 keywords = ['nurse', '\bstaff', '\bbeds?\b', 'burnout', '\bshifts?\b']
 weight = 2.0
+
+[pivot.who_checks]
+requires = ["list_later"]
+line = "the question doesn't say who checks, so it lands on shop staff, drivers and teachers at the door"
+keywords = ['gatekeep', 'who checks', 'checking (papers|passes|certificates)', 'on the door', 'at the door', 'enforce', 'doormen', 'bouncer', 'shop staff', 'drivers?']
+weight = 1.5
+
+[pivot.islands]
+requires = ["islands"]
+line = "a certificate costs far more out on the islands, with a GP once a week and a K$14 ferry"
+keywords = ['outer islands?', '\bferry', '\bremote\b', 'village', 'rural', 'digital', 'paper option', 'data grid', 'off the grid']
+weight = 1.0
 
 [pivot.promises]
 requires = ["id_card_promise"]

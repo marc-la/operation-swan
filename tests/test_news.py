@@ -115,6 +115,7 @@ def test_a_turnout_reply_prefers_the_turnout_story(monkeypatch):
 # ---- the prompt -----------------------------------------------------------------------------------------------------
 def test_a_share_of_replies_and_every_turnout_reply_get_the_line(monkeypatch):
     targeter = types.SimpleNamespace(headline=None)
+    monkeypatch.setattr(config, "FLIP_ON", False)                 # a flip takes the news line's place (test_flip.py)
     monkeypatch.setattr(config, "NEWS_ON", True)
     monkeypatch.setattr(config, "NEWS_SHARE", 1.0)
     j = job(body="I'd only vote yes with a sunset clause in it.")

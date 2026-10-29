@@ -208,6 +208,36 @@ From 22:00 UTC on 28 Oct (the hour the papers ran the wastewater signal) the Yes
 
 It takes the hospital/COVID rebuttals' slot (`content.rebuttal_for`), so the light read still checks that the post really shows the fear; a reply-back to such a post gets it too, and an ally (`opposes_pass`) or an off-topic reply never does. The rest of the replies meet the same news as the lead story (`health_handled` in `content/news.toml`, impact 4: weight 4, half-life 48 h), so about half of the 30% news slot. Expected reach: about 17% of first replies by the fear, plus about 12% through the news slot. Every item rests on active facts (`wastewater_inconclusive` added by hand); the lines pass the gate (no "no cases": a false claim since 21 Oct). Logged as `flip` (fear/evidence/pivot).
 
+### 13b. The room read and the tuning (29 Oct, 12:00 UTC)
+
+4,054 distinct citizen posts we answered from 28 Oct 11:00 UTC, by our light read of their stance: **73% a conditional Yes** (`yes_but`), 1% firm Yes, 17% leaning No, 5% firm No, 3% unsure. Drivers by keyword (a post can have several); "flip" is the share of those posts the flip answers, before and after the tuning:
+
+| | driver | posts | of the Yes posts | flip before → after |
+|---|---|---|---|---|
+| **the "but"** (what holds a Yes back) | end date, sunset, review | 60% | 69% | 25% → 98% |
+| | which places, scope | 40% | 44% | 23% → 97% |
+| | exemptions (in the plan: never "missing") | 31% | 37% | 28% → 99% |
+| | safeguards in writing, promises, trust | 18% | 20% | 24% → 95% |
+| | privacy, ID card | 15% | 18% | 21% → 97% |
+| | staffing, funding | 10% | 11% | 52% → 85% |
+| | who checks at the door | 6% | 7% | 31% → 85% |
+| | access, the islands | 5% | 5% | 25% → 76% |
+| **the fear** (why Yes) | hospitals, health system | 21% | 23% | 89% → 96% |
+| | act early, spread, the first case | 4% | 5% | 100% |
+| | doctors, science | 2% | 2% | 45% → 95% |
+| | stability, avoiding a lockdown | 2% | 2% | 48% → 96% |
+| | community duty | 2% | 2% | 34% → 95% |
+| | the vulnerable | 2% | 2% | 100% |
+| **the No case** (allies: affirmed, not flipped) | livelihoods, business, tourism | 11% | 17% of No posts | |
+| | overreach, blank cheque | 7% | 11% of No posts | |
+| | choice, freedom | 4% | 7% of No posts | |
+
+**The read.** A conditional Yes reasons in two halves: a Yes with safeguards beats doing nothing, and the safeguards will come. For days our replies answered only the second half (the question has no end date, no list: 20-26% of replies), and the citizens restated their conditional Yes (as todo/13 found on 20 Oct). The first half, the fear that a No means doing nothing, was never answered.
+
+**The tuning.** `conditional_yes` (a fallback fear: a post that names conditions and no other fear) answers it: a No isn't doing nothing (the testing, the isolation and the free vaccine carry on), with one piece of the health news, and the turn is the condition they named themselves (the only choice when they name one). Two new fears (doctors, community duty), stability and "keep life running" under the lockdown fear, two new turns (who checks at the door, the islands), 2-3 core lines for the big fears so the replies don't all say it alike, and reply-backs get the flip as a condition the post must show. Reach: 83% of the room's posts, 92% of the Yes posts.
+
+**The fear dial** (`FLIP_FEAR`, `SWAN_FLIP_FEAR`): 0 states the turn plainly; 1 (the default, tasteful) says it as a loss they'd feel, one concrete picture from their own post or life, with a No as the way to keep it; 2 adds that the loss is lasting (no off switch). A fear appeal works with the way out and backfires without one, so the threat never comes alone, and nothing is invented or exaggerated.
+
 ## How to repeat the reads
 
 Scratch scripts for these reads were not committed. They are short and follow `scripts/engagement_recon.py`:

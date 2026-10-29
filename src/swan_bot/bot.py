@@ -983,8 +983,8 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
         if meta.get("arm_conv") == "fresh_facts":                 # todo/25: news first
             user = f"{user} {content.fresh_line(body, meta)}".rstrip()
         fl = None if job.get("read") else flip_choice(job, body, meta)     # 29 Oct: the fear behind a Yes, flipped
-        if fl:
-            user = f"{user} {content.flip_line(fl)}"
+        if fl:                                                    # (a condition, as in first replies: the post must show it)
+            user = f"{user} {content.conditional_rebuttal(content.flip_line(fl))}"
         story = None if fl else news_story(job, body, meta)       # 29 Oct: today's news (news.py)
         if story and not job.get("read"):
             user = f"{user} {content.news_line(story)}"

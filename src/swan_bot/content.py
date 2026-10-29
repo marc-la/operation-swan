@@ -1022,12 +1022,23 @@ def fresh_line(target_text, meta=None):
             f"news means for it, in your own words, and name the paper; it's news they may not have seen. ")
 
 
+# The fear dial (config.FLIP_FEAR, 29 Oct): how the flip's turn lands. The threat always comes with the way out.
+FLIP_FEAR_LINES = {
+    0: "",
+    1: " Say the turn as something they'd lose under a Yes, in one concrete picture from their own post or life, and "
+       "leave them with a No as the way to keep it; no exaggeration.",
+    2: " Make the turn bite: what they'd lose under a Yes is concrete to their own life and lasting, since once it's in "
+       "there's no off switch, and a No is the way to stop it; nothing invented, no exaggeration.",
+}
+
+
 def flip_line(choice):
     """The fear behind a Yes, flipped (swan_bot/flip.py, 29 Oct): a No is not doing nothing, the protection is already
     working without a pass, and what a Yes adds is the check at the door, which nobody manages."""
     return (f"Their worry underneath is {choice['fear']['label']}. Answer it with this one point, in plain words: "
-            f"{choice['fear']['core']} Show it with what's already happening ({choice['evidence']['line']}), then say "
-            f"what a Yes adds is the check at the door, and {choice['pivot']['line']}. Don't open by agreeing, don't "
+            f"{choice['core']} Show it with what's already happening ({choice['evidence']['line']}), then say "
+            f"what a Yes adds is the check at the door, and {choice['pivot']['line']}."
+            f"{FLIP_FEAR_LINES.get(config.FLIP_FEAR, FLIP_FEAR_LINES[1])} Don't open by agreeing, don't "
             f"lecture and don't label the parts: their worry in their words, then the point in yours.")
 
 

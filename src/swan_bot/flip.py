@@ -5,8 +5,8 @@ posts we answer that talk about a Yes, most are a conditional Yes whose reason i
 conditions only gets the conditions restated (todo/13). content/flip.toml lists the fears, what already protects
 Kingstonia without a pass (evidence) and what a Yes adds that nobody manages (pivot). A reply to a post that voices a
 fear answers it in three moves: a No is not doing nothing (the fear's core line), the protection is working (one piece
-of evidence, the fear's best first), and what a Yes adds is the check at the door (one turn, the citizen's own "but"
-first). content.rebuttal_for gives it in place of the hospital/COVID rebuttals; bot.build_prompt adds it where no
+of evidence, the fear's best first), and what a Yes adds is the check at the door (one turn: the citizen's own "but"
+when the post names one, else by weight). content.rebuttal_for gives it in place of the hospital/COVID rebuttals; bot.build_prompt adds it where no
 rebuttal slot does (a reply-back) and logs `flip`.
 
 The same post always gets the same choice (seeded by its text), so a redraft says the same thing. No network call: the
@@ -22,7 +22,7 @@ from . import config
 from . import facts as fact_store
 
 FILE = config.ROOT / "content" / "flip.toml"
-KEYWORD_GAIN = 3.0              # an item the post itself names (their evidence, their own "but"): x3
+KEYWORD_GAIN = 3.0              # evidence the post itself names: x3 (a turn it names is the only choice: choose)
 FIRST_GAIN = 2.0                # the fear's first evidence: x2
 NEEDS = {"fear": ("label", "keywords", "evidence", "core"), "evidence": ("line", "requires", "weight"),
          "pivot": ("line", "requires", "weight", "keywords")}
@@ -69,17 +69,22 @@ def hits(item, text):
 
 
 def fear_of(text, d=None):
-    """The fear the post voices (most keyword matches; the file's order on a tie), or None."""
+    """The fear the post voices (most keyword matches; the file's order on a tie), or None. A fallback fear
+    (conditional_yes) only when no other one matches."""
     d = d or data()
     if not d:
         return None
-    best = max(d["fear"].values(), key=lambda f: hits(f, text))     # max keeps the first of equals
-    return best if hits(best, text) else None
+    for fallback in (False, True):
+        fears = [f for f in d["fear"].values() if bool(f.get("fallback")) == fallback]
+        best = max(fears, key=lambda f: hits(f, text), default=None)  # max keeps the first of equals
+        if best and hits(best, text):
+            return best
+    return None
 
 
 def choose(text):
-    """{fear, evidence, pivot} for a reply to this post, or None: FLIP_ON off, no fear voiced, or nothing it would say
-    rests on live facts."""
+    """{fear, core, evidence, pivot} for a reply to this post, or None: FLIP_ON off, no fear voiced, or nothing it
+    would say rests on live facts."""
     if not config.FLIP_ON:
         return None
     d = data()
@@ -93,8 +98,12 @@ def choose(text):
     rng = random.Random(zlib.crc32((text or "").encode()))
     ew = [e["weight"] * (KEYWORD_GAIN if hits(e, text) else 1) * (FIRST_GAIN if i == 0 else 1)
           for i, e in enumerate(evidence)]
-    pw = [p["weight"] * (KEYWORD_GAIN if hits(p, text) else 1) for p in pivots]
-    return dict(fear=fear, evidence=rng.choices(evidence, weights=ew)[0], pivot=rng.choices(pivots, weights=pw)[0])
+    own = [p for p in pivots if hits(p, text)]                   # their own "but" is the turn when they name one
+    pivots = own or pivots
+    pw = [p["weight"] for p in pivots]
+    cores = fear["core"] if isinstance(fear["core"], list) else [fear["core"]]
+    return dict(fear=fear, core=rng.choice(cores), evidence=rng.choices(evidence, weights=ew)[0],
+                pivot=rng.choices(pivots, weights=pw)[0])
 
 
 def key(choice):
