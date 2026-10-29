@@ -158,6 +158,19 @@ The x4 window (31 Oct 13:00 UTC to 2 Nov 07:00 UTC; Sat 9pm to Mon 3pm Perth) ho
 
 Not on the list, on purpose: new arms, more accounts, top-level posts, Sonnet or bigger models in posted text ([reply-back persuasion](replyback-persuasion-2026-10-28.md)), Blue post-report tuning.
 
+## 10b. What shipped on 29 Oct (Marc approved the plan; no new arms)
+
+| # | change | commit, live (UTC) | checked on the box after the deploy |
+|---|---|---|---|
+| 0 | LLM budget 195, floor 18, Sonnet off (`PREMIUM_REPLY_MODELS = ()`, chain line commented out) | 8593ec7, 03:29 | allowance $55 today; writing ~3/min on Kimi and Haiku |
+| 1 | Citizens above 2343 in every block and through the freeze (`NPC_EXTRA_ARM`, `NPC_ARMS = ["extra"]`, `FREEZE_PIN`), Blue guard on. `followup.py` counts likely citizens in `citizen_*` (rows marked `cit_def: "likely"`, `npc_*` kept as the subset), so no read-out is blind to them again | c8f14d0, 04:03 | first 8 min: 6 of 23 replies to them, all `arm_npc` extra; Blue skipped 3 likely citizens |
+| 2 | Prompt fixes in every block (`STYLE_ARMS = ["fixes"]`). Every switchback dimension has one arm (mention, shallow, extra, fixes), before and after the freeze | c8f14d0 | 23 of 23 replies `arm_style` fixes |
+| 3 | Late replies off (`LATE_REPLY = False`) | c8f14d0 | no `late` group writes |
+| 4 | Blue scan and sibling leads file by default (`SCAN_FILE_DEFAULT`; `BLUE_SCAN_FILE=0` logs only) | c8f14d0 | 24 account reports in the first 8 min (was ~22 a day); pending 2 → 21; teams with reports today 9 → 30 |
+| 5 | Today's news in replies: `content/news.toml` (stories that favour No, each on active facts), `swan_bot/news.py` (weight by impact, half-life 6/12/30 h by impact, lifted by matching citizen posts over the last 6 h, doubled for the story the citizen's post is about), `NEWS_SHARE` 0.3 of first replies and reply-backs, every turnout reply (poll story first). Fact desk: Poll 3 facts accepted (#95-98: `polls_1029` and the WORLD sentence pointed at it), #81 and #92, two facts from the 28 Oct papers by hand. The desk's autopilot had been refusing #95-98 since 20:50 UTC: accepting #95 drops the WORLD poll sentence until it names the new key, which only a human can do (`test_no_pause_means_everything_is_live`); and the review tool's full run failed on a slow test broken since own likes went off (fixed) | 08d72f1 (facts), d9d24c7 (news), 05:04 | fast suite 1,509 and slow suite 90 green; see the table below for the live check |
+
+Early voting stays out of replies: `quality.WRONG_LOGISTICS` rejects any voting logistics (team rule since 22 Oct, so a wrong time or place can never go out), and the poll story carries the urgency instead.
+
 ## 11. Questions for `#questions` (drafts, Marc to post)
 
 - **B.14, citizens added after launch.** "Our records count citizens at ids 12-2343, about 2,330 accounts, but the competition page says just over 6,000. Were more citizen accounts created after launch (we see many created 19-21 Oct that post like citizens), and about how many citizens are there now?"
