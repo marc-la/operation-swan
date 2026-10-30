@@ -1965,7 +1965,8 @@ def blue_tile(blue):
                                           f"{blue['ready']} reports ready; see Blue below for why the rest are not filed."))
     return dict(key="blue", name="Blue reports", light=light, tip=tip.format(cap=cap), rows=[row], row=2, fill=fill,
                 head=head,
-                sub=f"{c['success']} successful · {c['failed']} failed" + (f" · locked until {blue['locked']}" if blue["locked"] else ""))
+                sub=f"{c['success']} successful · {c['failed']} failed" + (f" · +{extra} ruled early" if extra else "") +
+                    (f" · locked until {blue['locked']}" if blue["locked"] else ""))
 
 
 ROOM_STALE_S = 30 * 60         # swan-bot writes data/room.json every 10 min (todo/52 WS1)

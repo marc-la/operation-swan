@@ -917,7 +917,7 @@ def test_blue_tile_never_shows_more_pending_than_the_cap(tmp_path):
     # 30 Oct (Marc): the ledger held 36 while the platform, which never has more than 30 awaiting, kept taking reports
     t, ctx, html = blue_tile_of(tmp_path, pending=36)
     assert (t["light"], t["head"], t["fill"]) == ("green", "30/30 pending", 1.0)
-    assert "6 more already ruled" in t["rows"][0]["now"] and "36/30" not in html
+    assert "6 more already ruled" in t["rows"][0]["now"] and "+6 ruled early" in t["sub"] and "36/30" not in html
     assert "30/30 pending" in ctx["blue_banner"]["text"]
 
 
