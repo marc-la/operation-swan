@@ -316,13 +316,13 @@ def light(ctx, key):
     return next(i for i in ctx["reach"]["lights"] if i["key"] == key)["light"]
 
 
-def test_reach_is_ten_tiles_and_zero_posting_is_red_not_green(tmp_path):
+def test_reach_is_nine_tiles_and_zero_posting_is_red_not_green(tmp_path):
     f = {"2026-10-22T05": {"seen": 3, "answered": 3, "skipped": {}, "lost": {}, "pending": {}}}
     ctx, html = page(make_root(tmp_path, [refresh(1, f), write(90)]))       # everything we saw was answered, then silence
-    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "engagement", "blue", "room"]
-    assert [i["row"] for i in ctx["reach"]["lights"]] == [0, 0, 0, 1, 1, 1, 2, 2, 2, 3]       # reach; hide rate to writes per ban to bans; accounts, engagement per write, Blue; the room (todo/52)
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "engagement", "blue"]
+    assert [i["row"] for i in ctx["reach"]["lights"]] == [0, 0, 0, 1, 1, 1, 2, 2, 2]       # reach; hide rate to writes per ban to bans; accounts, engagement per write, Blue
     assert light(ctx, "volume") == "red" and "last post 1 h" in rowof(ctx, "Posting")["now"]
-    assert ctx["worst"] != "red" and html.count('class="light ') == 10 and "Citizens answered" not in html    # a red tile is performance, not an outage
+    assert ctx["worst"] != "red" and html.count('class="light ') == 9 and "Citizens answered" not in html    # a red tile is performance, not an outage
     assert light(ctx, "speed") == "grey"                                     # nothing timed: never green by default
 
 
@@ -861,8 +861,8 @@ def test_no_pool_and_no_audit_render_as_before(tmp_path):
     ctx, html = page(make_root(tmp_path, FULL))
     assert ctx["pool"] is None and 'id="pool"' not in html and "poolrow" not in html
     assert not any(r["name"].startswith("Pattern") for r in ctx["reach"]["rows"])
-    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "engagement", "blue", "room"]
-    assert html.count('class="light ') == 10 and ctx["worst"] == BASE
+    assert [i["key"] for i in ctx["reach"]["lights"]] == ["speed", "volume", "conversion", "hide", "life", "stealth", "accounts", "engagement", "blue"]
+    assert html.count('class="light ') == 9 and ctx["worst"] == BASE
     assert tile(ctx, "accounts")["head"] == "12 writing" and tile(ctx, "engagement")["light"] == "grey"      # no pool, no portal: nothing to grade
 
 
@@ -874,7 +874,7 @@ def test_pool_folds_into_the_accounts_tile(tmp_path):
     ctx, html = pool_page(tmp_path)
     acc = tile(ctx, "accounts")
     assert acc["light"] == "green" and acc["head"] == "12 writing" and acc["sub"] == "of 31 wanted · 46 alive"
-    assert "poolrow" not in html and html.count('class="light ') == 10
+    assert "poolrow" not in html and html.count('class="light ') == 9
     assert "pool_convert" in html and "&lt;script&gt;x&lt;/script&gt;" in html and "<script>x" not in html     # newest first, escaped
     assert [a["act"] for a in ctx["pool"]["acts"]] == ["pool_convert", "pool_register"] and ctx["worst"] == BASE
 
@@ -960,7 +960,7 @@ def test_pattern_audit_rows_on_the_stealth_tile(tmp_path):
     assert rowof(ctx, "Pattern: Gap variation")["target"].startswith("≥ 0.5 green · ≥ 0.25 amber")
     assert rowof(ctx, "Pattern: Gaps within")["light"] == "grey" and rowof(ctx, "Pattern: Gaps within")["target"].startswith("≤ 0.25")
     assert rowof(ctx, "Worst voices")["now"] == "ana_t (12), bo_k (20)" and rowof(ctx, "Worst voices")["light"] == "grey"
-    assert "Nothing amber or red." in st["tip"] and ctx["worst"] != "red" and html.count('class="light ') == 10
+    assert "Nothing amber or red." in st["tip"] and ctx["worst"] != "red" and html.count('class="light ') == 9
     assert not any(r["name"] == "Pattern score" for r in ctx["reach"]["fixes"])
 
 
@@ -1027,50 +1027,3 @@ def test_hot_status_odd_values_do_not_break_the_page(tmp_path):
     for junk in ({"active": 5, "spares": "x", "lost": None}, [], "hot", {}):
         ctx, html = page(make_root(tmp_path / str(abs(hash(str(junk)))), FULL, status={"hot": junk}))
         assert "Swan" in html
-
-
-# ---- the room (todo/52 WS1, WS2) -----------------------------------------------------------------------------------------
-def room_json(minutes_ago=3, **kw):
-    r = {"ts": iso(minutes_ago), "window_h": 3, "base_h": 24, "building": False,
-         "posts": {"recent": 600, "base": 4800, "day": 4700},
-         "stance": {"recent": {"yes_but": 0.7, "lean_no": 0.2, "unclear": 0.1}, "day": {"yes_but": 0.72, "lean_no": 0.18, "unclear": 0.1}},
-         "reads": {"recent": {"n": 520, "mix": {"yes_but": 0.71, "lean_no": 0.19, "firm_no": 0.1}},
-                   "day": {"n": 4298, "mix": {"yes_but": 0.734, "lean_no": 0.167, "firm_no": 0.047, "firm_yes": 0.014}}},
-         "fear": {"recent": 0.23, "base": 0.21, "day": 0.22},
-         "drivers": [{"key": "b2_end", "family": "but", "label": "end date, sunset, review", "n": 360, "share": 0.6, "base": 0.59, "x": 1.0, "rising": False},
-                     {"key": "y1_hospitals", "family": "fear", "label": "hospitals, the health system", "n": 130, "share": 0.22, "base": 0.09, "x": 2.4, "rising": True},
-                     {"key": "n4_livelihoods", "family": "no", "label": "livelihoods, business, tourism", "n": 66, "share": 0.11, "base": 0.11, "x": 1.0, "rising": False}],
-         "phrases": [{"phrase": "wastewater retest", "n": 12, "share": 0.02, "base": 0.0, "x": 24.0},
-                     {"phrase": "<script>alert(1)</script> sunset", "n": 7, "share": 0.01, "base": 0.0, "x": 9.0}],
-         "lifted": ["evidence.surge_drill"], "lift": {"on": True, "x": 1.5, "rise": 2.0}, "error": None}
-    r.update(kw)
-    return r
-
-
-def test_the_room_tile_reads_room_json_and_the_panel(tmp_path):
-    root = make_root(tmp_path, [write(3)])
-    ctx, _ = page(root)
-    tile = next(i for i in ctx["reach"]["lights"] if i["key"] == "room")
-    assert tile["light"] == "grey" and tile["head"] == "—" and "not written yet" in tile["rows"][0]["now"]
-    (root / "data" / "room.json").write_text(json.dumps(room_json()))
-    (root / "data" / "panel.json").write_text(json.dumps({"ts": iso(20), "last24": {"reread": 1104, "to_no": 412, "per100_to_no": 37.32,
-                                                                                    "per100_to_yes": 28.44, "per100_net": 8.88},
-                                                          "day_before": {"reread": 969, "per100_net": 2.27}}))
-    ctx, html = page(root)
-    tile = next(i for i in ctx["reach"]["lights"] if i["key"] == "room")
-    rows = {r["name"]: r["now"] for r in tile["rows"]}
-    assert tile["light"] == "grey" and tile["head"] == "73% Yes, but" and "lean No 17%" in tile["sub"]
-    assert "hospitals, the health system 22% from 9%" in rows["Rising (2x the day before's share)"]
-    assert "evidence.surge_drill (x1.5)" == rows["The flip lifts"]
-    assert "livelihoods" not in rows["Biggest worries, last 3 h"]                  # the No case is not a worry to answer
-    assert rows["Panel: net moves to No per 100 re-read citizens"] == "+8.9 last 24 h (to No 37.3, to Yes 28.4; 1,104 re-read) · +2.3 the day before"
-    assert "<script>alert(1)" not in html and "room-tile" in html
-
-
-def test_the_room_tile_goes_amber_when_the_bot_stops_writing(tmp_path):
-    root = make_root(tmp_path, [write(3)])
-    (root / "data" / "room.json").write_text(json.dumps(room_json(minutes_ago=45)))
-    ctx, _ = page(root)
-    tile = next(i for i in ctx["reach"]["lights"] if i["key"] == "room")
-    assert tile["light"] == "amber" and "45 min ago" in tile["rows"][0]["now"]
-    assert "has not run yet" in tile["rows"][-1]["now"]
