@@ -1,6 +1,8 @@
 # 53 — The last three days: where our rate leaks (problems, open for new solutions)
 
-Written Sat 31 Oct 2026, ~01:30 Perth (30 Oct 17:30 UTC), by Claude with Marc. **Status: open.** Marc asked for a frank,
+Written Sat 31 Oct 2026, ~01:30 Perth (30 Oct 17:30 UTC), by Claude with Marc. **Status: open. Designs for each problem
+(P1 → todo/54, P2 → 55, P3 → 56, P4 → 57, P5 → 58, P6 → 59, P7 → 60, P8 → 61, P9 → 62) and the run order to the last deploy
+are in [todo/README](README.md) (31 Oct ~03:30 Perth, Claude).** Marc asked for a frank,
 independent read of what holds our leaderboard position back, problems only, so that a fresh session can look for new and
 novel solutions. This file is that list, with the evidence behind each item, what has already been ruled out, and the
 constraints any fix must respect.

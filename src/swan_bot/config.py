@@ -630,7 +630,9 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
                "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN",
                "FLIP_ON", "FLIP_FEAR",                                          # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
-               "ROOM_LIFT_ON", "PULSE_CITIZENS")                                # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items; SWAN_PULSE_CITIZENS=0 the worries
+               "ROOM_LIFT_ON", "PULSE_CITIZENS",                                # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items; SWAN_PULSE_CITIZENS=0 the worries
+               "JIT_LEAD_S", "QUEUE_SHALLOW_AHEAD", "REFRESH_S", "TRENDING_EVERY",   # todo/58: SWAN_JIT_LEAD_S=0 + SWAN_QUEUE_SHALLOW_AHEAD=2 undo the slot pick
+               "LEAD_HAIKU_SHARE")                                              # todo/61: SWAN_LEAD_HAIKU_SHARE=0.3 if the LLM budget runs short (Kimi is cheaper)
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance
@@ -836,7 +838,14 @@ ENG_BLOCK_S = 2 * 3600
 # still drops a block to fresh when sends run late. Was ["base", "fresh", "shallow"].
 QUEUE_ARMS = ["shallow"]
 QUEUE_BLOCK_S = 3 * 3600
-QUEUE_SHALLOW_AHEAD = 2
+QUEUE_SHALLOW_AHEAD = 1             # 31 Oct (todo/58): was 2. One draft, chosen JIT_LEAD_S before its slot (below)
+# todo/58 (31 Oct, Marc): in shallow blocks the next job is chosen JIT_LEAD_S seconds before the writer's next slot, so it
+# answers the freshest post then. With two drafts ahead the job was chosen right after a send, ~20 s before it could go out,
+# and the other ready draft aged until QUEUE_MAX_WAIT_S sent it stale (9.1% of sends, 29-30 Oct, proxy 1.67). Drafting takes
+# ~2 s (p90 6.3 s); a first reply's proxy falls ~0.03 a second in its first minute (hour-adjusted, 27-30 Oct). A draft not
+# ready at the slot goes when it lands; QUEUE_GUARD_N late sends drop the block to fresh, which fills ahead again (no hold).
+# 0 = off: today's fill-ahead. Kill without a push: SWAN_JIT_LEAD_S=0 and SWAN_QUEUE_SHALLOW_AHEAD=2 in .env, then restart.
+JIT_LEAD_S = 7
 # todo/47 (closed 27 Oct, Marc): in the newest-first pick these classes count as DOWNRANK_MIN minutes older than they are,
 # so a fresh conditions / yes_reason post goes before a fresh unclear one, and a stale one does not. Reply rate against
 # conditions, adjusted for the post's age: unclear -2.3, unsure -5.2, off_topic -4.9 points (within one citizen, the

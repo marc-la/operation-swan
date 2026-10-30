@@ -750,8 +750,16 @@ def queue_arm(t=None, late_sends=()):
 
 
 def draft_ahead(arm):
-    """Drafts chosen and not sent (ready + inflight) allowed in this queue arm."""
-    return min(config.DRAFT_AHEAD, config.QUEUE_SHALLOW_AHEAD) if arm == "shallow" else config.DRAFT_AHEAD
+    """Drafts chosen and not sent (ready + inflight) allowed in this queue arm (at least 1: an .env 0 can't stop drafting)."""
+    return max(1, min(config.DRAFT_AHEAD, config.QUEUE_SHALLOW_AHEAD) if arm == "shallow" else config.DRAFT_AHEAD)
+
+
+def jit_hold(next_write, now, arm, lead=None):
+    """todo/58: True while a drafter should wait before choosing its next job: a shallow block, JIT_LEAD_S on, and the
+    writer's next slot more than `lead` seconds away, so the job chosen is the freshest post just before its slot. Never
+    before the first send (next_write 0), in other arms (fresh is the late-send guard's fill-ahead), or past the slot."""
+    lead = config.JIT_LEAD_S if lead is None else lead
+    return bool(lead) and arm == "shallow" and next_write > 0 and next_write - now > lead
 
 
 def target_made(d):
@@ -2420,10 +2428,11 @@ def main():
         """Choose the next job and draft it while the writer waits for its slot. config.DRAFTERS of these run at once,
         each with its own job: choose() and the reservation of the job's voice happen together under mu, so two
         drafters never hold the same voice or citizen, and drafts chosen but not sent (ready + inflight) stay at most
-        DRAFT_AHEAD."""
+        DRAFT_AHEAD. todo/58: in shallow blocks it also waits until the writer's next slot is JIT_LEAD_S away (jit_hold)."""
         def full():
             with mu:
-                return len(ready) + len(inflight) >= draft_ahead(queue_arm(late_sends=late_sends))
+                arm = queue_arm(late_sends=late_sends)
+                return len(ready) + len(inflight) >= draft_ahead(arm) or jit_hold(next_write, time.time(), arm)
         no_model_ok(answered=False)          # a spell of no model ends once a model has answered for a while
         if full():
             stop.wait(IDLE_S)
@@ -2445,8 +2454,9 @@ def main():
                 return
             woken.clear()
             with mu:
-                if len(ready) + len(inflight) >= draft_ahead(queue_arm(late_sends=late_sends)):   # the others filled it while this one waited
-                    return
+                arm = queue_arm(late_sends=late_sends)
+                if len(ready) + len(inflight) >= draft_ahead(arm) or jit_hold(next_write, time.time(), arm):
+                    return                                   # the others filled it while this one waited (or the slot moved)
                 job, drafted, wait = choose(time.time(), ids)
                 if job:
                     if not config.HOT_VOICES:                           # hot mode: one voice has several drafts at once

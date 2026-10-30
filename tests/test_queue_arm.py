@@ -53,9 +53,49 @@ def test_a_missing_created_at_goes_last_among_the_fresh():
 def test_depth_by_arm(monkeypatch):
     monkeypatch.setattr(config, "DRAFT_AHEAD", 4)
     assert bot.draft_ahead("base") == bot.draft_ahead("fresh") == 4
-    assert bot.draft_ahead("shallow") == config.QUEUE_SHALLOW_AHEAD == 2
+    assert bot.draft_ahead("shallow") == config.QUEUE_SHALLOW_AHEAD == 1     # todo/58 (31 Oct): one draft, chosen at the slot
+    monkeypatch.setattr(config, "QUEUE_SHALLOW_AHEAD", 2)
+    assert bot.draft_ahead("shallow") == 2              # the .env rollback (SWAN_QUEUE_SHALLOW_AHEAD=2)
     monkeypatch.setattr(config, "DRAFT_AHEAD", 1)
     assert bot.draft_ahead("shallow") == 1              # never deeper than the global cap
+    monkeypatch.setattr(config, "QUEUE_SHALLOW_AHEAD", 0)
+    assert bot.draft_ahead("shallow") == 1              # an .env 0 can't stop drafting
+
+
+# ---- todo/58 (31 Oct): the next job is chosen JIT_LEAD_S before the writer's slot, so it answers the freshest post ----
+def test_jit_holds_a_drafter_until_the_slot_is_near():
+    assert config.JIT_LEAD_S == 7
+    assert bot.jit_hold(NOW + 20, NOW, "shallow")             # the slot is 20 s away: wait
+    assert bot.jit_hold(NOW + 7.5, NOW, "shallow")
+    assert not bot.jit_hold(NOW + 7, NOW, "shallow")          # 7 s away: choose now
+    assert not bot.jit_hold(NOW - 5, NOW, "shallow")          # the slot has passed (a late send): choose at once
+
+
+def test_jit_never_holds_off_shallow_before_the_first_send_or_when_off(monkeypatch):
+    for arm in ("fresh", "base"):
+        assert not bot.jit_hold(NOW + 20, NOW, arm)           # fresh is the late-send guard's fill-ahead
+    assert not bot.jit_hold(0.0, NOW, "shallow")              # nothing sent yet (and a dry run never sets next_write)
+    assert not bot.jit_hold(NOW + 20, NOW, "shallow", lead=0)
+    monkeypatch.setattr(config, "JIT_LEAD_S", 0)
+    assert not bot.jit_hold(NOW + 20, NOW, "shallow")         # SWAN_JIT_LEAD_S=0: today's fill-ahead
+    monkeypatch.setattr(config, "JIT_LEAD_S", 30)
+    assert not bot.jit_hold(NOW + 20, NOW, "shallow")         # a longer lead chooses earlier
+
+
+def test_the_drafter_checks_the_hold_before_and_after_it_waits():
+    src = pathlib.Path(bot.__file__).read_text()
+    assert src.count("jit_hold(next_write, time.time(), arm)") == 2      # full() and the race guard under mu
+
+
+def test_the_queue_settings_are_env_switches(monkeypatch):
+    names = ("JIT_LEAD_S", "QUEUE_SHALLOW_AHEAD", "REFRESH_S", "TRENDING_EVERY", "LEAD_HAIKU_SHARE")
+    for name in names:
+        assert name in config.STEALTH_ENV
+        monkeypatch.setattr(config, name, getattr(config, name))       # stealth_from_env sets globals: restored after
+    monkeypatch.setattr(config, "LEAD_HAIKU_SHARE", 0.5)                # the live value's type (conftest sets an int 0)
+    assert config.stealth_from_env({"SWAN_JIT_LEAD_S": "0", "SWAN_QUEUE_SHALLOW_AHEAD": "2",
+                                    "SWAN_LEAD_HAIKU_SHARE": "0.3"}) == dict(JIT_LEAD_S=0, QUEUE_SHALLOW_AHEAD=2,
+                                                                            LEAD_HAIKU_SHARE=0.3)
 
 
 def test_off_a_switchback_the_arm_is_base(monkeypatch):

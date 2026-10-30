@@ -6,14 +6,35 @@ Each file is one self-contained work item. Open a fresh Claude Code session and 
 
 The *why* behind all of them: [diagnosis-2026-10-20](../docs/06-strategy/diagnosis-2026-10-20.md). Our posts get **1.3 views each** against 300–480 for the leaders, we use 11% of our write budget, and we file 0 reports.
 
+## 31 Oct: the run order to the last deploy (06:00 UTC, 2pm Perth)
+
+Designs for [todo/53](53-the-last-three-days.md)'s nine problems, one file each (54-62, written 31 Oct ~03:30 Perth).
+- **On red alone we're on course for third** (~590k against china ~594k and Yeah ~599k at 24 h paces; [62](62-the-rivals.md)).
+- **What ships** (Marc approves each, and the push is the approval):
+  1. [58](58-speed.md) step 1 (code). Then 58 step 2, a `.env` change, after 30-60 clean minutes.
+  2. [54](54-firm-the-no.md) and [59](59-prune.md) together (content and small code, one restart).
+  3. [61](61-x4-operations.md): item 1 is `.env` plus a Discord webhook, before 13:00 UTC; items 2-4 go in the push of step 2.
+  4. [55](55-persuasion-and-the-pool.md): questions for `#questions`, today.
+- **No change, closed with reasons:** [56](56-backfire.md), [57](57-one-voice.md), [60](60-reply-backs.md) (doc
+  corrections only), [62](62-the-rivals.md).
+
 ## Order and owners
 
 Owners are suggestions using the roles in [system-architecture §5](../docs/06-strategy/system-architecture.md#5-how-4-people-work-without-stepping-on-each-other). Swap names in as people pick items up.
 
 | # | Item | Owner (role) | When | Needs |
 |---|---|---|---|---|
+| [62](62-the-rivals.md) | **The rivals (P9):** china stepped from ~1.9k to ~2.6k an hour at 30 Oct 01:00 UTC without taking our citizens (our yield on them unchanged); Yeah's edge is the Yes tide's persuasion. On red alone we finish third. Looking at rivals in aggregate is allowed (§5.2.1) but too late to use. The answer is 58 and 54 | — | no build | — |
+| [61](61-x4-operations.md) | **Running ×4 safely (P8):** no alert reaches a phone today (`ALERT_WEBHOOK_URL` and `HEALTHCHECK_PING_URL` unset); no alarm for a slow writer; the fact desk's tests time out on the box; no day reserve in the LLM budget ($8-10 of slack). A webhook and urgent prefixes, a slow-writer alarm, a budget alert, fact tests scoped to changed keys, push rules, the rota | Marc (webhook), any session (code) | item 1 before 13:00 UTC 31 Oct; the rest in the 06:00 UTC deploy | Discord webhook |
+| [60](60-reply-backs.md) | **Reply-backs (P7):** we answer 67% of visible citizen replies within ~2 min; 21% are deep-thread skips by design. The portal books about twice the replies and likes our posts carry, and they aren't late arrivals (counters agree; none after 6 h or a suspension). No bot change; two doc corrections | — | docs push | — |
+| [59](59-prune.md) | **Prune (P6):** retire frame F5 (−0.97 ±0.28 within class, 3.5 SE); give the flip's lines wordings without "door" (the gate rejects about 8 drafts per 100 for the word the flip asks for). Optional: Haiku leads at high-value targets. The plain-fact opener wasn't 21% worse on the hour-adjusted read | any session | with 54, before 06:00 UTC 31 Oct | slow sweep |
+| [58](58-speed.md) | **Speed (P5), the largest lever:** fresh supply is exhausted (2 of 8,400 queued posts under 10 min old); the proxy falls about 0.03 a second in the first minute (hour-adjusted, +1.10 at 0-15 s to +0.27 at 40-50 s); median age at send 37.6 s, of which drafting is 2 s. Choose the job 7 s before the slot (`JIT_LEAD_S`, draft-ahead 1), then read Latest every 5 s. Planning figure +5-6% (+10k), range +6-29k | any session, Marc approves | live by ~01:00-02:00 UTC 31 Oct | tests |
+| [57](57-one-voice.md) | **One voice (P4):** no voice fatigue, no gain from a new voice on repeat writes, follows unrelated to voice age, messenger matching touches 0.5% of targets, no late replies to rescue. Keep hot mode and the refill | — | no change | — |
+| [56](56-backfire.md) | **Backfire (P3):** away contributions per 1,000 writes 26.1 → 23.1 across the flip, primary away 1.2 → 0.7, replies +11%; toward fell the day before the flip (the Yes surge). Keep the flip; a ×4 tripwire (away > 30 per 1,000 over 12 h → fear dial 0) | — | no change | — |
+| [55](55-persuasion-and-the-pool.md) | **Persuasion we can't see (P2):** per-write persuasion can't be measured in time (toward is 0-1 an hour). Ask: do "neither side" vaccination changes (9-20 primary a day) count toward the pool? Also B.12, B.13, B.7, and what the portal's extra replies are | Marc posts | today | — |
+| [54](54-firm-the-no.md) | **Firm the No (P1):** lean-No posts are already answered in 0.7 min (priority isn't the problem). The turnout line is the echo the scoring page says doesn't persuade, half of these replies also carry the flip, and "every No counts" lands as the campaign silence begins. Every lean-No reply gets the flip's reassurance and a firming line instead | any session | with 59, before 06:00 UTC 31 Oct | slow sweep |
 | ~~19~~ | ✓ **Shipped 2026-10-21 (d99bd34):** citizen writes first; Latest every 2 min, paged; "Yes, with conditions" kept; reply-backs and second voices on | Marc + Claude | done | — |
-| [53](53-the-last-three-days.md) | **The last three days (31 Oct): where our rate leaks.** Nine problems ranked by what they cost on the board, each with its evidence, what is already ruled out, and the constraints on any fix: problems only, open for new solutions. The 30 Oct pool change (500,000, of which 400,000 is split over persuasion on 31 Oct-2 Nov) makes the count and persuasion toward No the deciding factors | open (Marc approves) | before and during ×4 (from 31 Oct 13:00 UTC) | — |
+| [53](53-the-last-three-days.md) | **The last three days (31 Oct): where our rate leaks.** Nine problems ranked by what they cost on the board, each with its evidence, what is already ruled out, and the constraints on any fix: problems only, open for new solutions. The 30 Oct pool change (500,000, of which 400,000 is split over persuasion on 31 Oct-2 Nov) makes the count and persuasion toward No the deciding factors. **Designs: 54-62 (31 Oct), run order above** | open (Marc approves) | before and during ×4 (from 31 Oct 13:00 UTC) | — |
 | ~~52~~ | ✓ **Closed 2026-10-31:** read the room. WS1-3, 5, 6 and 8 live on 29 Oct; the 24 h read (30 Oct): engagement per write 5.42 → 6.08, mostly from the extra citizens; the flip's effect on persuasion can't be read (the panel was confounded by the targeting change); the Room tile left the dashboard (565357a). Open problems carried into [53](53-the-last-three-days.md). Handoff deleted (git history 67fbf07) | — | done | — |
 | ~~51~~ | ✓ **Closed 2026-10-31:** reply-back fixes live since 28 Oct (no Sonnet lane, depth cap 8, no conceding a conditional Yes, an outcome rule, a drawn opener); reply-backs drew 2.84 proxy points a write on 29-30 Oct. Handoff deleted (git history 67fbf07) | — | done | — |
 | ~~50~~ | ✓ **Closed 2026-10-31:** prompt fixes in every block since 29 Oct (`STYLE_ARMS = ["fixes"]`, pinned for the freeze; `LEAN_PROMPT` off), +16% proxy against base ([situation §3](../docs/06-strategy/situation-2026-10-29.md)). 30 Oct: the plain-fact opener left `FIXES_OPENERS` (67fbf07). Handoff deleted (git history 67fbf07) | — | done | — |
