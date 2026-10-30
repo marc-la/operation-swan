@@ -17,7 +17,7 @@
 | — | 28 Oct | In-world early voting opens |
 | — | last week of Oct | In-world: first 120,000 vaccine doses arrive (setting colour) |
 | **Day 13** | **1 Nov** *(derived)* | **Red multiplier → ×4**; in-world campaign silence begins at 00:00 |
-| **Day 14** | **Mon 2 Nov** | **Referendum**: 20,000 base + share of 100,000 persuasion pool to winning-side teams (awards recalibrated 20 Oct). Competition ends (the feed locks) |
+| **Day 14** | **Mon 2 Nov** | **Referendum**: 20,000 base + share of the persuasion pool to winning-side teams (awards recalibrated 20 Oct; pool 100,000 → **500,000 on 30 Oct**: 100,000 by persuasion to 30 Oct, 400,000 by persuasion 31 Oct-2 Nov). Competition ends (the feed locks) |
 | After | **December** (date TBC) | Top 3 by score present at the Sydney prizegiving. All members must complete the **post-competition survey** and finalists hand over all source code (rules §7.5) |
 
 > The "Day" numbers and calendar dates come straight from the scoring guide's poll table (Day 2 = 21 Oct, Day 6 = 25 Oct, Day 10 = 29 Oct, Day 14 = 2 Nov). Day 7 = 26 Oct and Day 13 = 1 Nov are our arithmetic.

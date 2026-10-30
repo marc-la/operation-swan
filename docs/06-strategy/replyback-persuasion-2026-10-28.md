@@ -226,7 +226,7 @@ Persuasive argument in the reply-back itself did not survive testing. Any gain w
 | 4 | **One rule against overclaims** in every reply-back prompt (not the system prompt, which first replies share): "Claim no more about what a Yes or a No would lead to than the facts you were given say." | `content.py` | "they *can't* add a sunset later", "health workers already get the jab free", "we get to write those conditions in" | small | spot audit of 50 |
 | 5 | **Vary the thanks opener** instead of asking for it: "If they agreed, start with a short thanks…" becomes a choice among a brief reaction in your own words, a thanks, or none | `content.reply_back_prompt` | 78% open with Cheers/Ta/Thanks. That is a stream-level fingerprint for a rival Blue team, though the per-reply raters don't penalise it (base P(bot) ≈ citizens) | none | opener share under ~40% |
 
-**Built and deployed 28 Oct ([todo/51](../../todo/51-reply-back-fixes.md)).** All five went in as above, each with its own switch, reply-backs only.
+**Built and deployed 28 Oct (todo/51 (handoff deleted 31 Oct, git history 67fbf07)).** All five went in as above, each with its own switch, reply-backs only.
 - **One addition:** a `too_late` phrase budget. The outcome rule's first wording put "too late to argue" in 3 of 40 offline drafts, so the rule was reworded and the phrase budgeted.
 - **The concession check:** tuned on these 1,210 labelled reply-backs. It fires on 13% of them, and the code fix rescues 87% of those with no LLM call.
 - **Offline, 40 recent reply-backs redrafted with the new code on Kimi/Haiku:** sendable 40/40 (34 first try); opens with thanks 12% against 75% sent; concessions to conditional-Yes citizens 0 of 31 against 3 sent.

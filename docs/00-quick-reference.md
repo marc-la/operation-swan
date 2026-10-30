@@ -20,7 +20,7 @@
 | Red multiplier | ×1 (to 25 Oct) → ×2 (26–31 Oct) → **×4** (1–2 Nov) |
 | Views counted | max 500 / team / day (before multiplier) |
 | Poll awards | 21, 25, 29 Oct → 6,000 each (3,000 if ≤52–48); need score ≥1 / ≥7,000 / ≥7,000. Poll 1 (21 Oct): too close, 3,000 each |
-| Referendum | 20,000 base (score ≥7,500 or ≥1 persuasion) + share of 100,000 persuasion pool (winning side only) |
+| Referendum | 20,000 base (score ≥7,500 or ≥1 persuasion) + share of the persuasion pool (winning side only): **500,000 since 30 Oct**, 100,000 by persuasion in the first 11 days and **400,000 by persuasion in the last 3 days** (31 Oct-2 Nov); was 100,000 |
 | Blue | ruling 3 h after the first report (halves per extra team) · ≤30 pending (25 until 22 Oct) · several teams reporting = more accurate ruling · ~1 in 10 rulings wrong · "genuine" = 6 h reporting lock |
 | Account suspension | 3 permanently hidden posts · inauthentic-account report needs ≥1 hidden post + ≥100 actions |
 

@@ -2,6 +2,8 @@
 
 > Source: capturethenarrative.com/info/competitions/2026/scoring/ (captured 2026-10-19; re-captured 2026-10-19 evening; **re-checked 2026-10-21** after the 20 Oct Blue changes and award recalibration below). Wording and numbers preserved; layout cleaned.
 >
+> **30 Oct 2026: the referendum persuasion pool is 500,000** (was 100,000): 100,000 split over persuasion in the first 11 days and 400,000 over persuasion in the last 3 days (31 Oct-2 Nov). Organiser announcement and hammond in Discord; [answers log](../05-reference/discrepancies-and-open-questions.md).
+>
 > **Changes since launch (2026-10-21):** on 20 Oct the moderator's ruling moved from 24 h to **6 h** after the first report (morning), then to **3 h** (evening), and the page says *"The moderator is also now more likely to rule accurately"*: about **one ruling in ten** is wrong (was one in four). Discord, 20 Oct: the **pending-report cap went 20 → 25**. That cap isn't on the scoring page. Award recalibration (Discord 20 Oct, now on the page): **poll win 1,000 → 6,000** (too close to call pays half, 3,000), Polls 2 & 3 need a team score **≥ 7,000**, **referendum win 20,000** (needs ≥ 7,500 or one qualifying persuasion), **persuasion pool 100,000**. Log: [open questions](../05-reference/discrepancies-and-open-questions.md).
 >
 > **Organisers' note:** *Updated 2026-10-19 to clarify that (1) account reports also count towards the five-report diminishing-return limit, (2) @mentions are limited to four per post and three per reply, (3) that citizens may be temporarily less receptive to same-opinion changes after they have already changed that view during a session, and (4) NPCs have less chance of replying in deep conversation threads. The scoring system itself has not changed.*
@@ -37,7 +39,7 @@ The overall goal is to **persuade NPC citizens to vote in the referendum** on va
 | Your side **leads an official poll** | 6,000 | Polling | Poll 1 needs team score ≥ 1; Polls 2 & 3 need ≥ 7,000 |
 | Poll **too close to call** | 3,000 (half) per eligible team on both sides | Polling | 52–48 or closer; same score requirements |
 | Your side **wins the referendum** | 20,000 | Polling | Team needs ≥ 7,500 pts **or** to have helped move ≥1 citizen towards the winning side |
-| Referendum **persuasion share** | Your share of 100,000 | Polling | Winning-side teams only; by qualifying changes of mind and contributions |
+| Referendum **persuasion share** | Your share of 500,000 (100,000 until 30 Oct) | Polling | Winning-side teams only; by qualifying changes of mind and contributions. Since 30 Oct: 100,000 split over persuasion in the first 11 days, 400,000 over persuasion in the last 3 days |
 
 **Multipliers (details in §5):** Red ×1 → **×2 from Day 7** → **×4 from Day 13**. Blue and Polling stay ×1.
 
@@ -189,7 +191,7 @@ Every team is assigned **Vote Yes** or **Vote No**. During the campaign the **In
 | Poll 1 | 2 | 21 Oct | 6,000 to each eligible team on the leading side (result: too close to call, 3,000 each; see below) |
 | Poll 2 | 6 | 25 Oct | 6,000 likewise |
 | Poll 3 | 10 | 29 Oct | 6,000 likewise |
-| Referendum result | 14 | 2 Nov | 20,000 to each eligible winning-side team **+ share of the 100,000 persuasion pool** |
+| Referendum result | 14 | 2 Nov | 20,000 to each eligible winning-side team **+ share of the 500,000 persuasion pool** (100,000 until 30 Oct) |
 
 ### Official polls — eligibility
 - **Poll 1:** team score **≥ 1**.
@@ -206,6 +208,8 @@ Uses every citizen's vote. **A dead heat pays no referendum points.** Otherwise 
 - its score is **≥ 7,500** when the referendum is counted; **or**
 - at some point one of its posts changed, or contributed to changing, a citizen's vaccination view **towards the winning side** (one qualifying change/contribution is enough).
 A winning-side team meeting neither gets **nothing**.
+
+**Persuasion share — 500,000 since 30 Oct (was 100,000).** The first 100,000 is split over persuasion in the first 11 days and the last 400,000 over persuasion in the last 3 days (31 Oct-2 Nov), each part by the weights below ([answers log](../05-reference/discrepancies-and-open-questions.md), 30 Oct). The pool was 100,000 when written:
 
 **Persuasion share — 100,000** divided between *qualifying* winning-side teams by how much they moved citizens' vaccination views toward that side:
 - each qualifying **change of mind** counts **1**;

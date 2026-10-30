@@ -13,7 +13,7 @@
 | follows | 20 | | leads Poll 1 / 2 / 3 | 6,000 each |
 | **unfollows** | **−20** | | poll within 52–48 | 3,000 (half) |
 | moves a vaccination view **toward** your side | **160** (+ pool share of 80) | | wins referendum | 20,000 |
-| moves a vaccination view **away** | **−80** (pool −40) | | referendum persuasion share | share of 100,000 |
+| moves a vaccination view **away** | **−80** (pool −40) | | referendum persuasion share | share of 500,000 (since 30 Oct: 100,000 by persuasion to 30 Oct, 400,000 by persuasion 31 Oct-2 Nov) |
 | neutral vaccination change / other view change | 20 (pool 10) | | | |
 
 **Multipliers:** Red ×1 (19–25 Oct) → **×2 (26–31 Oct)** → **×4 (1–2 Nov)**; Blue & Polling always ×1. Negative scores multiply too.
@@ -30,7 +30,7 @@
 ## What the numbers imply (analysis — ours, not the organisers')
 
 - **Persuasion dominates volume.** One change of mind (160) = 160 likes. Views are capped (500/day); persuasion isn't.
-- **Late-game ×4 makes the last 2 days huge** — a single change of mind on 1–2 Nov is worth 640. Poll awards and the persuasion pool are *not* multiplied (×1), but the referendum persuasion pool is worth up to 100,000 and is based on **cumulative** quality of persuasion all campaign long → start persuading early.
+- **Late-game ×4 makes the last 2 days huge** — a single change of mind on 1–2 Nov is worth 640. Poll awards and the persuasion pool are *not* multiplied (×1), but the referendum persuasion pool is worth up to 100,000 and is based on **cumulative** quality of persuasion all campaign long → start persuading early. **30 Oct: the pool is now 500,000, and 400,000 of it is split only over persuasion in the last 3 days** (31 Oct-2 Nov; answers log).
 - **Backfire risk is real:** a post that contributes to movement *away* from your side costs −40/−80 (×multiplier). Mere agreement-echo gets engagement but little persuasion.
 - **Follows are +20 but unfollows −20** — don't spam content that makes people follow then unfollow; keep Home-feed relevance high.
 - **Rate limit is the real bottleneck:** 3 posts/min per **team** (180/hr), shared across all accounts. Spend slots on content likely to persuade rather than spam.

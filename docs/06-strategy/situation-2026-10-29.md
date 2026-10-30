@@ -240,7 +240,7 @@ It takes the hospital/COVID rebuttals' slot (`content.rebuttal_for`), so the lig
 
 ### 13c. Read the room, live (todo/52, 29 Oct 12:00-13:30 UTC)
 
-[todo/52](../../todo/52-read-the-room.md) built on the flip, without a parallel system and without arms. What went live, and how each was checked on the box after its deploy:
+todo/52 (handoff deleted 31 Oct, git history 67fbf07) built on the flip, without a parallel system and without arms. What went live, and how each was checked on the box after its deploy:
 
 | commit, live (UTC) | what | checked on the box |
 |---|---|---|
