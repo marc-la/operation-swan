@@ -913,6 +913,14 @@ def test_blue_tile_is_green_when_the_slots_are_full_and_red_when_empty(tmp_path)
     assert t["fill"] == 0.9 and "successful" in t["sub"] and "failed" in t["sub"] and 'class="bar"' in html
 
 
+def test_blue_tile_never_shows_more_pending_than_the_cap(tmp_path):
+    # 30 Oct (Marc): the ledger held 36 while the platform, which never has more than 30 awaiting, kept taking reports
+    t, ctx, html = blue_tile_of(tmp_path, pending=36)
+    assert (t["light"], t["head"], t["fill"]) == ("green", "30/30 pending", 1.0)
+    assert "6 more already ruled" in t["rows"][0]["now"] and "36/30" not in html
+    assert "30/30 pending" in ctx["blue_banner"]["text"]
+
+
 def test_blue_tile_locked_is_grey_and_silent_is_red_and_it_never_moves_the_page_word(tmp_path):
     t, ctx, html = blue_tile_of(tmp_path / "a", pending=1, locked_until=(NOW + dt.timedelta(hours=2)).isoformat())
     assert t["light"] == "grey" and "locked until" in t["sub"]              # a 6 h lock is nothing to act on: no red, and no yellow banner

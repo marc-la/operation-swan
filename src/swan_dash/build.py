@@ -685,6 +685,20 @@ BLUE_REDUCED_WARN = 1 / 3                      # a third or more of a finished d
 BLUE_MSG = re.compile(r"moderat|inauthentic|suspen", re.I)
 
 
+def blue_pending(pend, cap):
+    """Pending reports as "n/cap pending", never over the cap (30 Oct, Marc: "36/30 pending" read as a bug). swan-blue's
+    ledger can run over it: a co-reported post is ruled before its 3 h and an account ruling shows only in the portal
+    log, so the ledger still counts them while the platform has already freed their slots and takes the one report a
+    hold that swan-blue tries when full by its count. The platform never has more than the cap awaiting a ruling, so
+    the page shows it full and names the rest. -> (shown, text, the ledger's extra)."""
+    shown, extra = min(pend, cap), max(0, pend - cap)
+    return shown, f"{shown}/{cap} pending", extra
+
+
+def blue_ledger_note(extra):
+    return f"{extra} more already ruled, still open in our ledger" if extra else ""
+
+
 # Reports since 9pm (todo/29, Marc 22 Oct): the chronological timeline, one row per report, where each run of
 # consecutive rows with the same settled outcome collapses in place into one line that opens to those rows. Pending
 # and genuine rows never collapse.
@@ -876,7 +890,7 @@ def blue_panel(data, now, points, day_start, logs=None):
     bits = ([f"OUR OWN ACCOUNTS REPORTED: {own['hits']}"] if own and own["hits"] else []) + \
         ([f"{waiting} waiting for approval"] if waiting else []) + \
         ([f"locked ({lock_why})", f"{ready} ready"] if locked else []) + \
-        ([f"{s['pending']}/{s['cap']} pending" + (f", next ruling {hm(nxt)}" if nxt and not locked else "")]
+        ([blue_pending(s["pending"], s.get("cap") or s["pending"])[1] + (f", next ruling {hm(nxt)}" if nxt and not locked else "")]
          if s.get("pending") else []) + \
         ([f"{today.get('hidden', 0)} hidden since 9pm"] if today.get("filed") else []) + \
         ([f"{pts:+,} pts since 9pm"] if pts else [])
@@ -1936,10 +1950,11 @@ def blue_tile(blue):
     if not blue or blue.get("pending") is None or not blue.get("cap"):
         row = dict(group="blue", name="Pending slots", light="grey", now="swan-blue has not written a status", target="", fix="", note="")
         return dict(key="blue", name="Blue", head="—", sub="not running", light="grey", tip=tip.format(cap=30), rows=[row], row=2, fill=None)
-    pend, cap = blue["pending"], blue["cap"]
+    cap = blue["cap"]
+    pend, head, extra = blue_pending(blue["pending"], cap)
     fill = pend / cap
     light = "green" if fill >= BLUE_FILL_GREEN else "amber" if fill >= BLUE_FILL_AMBER else "red"
-    why = f"{pend} of {cap} slots filled"
+    why = f"{pend} of {cap} slots filled" + (f"; {blue_ledger_note(extra)}" if extra else "")
     if blue["locked"]:             # a 6 h lock after a "genuine" ruling: nothing to act on, so the dot is grey (Marc, 24 Oct)
         light, why = "grey", f"{why}; locked until {blue['locked']}"
     if blue["stale"]:
@@ -1949,7 +1964,7 @@ def blue_tile(blue):
                fix="Slots are empty: " + ("locked, they refill when the lock ends." if blue["locked"] else
                                           f"{blue['ready']} reports ready; see Blue below for why the rest are not filed."))
     return dict(key="blue", name="Blue reports", light=light, tip=tip.format(cap=cap), rows=[row], row=2, fill=fill,
-                head=f"{pend}/{cap} pending",
+                head=head,
                 sub=f"{c['success']} successful · {c['failed']} failed" + (f" · locked until {blue['locked']}" if blue["locked"] else ""))
 
 
@@ -2117,9 +2132,9 @@ def gather(root, now, service):
     elif blue["waiting"]:
         blue_banner = dict(level="amber", text=f"{blue['waiting']} reports wait for your approval")
     elif blue["locked"]:
-        blue_banner = dict(level="green", text=f"locked until {blue['locked']}" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))   # a lock is shown on the Blue tile, not as an alert (Marc, 24 Oct)
+        blue_banner = dict(level="green", text=f"locked until {blue['locked']}" + (f" · {blue_pending(blue['pending'], blue['cap'] or blue['pending'])[1]}" if blue["pending"] else ""))   # a lock is shown on the Blue tile, not as an alert (Marc, 24 Oct)
     else:
-        blue_banner = dict(level="green", text="running" + (f" · {blue['pending']}/{blue['cap']} pending" if blue["pending"] else ""))
+        blue_banner = dict(level="green", text="running" + (f" · {blue_pending(blue['pending'], blue['cap'] or blue['pending'])[1]}" if blue["pending"] else ""))
 
     draft_banner = drafting_state(actions, data, now)
 
