@@ -1253,9 +1253,13 @@ def off_topic_prompt(target_text, context=None, persona=None):
 # ---- todo/50 fixes 2-4 (docs/06-strategy/prompt-critique-2026-10-28.md): what a reply in a "fixes" block adds ----
 # The echo openers ("Open with their own words...", "naming the exact thing they asked for") made "You want X." the
 # opening of 14% of replies; these open on a full sentence. The gate's echo_open check backs them up.
+# 30 Oct (Marc): "Open with the fact itself, plainly." out. The opener is drawn at random, so the 6 h reads compare it
+# cleanly: from 29 Oct 04:03 to 30 Oct 01:30 UTC (fixes in every block, the flip from 11:06) it drew 2.12 proxy points a
+# first reply (citizen replies x15 + likes x5) against 2.68 for the other three (n 868 and 2,620, about -21%, ~2.8 SE),
+# lower for classic and extra citizens, at the top of threads and deeper. On 28 Oct, before the flip, it did a little
+# better (2.28 vs 2.02, within noise), so watch the first 12 h.
 FIXES_OPENERS = [
     "Open with your own reaction to what they said, in a normal full sentence.",
-    "Open with the fact itself, plainly.",
     "Open by answering their point or question straight away, in a normal full sentence.",
     "If a moment from your own life really bears on their point, open with it; otherwise open with your answer.",
 ]

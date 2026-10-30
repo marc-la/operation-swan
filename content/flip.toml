@@ -27,7 +27,7 @@
 [fear.act_early]
 label = "acting before it spreads"
 keywords = ['\bact(ing)? (now|early|fast|quickly|first|before|in time)', '\b(get|move|go|step) in early\b', '\bearly (action|intervention|response|enough)\b', 'before it (spreads|gets|arrives|hits|takes)', 'too late', 'waiting (has|is|costs)', 'wait(ing)? (and see|until|for it)', 'can.t (afford to )?wait', '\binaction\b', 'do(ing)? nothing', '\bprevent', '(get|stay) ahead', '\bprepar\w* (for|before) (it|this|the (virus|outbreak|spread|worst))']
-evidence = ["wastewater_caught", "contained_case", "voluntary_doses"]
+evidence = ["wastewater_caught", "hospital_plans", "contained_case", "voluntary_doses"]
 requires = ["free_either_way"]
 core = ["A No isn't waiting or doing nothing: the testing, the tracing and the free vaccine all carry on whatever the result.",
         "We're already acting early, and a No doesn't stop any of it: only the check at the door.",
@@ -44,7 +44,7 @@ core = ["It's being caught early and contained, and none of that needed a pass a
 [fear.hospitals]
 label = "the hospitals being overwhelmed"
 keywords = ['hospital', '\bwards?\b', '\bicu\b', 'intensive care', 'capacity', 'overwhelm', '\bbeds?\b', '\bsurges?\b', 'frontline', 'health system']
-evidence = ["surge_drill", "voluntary_doses", "contained_case"]
+evidence = ["hospital_plans", "surge_drill", "voluntary_doses", "contained_case"]
 core = ["What protects the hospitals is staff, beds and jabs for the people most at risk, not a check at the shop door.",
         "Hospitals are protected by nurses, beds and jabs for the people most at risk, and a No keeps every one of those.",
         "Looking after the hospitals means looking after the people who staff them and the people most likely to need a bed, and a No takes nothing from either."]
@@ -131,6 +131,16 @@ line = ["the first case, a traveller, was isolated and every close contact teste
         "the first case, a traveller, was isolated at once and every one of their close contacts came back negative"]
 keywords = ['\bcases?\b', 'contacts?', 'isolat', 'traveller', '\bspread', 'transmission']
 weight = 2.0
+
+# 30 Oct (Marc): the hospitals' surge plans, in both papers at 01:00 UTC (fact desk #108). The hospitals fear's first
+# proof: the plan for a surge is already out, beds and staff, with no pass at any door. Worded off the "says" patterns
+# and the false claims: a conditional ("if it spreads"), no "here", no "in stages" (the pass's phasing), no day
+[evidence.hospital_plans]
+requires = ["hospital_contingency_protocols"]
+line = ["the hospitals have published their surge plans: more respiratory beds, and staff moved across, if it ever spreads in the community",
+        "the hospitals have put out their plans for a surge, with extra respiratory beds and staff ready to move if it spreads in the community"]
+keywords = ['hospital', '\bwards?\b', '\bbeds?\b', '\bsurges?\b', 'capacity', '\bicu\b', 'overwhelm', 'contingenc', 'respiratory', 'surger(y|ies)', '\bprepar']
+weight = 3.0
 
 [evidence.surge_drill]
 requires = ["emergency_services_maintained"]

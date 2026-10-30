@@ -97,6 +97,20 @@ def test_the_post_s_own_words_pick_the_proof_and_their_own_but_picks_the_turn():
     assert pv["no_end"] / sum(pv.values()) > 0.4 and pv.most_common(1)[0][0] == "no_end"
 
 
+def test_the_hospitals_published_surge_plans_lead_the_hospitals_fear(monkeypatch):
+    # 30 Oct (Marc): the papers' surge-plans story (fact desk #108) is the hospitals fear's first proof, the drill still drawn
+    ev = collections.Counter(flip.choose(t)["evidence"]["key"] for t in variants("Our wards are already stretched, ICU can't take a surge.", 90))
+    assert ev.most_common(1)[0][0] == "hospital_plans" and ev["hospital_plans"] / 90 > 0.45 and ev["surge_drill"] > 0
+    real = fact_store.ok
+    monkeypatch.setattr(fact_store, "ok", lambda keys: "hospital_contingency_protocols" not in keys and real(keys))
+    assert all(flip.choose(t)["evidence"]["key"] != "hospital_plans" for t in variants("Our wards are already stretched.", 30))
+
+
+def test_the_plain_fact_opener_is_out_of_the_fixes_draw():
+    # 30 Oct (Marc): the random draw put it about 21% below the other three openers since 29 Oct (content.FIXES_OPENERS)
+    assert "Open with the fact itself, plainly." not in content.FIXES_OPENERS and len(content.FIXES_OPENERS) == 3
+
+
 def test_the_big_fears_draw_among_their_core_lines():
     cores = collections.Counter(flip.choose(t)["core"] for t in variants("I'm voting Yes, but only with a sunset.", 90))
     assert len(cores) == len(flip.data()["fear"]["conditional_yes"]["core"]) and min(cores.values()) > 10

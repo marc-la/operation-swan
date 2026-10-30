@@ -541,3 +541,27 @@ added = 2026-10-29T11:00:00Z
 numbers = []
 says = []
 frames = []
+
+# fact desk proposal 108, accepted 2026-10-30
+[hospital_contingency_protocols]
+text = "Major hospitals have released contingency protocols to expand respiratory beds, redeploy staff, and postpone non-urgent surgeries if sustained H2D2 transmission occurs."
+note = "Hospitals outline plans for extra beds, staff redeployment, and postponed elective surgeries if H2D2 spreads."
+status = "active"
+source = "daily-kingstonia/hospitals-outline-contingency-plans-for-h2d2-surge"
+checked = 2026-10-30T08:38:31+00:00
+added = 2026-10-30T08:38:31+00:00
+numbers = []
+says = []
+frames = ["F10_staff_and_livelihoods", "F5_not_here_yet"]
+
+# fact desk proposal 109, accepted 2026-10-30
+[elective_surgeries_postponement]
+text = "Under contingency plans, elective and non-urgent surgeries will be postponed if H2D2 case numbers reach predetermined thresholds to preserve critical resources."
+note = "Non-urgent operations get put off once H2D2 cases pass levels set in advance."
+status = "active"
+source = "daily-kingstonia/hospitals-outline-contingency-plans-for-h2d2-surge"
+checked = 2026-10-30T16:41:44+00:00
+added = 2026-10-30T16:41:44+00:00
+numbers = []
+says = []
+frames = ["F10_staff_and_livelihoods"]

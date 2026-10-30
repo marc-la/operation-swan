@@ -45,3 +45,5 @@
 {"id": 97, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-29T04:54:29Z", "summary": "new fact poll_lead_narrowed (#97)"}
 {"id": 98, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-29T04:54:29Z", "summary": "new fact leaning_voters (#98)"}
 {"id": 81, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-29T04:55:39Z", "summary": "new fact designated_spaces_scope (#81)", "note": "the pass would cover shops, schools, workplaces, buses and parks"}
+{"id": 108, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-30T16:41:20Z", "summary": "new fact hospital_contingency_protocols (#108)"}
+{"id": 109, "kind": "new_fact", "status": "accepted", "decided_by": "Marc Labouchardiere", "decided_at": "2026-10-30T16:48:26Z", "summary": "new fact elective_surgeries_postponement (#109)", "note": "Non-urgent operations get put off once H2D2 cases pass levels set in advance."}
