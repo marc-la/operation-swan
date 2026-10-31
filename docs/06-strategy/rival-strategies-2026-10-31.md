@@ -1,0 +1,122 @@
+# What the high-scoring writes do that ours don't (31 Oct 2026, 03:00-04:00 UTC)
+
+Asked by Marc on 31 Oct: four teams have 3 h paces above ours (board 03:02 UTC: Vertex_CTN 4,184/h, china 2,973, I.use.arc 2,949,
+Yeah 2,861, us 2,609, all at ×2) and three have 24 h paces above ours. Reverse-engineer the strategies behind the gap from what
+Legit Social shows, and say what we should change. Read-only throughout; Claude for Marc.
+
+## 1. Parameters
+
+- **Unit: the write and the strategy, never the team.** Rules §5.2.1 allow "analysing in-competition data to inform strategies";
+  §5.2.2 forbids "attempting to de-anonymise or identify other participants or teams" (as todo/62 §4 and situation §2 read it).
+  So no account is mapped to a team and nothing is matched to the leaderboard. The board only sets the size of the gap. A
+  strategy that earns more per write explains a higher pace whoever runs it, since every team has the same 3 writes a minute.
+- **Data** (public reads, no login, from the box, 03:10-03:45 UTC 31 Oct, about 10,500 reads, every route paced at half its
+  limit or less):
+  - all of Latest from 30 Oct 03:00 to 31 Oct 03:10 UTC (~89,000 posts, ~880 reads);
+  - every citizen's likes and follows in that window: 4,961 citizens, ids 12-2343 plus the likely citizens above 2343 (npc score
+    ≥ 0.9, `config.NPC_TARGET_MIN`), two reads each;
+  - Trending's first 150 posts with counters, and the likers of the 12 most-liked bot posts;
+  - our own writes from `logs/swan_actions.jsonl`.
+- **Points model** (base, citizens only, what can be seen): per write, 15 × distinct citizen repliers + 5 × citizen likers +
+  10 × citizen reposts; per account, 20 × citizen follows. Views are left out (capped at 500 a day, which we hit). Persuasion
+  can't be seen (§3.6).
+- **Calibration.** Our accounts reconstruct to ~522 visible points an hour against a portal pace of ~1,300 base an hour, so the
+  portal books ~2.5× what is visible, as todo/60 found. The same factor on every bot roughly reproduces the board's total for
+  all teams. Strategies are compared on the visible measure, assuming the factor is similar across them.
+- **Window and maturity.** Writes from 30 Oct 03:00 to 31 Oct 02:10 UTC, so each had at least an hour; citizen replies arrive
+  within minutes.
+- **Like for like.** Reply comparisons are standardised to our own mix of depth × reply speed × citizen class, because we are
+  faster and better targeted than most bots.
+- Scripts and data: the session scratchpad (`rev_pull.py`, `rev_lib.py`, `rev_an.py`, `rev_trend.py`); raw pulls on the box in
+  `/tmp/rev/`.
+
+## 2. The platform in one day
+
+- About 3,000-3,500 bot writes an hour, against ~600 citizen posts. Bots write 76% replies, 15% reposts, 9% top-level posts.
+- About 126 distinct citizens post in any hour, 59 in any 30 minutes, 26 in any 10 minutes.
+- An on-topic citizen top-level post gets 4.9 bot replies, the first after a median 25 s. A citizen reply gets 2.6, the first
+  after 35 s.
+
+## 3. Findings
+
+### 3.1 Our replies are already the best on the platform per write
+- Replies to citizens at our mix: **ours 13.6 citizen replies per 100 writes** (2.74 visible points a write). Rival replies
+  that end on a question: 14.3 (2.90). Rival replies without a question: 11.4 (2.33).
+- Our hot voice ranks 25th of 653 accounts with 40+ writes on visible points per write. Speed and targeting are not the gap.
+
+### 3.2 @mentions: the largest lever we under-use
+A mention notifies the citizen named; that is the only channel besides a reply that reaches someone.
+- **The extra repliers are the mentioned citizens.** Rival replies to citizens: the citizen answered replies 8.5 per 100 with
+  no handle, 9.5 with one, 8.5 with two. *Other* citizens reply 1.7, 4.6 and 10.4 per 100.
+- **Form matters.** Among mentioned citizens who are online (they post again within 30 min), a reply that **opens with their
+  handle and talks to them** got an answer 10.3% of the time (n 845). A handle buried in the middle got 2.3% (n 306). Offline:
+  about 1% either way.
+- **Freshness matters most.** Rival opening-handle mentions of citizens who posted in the last 5 minutes: **5.9%** (n 1,626).
+  5-15 min: 1.3%. 15 min or more: 0%. Rivals pick from the last 5 minutes 90% of the time.
+- **It costs nothing with the person answered.** Their reply rate is 8.9% with opening handles against 8.1% with none.
+- **Rivals open with *other* citizens' handles** (the target is among them in 39 of 1,749), answer the target, and speak to
+  all of them.
+- **Ours:** 243 of 3,925 first replies (6%) carried a handle, in the third person, mid-sentence, as `mention.LINES` asks ("never
+  address {at} as you, never open with the handle"). The picks were mostly not online: 5 of 217 posted within 30 min after.
+  **1.4%** answered.
+- **Why so few.** `mention.pick` takes citizens waiting in our queue through `config.is_citizen`, so the 2,600 likely citizens
+  are never named. It names each citizen once in 24 h. A username with a dot fails `\w{2,40}`. Then `MENTION_SHARE` 0.5 applies.
+- **The platform is moving to it.** The share of bot replies to citizens that open with a handle went from 3-4% to 8-9% between
+  30 Oct 20:00 and 31 Oct 02:00 UTC.
+- **They like it too.** An opening handle to a fresh citizen: **11.9%** of them liked the write (n 1,481). Other combinations:
+  1.4-3.4%.
+- **What it is worth.** Each such mention is worth about 0.059 × 15 + 0.119 × 5 ≈ 1.5 visible points. About 126 fresh
+  citizens an hour supports about 0.7 handles per reply when each is named at most once an hour.
+  - At the rivals' rates, that is about +180 visible points an hour on our ~522: **about +35% engagement points**, or ~+1,800
+    portal points an hour at ×4 through the 2.5 factor.
+  - At a third of their rate, about +12%.
+  - The new form is measured on rivals, not on us yet. The effect holds across 110 rival accounts (5.7% among accounts with
+    under 40 such mentions) and in every 6 h block (4.6-9.0%).
+
+### 3.3 Closing questions: mixed evidence, cheap to restore
+- 40-50% of all bot replies to citizens end on a question, every hour. Ours: 5%. `REPLY_QUESTION_SHARE` = 0.10 since 28-29 Oct;
+  the prompt critique cut it from ~40% as a stealth tell (citizens end on one 1% of the time).
+- At our mix, rival replies ending on a question beat rival replies without one by 24% (2.90 against 2.33 points a write).
+  Ours ending on a question: 2.97 against 2.66 (n 207, inside the noise).
+- Our own ask arms found no difference (prompt critique 28 Oct). That was randomised; the rival comparison is not.
+
+### 3.4 Trending: the Yes side owns it, and it doesn't pay per write
+- **Trending is all bots and no No.** 139 of the first 150 Trending posts are bot posts, and **none of the top 60 argues No**.
+  Nearly all say Yes outright; the rest are for the vaccine. Every pushed post in the 24 h was Yes (151, ~6.5 an hour). There were
+  no No pushes.
+- **A push is mechanical.** In the first 15 minutes, 25-47 bot reposts (each from a different account) and about 40 bot replies,
+  plus 60-130 bot likes. Each push uses about 66 bot writes in its first hour.
+  - That is more than one team's cap (45 in 15 min), so it means pooled budgets (coordination is allowed, §5.2.1) or several
+    operations.
+  - Across all 138 matured pushes: 17.8 citizen likes and 0.7 citizen replies a post, ~100 visible points.
+- **There is a threshold.** Unpushed top-level bot posts get no citizen likes (6,230 posts, 0.0 each). Citizen likes by reposts
+  in the first 15 min: 20-29 → 8, 30-39 → 25, 40 or more → 43. They peak at 7-11am Sydney (33-42 a push).
+- **Per write it loses to replies, or at best ties.** Visible points a post at 20-29 reposts ~49, at 30-39 ~136, at 40 or more
+  ~225 (likes almost all of it; under one citizen reply a post). The push uses about 55-85 writes, so 0.9-2.6 a write against
+  ~2.7 for our replies (all pushes together: ~1.5 a write).
+- **For the count it may matter.** Citizens who scroll Trending see only Yes, which fits the Yes tide and our contributions away.
+  That can't be measured here.
+
+### 3.5 Small or ruled out
+- **Off-topic citizen posts.** A bot reply to one is answered 2.7 times per 100, against 6-7 on topic. Not worth slots, and it
+  confirms todo/23's switch-off.
+- **Follows.** About 750 citizen follows of bot accounts a day across the whole platform; 63% follow no visible contact.
+- **Long replies.** Rival question-enders of 300+ characters draw 14.9 citizen replies per 100, against 12.1 under 200. We
+  write none that long, so it is untested for us.
+- **Flash-lite drafts.** 330 of our writes (8%) at 2.01 points a write, against 2.6-2.8 for Kimi and Haiku.
+
+### 3.6 What can't be seen
+- Persuasion. Citizens rarely say they moved: 26 of 10,688 replies to bots use mind-change language, mostly "I'll still vote Yes".
+- So the Yes teams' share of the tide (contributions toward Yes), and any persuasion edge china has, are outside this read.
+
+## 4. What to change, by points at stake
+
+| # | Change | Evidence | Expected | Cost, risk |
+|---|---|---|---|---|
+| 1 | **Mentions done the rivals' way.** Name 1-2 citizens who posted in the last 5 minutes (Latest is read every 5 s, likely citizens included), not in the thread, each at most once an hour. **Open the reply with their handles** and speak to them and the person answered. Every first reply where a fresh citizen exists. Usernames with dots allowed | §3.2: 5.9% answer and 11.9% like, against our 1.4%; no cost to the target's reply | **+12-35% engagement** (supply-bound) | `mention.py`, `bot.py` (job carries a list), `quality.check` (allow the listed handles, ≤3), tests. Watch hides and away events |
+| 2 | **Closing questions back to ~40%** (`REPLY_QUESTION_SHARE` 0.10 → 0.40), a question to the people named when there is a mention | §3.3: mixed | 0 to +10% | one line; reverses a stealth-driven cut |
+| 3 | Keep paid drafting models over flash-lite where the budget allows | §3.5 | ~+2% | LLM budget |
+| - | **Trending pushes: not for engagement.** Only as a call on the count, and then with ≥30 reposts in the first 15 minutes, Sydney morning, judged on citizen likes | §3.4 | negative per write; unknown for the count | about 66 writes and 50+ distinct likers a push |
+
+Marc's final-days rule (no new switchback arms) applies. Items 1-2 are changes to live behaviour, not arms. Judge them on the
+portal: citizen replies a write against the same hours a day earlier.
