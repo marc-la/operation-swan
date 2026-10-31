@@ -220,3 +220,36 @@ def test_news_threads_every_30_min(monkeypatch, tmp_path):
     assert t.headline.startswith("Referendum")
     refreshes = [r for r in logged if r.get("act") == "refresh"]
     assert [r["news_threads_read"] for r in refreshes].count(True) == 2
+
+
+def test_latest_every_5_s_but_the_papers_and_journalists_every_15_s(monkeypatch, tmp_path):
+    """todo/58 (31 Oct): REFRESH_S 5 reads Latest every refresh; the papers' and journalists' account_posts stay every
+    ACCOUNT_READS_S (15 s), so the faster Latest read doesn't triple them."""
+    from swan_bot import feeds
+    from test_targeting import _Page
+    assert config.REFRESH_S == 5 and config.ACCOUNT_READS_S == 15 and config.TRENDING_EVERY == 9
+    monkeypatch.setattr(feeds, "FEED_LOG", tmp_path / "feed_reads.jsonl")
+    calls = []
+
+    class Social:
+        rate_limit = None
+
+        def account_posts(self, aid, limit=50, cursor=None):
+            calls.append(("account_posts", aid))
+            return _Page([], None)
+
+        def __getattr__(self, name):
+            def read(*a, **kw):
+                calls.append((name,))
+                return _Page([], None)
+            return read
+
+    t = targeting.Targeter(Social(), log=lambda r: None)
+    clock = [1_000_000.0]
+    monkeypatch.setattr(targeting.time, "time", lambda: clock[0])
+    for _ in range(6):                                             # 30 s of 5 s refreshes
+        t.refresh(force=True)
+        clock[0] += config.REFRESH_S
+    accounts = [c for c in calls if c[0] == "account_posts"]
+    assert len(accounts) == 2 * (len(config.NEWS_IDS) + len(config.JOURNALIST_IDS)), "at 0 s and 15 s only"
+    assert sum(1 for c in calls if c[0] == "feed_latest") == 6, "Latest every refresh"

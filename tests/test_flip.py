@@ -290,3 +290,93 @@ def test_the_fixed_lines_around_the_flip_state_no_fact():
     fixed += [content.flip_line(dict(fear=dict(label=""), core="", evidence=dict(line=""), pivot=dict(line="")))]
     hits = [(k, rx.search(text).group(0)) for text in fixed for k, rx in fact_store.SAYS.items() if rx.search(text)]
     assert not hits, hits
+
+
+# ---- todo/54 (31 Oct, Marc): firm the No, don't echo it ----------------------------------------------------------------
+LEAN_NO_PLAIN = "Leaning No on the referendum, it just doesn't sit right with me."
+LIMBO = "PEOPLE THINK A NO VOTE FIXES EVERYTHING BUT IT JUST LEAVES US IN LIMBO!!!"
+
+
+def test_no_firm_is_never_matched_by_keywords_only_asked_for():
+    from swan_bot import targeting
+    assert targeting.target_class(LEAN_NO_PLAIN) == "lean_no"
+    for text in (LEAN_NO_PLAIN, LIMBO, "a no vote means nothing changes"):
+        assert (flip.fear_of(text) or {}).get("key") != "no_firm"
+        assert flip.choose(text) is None or flip.choose(text)["fallback"] is False
+    c = flip.choose(LEAN_NO_PLAIN, fallback="no_firm")
+    assert c["fear"]["key"] == "no_firm" and c["fallback"] is True
+    assert flip.choose(LEAN_NO_PLAIN, fallback="no_firm") == c                     # the same post, the same choice
+
+
+def test_a_post_that_voices_a_fear_keeps_its_own_fear_with_the_fallback():
+    c = flip.choose(HOSPITAL_SUNSET, fallback="no_firm")
+    assert c["fear"]["key"] == "hospitals" and c["fallback"] is False
+
+
+def test_a_turnout_reply_gets_the_firming_flip_and_no_news(monkeypatch):
+    monkeypatch.setattr(config, "NEWS_SHARE", 1.0)
+    for body in (LEAN_NO_PLAIN, LIMBO):
+        j = job(body, group="turnout")
+        _, _, user = bot.build_prompt(j, TARGETER)
+        assert j["meta"]["flip"].startswith("no_firm/") and j["meta"]["flip_fallback"] is True
+        assert "whether a No really keeps people safe" in user and content.GROUP_STYLES["turnout"] in user
+        assert "In the news this week:" not in user and "news" not in j["meta"]      # the flip takes the poll story's slot
+    j = job(LEAN_NO_PLAIN)                                                           # not a turnout reply: no fallback
+    bot.build_prompt(j, TARGETER)
+    assert "flip" not in j["meta"] and "flip_fallback" not in j["meta"]
+    monkeypatch.setattr(config, "FLIP_TURNOUT", False)                               # SWAN_FLIP_TURNOUT=0
+    j = job(LEAN_NO_PLAIN, group="turnout")
+    bot.build_prompt(j, TARGETER)
+    assert "flip" not in j["meta"]
+
+
+def test_an_ally_s_turnout_reply_gets_no_flip():
+    ally = "It should stay voluntary, the hospitals need staff not passes."
+    j = job(ally, group="turnout")
+    _, _, user = bot.build_prompt(j, TARGETER)
+    assert "flip" not in j["meta"] and "Their worry underneath" not in user
+
+
+def test_the_fallback_needs_its_facts(monkeypatch):
+    real = fact_store.ok
+    monkeypatch.setattr(fact_store, "ok", lambda keys: "free_either_way" not in keys and real(keys))
+    assert flip.choose(LEAN_NO_PLAIN, fallback="no_firm") is None
+
+
+def test_the_turnout_line_firms_and_never_echoes_or_names_logistics():
+    from swan_bot import factdesk
+    line = content.GROUP_STYLES["turnout"]
+    assert "Never say when, where or how to vote" in line and "firm their No up" in line
+    for echo in ("every No counts", "turning up", "turn up", "it's close"):
+        assert echo not in line
+    assert not [k for k, rx in fact_store.SAYS.items() if rx.search(line)]        # states no fact
+    assert factdesk.text_problems(line) == [] and quality.unapproved_number(line) is None
+
+
+def test_the_fallback_is_logged_on_the_write():
+    assert "flip_fallback" in bot.ARMS and "FLIP_TURNOUT" in config.STEALTH_ENV
+
+
+# ---- todo/59 (31 Oct, Marc): the flip stops asking for the word the gate budgets ("door", 25% of recent texts) ----------
+def test_the_turn_words_vary_state_no_fact_and_hold_for_a_redraft():
+    import re
+    assert len(content.FLIP_TURN_WORDS) == 3 and sum("door" in w for w in content.FLIP_TURN_WORDS) == 1
+    blank = dict(fear=dict(label=""), evidence=dict(line=""), pivot=dict(line=""))
+    for i, words in enumerate(content.FLIP_TURN_WORDS):
+        hits = [k for k, rx in fact_store.SAYS.items() if rx.search(words)]
+        assert not hits, (words, hits)
+    seen = {content.flip_turn_words(dict(blank, core=f"core {i}")) for i in range(60)}
+    assert seen == set(content.FLIP_TURN_WORDS)                                   # all three get drawn
+    c = flip.choose(HOSPITAL_SUNSET)
+    assert content.flip_line(c) == content.flip_line(flip.choose(HOSPITAL_SUNSET))  # the same post, the same words
+    assert "door" not in content.FLIP_FEAR_LINES[1]
+
+
+def test_door_is_in_at_most_a_third_of_the_flip_wordings():
+    import re
+    door = re.compile(r"\bdoors?\b", re.I)
+    d = flip.data()
+    for part, field in (("fear", "core"), ("evidence", "line"), ("pivot", "line")):
+        for key, item in d[part].items():
+            lines = flip.as_list(item[field])
+            assert sum(bool(door.search(x)) for x in lines) <= max(1, len(lines) // 3), (part, key)

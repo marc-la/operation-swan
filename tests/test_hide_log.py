@@ -151,6 +151,8 @@ def test_the_watch_script_logs_the_new_fields_and_keeps_the_old_ones(tmp_path, m
     monkeypatch.setattr(config, "ACTIONS_LOG", tmp_path / "actions.jsonl")
     monkeypatch.setattr(watch, "WATCH_FILE", tmp_path / "swan_watch.json")
     monkeypatch.setattr(watch, "WATCH_LOG", tmp_path / "swan_watch.jsonl")
+    for name in ("LLM_SPEND_FILE", "LLM_STATUS_FILE", "LLM_ALERT_FILE"):        # todo/61: never the box's own LLM files
+        monkeypatch.setattr(watch, name, tmp_path / f"{name.lower()}.json")
     alerts = []
     monkeypatch.setattr(mod.subprocess, "run", lambda cmd, **kw: alerts.append(cmd[-1]))
     records = [dict(username="ana_fifita_rn27", account_id=4603, persona="ana", role="voice", status="active",
@@ -197,5 +199,6 @@ def test_the_watch_script_logs_the_new_fields_and_keeps_the_old_ones(tmp_path, m
 
     mod.main()                                                                   # a second run finds nothing new
     again = [json.loads(l) for l in watch.WATCH_LOG.read_text().splitlines()]
-    # the account-budget job (todo/39) logs one `budget` row a run; everything else must be unchanged
-    assert [r for r in again if r["act"] != "budget"] == [r for r in out if r["act"] != "budget"] and len(alerts) == 1
+    # the account-budget job (todo/39) and the LLM budget (todo/61) log one row a run each; everything else must be unchanged
+    each_run = ("budget", "llm_budget")
+    assert [r for r in again if r["act"] not in each_run] == [r for r in out if r["act"] not in each_run] and len(alerts) == 1

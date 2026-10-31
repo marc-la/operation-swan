@@ -789,8 +789,9 @@ def auto_decide(now=None, dry=False, alert=None, mirror=None, log=print, proposa
       angle          logged only: frames are code
     Each change must leave the whole table valid (validate). With a `cap` (config.FACTDESK_AUTO_PER_DAY; None since
     Marc's "completely autonomous", 22 Oct), at most that many changes a Sydney day; the rest wait.
-    test(overlay path) -> (ok, output lines): tests/test_facts.py with the run's overlay (run_facts_tests); if it
-    fails, none of the run's changes go live. Returns dict(applied, logged, failed, waiting) of decision records;
+    test(overlay path, keys) -> (ok, output lines): tests/test_facts.py with the run's overlay (run_facts_tests: the
+    fast tests and the paused-fact sweep for the keys it changes); if it fails, none of the run's changes go live and one
+    alert says so. Returns dict(applied, logged, failed, waiting) of decision records;
     dry: decides and prints, writes nothing."""
     now = now or time.time()
     cap = config.FACTDESK_AUTO_PER_DAY if cap is None else cap
@@ -852,15 +853,20 @@ def auto_decide(now=None, dry=False, alert=None, mirror=None, log=print, proposa
     if out["applied"] and test and not dry:          # tests/test_facts.py with this run's overlay, where pytest is
         check = pathlib.Path(overlay_file).with_name(".facts_auto.check.toml")
         write_overlay(check, overlay, history + out["applied"])
+        keys = sorted({k for r in out["applied"] for k in (r.get("keys") or [])})
         try:
-            ok, tail = test(check)
+            ok, tail = test(check, keys)             # todo/61: the slow sweep for these keys only (run_facts_tests)
         finally:
             check.unlink(missing_ok=True)
         if not ok:                                    # none of this run's changes go live; a human sees why
+            ids = [r["id"] for r in out["applied"]]
             out["failed"] += [dict(r, status="failed", keys=[], before={}, summary=f"#{r['id']} left for a human: "
                                    f"tests/test_facts.py failed with this run's changes ({short_tail(tail)})")
                               for r in out["applied"]]
             out["applied"], overlay = [], fact_store.read_overlay(overlay_file)
+            if alert:                                 # todo/61: #108 waited 16 h on 30 Oct with no line anywhere
+                alert(f"fact desk (auto): tests/test_facts.py failed with #{', #'.join(map(str, ids))} "
+                      f"({short_tail(tail)}); left for a human: python scripts/facts_review.py --list")
     records = out["applied"] + out["logged"] + out["failed"]
     if dry:
         for r in records:
@@ -889,9 +895,23 @@ def short_tail(lines, n=200):
     return re.sub(r"\s+", " ", " / ".join((lines or [])[-3:]))[:n]
 
 
-def run_facts_tests(overlay_path, timeout=900):
+SWEEP_TEST = "test_a_paused_fact_reaches_no_prompt"      # tests/test_facts.py's slow paused-fact sweep, one case per key
+
+
+def facts_test_args(keys=None):
+    """todo/61 (31 Oct): pytest's selection for the autopilot: every fast test, plus the slow sweep's cases for the keys this
+    run changes. The whole sweep (44 keys, ~17 CPU-minutes) timed out at 900 s on the box's two busy cores (30 Oct: #108
+    waited 16 h); one key is ~20 s. The full sweep still runs in scripts/t.sh slow and CI (FULL=1)."""
+    ok = [k for k in (keys or ()) if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k or "")]
+    if not ok:
+        return ["-k", f"not {SWEEP_TEST}"]
+    return ["-k", f"not {SWEEP_TEST} or ({SWEEP_TEST} and ({' or '.join(ok)}))"]
+
+
+def run_facts_tests(overlay_path, keys=None, timeout=900):
     """(ok, last output lines) of tests/test_facts.py with this overlay merged (tests/conftest.py takes it from
-    SWAN_FACTS_AUTO_CHECK). Without pytest installed: (True, ["pytest not installed: validate() only"])."""
+    SWAN_FACTS_AUTO_CHECK): the fast tests and the paused-fact sweep for `keys` (facts_test_args). Without pytest
+    installed: (True, ["pytest not installed: validate() only"])."""
     import subprocess
     import sys
     try:
@@ -900,7 +920,8 @@ def run_facts_tests(overlay_path, timeout=900):
         return True, ["pytest not installed: validate() only"]
     env = dict(os.environ, SWAN_FACTS_AUTO_CHECK=str(overlay_path))
     try:
-        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_facts.py"],
+        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_facts.py",
+                            *facts_test_args(keys)],
                            cwd=config.ROOT, env=env, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, [f"timed out after {timeout} s"]

@@ -371,6 +371,7 @@ class Targeter:
         self.headlines = []          # the papers' article titles of the last 24 h, newest first (pulse.py)
         self.next_refresh = 0.0
         self.news_next = 0.0         # when the news threads are read next (NEWS_THREADS_S, todo/24)
+        self.accounts_next = 0.0     # when the papers' and journalists' posts are read next (ACCOUNT_READS_S, todo/58)
         self.refreshes = 0
         self.latest_seen = 0         # newest Latest post id read so far: each refresh pages back to it
         self.bands = []              # [[cursor, stop_id]]: Latest stretches not read yet, newest first (G2)
@@ -690,7 +691,12 @@ class Targeter:
         threads_due = time.time() >= self.news_next
         if threads_due:
             self.news_next = time.time() + config.NEWS_THREADS_S
-        for aid in config.NEWS_IDS:
+        # todo/58 (31 Oct): Latest every REFRESH_S (5 s); the papers' and journalists' posts every ACCOUNT_READS_S as before,
+        # so a faster Latest read doesn't triple the account_posts reads (6 a refresh)
+        accounts_due = threads_due or time.time() >= self.accounts_next
+        if accounts_due:
+            self.accounts_next = time.time() + config.ACCOUNT_READS_S
+        for aid in (config.NEWS_IDS if accounts_due else ()):
             try:
                 articles = [p for p in self.social.account_posts(aid, limit=12)
                             if not p.get("reply_to_post_id") and p.get("kind") != "repost"]
@@ -717,7 +723,7 @@ class Targeter:
         if papers_read:
             self.headlines = sorted(heads, key=lambda h: h["ts"], reverse=True)
         # 2) journalists' own referendum replies and posts (for the journalist storyline)
-        for aid in config.JOURNALIST_IDS:
+        for aid in (config.JOURNALIST_IDS if accounts_due else ()):
             try:
                 posts = list(self.social.account_posts(aid, limit=8))
                 with self.lock:

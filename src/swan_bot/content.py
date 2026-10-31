@@ -442,9 +442,10 @@ class AllPaused(RuntimeError):
 
 
 def frame_live(key):
-    """True while the frame may be used: none of the facts it requires is paused and one of its facts is active."""
+    """True while the frame may be used: not retired (config.FRAME_SCALE 0, todo/59), none of the facts it requires is
+    paused and one of its facts is active."""
     f = FRAMES[key]
-    return fact_store.ok(f["requires"]) and bool(fact_store.active(f["facts"]))
+    return frame_scale(key) > 0 and fact_store.ok(f["requires"]) and bool(fact_store.active(f["facts"]))
 
 
 def live_frames():
@@ -1028,7 +1029,7 @@ def fresh_line(target_text, meta=None):
 # carries on either way) was an invented harm.
 FLIP_FEAR_LINES = {
     0: "",
-    1: " Say the turn as something a Yes would really cost them (a check at their own door), in one concrete picture "
+    1: " Say the turn as something a Yes would really cost them (a pass to show in their own day), in one concrete picture "
        "from their own post or life, and leave them with a No as the way to keep things as they are. Never a loss a Yes "
        "doesn't bring (the testing, the jabs and the care don't hang on the vote); no exaggeration.",
     2: " Make the turn bite: what a Yes would really cost them is concrete to their own life and lasting, since once it's "
@@ -1039,12 +1040,22 @@ FLIP_FEAR_LINES = {
 # turn's own facts come with the pivot line, which a paused fact takes out.
 
 
+# todo/59 (31 Oct, Marc): what the turn calls the Yes. Every flip line said "the check at the door" while the gate holds
+# "door" to 25% of recent texts (quality.PHRASE_BUDGETS), so ~8 drafts per 100 first replies were rejected for the word the
+# prompt asked for. Drawn by the choice's core line, so a redraft says the same. None of them states a fact.
+FLIP_TURN_WORDS = ("the check at the door", "having to show a pass", "a pass check to get in")
+
+
+def flip_turn_words(choice):
+    return FLIP_TURN_WORDS[zlib.crc32((choice.get("core") or "").encode()) % len(FLIP_TURN_WORDS)]
+
+
 def flip_line(choice):
     """The fear behind a Yes, flipped (swan_bot/flip.py, 29 Oct): a No is not doing nothing, the protection is already
-    working without a pass, and what a Yes adds is the check at the door, which nobody manages."""
+    working without a pass, and what a Yes adds is the check (FLIP_TURN_WORDS), which nobody manages."""
     return (f"Their worry underneath is {choice['fear']['label']}. Answer it with this one point, in plain words: "
             f"{choice['core']} Show it with what's already happening ({choice['evidence']['line']}), then say "
-            f"what a Yes adds is the check at the door, and {choice['pivot']['line']}."
+            f"what a Yes adds is {flip_turn_words(choice)}, and {choice['pivot']['line']}."
             f"{FLIP_FEAR_LINES.get(config.FLIP_FEAR, FLIP_FEAR_LINES[1])} Don't open by agreeing, don't "
             f"lecture and don't label the parts: their worry in their words, then the point in yours. Add no date, time, "
             f"place or figure that isn't in these notes.")
@@ -1229,8 +1240,12 @@ GROUP_STYLES = {
              "the delay.",
     "engaged": "They have liked or followed you before: talk like someone they already know a little, warmly, with "
                "no introduction.",
-    "turnout": "They already lean No. Affirm it in their own terms, then say why turning up matters this time: it's "
-               "close and every No counts. Never say when, where or how to vote.",
+    # todo/54 (31 Oct, Marc): firm the No, don't echo it (was "affirm it, then say why turning up matters: it's close and
+    # every No counts"). Agreement alone changes no mind (scoring §2); lean No -> definitely No does (ruling, 27 Oct).
+    "turnout": "They seem to lean No (if their post actually leans Yes or is unsure, ignore this line). Don't just agree "
+               "with them, and don't urge them to vote: firm their No up. Answer the one doubt that could still pull them "
+               "toward a Yes, most often that a No means doing nothing, with a plain fact. Never say when, where or how "
+               "to vote.",
 }
 
 

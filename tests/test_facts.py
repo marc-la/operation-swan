@@ -233,7 +233,9 @@ def test_every_frame_paused_is_a_named_error(pause):
 
 
 def test_no_pause_means_everything_is_live():
-    assert not fact_store.pauses() and content.live_frames() == list(content.FRAMES)
+    retired = [k for k in content.FRAMES if content.frame_scale(k) <= 0]       # config.FRAME_SCALE 0 (todo/59, 31 Oct)
+    assert retired == ["F5_not_here_yet"]
+    assert not fact_store.pauses() and content.live_frames() == [k for k in content.FRAMES if k not in retired]
     assert set(fact_store.PAUSED) == {k for k, f in fact_store.TABLE.items() if f["status"] != "active"}
     assert content.world() == content.WORLD and content.live_levers() == list(content.LEVERS)
 
@@ -265,6 +267,22 @@ def test_routing_skips_a_paused_frame(pause):
     overreach = "Isn't a pass at every single shop too far? I'm not sure."
     assert targeting.classify(overreach)[0] != "F5_not_here_yet"
     assert content.rebuttal_for("I remember covid, so many died")   # the COVID rebuttal no longer states no_spread
+
+
+def test_a_retired_frame_is_never_picked_offered_or_classified():
+    """todo/59 (31 Oct): F5_not_here_yet is retired (FRAME_SCALE 0) with every fact live, everywhere a frame comes from."""
+    assert not fact_store.pauses() and content.frame_scale("F5_not_here_yet") == 0
+    ben, ruth = content.PERSONA_BY_KEY["ben"], content.PERSONA_BY_KEY["ruth"]
+    random.seed(2)
+    assert "F5_not_here_yet" not in {content.pick_frame(p) for p in content.PERSONAS for _ in range(40)}
+    assert content.live_frame("F5_not_here_yet", ben) in {"F1_blank_cheque", "F12_open_island"}
+    assert "F5_not_here_yet" not in content.frame_menu()[1]              # the light read's list
+    assert "F5_not_here_yet" not in content.read_block()
+    assert targeting.classify("Isn't a pass at every single shop too far? Total overreach.")[0] != "F5_not_here_yet"
+    for p in content.PERSONAS:                                          # every persona keeps a live home frame or a fallback
+        assert content.live_frame(None, p) in content.live_frames()
+    assert len(content.live_frames()) >= 4                              # the paused-fact sweep needs at least 4
+    assert content.live_frame("F5_not_here_yet", ruth) in content.live_frames()
 
 
 def test_world_jab_rule_and_storylines_follow_pauses(pause):

@@ -84,7 +84,17 @@ def test_jit_never_holds_off_shallow_before_the_first_send_or_when_off(monkeypat
 
 def test_the_drafter_checks_the_hold_before_and_after_it_waits():
     src = pathlib.Path(bot.__file__).read_text()
-    assert src.count("jit_hold(next_write, time.time(), arm)") == 2      # full() and the race guard under mu
+    assert src.count("jit_hold(next_write, time.time(), arm, sending=sending[0])") == 2   # full() and the race guard
+    assert "sending[0] = True" in src and "sending[0] = False" in src                     # the writer's mid-send flag
+
+
+def test_jit_holds_while_the_writer_is_mid_send():
+    """31 Oct, the first 15 min live: half the jobs were chosen while the writer was sending, before it set the next slot
+    (next_write still the slot being used, so no hold), a whole slot early."""
+    assert bot.jit_hold(NOW - 0.3, NOW, "shallow", sending=True)            # the old slot, mid-send: hold
+    assert not bot.jit_hold(NOW - 0.3, NOW, "shallow", sending=False)
+    assert not bot.jit_hold(NOW - 0.3, NOW, "fresh", sending=True)          # the guard's fill-ahead never holds
+    assert not bot.jit_hold(NOW - 0.3, NOW, "shallow", lead=0, sending=True)
 
 
 def test_the_queue_settings_are_env_switches(monkeypatch):

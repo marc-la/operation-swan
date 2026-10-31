@@ -734,7 +734,8 @@ ARMS = ("lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode",
         "arm_style", "colour", "lean", "lean_shape",                                       # todo/50: the prompt fixes
         "rb_open",                                                                         # todo/51: the reply-back opener
         "news", "flip",                                                                    # 29 Oct: today's news (news.py), the flip (flip.py)
-        "flip_fear", "flip_lift", "worries")                                               # todo/52: the fear dial, the room's lift, the pulse's worries (its id)
+        "flip_fear", "flip_lift", "worries",                                               # todo/52: the fear dial, the room's lift, the pulse's worries (its id)
+        "flip_fallback")                                                                   # todo/54: a lean-No reply's fallback flip (no_firm)
 REJECT_ARMS = ("shape", "voice", "lever", "concede", "rebuttal", "ask_kind", "length_band", "reply_mode", "beat", "close",
                "pulse", "theme", "theme_level", "arm_style", "lean_shape", "rb_open")
 
@@ -754,12 +755,16 @@ def draft_ahead(arm):
     return max(1, min(config.DRAFT_AHEAD, config.QUEUE_SHALLOW_AHEAD) if arm == "shallow" else config.DRAFT_AHEAD)
 
 
-def jit_hold(next_write, now, arm, lead=None):
+def jit_hold(next_write, now, arm, lead=None, sending=False):
     """todo/58: True while a drafter should wait before choosing its next job: a shallow block, JIT_LEAD_S on, and the
     writer's next slot more than `lead` seconds away, so the job chosen is the freshest post just before its slot. Never
-    before the first send (next_write 0), in other arms (fresh is the late-send guard's fill-ahead), or past the slot."""
+    before the first send (next_write 0), in other arms (fresh is the late-send guard's fill-ahead), or past the slot.
+    sending: the writer is mid-send and hasn't set the next slot yet; hold then too (31 Oct, the first 15 min live: half
+    the jobs were chosen in that moment, a whole slot early)."""
     lead = config.JIT_LEAD_S if lead is None else lead
-    return bool(lead) and arm == "shallow" and next_write > 0 and next_write - now > lead
+    if not lead or arm != "shallow":
+        return False
+    return bool(sending) or (next_write > 0 and next_write - now > lead)
 
 
 def target_made(d):
@@ -866,12 +871,14 @@ def style_context(job, persona, meta):
 def flip_choice(job, body, meta):
     """29 Oct (Marc): the flip for this reply (flip.choose), or None: never off-topic, never to a citizen who already
     opposes the pass. Its key is logged as meta["flip"], with the fear dial (flip_fear) and the items the room lifted
-    (flip_lift, todo/52), so the panel can join a move to what we said."""
+    (flip_lift, todo/52), so the panel can join a move to what we said. todo/54: a lean-No reply (group turnout) whose post
+    voices no fear gets the no_firm fear (config.FLIP_TURNOUT), logged as flip_fallback."""
     if job.get("style") == "off_topic" or content.opposes_pass(body):
         return None
-    choice = flip.choose(body)
+    choice = flip.choose(body, fallback="no_firm" if config.FLIP_TURNOUT and job.get("group") == "turnout" else None)
     if choice:
-        meta.update(flip=flip.key(choice), flip_fear=config.FLIP_FEAR, flip_lift=",".join(choice["lifted"]) or None)
+        meta.update(flip=flip.key(choice), flip_fear=config.FLIP_FEAR, flip_lift=",".join(choice["lifted"]) or None,
+                    **({"flip_fallback": True} if choice.get("fallback") else {}))
     return choice
 
 
@@ -1585,6 +1592,7 @@ def main():
     save_due = threading.Event()         # the reader asks the writer to save the state
     ready = []                           # drafts waiting for the writer, in the order chosen (ready + inflight <= DRAFT_AHEAD)
     late_sends = []                      # when a send ran QUEUE_LATE_S past its slot (the shallow arm's guard); the writer appends
+    sending = [False]                    # todo/58: True while the writer is mid-send (the next slot isn't set yet): drafters hold
     inflight = []                        # the jobs the drafters are drafting now (config.DRAFTERS of them at most); guarded by mu
     no_model_until = [0.0]               # no draft before this time: the last one found no model (NO_MODEL_PAUSE_S)
     no_model_times, no_model_alerted = [], [0.0]      # when drafts found no model lately; when we said so (0: not now)
@@ -2432,7 +2440,7 @@ def main():
         def full():
             with mu:
                 arm = queue_arm(late_sends=late_sends)
-                return len(ready) + len(inflight) >= draft_ahead(arm) or jit_hold(next_write, time.time(), arm)
+                return len(ready) + len(inflight) >= draft_ahead(arm) or jit_hold(next_write, time.time(), arm, sending=sending[0])
         no_model_ok(answered=False)          # a spell of no model ends once a model has answered for a while
         if full():
             stop.wait(IDLE_S)
@@ -2455,7 +2463,7 @@ def main():
             woken.clear()
             with mu:
                 arm = queue_arm(late_sends=late_sends)
-                if len(ready) + len(inflight) >= draft_ahead(arm) or jit_hold(next_write, time.time(), arm):
+                if len(ready) + len(inflight) >= draft_ahead(arm) or jit_hold(next_write, time.time(), arm, sending=sending[0]):
                     return                                   # the others filled it while this one waited (or the slot moved)
                 job, drafted, wait = choose(time.time(), ids)
                 if job:
@@ -2607,6 +2615,7 @@ def main():
                     d = pick_ready(ready, lambda r: voice_wait(r["job"], accounts, args.live, t) <= 0, arm, t)
                     if d:
                         ready.remove(d)
+                        sending[0] = True            # todo/58: until send() sets next_write, the drafters hold
                         d["job"].update(queue_arm=arm, ready_n=len(ready) + 1, ready_s=round(t - d.get("ready_at", t), 1))
                         if -wait > config.QUEUE_LATE_S:      # the slot opened this long ago and nothing was ready
                             late_sends.append(t)
@@ -2621,6 +2630,7 @@ def main():
             except WRITE_ERRORS as e:
                 handle(e, job, pause)
             finally:
+                sending[0] = False
                 if job:
                     with mu:
                         accounts.reserved.discard(job["rec"]["persona"])

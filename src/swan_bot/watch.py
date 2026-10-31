@@ -350,3 +350,57 @@ def budget_run(now, writes, records, *, alert, record, dry=False, recent_writes=
         BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
         save({"ts": now, "sent": sent, "last": rep}, BUDGET_FILE)
     return rep
+
+
+# ---- todo/61 (31 Oct, Marc): the LLM budget before ×4's last days ----------------------------------------------------
+# There is no day reserve for 1-2 Nov: llm.allowance's floor (18 x 11 days) passes the $195 cap through 31 Oct, so only the
+# spend rate protects the last days (30 Oct: $8-10 of slack at $15-25 a day). This alerts while there is still time to act.
+LLM_SPEND_FILE = config.DATA / "llm_spend.json"      # llm.SPEND_FILE: {Sydney day: USD}
+LLM_STATUS_FILE = config.DATA / "status.json"         # the bot's status: llm[] with each model's park and why
+LLM_ALERT_FILE = config.DATA / "swan_llm_budget.json" # this check's state: when each kind of alert was last sent
+LLM_ALERT_MIN_LEFT = 3.0                              # alert when the money left at the end, at today's rate, is under this
+LLM_ALERT_GAP_S = 6 * 3600
+
+
+def llm_budget_report(now, spend, status, budget_usd=None, end=None):
+    """{left, rate, hours, end_left, parked, alerts}: dollars left of LLM_BUDGET_USD; the spend an hour (this Sydney day so
+    far, or yesterday's day average in the day's first 3 h); hours to the end (config.POOL_END, midnight Sydney after
+    polling day: the conservative end); what is left at the end at that rate; paid models parked for the budget."""
+    budget_usd = config.LLM_BUDGET_USD if budget_usd is None else budget_usd
+    end_ts = dt.datetime.fromisoformat(end or config.POOL_END).timestamp()
+    syd = dt.datetime.fromtimestamp(now, budget.ZoneInfo(budget.SYDNEY))
+    into_h = (syd - syd.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds() / 3600
+    today, yesterday = syd.date().isoformat(), (syd.date() - dt.timedelta(days=1)).isoformat()
+    spend = {k: float(v) for k, v in (spend or {}).items() if isinstance(v, (int, float))}
+    rate = spend.get(today, 0.0) / into_h if into_h >= 3 else spend.get(yesterday, 0.0) / 24
+    left = budget_usd - sum(spend.values())
+    hours = max(0.0, (end_ts - now) / 3600)
+    end_left = left - rate * hours
+    parked = [m.get("model") for m in (status or {}).get("llm") or []
+              if m.get("parked_until") and m.get("model") in config.LLM_PRICES and "budget" in (m.get("why") or "")]
+    alerts = {}
+    if hours > 0 and end_left < LLM_ALERT_MIN_LEFT:
+        alerts["short"] = (f"LLM BUDGET: ${left:.2f} left at ${rate:.2f}/h for {hours:.0f} h to the end: about ${end_left:.2f} "
+                           f"at the end, so the paid models park early. Lever: SWAN_LEAD_HAIKU_SHARE=0.3 in .env, restart (todo/61)")
+    if parked:
+        alerts["parked"] = f"LLM BUDGET: paid models parked for the budget ({', '.join(parked)}); free models write meanwhile"
+    return dict(left=round(left, 2), rate=round(rate, 3), hours=round(hours, 1), end_left=round(end_left, 2),
+                parked=parked, alerts=alerts)
+
+
+def llm_budget_run(now, *, alert, record, dry=False):
+    """One pass (swan_watch, every 20 min): each kind of alert at most once per LLM_ALERT_GAP_S; one summary row."""
+    rep = llm_budget_report(now, read_json(LLM_SPEND_FILE), read_json(LLM_STATUS_FILE))
+    state = read_json(LLM_ALERT_FILE)
+    sent = dict(state.get("sent") or {})
+    due = [k for k in rep["alerts"] if now - float(sent.get(k, 0)) >= LLM_ALERT_GAP_S]
+    record({"act": "llm_budget", **{k: rep[k] for k in ("left", "rate", "hours", "end_left", "parked")}, "sending": due})
+    for k in due:
+        if dry:
+            print(f"llm budget alert (dry, not sent): {rep['alerts'][k]}")
+        else:
+            alert(rep["alerts"][k])
+            sent[k] = now
+    if not dry:
+        save({"ts": now, "sent": sent, "last": {k: v for k, v in rep.items() if k != "alerts"}}, LLM_ALERT_FILE)
+    return rep

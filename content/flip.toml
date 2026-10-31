@@ -30,22 +30,22 @@ keywords = ['\bact(ing)? (now|early|fast|quickly|first|before|in time)', '\b(get
 evidence = ["wastewater_caught", "hospital_plans", "contained_case", "voluntary_doses"]
 requires = ["free_either_way"]
 core = ["A No isn't waiting or doing nothing: the testing, the tracing and the free vaccine all carry on whatever the result.",
-        "We're already acting early, and a No doesn't stop any of it: only the check at the door.",
+        "We're already acting early, and a No doesn't stop any of it: all a Yes adds is a pass to show.",
         "Acting early here means testing, tracing contacts and offering the jab to the people most at risk first, and all of it carries on whatever the result."]
 
 [fear.spread]
 label = "the new signal and the first case"
 keywords = ['wastewater', 'sewage', '\bsignal\b', '(first|new|confirmed|imported|more) cases?', '\boutbreaks?\b', '\bspread', 'community transmission', 'it.s (here|coming)', 'so fast']
 evidence = ["wastewater_caught", "contained_case"]
-core = ["It's being caught early and contained, and none of that needed a pass at anyone's door.",
-        "The signal and the case were both caught by routine testing, and that testing carries on after a No: a check at a door caught neither.",
+core = ["It's being caught early and contained, and none of that needed anyone to show a pass.",
+        "The signal and the case were both caught by routine testing, and that testing carries on after a No: a pass check caught neither.",
         "This is the system working early, without a pass at anyone's door, and a No keeps it running."]
 
 [fear.hospitals]
 label = "the hospitals being overwhelmed"
 keywords = ['hospital', '\bwards?\b', '\bicu\b', 'intensive care', 'capacity', 'overwhelm', '\bbeds?\b', '\bsurges?\b', 'frontline', 'health system']
 evidence = ["hospital_plans", "surge_drill", "voluntary_doses", "contained_case"]
-core = ["What protects the hospitals is staff, beds and jabs for the people most at risk, not a check at the shop door.",
+core = ["What protects the hospitals is staff, beds and jabs for the people most at risk, not a pass shown to get in.",
         "Hospitals are protected by nurses, beds and jabs for the people most at risk, and a No keeps every one of those.",
         "Looking after the hospitals means looking after the people who staff them and the people most likely to need a bed, and a No takes nothing from either."]
 
@@ -56,13 +56,13 @@ evidence = ["voluntary_doses", "contained_case"]
 requires = ["first_shipment_voluntary"]
 core = ["The people most at risk are first in line for the vaccine, by choice, and a No changes nothing about that.",
         "The people we worry about most are the first offered the jab, and that stays exactly the same after a No.",
-        "Protecting the most at risk is the jab offered to them first and staying home when you're sick; a check at the shop door adds nothing to it."]
+        "Protecting the most at risk is the jab offered to them first and staying home when you're sick; a pass check adds nothing to it."]
 
 [fear.lockdown]
 label = "a lockdown, or life grinding to a halt again"
 keywords = ['lockdowns?', 'shut ?downs?', 'harsher', 'stricter', '\bcovid\b', 'last time', 'pandemic', '(shut|close)\w* (down )?again']
 evidence = ["contained_case", "wastewater_caught"]
-core = ["What keeps a lockdown away is catching cases early, and that's already working; a check at the door doesn't do it.",
+core = ["What keeps a lockdown away is catching cases early, and that's already working; a pass check doesn't do it.",
         "Lockdowns come when cases get away from us, and catching them early is what's working now, with no pass at any door.",
         "The way we stay open is the testing that caught the first case early, and a No keeps every bit of it."]
 
@@ -73,7 +73,7 @@ label = "wanting things settled and predictable"
 keywords = ['stabil', 'predictab', '\bcertainty\b', 'uncertain', '\bsettled\b', 'peace of mind', 'keep (things|life|schools|shops|businesses|everything|us|the island) (open|running|going|flowing|moving)', '\broutines?\b', 'disruption', 'normal life']
 evidence = ["contained_case", "surge_drill"]
 requires = ["no_binds", "list_later"]
-core = ["The uncertainty is the Yes: nobody can say which doors it covers or for how long, while a No settles it for the life of this Assembly.",
+core = ["The uncertainty is the Yes: nobody can say which places it covers or for how long, while a No settles it for the life of this Assembly.",
         "A No is the steady option: life carries on as it is, with the testing and the jabs, and no new rule at any door for the life of this Assembly.",
         "Settled means knowing the rules, and a Yes is the option with the rules still to be written: the places come after the result."]
 
@@ -83,14 +83,14 @@ keywords = ['protect\w* (the )?(people|us|everyone|lives|kids|children|families|
 evidence = ["contained_case", "surge_drill", "voluntary_doses", "wastewater_caught"]
 core = ["The protection is already happening, and a No keeps every bit of it.",
         "Keeping people safe is the testing, the tracing and the jabs, and a No keeps all three running.",
-        "Everything that's keeping people safe right now runs without a pass at any door, and it keeps running after a No."]
+        "Everything that's keeping people safe right now runs without anyone showing a pass, and it keeps running after a No."]
 
 [fear.doctors]
 label = "following the doctors' advice"
 keywords = ['\bdoctors?\b', 'scientists?', '\bexperts?\b', 'advisory panel', '\bthe science\b', 'medical (advice|officers)', '\bmouk\b', 'amara', 'dr\.? singh', 'immune response', 'health advice']
 evidence = ["voluntary_doses", "contained_case"]
 requires = ["free_either_way"]
-core = ["The doctors' advice is to get vaccinated, and a No doesn't stop a single jab: the ballot is only about the check at the door.",
+core = ["The doctors' advice is to get vaccinated, and a No doesn't stop a single jab: the ballot is only about having to show a pass.",
         "Listening to the doctors means getting the jab, and nothing about a No stops anyone doing that: it stays free whatever the result.",
         "Whatever anyone thinks of the pass, the jab the doctors recommend stays free and on offer after a No: the ballot only decides the check at the door."]
 
@@ -115,6 +115,19 @@ core = ["A No isn't doing nothing: the testing, the tracing and the free vaccine
         "Their safeguards are a reason to wait for a better question, and waiting costs nothing here: the testing, the tracing and the free jabs carry on either way.",
         "A Yes asks them to sign before the safeguards exist, while a No keeps every protection running and leaves room for a question that has them.",
         "A No keeps every protection running and asks them to take nothing on trust, while a Yes asks them to trust that the safeguards come later."]
+
+# todo/54 (31 Oct, Marc): firm the No, don't echo it. A lean-No reply (group turnout) whose post voices no fear and names no
+# condition gets this one (flip.choose(text, fallback="no_firm"), config.FLIP_TURNOUT): the doubt that can still pull a
+# No-leaner to a Yes is that a No means doing nothing. fallback_only: never matched by its keywords (they're for the record).
+[fear.no_firm]
+fallback_only = true
+label = "whether a No really keeps people safe"
+keywords = ['\blimbo\b', 'a no (vote )?(means|is|leaves)']
+evidence = ["contained_case", "surge_drill", "hospital_plans", "voluntary_doses", "wastewater_caught"]
+requires = ["free_either_way"]
+core = ["A No isn't doing nothing: the testing, the tracing and the free vaccine all carry on whatever the result.",
+        "Voting No leaves nobody exposed: the testing, the tracing and the free jabs carry on either way.",
+        "A No keeps every protection that's working now, and asks nobody to take a new rule on trust."]
 
 [evidence.wastewater_caught]
 requires = ["wastewater_inconclusive"]
@@ -158,7 +171,7 @@ weight = 2.0
 
 [pivot.no_list]
 requires = ["list_later"]
-line = ["nobody can say which doors the check covers, because the list of places comes after the result",
+line = ["nobody can say which places the check covers, because the list of places comes after the result",
         "the question doesn't say which places it covers: that's set by regulation after the result, not on the ballot",
         "they'd be voting for a check at doors nobody has named yet, because the list only comes out after the result"]
 keywords = ['which (places|venues|spaces|doors)', '\bvenues?\b', '\blist\b', 'designated', '\bshops?\b', '\bschools?\b', '\bbuses\b', 'workplaces?', '\bgyms?\b', '\bparks?\b', 'publish']
@@ -174,14 +187,14 @@ weight = 3.0
 
 [pivot.no_staff]
 requires = ["nurses"]
-line = ["a check at the door adds no nurse and no bed, and Central still has 40 empty nursing posts",
+line = ["a pass check adds no nurse and no bed, and Central still has 40 empty nursing posts",
         "a pass at the door doesn't add a nurse or a bed, and Central is still 40 nurses short"]
 keywords = ['nurse', '\bstaff', '\bbeds?\b', 'burnout', '\bshifts?\b']
 weight = 2.0
 
 [pivot.who_checks]
 requires = ["list_later"]
-line = ["the question doesn't say who checks, so it lands on shop staff, drivers and teachers at the door",
+line = ["the question doesn't say who checks, so it lands on shop staff, drivers and teachers",
         "the checking is left to whoever's on the door, so it falls on shop staff, drivers and teachers"]
 keywords = ['gatekeep', 'who checks', 'checking (papers|passes|certificates)', 'on the door', 'at the door', 'enforce', 'doormen', 'bouncer', 'shop staff', 'drivers?']
 weight = 1.5
@@ -234,7 +247,7 @@ weight = 1.5
 [pivot.no_proof]
 own_only = true
 requires = ["wastewater_inconclusive", "contacts_negative_results"]
-line = ["nobody has shown what a check at the door adds to the testing and tracing that caught this early",
+line = ["nobody has shown what a pass check adds to the testing and tracing that caught this early",
         "what's been shown to work here is the testing and the tracing, and nobody has shown a check at the door adds to them"]
 keywords = ['show (us|me)', '\bevidence\b', '\bproof\b', '\bprove', 'clear difference', 'makes? a (real |clear )?difference', 'does (it|a pass) (actually )?(work|stop)']
 weight = 1.0

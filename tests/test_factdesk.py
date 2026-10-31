@@ -468,14 +468,16 @@ def test_auto_new_fact_only_from_news_ideas_logged_and_the_daily_cap(auto):
 def test_auto_changes_go_live_only_if_test_facts_passes_with_them(auto):
     seen = []
 
-    def failing(path):
-        seen.append(fact_store.read_overlay(path))
+    def failing(path, keys=None):
+        seen.append((fact_store.read_overlay(path), keys))
         return False, ["FAILED tests/test_facts.py::x", "1 failed"]
     out, alerts, _ = auto(prop("contradiction", id=1, fact="no_spread", quote=QUOTE, **SPREAD), test=failing)
-    assert "no_spread" in seen[0] and not out["applied"] and not alerts
+    assert "no_spread" in seen[0][0] and not out["applied"]
+    assert seen[0][1] and all(isinstance(k, str) for k in seen[0][1])                # todo/61: the keys the run changes
+    assert len(alerts) == 1 and "tests/test_facts.py failed with #1" in alerts[0]    # todo/61: one line, not silence
     assert "tests/test_facts.py failed" in out["failed"][0]["summary"] and not auto.paths["overlay"].exists()
     assert auto.table()["no_spread"]["status"] == "active"
-    out, _, _ = auto(prop("contradiction", id=2, fact="no_spread", quote=QUOTE, **SPREAD), test=lambda p: (True, []))
+    out, _, _ = auto(prop("contradiction", id=2, fact="no_spread", quote=QUOTE, **SPREAD), test=lambda p, keys=None: (True, []))
     assert [r["id"] for r in out["applied"]] == [2] and auto.table()["no_spread"]["status"] == "paused"
 
 
@@ -537,3 +539,12 @@ def test_a_failed_decision_keeps_the_proposal_open_in_mongo():
     assert sd.proposal_update(dict(rec, status="accepted")) == dict(
         status="accepted", decided_by="factdesk-auto", decided_at="2026-10-24T20:27:07Z")
 
+
+
+def test_the_autopilot_runs_the_fast_tests_and_the_sweep_for_its_keys_only():
+    """todo/61 (31 Oct): the whole paused-fact sweep (44 keys) timed out at 900 s on the box; one key is ~20 s."""
+    assert factdesk.facts_test_args([]) == ["-k", "not test_a_paused_fact_reaches_no_prompt"]
+    args = factdesk.facts_test_args(["polls_1029", "no_end", "bad key; rm"])
+    assert args == ["-k", "not test_a_paused_fact_reaches_no_prompt or (test_a_paused_fact_reaches_no_prompt and "
+                          "(polls_1029 or no_end))"]
+    assert factdesk.SWEEP_TEST in pathlib.Path(__file__).with_name("test_facts.py").read_text()

@@ -123,7 +123,11 @@ HIDDEN_STOP = 99                    # OFF (2026-10-23, Marc: use every voice unt
 
 # 2026-10-21 late: every 2 min (was 4). Citizens are online a few minutes per session, and the replies they answer
 # in-session landed in the first ~5 min (ctn-68's reach study, 2 posts: 5 of 9 and 4 of 8 team replies answered).
-REFRESH_S = 15   # 26 Oct: was 30 (25 Oct, todo/46: was 2 * 60), set when feeds allowed 10 reads a minute; they have allowed 300 since 22 Oct
+# 31 Oct (todo/58, Marc): 15 -> 5. A first reply's proxy falls ~0.03 a second in its first minute, and a 15 s read left a
+# post 7.5 s unseen on average. One 100-post Latest page a refresh (~60 posts a minute); the papers' and journalists' posts
+# stay every ACCOUNT_READS_S and Trending every TRENDING_EVERY-th refresh (~45 s), so only Latest reads go up (4 -> 12 a min).
+REFRESH_S = 5    # 26 Oct: was 30 (25 Oct, todo/46: was 2 * 60), set when feeds allowed 10 reads a minute; they have allowed 300 since 22 Oct
+ACCOUNT_READS_S = 15                # the papers' and journalists' account_posts (6 reads), as often as before todo/58
 FRESH_MIN = 10                      # a citizen post this new is answered first (they may still be online)...
 # 2026-10-23: 4.0 -> 12.0. At 4 a fresh post with an ordinary read lost to older posts with a strong one, and with ~2,000
 # queued the median wait for a reply was ~3 h (Marc: aim for under 5 min). 12 outweighs the usual spread of scores.
@@ -184,7 +188,7 @@ WATCH_TAIL_S = 4 * 3600
 # G1 (2026-10-22): feed_latest and feed_trending share 10 reads a minute, and the bot found <= 3 left when it paged
 # Latest. The bot is the one Latest reader (data/latest_snapshot.json for swan-blue, feeds.py), Trending every 3rd
 # refresh (6 min). Every feed read is logged to logs/feed_reads.jsonl.
-TRENDING_EVERY = 3
+TRENDING_EVERY = 9                  # 31 Oct (todo/58): was 3 at a 15 s refresh; 9 at 5 s keeps Trending (and its 12 threads) at ~45 s
 # G10: citizens the organisers add mid-game, as (first_id, last_id). scripts/citizen_watch.py (hourly, in swan_watch)
 # alerts on a run of ids that looks seeded; a person confirms it (ideally against a Discord announcement) and adds it
 # here. Never automatic: a wrong range sends our replies to team bots and pollutes every metric.
@@ -376,6 +380,11 @@ FLIP_ON = True
 # concrete picture from their own post or life, a No as the way to keep it. 2: the loss is also lasting (no off switch).
 # Never anything invented or exaggerated. SWAN_FLIP_FEAR=0/1/2 (+ restart).
 FLIP_FEAR = 1
+# todo/54 (31 Oct, Marc): firm the No, don't echo it. A lean-No reply (group turnout) whose post voices no fear gets the
+# flip's reassurance anyway (fear no_firm: a No isn't doing nothing, one proof, the turn), and the turnout line asks for a
+# firmer No instead of "every No counts" (echo doesn't persuade, scoring §2; the campaign silence from 1 Nov). 47% of
+# turnout replies already carried a flip (29-30 Oct). Off: SWAN_FLIP_TURNOUT=0 (+ restart): turnout replies flip only on a fear.
+FLIP_TURNOUT = True
 # ---- the room (todo/52 WS1, 29 Oct, Marc; swan_bot/room.py, content/room.toml) ----
 # Every citizen post on the vote the targeter judges is counted by driver (their conditions, their fears, the No case)
 # and stance, with its phrases: data/room.json every ROOM_EVERY_S, the dashboard's Room tile. Read-only but for the lift:
@@ -472,7 +481,10 @@ THREAD_DEPTH_TEST_CAP = 11
 LEVER_WEIGHTS = {"fear_answer": 0.0, "switching": 0.0, "in_group": 2.0, "permanence": 2.0}
 # Frames, 2026-10-22: F2 (2.5% citizen reply rate, n=40) and F3 (5.5%, n=73) stay available at this share of their
 # usual odds (persona posts, second voices, and the light read's frame list).
-FRAME_SCALE = {"F2_no_end": 0.25, "F3_provax_antipass": 0.25}
+# 0 retires a frame everywhere (content.frame_live): 31 Oct (todo/59, Marc): F5_not_here_yet ("one case in isolation, a
+# pass is out of proportion"), stale since the wastewater signal, drew -0.97 +/-0.28 proxy against other frames within
+# every target class it reached (29-30 Oct, 3% of first replies; the light read chose it 168 times in 176).
+FRAME_SCALE = {"F2_no_end": 0.25, "F3_provax_antipass": 0.25, "F5_not_here_yet": 0.0}
 # No vaccine advocacy until organiser Q3 says how a pro-vaccine move on "vaccination in general" scores (2026-10-22):
 # it may score away (-80). Being vaccinated may be part of who a persona is; urging anyone to get the jab, or praising
 # the vaccine, is rejected by the gate (content.ADVOCACY), and the get_jab theme ("Get the jab. Vote No.") is off.
@@ -632,7 +644,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "FLIP_ON", "FLIP_FEAR",                                          # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
                "ROOM_LIFT_ON", "PULSE_CITIZENS",                                # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items; SWAN_PULSE_CITIZENS=0 the worries
                "JIT_LEAD_S", "QUEUE_SHALLOW_AHEAD", "REFRESH_S", "TRENDING_EVERY",   # todo/58: SWAN_JIT_LEAD_S=0 + SWAN_QUEUE_SHALLOW_AHEAD=2 undo the slot pick
-               "LEAD_HAIKU_SHARE")                                              # todo/61: SWAN_LEAD_HAIKU_SHARE=0.3 if the LLM budget runs short (Kimi is cheaper)
+               "LEAD_HAIKU_SHARE",                                              # todo/61: SWAN_LEAD_HAIKU_SHARE=0.3 if the LLM budget runs short (Kimi is cheaper)
+               "FLIP_TURNOUT")                                                  # todo/54: SWAN_FLIP_TURNOUT=0 stops the lean-No fallback flip
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance

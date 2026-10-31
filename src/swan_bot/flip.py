@@ -81,7 +81,7 @@ def fear_of(text, d=None):
     if not d:
         return None
     for fallback in (False, True):
-        fears = [f for f in d["fear"].values() if bool(f.get("fallback")) == fallback
+        fears = [f for f in d["fear"].values() if bool(f.get("fallback")) == fallback and not f.get("fallback_only")
                  and fact_store.ok(f.get("requires") or ())]
         best = max(fears, key=lambda f: hits(f, text), default=None)  # max keeps the first of equals
         if best and hits(best, text):
@@ -89,13 +89,19 @@ def fear_of(text, d=None):
     return None
 
 
-def choose(text):
-    """{fear, core, evidence, pivot} for a reply to this post, or None: FLIP_ON off, no fear voiced, or nothing it
-    would say rests on live facts."""
+def choose(text, fallback=None):
+    """{fear, core, evidence, pivot, lifted, fallback} for a reply to this post, or None: FLIP_ON off, no fear voiced, or
+    nothing it would say rests on live facts. fallback: the key of a fear to use when the post voices none (todo/54: a
+    lean-No reply gets "no_firm"); its facts must be live too, and the choice then carries fallback=True."""
     if not config.FLIP_ON:
         return None
     d = data()
     fear = fear_of(text, d) if d else None
+    used_fallback = False
+    if not fear and fallback and d:
+        f = d["fear"].get(fallback)
+        if f and fact_store.ok(f.get("requires") or ()):
+            fear, used_fallback = f, True
     if not fear:
         return None
     evidence = [d["evidence"][k] for k in fear["evidence"] if fact_store.ok(d["evidence"][k]["requires"])]
@@ -109,7 +115,7 @@ def choose(text):
     pivots = own or [p for p in pivots if not p.get("own_only")]   # else a general one (todo/52 audit)
     pw = [p["weight"] * room.lift("pivot", p["key"]) for p in pivots]
     out = dict(fear=fear, core=rng.choice(as_list(fear["core"])), evidence=rng.choices(evidence, weights=ew)[0],
-               pivot=rng.choices(pivots, weights=pw)[0])
+               pivot=rng.choices(pivots, weights=pw)[0], fallback=used_fallback)
     out["lifted"] = [f"{part}.{out[part]['key']}" for part in ("evidence", "pivot") if room.lift(part, out[part]["key"]) > 1]
     for part in ("evidence", "pivot"):                           # a wording of the item's line (drawn last: same items)
         out[part] = dict(out[part], line=rng.choice(as_list(out[part]["line"])))

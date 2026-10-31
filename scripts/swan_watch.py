@@ -59,6 +59,7 @@ def main():
     if args.budget_only:
         watch.budget_run(now, scan.text_writes(), records, alert=alert, record=record, dry=args.dry,
                          recent_writes=scan.text_writes_since(now - 24 * 3600))
+        watch.llm_budget_run(now, alert=alert, record=record, dry=args.dry)
         return
     social = ctn.LegitSocial()
     portal = watch.portal_suspended(now=now)         # the poller's local file (no network): {(username, id): {ts, why}}
@@ -126,6 +127,11 @@ def main():
                          recent_writes=scan.text_writes_since(now - 24 * 3600))
     except Exception as e:                           # noqa: BLE001 - a bad file here is not worth a failed unit
         print(f"budget: {type(e).__name__}: {e}")
+    # ---- the LLM budget projection (todo/61, 31 Oct): alert only, never stops the watch ----
+    try:
+        watch.llm_budget_run(now, alert=alert, record=record, dry=args.dry)
+    except Exception as e:                           # noqa: BLE001
+        print(f"llm budget: {type(e).__name__}: {e}")
     if not args.dry:
         watch.save(state)
 
