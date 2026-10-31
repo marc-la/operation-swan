@@ -15,6 +15,32 @@ It uses the IAM key in `.env` (`EC2_ACCESS_KEY`, never printed) through the `aws
 - CloudWatch `AWS/Bedrock` sees only Claude (Converse). Kimi/GLM/DeepSeek go through the mantle endpoint and show up only in the bill.
 - EC2: t3.medium since 23 Oct 03:04 UTC is about $1.42/day with the Elastic IP and disk (t3.micro was $0.47). Unlimited-mode surplus billed: $0.035 in total.
 
+## 31 Oct: the whole credit (Marc)
+**Commit 0f840f1:**
+- `LLM_BUDGET_USD` 195 → 205 ledger dollars.
+- `LLM_AMP_RESERVE_SHARE` 0.25 → 0. Amplification has been off since 21 Oct, so the reserve only pushed the last quarter of each
+  day's share from replies to the free models.
+
+**`aws_cost.py` at 04:50 UTC:**
+- billed $130.82, credit left $69.18;
+- the bot's ledger had $145.20 spent;
+- spending all of 205 would end at **$194.95**, $5 under the credit;
+- at the recent pace it would end at $171.54.
+
+**Why:** that morning flash-lite left the reply models, and LLM calls per write rose from 1.43 to 1.73. At that rate the last
+of 195 would have gone hours before the end, parking Kimi and Haiku in the ×4 days.
+
+**The model mix stays.** Haiku-led and Kimi-led replies draw the same: 2.64 and 2.68 visible points a write, randomised,
+24 h ([rival-strategies-2026-10-31](../06-strategy/rival-strategies-2026-10-31.md)). Spending more on Haiku would not buy
+points.
+
+**Watch:**
+- `aws_cost.py` once a day;
+- the dashboard's BUDGET LOW banner, which with no reserve warns at under half the day's share;
+- the `ctn-gross-usage-170` budget e-mail, which fires at $170 by design.
+
+Stop the instance and release the Elastic IP right after the end.
+
 ## Daily floor (23 Oct)
 `config.LLM_DAILY_FLOOR_USD` = $12 ledger dollars a day: the allowance through any budget day is never below 12 x days so far, still capped by `LLM_BUDGET_USD`. The bot spends ~$6-9 a day, and the old weighted share ($6.80 for 21-25 Oct) left no margin: on 23 Oct Kimi was walled off from ~06:30 Sydney, Gemini was out of quota, and drafts found no model for ~7 h (hourly live writes fell from ~130 to 4-8). Worst case at the floor every day: 13 x 12 = $156 ledger, about $128 billed.
 
