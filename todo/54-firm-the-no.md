@@ -1,6 +1,6 @@
 # 54 — Firm the No, don't echo it (todo/53 P1: the count)
 
-Written Sat 31 Oct 2026, ~02:30 Perth (30 Oct 18:30 UTC), by Claude for Marc. **Status: proposal, needs Marc's OK.**
+Written Sat 31 Oct 2026, ~02:30 Perth (30 Oct 18:30 UTC), by Claude for Marc. **Status: shipped 31 Oct 00:15 UTC (4363550; Marc approved the design, Claude built it).** §3 items 1-3 are live (`FLIP_TURNOUT`, fear `no_firm`, logged `flip_fallback`); item 4 (optional) was not built.
 **Priority 2 of the 31 Oct designs.** It's a content change plus about 10 lines of code. Ship it in the same push as
 [todo/59](59-prune.md)'s content changes, so the bot restarts once, before the 06:00 UTC last deploy. It must be live
 before the campaign silence and ×4 begin (31 Oct 13:00 UTC).

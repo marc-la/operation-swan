@@ -1,6 +1,6 @@
 # 58 — Speed: choose the target at the slot, not a slot ahead (todo/53 P5)
 
-Written Sat 31 Oct 2026, ~02:30 Perth (30 Oct 18:30 UTC), by Claude for Marc. **Status: proposal, needs Marc's OK.**
+Written Sat 31 Oct 2026, ~02:30 Perth (30 Oct 18:30 UTC), by Claude for Marc. **Status: shipped (Marc approved, Claude built).** Step 1: f6c6222, live 30 Oct 23:49 UTC. The mid-send fix and step 2: 4363550, live 31 Oct 00:15 UTC. The live checks are in §6.
 **Priority 1 of the 31 Oct designs:** the largest engagement lever found. It changes how the pipeline is timed, not what
 we say, so it is not a switchback arm. It needs code and a test: aim to have it live by about 01:00-02:00 UTC
 (9-10am Perth), so there are a few live hours before the 06:00 UTC last deploy.
@@ -169,3 +169,26 @@ Read first: CLAUDE.md, [todo/53](53-the-last-three-days.md) §3 P5, and `bot.py`
   waiting). The value table (todo/49) and the 31 Oct boosts were both null. Speed is the lever left.
 - **The `DOWNRANK_MIN` 2.5 for weak classes stays.** It rests on an equal-age finding (weak classes reply 2-5 points less
   at the same age; config comment, 27 Oct), and choosing at the slot helps them too.
+
+## 6. Live checks (31 Oct, on the box; `t_*` fields of reply and reply_back rows, against the same clock window a day earlier)
+- **Step 1 (f6c6222, 23:49 UTC), first 14 min.**
+  - Writes 2.89 a minute (2.96 the day before).
+  - `ready_s` p50 6.2 s (14.7); stale sends 0 (7.3%).
+  - But chosen → sent was bimodal, 7 s or 18-20 s, half each. The writer set `next_write` only after the write returned,
+    so a drafter that looked mid-send saw the old slot, didn't hold, and chose a slot early.
+  - **Fixed in 4363550:** the writer flags a send in progress (`sending`), and `jit_hold` holds then too.
+- **Push 2 (4363550, 00:15 UTC: the mid-send fix and Latest every 5 s), first 3 min.**
+  - Chosen → sent p25-p90 6.9-7.6 s (18.0-154 the day before).
+  - Age at send p50 24.8 s (39.5), n 9.
+  - Refresh gap p50 5.0 s; `feed_remaining` never below 199; no `widen_rate_limited`.
+- **Push 2, first 27 min (00:15-00:42 UTC), against the same window a day earlier.**
+  - Writes 2.94 a minute (2.98); reply-backs 8 (4).
+  - **Age at send p50 21.4 s (37.3)**; p25 16.5 (25.9), p75 27.1 (52.9), p90 39.6 (77.0); n 70.
+  - Chosen → sent p50 7.4 s, p90 7.9 (19.7 and 149.8). Stale sends 0 (6).
+  - Drafting p50 1.9 s, p90 4.0, p95 6.6; 1 of 70 over 7 s, so the 7 s lead leaves room.
+  - Refresh gap 5.0 s; `feed_remaining` never below 199; no rate limits.
+- **Still to read:**
+  - the 6 h proxy per first reply, hour-adjusted, against the same hours a day earlier (from 06:15 UTC);
+  - the portal's engagement per write over 12-24 h.
+- **An option not taken:** `SWAN_JIT_LEAD_S=5` would save about 2 s more. Drafting's p90 is 4.0 s, so about 1 send in 10
+  would land a second or two late. Leave it at 7 unless the 6 h read says speed still pays.

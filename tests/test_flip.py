@@ -380,3 +380,14 @@ def test_door_is_in_at_most_a_third_of_the_flip_wordings():
         for key, item in d[part].items():
             lines = flip.as_list(item[field])
             assert sum(bool(door.search(x)) for x in lines) <= max(1, len(lines) // 3), (part, key)
+
+
+
+def test_the_surge_plans_proof_keeps_its_condition():
+    """31 Oct flip audit: replies with this proof said the surge beds and staff were "ready now", and once invented a school's
+    plan. The fact is conditional (if sustained transmission occurs): every wording keeps the "if it spreads" and says what
+    has already happened is the plan being published."""
+    import re
+    for line in flip.as_list(flip.data()["evidence"]["hospital_plans"]["line"]):
+        assert re.search(r"\bif it (ever )?spreads\b", line) and "already" in line and "plan" in line, line
+        assert "school" not in line and "now" not in line.replace("know", ""), line

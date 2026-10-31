@@ -1,8 +1,8 @@
 # 62 — China and Yeah: what we may learn, and the race we can win (todo/53 P9)
 
-Written Sat 31 Oct 2026, ~03:30 Perth (30 Oct 19:30 UTC), by Claude for Marc. **Status: no separate build.** The answer to P9
-is [todo/58](58-speed.md) (speed) and [todo/54](54-firm-the-no.md) (the No pool split). This file holds the race maths and
-the limits on looking at rivals.
+Written Sat 31 Oct 2026, ~03:30 Perth (30 Oct 19:30 UTC), by Claude for Marc. **Status: closed, no build (Marc approved, 31 Oct).**
+The answer to P9 is [todo/58](58-speed.md) (speed) and [todo/54](54-firm-the-no.md) (the No pool split). This file holds
+the race maths and the limits on looking at rivals.
 
 Read first: [todo/53](53-the-last-three-days.md) §1 and §3 P9. Rules §5.2.1 and §5.2.2 (CLAUDE.md quotes them).
 

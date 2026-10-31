@@ -1,7 +1,7 @@
 # 60 — Reply-backs: we answer two in three, and the "missing" replies aren't on our posts (todo/53 P7)
 
-Written Sat 31 Oct 2026, ~03:15 Perth (30 Oct 19:15 UTC), by Claude for Marc. **Status: no bot change recommended.** Two doc
-corrections (§3) and one optional organiser question ([todo/55](55-persuasion-and-the-pool.md) Q16). This finding also
+Written Sat 31 Oct 2026, ~03:15 Perth (30 Oct 19:15 UTC), by Claude for Marc. **Status: closed (Marc approved, 31 Oct): no bot change; §3's doc corrections shipped in 4363550.**
+The optional organiser question ([todo/55](55-persuasion-and-the-pool.md) Q16) was not posted. This finding also
 changes how P5 and P4 read.
 
 Read first: [todo/53](53-the-last-three-days.md) §3 P7, [engagement-audit](../docs/06-strategy/engagement-audit-2026-10-25.md) finding 2.

@@ -1,6 +1,6 @@
 # 59 — Prune what loses, stop the gate fighting the flip (todo/53 P6)
 
-Written Sat 31 Oct 2026, ~02:45 Perth (30 Oct 18:45 UTC), by Claude for Marc. **Status: proposal, needs Marc's OK.**
+Written Sat 31 Oct 2026, ~02:45 Perth (30 Oct 18:45 UTC), by Claude for Marc. **Status: shipped 31 Oct 00:15 UTC (4363550; Marc approved, Claude built).** §2 (F5 retired) and §3 (door wording, the turn template and the fear dial's example too) are live; §4's options were not built, as recommended.
 **Priority 3:** two small content and config changes. Ship them in the same push as [todo/54](54-firm-the-no.md), so the
 bot restarts once, before the 06:00 UTC last deploy.
 

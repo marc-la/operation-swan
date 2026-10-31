@@ -1,8 +1,8 @@
 # 55 — Persuasion we can't see: stop measuring, ask the organisers, bet on the rules (todo/53 P2)
 
-Written Sat 31 Oct 2026, ~03:00 Perth (30 Oct 19:00 UTC), by Claude for Marc. **Status: proposal.** There's no code. The
-questions in §3 are for Marc to post in `#questions` **today**: the answers decide how much the 400,000 is worth to us
-before it's paid.
+Written Sat 31 Oct 2026, ~03:00 Perth (30 Oct 19:00 UTC), by Claude for Marc. **Status: closed 31 Oct (Marc): the questions are not posted; we assume "neither side" changes do not count toward the pool.** Nothing in the bot depends on the answer.
+The drafts in §3 stay here in case they are wanted later; the answers would have decided how much the 400,000 is worth
+to us before it's paid.
 
 Read first: CLAUDE.md, [todo/53](53-the-last-three-days.md) §2 and §3 P2, scoring guide §2 and §4.
 

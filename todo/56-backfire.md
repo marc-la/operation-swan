@@ -1,7 +1,7 @@
 # 56 — Is the flip pushing citizens to Yes? No sign of it: keep it, with a tripwire (todo/53 P3)
 
-Written Sat 31 Oct 2026, ~03:00 Perth (30 Oct 19:00 UTC), by Claude for Marc. **Status: no change recommended.** One watch
-rule for the ×4 days (§3). The only content change touching the flip is the "door" rewording in
+Written Sat 31 Oct 2026, ~03:00 Perth (30 Oct 19:00 UTC), by Claude for Marc. **Status: closed, no change (Marc approved, 31 Oct).**
+One watch rule for the ×4 days (§3). The only content change touching the flip is the "door" rewording in
 [todo/59](59-prune.md) §3, which is about the gate, not persuasion.
 
 Read first: [todo/53](53-the-last-three-days.md) §3 P3, [situation §13](../docs/06-strategy/situation-2026-10-29.md#13-the-yes-surge-and-the-flip-29-oct-evening).
@@ -47,6 +47,25 @@ UTC). The lines are booked at about :49, matched to the writes of the hour befor
   more on 31 Oct before 06:00 UTC.
   - If invented specifics recur, tighten that one evidence line's "add no date, time, place or figure" note. Don't touch
     the flip's structure.
+
+**The audit, 31 Oct 00:50 UTC** (`scripts/flip_audit.py sample --n 30 --since-h 0.6`, flips since 4363550, judged offline by
+Claude against the rubric):
+- **10 of 30 failed something:** no_invention 6, worry 3, then one each of tasteful, human, specific and one_point.
+- **`hospital_plans` caused most of it (5 failures in 8 uses).**
+  - "Surge beds and staff ready now" (twice), where the fact is a plan for if it spreads.
+  - The invented school plan again: "my daughter's school already has its plan, same as the hospitals".
+  - **Fixed in the next push:** both wordings now say what has already happened is the plan being published, and the
+    beds and staff are only if it spreads. A test holds the condition.
+- **The rest, once each, left alone:**
+  - "kept the first case out";
+  - "40 empty nursing posts they won't fill";
+  - a privacy post matched the hospitals fear through "frontline";
+  - a thank-you to a nurse got a pitch;
+  - a fragment opening.
+- **Nothing pushed citizens toward a Yes:** no reply named a loss a Yes doesn't bring.
+- **`no_firm`, the lean-No fallback (1 in the sample),** answered the permanence worry in the citizen's terms. The other
+  lean-No replies firmed the No with a fact: "the first case came, they isolated it, contacts tested clean: that's the
+  system working. A No keeps that."
 
 ## 3. The tripwire for ×4
 - **What to read.** Contributions away per 1,000 writes, over the last 12 h of portal lines (compute them as todo/53 §7

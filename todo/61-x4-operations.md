@@ -1,6 +1,6 @@
 # 61 — Running ×4 safely: alerts that wake someone, a slow-writer alarm, the fact desk, the budget, the rota (todo/53 P8)
 
-Written Sat 31 Oct 2026, ~03:00 Perth (30 Oct 19:00 UTC), by Claude for Marc. **Status: proposal, needs Marc's OK.**
+Written Sat 31 Oct 2026, ~03:00 Perth (30 Oct 19:00 UTC), by Claude for Marc. **Status: shipped 31 Oct 00:15 UTC (4363550): items 2, 3 and 4.** Item 1 was not done (Marc: no webhook, the dashboard is watched live everywhere), so the alarms land on the dashboard and in `logs/alerts.log`. Items 5-7 are rules; the rota (§6) needs names.
 **Priority 4, and partly urgent.** Item 1 needs only `.env` and a Discord webhook, no code, and should be done before ×4
 (31 Oct 13:00 UTC, 9pm Perth). Items 2-4 are small code in `deploy/` and `src/`: bundle them into the 06:00 UTC deploy.
 

@@ -1,7 +1,7 @@
 # 57 — One voice: keep hot mode; variety buys nothing we can find (todo/53 P4)
 
-Written Sat 31 Oct 2026, ~03:15 Perth (30 Oct 19:15 UTC), by Claude for Marc. **Status: no change recommended.** The spare
-ban budget has no use that pays. Close P4 unless Marc wants to spend accounts on something not tested here.
+Written Sat 31 Oct 2026, ~03:15 Perth (30 Oct 19:15 UTC), by Claude for Marc. **Status: closed, no change (Marc approved, 31 Oct).**
+The spare ban budget has no use that pays.
 
 Read first: [todo/53](53-the-last-three-days.md) §3 P4, [stealth](../docs/06-strategy/stealth.md), `config.py` hot mode
 (~line 633).

@@ -150,8 +150,10 @@ weight = 2.0
 # and the false claims: a conditional ("if it spreads"), no "here", no "in stages" (the pass's phasing), no day
 [evidence.hospital_plans]
 requires = ["hospital_contingency_protocols"]
-line = ["the hospitals have published their surge plans: more respiratory beds, and staff moved across, if it ever spreads in the community",
-        "the hospitals have put out their plans for a surge, with extra respiratory beds and staff ready to move if it spreads in the community"]
+# 31 Oct flip audit: 4 of 7 replies with this proof stretched it ("surge beds and staff ready now", "a school has its plan
+# too"). What has already happened is the plan being published; the beds and the staff are for if it spreads. Hospitals only.
+line = ["the hospitals have already published their surge plans: if it ever spreads in the community, more respiratory beds open and staff move across, so the plan is written before it's needed",
+        "the hospitals' surge plans are already out: extra respiratory beds and staff moved across only if it spreads in the community, a plan ready before it's needed"]
 keywords = ['hospital', '\bwards?\b', '\bbeds?\b', '\bsurges?\b', 'capacity', '\bicu\b', 'overwhelm', 'contingenc', 'respiratory', 'surger(y|ies)', '\bprepar']
 weight = 3.0
 
