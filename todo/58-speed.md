@@ -192,3 +192,7 @@ Read first: CLAUDE.md, [todo/53](53-the-last-three-days.md) §3 P5, and `bot.py`
   - the portal's engagement per write over 12-24 h.
 - **An option not taken:** `SWAN_JIT_LEAD_S=5` would save about 2 s more. Drafting's p90 is 4.0 s, so about 1 send in 10
   would land a second or two late. Leave it at 7 unless the 6 h read says speed still pays.
+- **After push 4 (5f10159, 01:13 UTC), 16 min.**
+  - Writes 2.92 a minute; age at send p50 23.7 s; chosen → sent p50 7.3 s; no stale sends.
+  - Refresh 5.0 s; no rate limits; no tracebacks; health state clear.
+  - Four restarts in 85 minutes cost no throughput beyond the restart minutes.

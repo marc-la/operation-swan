@@ -14,6 +14,10 @@ Designs for [todo/53](53-the-last-three-days.md)'s nine problems, one file each 
   1. f6c6222 (live 30 Oct 23:49 UTC): [58](58-speed.md) step 1, the next job chosen 7 s before the slot.
   2. 4363550 (live 31 Oct 00:15 UTC): the mid-send fix to 58, 58 step 2 (Latest every 5 s), [54](54-firm-the-no.md), [59](59-prune.md),
      [61](61-x4-operations.md) items 2-4, and [60](60-reply-backs.md)'s doc corrections.
+  3. f399056 (live 00:54 UTC): the flip audit's fix ([56](56-backfire.md) §2: the surge-plans proof keeps its "if it spreads").
+  4. 5f10159 (live 01:13 UTC): the 31 Oct papers. The wastewater signal was a false alarm and the first case has recovered;
+     the desk's new facts were mirrored, and the flip's two main proofs, the no-proof turn and the lead story re-pointed
+     ([61](61-x4-operations.md) §4). The staged retest story is live.
 - **Not done, by Marc's call:** 61 item 1 (no webhook: the dashboard is watched live everywhere); [55](55-persuasion-and-the-pool.md)'s
   questions (not posted; we assume "neither side" changes don't count toward the pool).
 - **No change, closed with reasons:** [56](56-backfire.md), [57](57-one-voice.md), [62](62-the-rivals.md).
