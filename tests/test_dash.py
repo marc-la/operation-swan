@@ -743,12 +743,26 @@ def test_drafting_amber_on_any_drops_in_30_min(tmp_path):
     assert "not the cause" in "".join(b["detail"])
 
 
-def test_drafting_amber_when_paid_models_held_back_or_budget_low(tmp_path):
+def test_drafting_amber_when_paid_models_held_back_or_budget_low(tmp_path, monkeypatch):
+    monkeypatch.setattr(build.bot_config, "LLM_AMP_RESERVE_SHARE", 0.25)      # the reserve as it ran to 31 Oct
     reserve = with_budget(make_root(tmp_path / "r"), 0)
     ctx, _, _ = drafting(tmp_path / "a", [write(3)], left=0.5 * reserve)
     assert ctx["draft_banner"]["level"] == "amber" and "held back" in ctx["draft_banner"]["text"]
     ctx, _, _ = drafting(tmp_path / "b", [write(3)], left=1.5 * reserve)             # between 1x and 2x the reserve
     assert ctx["draft_banner"]["level"] == "amber" and "BUDGET LOW" in ctx["draft_banner"]["text"] and "held back" not in ctx["draft_banner"]["text"]
+
+
+def test_budget_low_still_warns_with_no_reserve(tmp_path, monkeypatch):
+    """31 Oct: the reserve is 0 (amplification off); a quarter of the day's share is the yardstick for BUDGET LOW."""
+    from swan_bot import llm
+    monkeypatch.setattr(build.bot_config, "LLM_AMP_RESERVE_SHARE", 0.0)
+    day = NOW.astimezone(llm.BUDGET_DAY).date().isoformat()
+    quarter = 0.25 * llm.day_share(day)
+    ctx, _, _ = drafting(tmp_path / "a", [write(3)], left=1.5 * quarter)
+    assert ctx["draft_banner"]["level"] == "amber" and "BUDGET LOW" in ctx["draft_banner"]["text"]
+    assert "held back" not in ctx["draft_banner"]["text"]
+    ctx, _, _ = drafting(tmp_path / "b", [write(3)], left=3 * quarter)
+    assert ctx["draft_banner"]["level"] == "green"
 
 
 def test_drafting_red_on_drops_and_no_writes(tmp_path):

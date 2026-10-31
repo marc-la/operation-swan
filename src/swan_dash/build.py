@@ -1022,7 +1022,8 @@ def drafting_state(actions, data, now):
             day = now.astimezone(llm.BUDGET_DAY).date().isoformat()
             left = llm.allowance(day, spent)
             reserve = bot_config.LLM_AMP_RESERVE_SHARE * llm.day_share(day)
-            held, low = left <= reserve, left < BUDGET_LOW_X * reserve
+            margin = reserve or 0.25 * llm.day_share(day)      # 31 Oct: no reserve (amplification off); still warn when low
+            held, low = reserve > 0 and left <= reserve, left < BUDGET_LOW_X * margin
         except Exception:                      # no openai on this machine, odd file: show the drops only
             left = None
     gone = left is not None and left <= 0

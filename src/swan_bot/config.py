@@ -360,7 +360,11 @@ CHEAP_MODES = {"thread", "thread_answer"}
 # 2026-10-29 (Marc): 170 -> 195. AWS said $109 credit left (billed $74, Cost Explorer a day behind); 195 ledger dollars is
 # ~$162 billed + EC2, about $180 of the $200 by 2 Nov (scripts/aws_cost.py). The ledger stood at $106.6 with 29 Oct's
 # allowance down to $1.42, below the amplified-post reserve.
-LLM_BUDGET_USD = 195.0              # all priced models together, 21 Oct to 2 Nov
+# 2026-10-31 (Marc: use the whole $200): 195 -> 205. scripts/aws_cost.py at 04:50 UTC: billed $130.82, credit left $69.18;
+# spending all of 195 ended at ~$186.70, and today's switch from flash-lite to paid drafts (and 1.73 LLM calls a write, was
+# 1.43) would have spent the last of 195 hours before the end, parking Kimi and Haiku in the x4 days. 205 is ~$195 billed if
+# spent in full, ~$5 under the credit for the box after the end and the bill's lag.
+LLM_BUDGET_USD = 205.0              # all priced models together, 21 Oct to 2 Nov
 # USD per million tokens (input, output). us-west-2 list prices padded ~25% (Kimi $0.60/$3.00, GLM-5 $1.00/$3.20 from
 # third-party listings, 2026-10-21; eu-west-2 runs ~20% over us-west-2). Replace with the console's Sydney prices.
 # 2026-10-23: Claude on Bedrock (Converse, global. profiles), list prices padded 25%: Haiku 4.5 $1/$5, Sonnet 4.6 $3/$15
@@ -386,7 +390,9 @@ LLM_BUDGET_DAYS = [("2026-10-21", "2026-10-25", 1), ("2026-10-26", "2026-10-31",
 LLM_DAILY_FLOOR_USD = 18.0
 # Priority lane: this share of each day's share stays for amplified posts. Other drafts use the paid models only
 # while more than it is left, then the free ones.
-LLM_AMP_RESERVE_SHARE = 0.25
+# 2026-10-31 (Marc): 0.25 -> 0. Amplified posts have been off since 21 Oct (AMPLIFY_OFF), so the reserve only sent the last
+# quarter of each day's share (31.2 of the x4 days' 32.8) from replies to the free models.
+LLM_AMP_RESERVE_SHARE = 0.0
 AMP_AUTHOR_EXPLORE = 0.2            # share of amplified posts by a random ready voice, not the best-measured one
 AMP_AUTHOR_PRIOR = (2, 40.0)        # (pseudo-posts, reward each) for a voice not yet measured: try it early
 # delays after the post, lognormal (median min, sigma, clip lo, clip hi): front-loaded, heavy tail, never instant
