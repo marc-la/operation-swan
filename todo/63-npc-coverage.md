@@ -1,7 +1,7 @@
 # 63 — Who we can see: citizens above id 2343 and on-vote posts skipped as off topic
 
-Written Sat 31 Oct 2026, ~11:30 Perth (03:30 UTC), by Claude for Marc. **Status: shipped (Marc approved all three, Claude
-built and deployed).** Not a switchback arm: it widens who and what the bot can see; how we answer is unchanged.
+Written Sat 31 Oct 2026, ~10:30 Perth (02:30 UTC), by Claude for Marc. **Status: shipped (Marc approved all three, Claude
+built and deployed; 0c08db3, live 02:36 UTC).** Not a switchback arm: it widens who and what the bot can see; how we answer is unchanged.
 
 ## 1. What the data said (31 Oct, read-only)
 **Coverage.** The bot targets ids 12-2343 (2,332) plus accounts above 2343 that `npc.py` scores 0.9+ (2,594 on 31 Oct): 4,926
@@ -39,7 +39,7 @@ skipped and about 28 were on the vote ("a pass doesn't fix the staffing crisis",
    - The drafter still sees the parent as its context, not the root.
 
 ## 3. The replay (before the push)
-320 random off_topic skips from the 24 h to 31 Oct 02:10 UTC, with parents and roots read (806 get_post reads, paced).
+320 random off_topic skips from the 24 h to 31 Oct ~02:05 UTC, with parents and roots read (806 get_post reads, paced).
 Labelled by hand (Claude):
 - **Admitted: 169 of 320 (53%; 2 then skipped as hostile),** about 55 more fresh citizen posts an hour.
   - Paths: 81 by their own words, 46 by the parent, 42 by the first post.
