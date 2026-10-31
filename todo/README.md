@@ -18,6 +18,9 @@ Designs for [todo/53](53-the-last-three-days.md)'s nine problems, one file each 
   4. 5f10159 (live 01:13 UTC): the 31 Oct papers. The wastewater signal was a false alarm and the first case has recovered;
      the desk's new facts were mirrored, and the flip's two main proofs, the no-proof turn and the lead story re-pointed
      ([61](61-x4-operations.md) §4). The staged retest story is live.
+  5. [63](63-npc-coverage.md) (Marc approved 31 Oct ~03:00 UTC): who we can see. The citizen scan every 10 min (was 1 h); the
+     bot scores a new author above id 2343 on first sight (42% of the 2,594 likely citizens had ever had a write); and
+     on-vote posts skipped as off topic come back (replay: 53% of off_topic skips, ~96% precision held out).
 - **Not done, by Marc's call:** 61 item 1 (no webhook: the dashboard is watched live everywhere); [55](55-persuasion-and-the-pool.md)'s
   questions (not posted; we assume "neither side" changes don't count toward the pool).
 - **No change, closed with reasons:** [56](56-backfire.md), [57](57-one-voice.md), [62](62-the-rivals.md).

@@ -122,6 +122,94 @@ def test_on_vote_words_are_not_off_topic_and_small_talk_still_is():
         assert targeting.hard_skip(text) == "off_topic", text
 
 
+# todo/63 (31 Oct): skipped as off topic on 30-31 Oct, on the vote in their own words (real citizen posts)
+ON_VOTE_TEXTS_63 = [
+    "true, a pass doesn't fix the staffing crisis... it just adds more admin to an already broken system.",
+    "It's not about the cost, it's about the principle. If you can't go to the park or the shop without showing a paper, "
+    "it's not really voluntary anymore.",
+    "Phasing it in just means the pressure builds up slowly until it's everywhere. It's still a requirement.",
+    "My kids, honestly, and the patients I help care for. Prevention matters, but we need nurses on shift too, not just "
+    "checks at the door.",
+    "Promises are great, but they aren't the same as actual, binding law!!! I need to see those protections written into "
+    "the statute",
+    "Safety is so important, but a quiet yes doesn't fix the fact that we're basically flying blind on the legal side of things!!!",
+    "That's the uncomfortable bit: we're asked to approve the framework before seeing its boundaries. I'm still leaning Yes",
+    "It's a fair point, Ravi; we can't manage a surge if there's nobody left to actually man the stations.",
+    "it's always 'temporary' until it just becomes the new normal i hate that",
+    "Nina, the nurses are already drowning, and now they want the bus drivers and shop staff to be the police too?",
+    "A complaints line doesn't fix an open-ended pass or people being blocked from work",
+    "Safety matters, but I won't trade personal freedom for a quick fix. If a rule passes, make it narrow, time-limited, "
+    "and clearly written.",
+]
+# ...nothing of the vote in their own words, in a thread whose first post is on it: they argue or agree
+IN_A_VOTE_THREAD = [
+    "Exactly. It shifts the responsibility away from the health system and onto people who aren't trained for it.",
+    "sounds good for a club but for a small shop owner it might be hard to find enough people to cover every shift",
+    "Both, really. If the staff are burnt out, the whole system starts to fray.",
+]
+CHAT_IN_A_VOTE_THREAD = [
+    "I'm a big fan of the quiet trails near the mangroves, honestly!!! It's the best way to clear my head",
+    "Haha, I can imagine! Indoor recess is always a bit more chaotic.",
+    "Dan, thanks for checking in. It sounds like the depot is under real strain too.",
+    "oof 0300 is crazy!! stay safe out there",
+    "That is so incredibly kind of you to do, Mavis. Sending so much love to you and the hospital staff!",
+]
+VOTE_ROOT = "Kingstonia votes on 2 Nov: what a Yes would mean for cafes, ferries and the school gate"
+
+
+def test_todo63_the_pass_the_checks_and_the_law_in_other_words_are_on_the_vote():
+    for text in ON_VOTE_TEXTS_63:
+        assert targeting.hard_skip(text) is None, text
+        assert targeting.target_class(text) != "off_topic", text
+    for text in SMALL_TALK:
+        assert targeting.hard_skip(text) == "off_topic", text
+    assert targeting.stance(ON_VOTE_TEXTS_63[0]) is None                      # follow-up labels keep REFERENDUM
+    assert targeting.hard_skip("no side effects from the flu shot, just a sore arm") == "off_topic"
+
+
+def test_todo63_a_reply_that_argues_in_a_thread_on_the_vote_is_on_it_and_chat_is_not():
+    for text in IN_A_VOTE_THREAD:
+        assert targeting.hard_skip(text) == "off_topic", text                 # alone, nothing says vote
+        assert targeting.hard_skip(text, root=VOTE_ROOT) is None, text
+        assert targeting.hard_skip(text, context="a pass rule puts the weight on the wrong people") is None, text
+        assert targeting.target_class(text, root=VOTE_ROOT) != "off_topic", text
+    for text in CHAT_IN_A_VOTE_THREAD:
+        assert targeting.hard_skip(text, root=VOTE_ROOT) == "off_topic", text
+        assert targeting.target_class(text, root=VOTE_ROOT) == "off_topic", text
+    assert targeting.hard_skip(IN_A_VOTE_THREAD[0], root="steady rain on the harbour today") == "off_topic"
+
+
+class _Thread:
+    """get_post for a reply's thread: the first post and the parent, counted; `limited` ids answer 429."""
+    def __init__(self, posts, limited=()):
+        self.posts, self.limited, self.reads = posts, set(limited), []
+
+    def get_post(self, pid):
+        import capturethenarrative as ctn
+        self.reads.append(pid)
+        if pid in self.limited:
+            raise ctn.RateLimited("GET", "/posts", 429, "slow", 7)
+        return self.posts[pid]
+
+
+def test_todo63_consider_reads_the_first_post_only_when_the_reply_and_parent_say_nothing():
+    root = dict(post_id=1, author_id=9000, body=VOTE_ROOT, created_at=NOW)
+    parent = dict(post_id=2, author_id=9001, body="Fair, the staff end up carrying it", reply_to_post_id=1,
+                  root_post_id=1, created_at=NOW)
+    reply = dict(post_id=3, author_id=100, body=IN_A_VOTE_THREAD[0], reply_to_post_id=2, root_post_id=1, created_at=NOW)
+    on_its_own = dict(reply, post_id=4, body=ON_VOTE_TEXTS_63[0])
+    s = _Thread({1: root, 2: parent}, limited={1})
+    t = targeting.Targeter(s, log=lambda r: None)
+    t._consider(on_its_own, "latest")
+    assert 4 in t.candidates and 1 not in s.reads                           # its own words: no read of the first post
+    t._consider(reply, "latest")
+    assert 3 not in t.candidates and 3 in t.unjudged                        # the first post's read hit the rate limit
+    s.limited.clear()
+    t._consider(reply, "latest", t.unjudged[3][2])
+    assert 3 in t.candidates and t.candidates[3]["target_class"] != "off_topic"
+    assert t.candidates[3]["context"] == parent["body"]                     # the draft still sees the parent, not the root
+
+
 def test_follow_up_labels_keep_the_old_vocabulary():
     assert targeting.stance(ON_VOTE_TEXTS[0]) is None              # labels compare across days
     assert targeting.stance(ON_VOTE_TEXTS[0], wide=True) is not None

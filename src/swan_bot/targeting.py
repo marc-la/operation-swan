@@ -27,7 +27,7 @@ import zoneinfo
 
 import capturethenarrative as ctn
 
-from . import config, content, experiment, feeds, news, room, value
+from . import config, content, experiment, feeds, news, npc, room, value
 
 REFERENDUM = re.compile(r"referendum|h2d2|dolphin flu|vaccin|jab|mandate|\bvot(e|ing)\b|ballot|certificate|"
                         r"passport|health pass|designated|national id|biometric|sunset|exemption|"
@@ -82,11 +82,49 @@ HOSTILE = re.compile(r"resort (profits|owners|bookings)|profits|castillo|kitb|to
 # 27 Oct audit: about half of the ~1,800 citizen posts a day skipped as off topic were on the vote in other words ("i havent
 # seen a full rules list published yet and thats exactly what is holding me back", "i'd give it a six month expiry and
 # require a public review"). Used by hard_skip and target_class only: stance() keeps REFERENDUM, so labels compare across days.
+# todo/63 (31 Oct): the pass, the checks, the rules and the law in other words again. In one 15-min window 47 of 238 citizen
+# posts were skipped as off topic and ~28 were on the vote ("a pass doesn't fix the staffing crisis", "not just checks at the
+# door", "a quiet yes doesn't fix...", "I'm still leaning Yes"); the second half of the pattern is theirs.
 ON_VOTE = re.compile(r"\bvot(es|ers?)\b|\bpolling\b|mark (that|the) box|\brules? list|list of (places|venues|spaces|shops)|"
-                     r"\breview(ed|s|ing)?\b|\bexpir(y|es|e|ing)\b|end date|oversight|independent (body|review|watchdog|panel)|"
+                     r"\breview(ed|s|ing)?\b|\bexpir(y|es|e|ing)\b|end[- ]date|oversight|independent (body|review|watchdog|panel)|"
                      r"\bregulat(ion|ions|ory|ors?)\b|guardrails?|safeguards?|\bprivacy\b|health (data|records?|status)|"
                      r"\bid card|checkpoints?|checking (papers|passes)|gatekeep|blank (cheque|check)|scope creep|"
-                     r"\bthe (pass|rule)\b|government polic|be persuaded", re.I)
+                     r"\bthe (pass|rule)\b|government polic|be persuaded|"
+                     r"\b(a|any|this|that|every|vaccine|vax) pass(es)?\b|\bpass (rules?|system|scheme|checks?)\b|"
+                     r"\b(checks?|checking|scan(ning)?|proof|cards?|papers?|ids?) at the (door|entrance|counter|till|gate)\b|"
+                     r"\b(door|id|pass|health|vaccine|vax) checks?\b|\b(do|does|doing|run|running|enforce|enforcing) the check(s|ing)?\b|"
+                     r"\bchecking (people|credentials|cards|status|ids?)\b|\bchecks? (are|is|would be|will be) (required|mandatory)\b|"
+                     r"\bshow(ing)? (a|the|your|my|our) (paper|papers|card|pass|proof|certificate)\b|"
+                     r"\b(not|isn'?t|no longer) (really |truly |actually )?voluntary\b|\bmandatory\b|\bcompulsory\b|"
+                     r"\b(the|these|those|any|new|such) (rules|regs)\b|\bany rule\b|\bregs\b|\ba rule like\b|"
+                     r"\bphas(e|ed|ing) (it|them|this|the rules?|the checks?) in\b|\bphased in\b|\blockdowns?\b|"
+                     r"\bstatute\b|\bbinding (law|vote|rules?|limits?|review|guarantees?|commitments?)\b|\blegislat(ion|ed|ive)\b|"
+                     r"\blegal (protections?|side|guarantees?|teeth|limits?|framework)\b|"
+                     r"\bwritten into (the )?(law|act|statute|regs|regulations)\b|"
+                     r"\blean(ing|s)? (towards? )?(yes|no)\b|\b(back|backing|tick|ticking) (yes|no)\b|"
+                     r"\bthe (yes|no) (side|camp|case|campaign|crowd|lot|result)\b|\b(yes|no) campaign\b|"
+                     r"\bif (the )?(yes|no) (wins|passes|gets up|goes through|gets through|gets in)\b|"
+                     r"\ba (quiet|soft|firm|reluctant|conditional|hesitant|cautious|grudging) (yes|no)\b|\bmy (yes|no) (stands|holds)\b|"
+                     r"\b(publish|published|release|released|full|specific|clear|proper|actual) (a |the )?list\b|"
+                     r"\bway to end it\b|\bend[- ]point\b|\boutbreaks?\b|\bwastewater\b|"
+                     r"\b(hospitals?|wards?|icu|clinics?) (are |is |get |gets |being |getting )?(swamped|overwhelmed|overrun)\b|"
+                     r"\bsurge (plans?|capacity|beds?|staff)\b|\b(manage|handle|survive|cope with) a surge\b|"
+                     r"\bsafety (studies|data|trials?)\b|\bmrna\b|"
+                     r"\bnew normal\b|\bprecedent\b|\btime[- ]limited\b|\bopen[- ]ended\b|\bpublic life\b|\bfoot in the door\b|"
+                     r"\btemporary (measures?|rules?|powers?|checks?|pass(es)?)\b|['\"‘“]temporary['\"’”]|"
+                     r"\b(preventative|preventive|health|emergency|these|such) measures\b|\b(this|the) measure\b|"
+                     r"\b(staged|phased) (rollout|rules?|approach)\b|\bin stages\b|"
+                     r"\b(clear|written|proper|fixed|firm|strict|vague) rules\b|\bif (a|the|this) (rule|pass|law) (passes|goes through|gets up)\b|"
+                     r"\b(list|rules?|limits?|end date) in writing\b|\bmedical records?\b|\bchecking (the )?doors?\b|"
+                     r"\bat every (shop|door|venue|workplace|cafe|café|entrance|counter)\b|"
+                     r"\b(be|play|playing|become) (the )?(police|security( guards)?|bouncers?|gatekeepers?)\b|"
+                     r"\bhow (they'?d|they would|they will|they'?ll|will they|would they) verify\b|"
+                     r"\bverif(y|ying|ication) (it|status|everyone|people|vaccination|the pass|passes|someone'?s|anyone'?s)\b|"
+                     r"\b(the|pass|qr|door) scanners?\b|\bpneumonia\b|\bthe vulnerable\b|\bimmuni[sz](ation|e|ed)\b|"
+                     r"\bmobile clinics?\b|\bpop[- ]up (clinics?|sites?)\b|\bhospital capacity\b|\b(icu|hospital|spare) beds\b|"
+                     r"\b(staffing|nursing) (plans?|gaps?|shortages?|vacancies|posts)\b|\bwards? (are|is) (already )?(stretched|full|filling)\b|"
+                     r"\b(a|the|next|another) surge\b(?! (of|in) (tourists?|visitors|traffic|prices?|sales|orders|customers|crowds?))",
+                     re.I)
 # A Yes said outright, not negated ("I'm still voting YES"; not "I won't be voting yes"): such a post is not a No-leaner,
 # whatever "a No vote" or "slippery slope" in it says (27 Oct: Yes voters were getting the turnout line).
 YES_STATED = re.compile(r"\b(i'?m|i am|i'?ll|i will|i'?d|i|we'?re|we will)\b[\w ']{0,14}?\b(vot(e|ing)|lean(ing|s)?|going|"
@@ -176,11 +214,39 @@ def classify(text):
     return frame, wants[:3]
 
 
-def hard_skip(text, context=None):
-    """Why we never answer this text, or None: "off_topic" (nothing on the vote, its thread included) or "hostile"
-    (abuse or shouting)."""
+def on_vote(text, context=None, root=None):
+    """Is a citizen's text on the vote: its own words (REFERENDUM, ON_VOTE) or a REFERENDUM word in its parent (context),
+    as before; or (todo/63) a parent or thread first post (root) on the vote in ON_VOTE's words too, when the text argues
+    or agrees (thread_engages). A rival bot's parent rarely says "referendum": 23 of the window's 47 skips sat under a
+    first post that did."""
     text = text or ""
-    if not REFERENDUM.search(f"{text} {context or ''}") and not ON_VOTE.search(text):
+    if REFERENDUM.search(f"{text} {context or ''}") or ON_VOTE.search(text):
+        return True
+    thread = " ".join(x for x in (context, root) if x)
+    return bool(thread and (REFERENDUM.search(thread) or ON_VOTE.search(thread)) and thread_engages(text))
+
+
+# todo/63: in a thread on the vote, a reply that argues or agrees is about the vote ("Exactly. It shifts the responsibility
+# onto people who aren't trained for it"); chat is not ("I'm a big fan of the quiet trails near the mangroves").
+THREAD_ARGUES = re.compile(r"\bbut\b|should|\bneed|\bmust|worr|\bif\b|\bunless\b|\bpass\b|\brules?\b|\bpolic|"
+                           r"\bcheck(s|ed|ing)?\b(?! in\b)|\bsystem\b|\bargue|\bresponsib|\bpromis|\bburden|\bproblem\b|\brisk|"
+                           r"\bprotect|\bsafety\b|"
+                           r"\bpermanent|\bforever\b|\bgovt\b|\bgovernment\b|\blaw\b|\blegal\b", re.I)
+THREAD_AGREES = re.compile(r"^\W*(exactly|precisely|so true|true|agreed|this\b|fair (point|enough)|good point|"
+                           r"that'?s (the (problem|thing|point|issue)|it|right|true|fair))\b", re.I)
+
+
+def thread_engages(text):
+    """todo/63: the text argues or agrees, and is not warmth only (kindness_only)."""
+    text = text or ""
+    return bool((THREAD_ARGUES.search(text) or THREAD_AGREES.search(text)) and not kindness_only(text))
+
+
+def hard_skip(text, context=None, root=None):
+    """Why we never answer this text, or None: "off_topic" (nothing on the vote, its thread included: on_vote) or
+    "hostile" (abuse or shouting)."""
+    text = text or ""
+    if not on_vote(text, context, root):
         return "off_topic"
     if loud(text) or HOSTILE.search(text):
         return "hostile"
@@ -235,18 +301,19 @@ def kindness_only(text):
     return bool(KINDNESS.search(text) and not REFERENDUM.search(text) and not ARGUES.search(text))
 
 
-def target_class(text, context=None):
+def target_class(text, context=None, root=None):
     """The experiment's target class (H3), and since todo/21 the candidate's priority (READ_PRIORITY): yes_reason
     (they voice the fear behind a Yes), conditions (the conditions they want), unsure / unclear, lean_no, firm_yes,
     off_topic. Two fixes (todo/21): a text on the vote only through its thread (context) is "unclear", not off topic;
     a doubt named with no hedge or ask ("No sunset clause, no list, no thanks") is a No-leaning complaint.
     27 Oct: a No that also says Yes outright is not a No-leaner; ON_VOTE words put a text on the vote; and a doubt named
-    flatly that demands its conditions ("End date and oversight in regs, venue list out now") is conditions_flat."""
+    flatly that demands its conditions ("End date and oversight in regs, venue list out now") is conditions_flat.
+    todo/63: the thread is its parent and its first post (root), as on_vote reads them."""
     text = text or ""
     s = stance(text, wide=True)
     if s == "no" and not FIRM_NO.search(text) and yes_stated(text):
         s = "unsure" if SOFT.search(text) else "yes"
-    if s is None and REFERENDUM.search(context or "") and not kindness_only(text):
+    if s is None and on_vote(text, context, root) and not kindness_only(text):
         s = "unclear"
     if s in ("no", "yes", None):
         return {"no": "lean_no", "yes": "firm_yes", None: "off_topic"}[s]
@@ -392,6 +459,7 @@ class Targeter:
         self.reads = 0               # account_posts / get_post / likers / followers reads made by this targeter
         self._rl = None              # the rate limit as our last widen read saw it
         self._ours, self._ours_mtime = [], None
+        self.npc_wait = {}           # todo/63: post_id -> Latest post whose author above 2343 waits for a first score
         self.lock = threading.RLock()  # todo/22: the reader refreshes while the drafter and the writer use the queue
 
     # ---- saved across restarts (G3) ----------------------------------------------------------
@@ -623,9 +691,15 @@ class Targeter:
         self.unjudged.pop(pid, None)
         if context is None and parent:
             context = (parent.get("body") or "")[:200] or None
-        cls = target_class(body, context)
+        root = None
+        if not on_vote(body, context):                # todo/63: then the thread's first post may put it on the vote
+            root = self.root_text(post)
+            if root is False:                         # the rate limit: next refresh
+                self.unjudged[pid] = [post, source, context]
+                return self.wait(post, "unjudged", source)
+        cls = target_class(body, context, root)
         room.observe(pid, body, cheap=room_stance(body, cls), made=it["c"])     # todo/52: the room, every post on the vote
-        why = (hard_skip(body, context) or ("deep_thread" if d >= config.DEEP_THREAD else None)
+        why = (hard_skip(body, context, root) or ("deep_thread" if d >= config.DEEP_THREAD else None)
                or ("firm_yes" if cls == "firm_yes" and not config.FIRM_YES_ARM else None))
         group = None
         # todo/46: a citizen answering a post of a voice we can no longer read (suspended: its notifications are gone, and 7 in 10
@@ -641,6 +715,78 @@ class Targeter:
         self._queue(post, source, context, parent, d, cls, group=group, net="late" if late else None)
         if npc is not None:                           # todo/48: logged on the write (bot.py), so the read can split them
             self.candidates[pid]["npc_score"] = round(npc, 3)
+
+    def root_text(self, post):
+        """todo/63: the first post of a reply's thread when it is neither the reply nor its parent: its text (300
+        characters), None (a post, a reply to the first post, or a first post that is gone), False when the rate limit
+        stopped the read (cached in self.posts, like the parents)."""
+        rid = post.get("root_post_id")
+        if not rid or rid in (post.get("post_id"), post.get("reply_to_post_id")):
+            return None
+        root = self.post(rid)
+        if root is None:
+            return False
+        return (root.get("body") or "")[:300] or None
+
+    def _score_new(self, posts):
+        """todo/63: score the new authors above CITIZEN_MAX_ID (up to NPC_LIVE_MAX_ID, the seeding days) of these Latest
+        posts on first sight, NPC_LIVE_PER_REFRESH a refresh, newest post first, then judge their posts (_consider) as
+        if the scan had scored them. Ours and reposts are never read; a post waits at most NPC_LIVE_WAIT_S. Each score is
+        logged ("npc_live") and kept in this process (config.npc_live_put). Outside the lock: the reads touch no queue.
+        Returns the authors settled this refresh."""
+        if not (config.NPC_LIVE_SCORE and config.NPC_EXTRA_ARM):
+            return 0
+        t, ours = time.time(), None
+        for p in posts:
+            a = p.get("author_id") or 0
+            if p.get("kind") == "repost" or not config.CITIZEN_MAX_ID < a <= config.NPC_LIVE_MAX_ID:
+                continue
+            if ours is None:
+                ours = {r["account_id"] for r in self.ours()}
+            if a not in ours and config.npc_unscored(a, t):
+                self.npc_wait[p["post_id"]] = p
+        for pid, p in list(self.npc_wait.items()):
+            if age_h(p) * 3600 > config.NPC_LIVE_WAIT_S:
+                del self.npc_wait[pid]
+        if not self.npc_wait:
+            return 0
+        newest = sorted(self.npc_wait.values(), key=lambda p: -p["post_id"])
+        settled = set()
+        for a in list(dict.fromkeys(p["author_id"] for p in newest))[:config.NPC_LIVE_PER_REFRESH]:
+            if config.npc_unscored(a, t):             # the scan's file may have it by now
+                rec = self._npc_read(a)
+                if rec is None:
+                    break                             # the rate limit: the rest wait for the next refresh
+                config.npc_live_put(a, rec)
+                self.log({"act": "npc_live", "author_id": a, **rec})
+            settled.add(a)
+        for pid, p in list(self.npc_wait.items()):
+            if p["author_id"] in settled:
+                del self.npc_wait[pid]
+                self._consider(p, "latest")
+        return len(settled)
+
+    def _npc_read(self, account_id):
+        """todo/63: {s, n, why} (s None: too few posts to score) or {s: None, n: 0, err} for one account, from its profile
+        and its newest page of posts, scored as scripts/npc_scan.py scores them; None when the rate limit stopped a read."""
+        try:
+            prof = self.accounts.get(account_id)
+            if not prof:
+                self.reads += 1
+                prof = self.accounts[account_id] = self.social.get_account(account_id)
+            if prof.get("private"):
+                return dict(s=None, n=0, err="private")      # its posts answer 403
+            self.reads += 1
+            posts = list(self.social.account_posts(account_id, limit=100))
+        except ctn.RateLimited:
+            return None
+        except ctn.APIError as e:
+            return dict(s=None, n=0, err=e.status)
+        f = npc.features(prof, posts)
+        rec = dict(s=None, n=len(posts))
+        if f is not None:
+            rec.update(s=round(npc.score(f), 4), why=npc.explain(f))
+        return rec
 
     def npc_extra(self, account_id):
         """todo/48: the cached citizen score of an account above id 2343 that this block admits (NPC_EXTRA_ARM on, an
@@ -739,6 +885,7 @@ class Targeter:
         latest = self._latest()
         for p in latest["posts"]:
             self._consider(p, "latest")
+        self._score_new(latest["posts"])              # todo/63: an author above 2343 not scored yet, then their posts
         trending = []
         if (self.refreshes - 1) % config.TRENDING_EVERY == 0 or not self.trending_posts:
             try:

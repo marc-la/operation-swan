@@ -48,7 +48,8 @@ def _no_live_switch_files(monkeypatch, tmp_path):
     # sets its own block
     monkeypatch.setattr(config, "STYLE_FIXES", False)
     monkeypatch.setattr(config, "LEAN_PROMPT", False)
-    config._NPC.update(mtime=None, built=0.0, scores={})
+    config._NPC.update(mtime=None, built=0.0, scores={}, known={})
+    config._NPC_LIVE.clear()                        # todo/63: first-sight scores are per process; none leaks between tests
     # todo/38: the pool scheduler is on in config, but the older tests are written for the longest-rest-first pick; the
     # scheduler's own tests (tests/test_pool_scheduler.py) switch it on. Its state is per process: start every test clean.
     from swan_bot import stealth

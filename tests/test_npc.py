@@ -303,3 +303,132 @@ def test_scan_scores_an_account_and_merges_the_file(monkeypatch):
     out = npc_scan.merge(dict(scores={"9000": dict(s=0.1)}), {4580: rec}, t=T0)
     assert set(out["scores"]) == {"9000", "4580"} and out["built_ts"] == T0
     assert npc_scan.cut_table([(0.95, 1), (0.6, 1), (0.4, 0), (0.05, 0)], cuts=(0.5,)) == [(0.5, 1.0, 1.0, 0.0, 2, 0, 0)]
+
+
+# ---- todo/63: first sight (the bot scores a new author above 2343 itself, then answers the post) ----------------------
+class _Live:
+    """The reader's client for first-sight reads: a profile and a page per account, every read counted; an account in
+    `limited` answers 429."""
+    rate_limit = None
+
+    def __init__(self, pages, profiles=None, limited=()):
+        self.pages, self.profiles, self.limited, self.calls = pages, profiles or {}, set(limited), []
+
+    def get_account(self, aid):
+        self.calls.append(("get_account", aid))
+        if aid in self.limited:
+            raise ctn.RateLimited("GET", "/accounts", 429, "slow", 7)
+        return self.profiles.get(aid, CIT)
+
+    def account_posts(self, aid, limit=100):
+        self.calls.append(("account_posts", aid))
+        return list(self.pages.get(aid, []))
+
+
+def first_sight(monkeypatch):
+    monkeypatch.setattr(config, "NPC_EXTRA_ARM", True)
+    arm(monkeypatch, "extra")
+
+
+def test_the_file_wins_and_a_first_sight_score_fills_in(scores):
+    scores({4580: 0.2})
+    config.npc_live_put(4580, dict(s=0.99, n=10))
+    config.npc_live_put(4581, dict(s=0.97, n=10))
+    assert config.npc_score(4580) == 0.2 and config.npc_score(4581) == 0.97
+    assert config.likely_citizen(4581) and not config.is_citizen(4581)              # metrics keep the id rule
+    config.npc_live_put(4582, dict(s=0.97, n=10), t=time.time() - config.NPC_SCORES_MAX_AGE_S - 60)
+    assert config.npc_score(4582) == 0.97 and config.npc_score(4582, config.NPC_SCORES_MAX_AGE_S) is None
+    assert not config.npc_unscored(4580) and not config.npc_unscored(4581) and config.npc_unscored(4583)
+    assert not config.npc_unscored(100)                                              # seeded: never read
+
+
+def test_a_file_entry_with_too_few_posts_is_tried_again_and_a_failed_read_never(tmp_path, monkeypatch):
+    path = tmp_path / "npc_scores.json"
+    monkeypatch.setattr(config, "NPC_SCORES_FILE", path)
+    old = iso(time.time() - config.NPC_LIVE_RETRY_S - 60)
+    path.write_text(json.dumps(dict(built_ts=time.time(), scores={
+        "4580": dict(s=None, n=2, at=old), "4581": dict(s=None, n=0, at=old, err=403),
+        "4582": dict(s=None, n=2, at=iso(time.time()))})))
+    assert config.npc_unscored(4580) and not config.npc_unscored(4581) and not config.npc_unscored(4582)
+
+
+def test_first_sight_scores_a_new_author_and_queues_the_post_in_the_same_refresh(scores, monkeypatch):
+    scores({9000: 0.1})                                                     # the file knows a team bot, not 4580 or 9001
+    first_sight(monkeypatch)
+    logged = []
+    s = _Live({4580: citizen_posts(), 9001: bot_posts()}, {9001: BOT})
+    t = targeting.Targeter(s, log=logged.append)
+    latest = [post(11, 4580), post(12, 9001), post(13, 9000), dict(post(14, 4580), kind="repost")]
+    for p in latest:
+        t._consider(p, "latest")
+    assert not t.candidates                                                 # nobody above 2343 is known yet
+    assert t._score_new(latest) == 2
+    assert t.candidates[11]["npc_score"] >= config.NPC_TARGET_MIN and 12 not in t.candidates and 13 not in t.candidates
+    assert {a for _, a in s.calls} == {4580, 9001}                          # 9000 is in the file
+    rows = [r for r in logged if r.get("act") == "npc_live"]
+    assert {r["author_id"] for r in rows} == {4580, 9001} and all(r.get("n") for r in rows)
+    assert all("account_id" not in r for r in rows)                         # account_id is the acting account of ours
+    n = len(s.calls)
+    t._consider(post(15, 4580), "latest")
+    assert t._score_new([post(15, 4580)]) == 0 and len(s.calls) == n        # read once
+    assert 15 in t.candidates
+
+
+def test_first_sight_never_reads_ours_late_accounts_seeded_ones_or_with_a_switch_off(scores, monkeypatch):
+    scores({})
+    first_sight(monkeypatch)
+    config.ACCOUNTS_FILE.write_text(json.dumps([dict(account_id=4464, persona="x")]))
+    s = _Live({})
+    t = targeting.Targeter(s, log=lambda r: None)
+    assert t._score_new([post(1, 4464), post(2, config.NPC_LIVE_MAX_ID + 1), post(3, 100)]) == 0
+    monkeypatch.setattr(config, "NPC_LIVE_SCORE", False)
+    t._score_new([post(4, 4580)])
+    monkeypatch.setattr(config, "NPC_LIVE_SCORE", True)
+    monkeypatch.setattr(config, "NPC_EXTRA_ARM", False)
+    t._score_new([post(5, 4580)])
+    assert s.calls == [] and not t.npc_wait
+
+
+def test_first_sight_reads_a_few_authors_a_refresh_newest_first_and_waits_out_a_429(scores, monkeypatch):
+    scores({})
+    first_sight(monkeypatch)
+    monkeypatch.setattr(config, "NPC_LIVE_PER_REFRESH", 2)
+    s = _Live({a: citizen_posts() for a in (4581, 4582, 4583)}, limited={4582})
+    t = targeting.Targeter(s, log=lambda r: None)
+    assert t._score_new([post(30, 4583), post(20, 4582), post(10, 4581)]) == 1      # 4583, then a 429: stop
+    assert 30 in t.candidates and set(t.npc_wait) == {20, 10} and config.npc_unscored(4582)
+    s.limited.clear()
+    assert t._score_new([]) == 2 and {20, 10} <= set(t.candidates) and not t.npc_wait
+    stale = dict(post(40, 4584), created_at=ago(config.NPC_LIVE_WAIT_S / 60 + 1))
+    t._score_new([stale])
+    assert not t.npc_wait and ("get_account", 4584) not in s.calls          # past its best: not worth a read
+
+
+def test_first_sight_reads_a_private_account_once_and_a_thin_page_again_later(scores, monkeypatch):
+    scores({})
+    first_sight(monkeypatch)
+    s = _Live({4590: citizen_posts()[:2]}, {4591: dict(CIT, private=True)})
+    t = targeting.Targeter(s, log=lambda r: None)
+    t._score_new([post(1, 4590), post(2, 4591)])
+    assert ("account_posts", 4591) not in s.calls                           # a private account's posts answer 403
+    assert config._NPC_LIVE[4591]["err"] == "private" and config._NPC_LIVE[4590]["s"] is None
+    assert not config.npc_unscored(4591, time.time() + 10 * 86400)
+    assert not config.npc_unscored(4590) and config.npc_unscored(4590, time.time() + config.NPC_LIVE_RETRY_S + 1)
+    assert not t.candidates
+
+
+def test_refresh_scores_first_sight_authors_after_the_known_ones(scores, monkeypatch):
+    scores({})
+    first_sight(monkeypatch)
+    s = _Live({4580: citizen_posts()})
+    t = targeting.Targeter(s, log=lambda r: None)
+    monkeypatch.setattr(targeting.feeds, "read", lambda *a, **k: [])         # no Trending
+    monkeypatch.setattr(t, "_widen", lambda: None)
+    order = []
+    real = t._consider
+    monkeypatch.setattr(t, "_consider", lambda p, src, *a, **k: (order.append(p["post_id"]), real(p, src, *a, **k)))
+    monkeypatch.setattr(t, "_latest", lambda: dict(posts=[post(2, 4580), post(1, 100)], pages=1, gap=False, error=None,
+                                                    remaining=None))
+    assert t.refresh(force=True)
+    assert {1, 2} <= set(t.candidates) and t.candidates[2]["npc_score"] >= config.NPC_TARGET_MIN
+    assert order == [2, 1, 2]                       # every post judged at once; the new author's again once scored

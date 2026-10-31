@@ -48,7 +48,20 @@ NPC_EXTRA_ARM = True
 # 29 Oct (Marc): ON again with the extra arm (its premise holds: the portal scores them). Both post reports we filed on an
 # account scoring 0.9+ were ruled genuine, and a genuine ruling locks all our reporting for 6 h. Off: SWAN_BLUE_NPC_GUARD=0.
 BLUE_NPC_GUARD = True
-_NPC = {"mtime": None, "built": 0.0, "scores": {}}
+# todo/63 (31 Oct, Marc): the bot scores a new author above CITIZEN_MAX_ID on first sight (Targeter._score_new: get_account
+# and one page of posts, as npc_scan scores them), so a citizen the scan has not reached is answered while the post is fresh.
+# The scan only read the authors of the 15-min Latest snapshot once an hour: 9 unscored authors posting in one window all
+# scored 0.94-1.0 when read, and 1,079 of the 2,594 likely citizens (42%) had ever had a write from us (seeded: 96%). These
+# scores live in this process only (npc_live_put); the file stays the source for Blue and the follow-ups (the scan now runs
+# every 10 min). Needs NPC_EXTRA_ARM. Off: SWAN_NPC_LIVE_SCORE=0 (+ restart).
+NPC_LIVE_SCORE = True
+NPC_LIVE_MAX_ID = 9874              # the last account made before 21 Oct 12:00 UTC: ids rise with created_at (census 30 Oct, 0
+                                    # inversions in 12,639) and all 2,604 accounts scoring 0.9+ were made by 10:24 (id 9803)
+NPC_LIVE_PER_REFRESH = 4            # new authors scored per refresh at most (2 reads each; a refresh every REFRESH_S)
+NPC_LIVE_RETRY_S = 3 * 3600         # an author whose page had too few posts to score is read again after this
+NPC_LIVE_WAIT_S = 30 * 60           # a post waiting for its author's score is dropped this old (reads were short)
+_NPC = {"mtime": None, "built": 0.0, "scores": {}, "known": {}}
+_NPC_LIVE = {}                      # todo/63: account id -> {s, n, at (epoch s), err, why}: scored by this process
 
 
 def npc_scores():
@@ -57,29 +70,69 @@ def npc_scores():
     try:
         m = NPC_SCORES_FILE.stat().st_mtime
     except OSError:
-        _NPC.update(mtime=None, built=0.0, scores={})
+        _NPC.update(mtime=None, built=0.0, scores={}, known={})
         return _NPC["scores"], 0.0
     if m != _NPC["mtime"]:
         try:
             d = json.loads(NPC_SCORES_FILE.read_text())
-            scores = {int(k): float(v["s"]) for k, v in (d.get("scores") or {}).items() if v.get("s") is not None}
+            raw = d.get("scores") or {}
+            scores = {int(k): float(v["s"]) for k, v in raw.items() if v.get("s") is not None}
+            known = {int(k): (v.get("s"), _iso_ts(v.get("at")), v.get("err")) for k, v in raw.items()}
             built = float(d.get("built_ts") or m)
         except (OSError, ValueError, TypeError, AttributeError, KeyError):
-            scores, built = {}, 0.0
-        _NPC.update(mtime=m, built=built, scores=scores)
+            scores, known, built = {}, {}, 0.0
+        _NPC.update(mtime=m, built=built, scores=scores, known=known)
     return _NPC["scores"], _NPC["built"]
 
 
+def _iso_ts(s):
+    """Epoch seconds of an ISO time (the scan's 'at'), 0.0 when missing or unreadable."""
+    import datetime as dt
+    try:
+        return dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
 def npc_score(account_id, max_age_s=None):
-    """The cached citizen score of an account above CITIZEN_MAX_ID, or None (not scored, too few posts, a stale file)."""
+    """The cached citizen score of an account above CITIZEN_MAX_ID, or None (not scored, too few posts, a stale file).
+    The file first; then todo/63's first-sight score from this process, if it is no older than max_age_s."""
     i = account_id or 0
     if i <= CITIZEN_MAX_ID:
         return None
     import time
     scores, built = npc_scores()
-    if max_age_s is not None and time.time() - built > max_age_s:
-        return None
-    return scores.get(i)
+    t = time.time()
+    if i in scores and (max_age_s is None or t - built <= max_age_s):
+        return scores[i]
+    live = _NPC_LIVE.get(i)
+    if live and live.get("s") is not None and (max_age_s is None or t - live["at"] <= max_age_s):
+        return live["s"]
+    return None
+
+
+def npc_live_put(account_id, rec, t=None):
+    """todo/63: keep a first-sight score ({s, n, err, why}) for this process."""
+    import time
+    _NPC_LIVE[int(account_id)] = dict(rec, at=time.time() if t is None else t)
+
+
+def npc_unscored(account_id, t=None):
+    """todo/63: True when neither the file nor this process has a score for an account above CITIZEN_MAX_ID, or the
+    last read of it found too few posts (no error, no score) more than NPC_LIVE_RETRY_S ago. A read that failed (private:
+    403) or gave a score is never repeated here; the scan re-reads every account it sees after a day."""
+    import time
+    i = account_id or 0
+    if i <= CITIZEN_MAX_ID:
+        return False
+    t = time.time() if t is None else t
+    npc_scores()
+    last = _NPC_LIVE.get(i)
+    last = (last["s"], last["at"], last.get("err")) if last else _NPC["known"].get(i)
+    if last is None:
+        return True
+    s, at, err = last
+    return s is None and not err and t - at >= NPC_LIVE_RETRY_S
 
 
 def likely_citizen(account_id):
@@ -640,7 +693,7 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "NEW_VOICE_NO_POST_H", "REPLY_VOTE_SHARE", "POST_EVERY_N", "POST_NO_TAG_WITH_VOTE",
                "PORTAL_SYNC", "PORTAL_SYNC_S", "PORTAL_MAX_AGE_S", "SV_DELAY_PER_VOICE_DAY", "WATCH_TAIL_S",
                "THREAD_DEPTH_TEST", "THREAD_DEPTH_TEST_CAP", "HOT_POOL_LIVE", "HOT_POOL_WRITERS", "HOT_POOL_PIPELINE",   # todo/40 (above): SWAN_NEW_VOICE_NO_POST_H=0 lets a new voice post at once
-               "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN",
+               "NPC_EXTRA_ARM", "BLUE_NPC_GUARD", "NPC_TARGET_MIN", "NPC_BLUE_MIN", "NPC_LIVE_SCORE",   # todo/63: SWAN_NPC_LIVE_SCORE=0
                "FLIP_ON", "FLIP_FEAR",                                          # 29 Oct: SWAN_FLIP_ON=0 turns the flip off    # todo/48: SWAN_NPC_EXTRA_ARM=1 (+ restart) turns the arm on
                "ROOM_LIFT_ON", "PULSE_CITIZENS",                                # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items; SWAN_PULSE_CITIZENS=0 the worries
                "JIT_LEAD_S", "QUEUE_SHALLOW_AHEAD", "REFRESH_S", "TRENDING_EVERY",   # todo/58: SWAN_JIT_LEAD_S=0 + SWAN_QUEUE_SHALLOW_AHEAD=2 undo the slot pick

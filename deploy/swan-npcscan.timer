@@ -1,9 +1,12 @@
 [Unit]
-Description=Citizen scan every hour (first run 5 min after install)
+Description=Citizen scan every 10 min (first run 5 min after install)
 
+# todo/63 (31 Oct, Marc): every 10 min (was 1h). The scan scores the authors of the bot's 15-min Latest snapshot, so an
+# hourly run saw a quarter of the clock and missed citizens who post a few minutes every day or two. 10 min overlaps the
+# snapshot, so every author is seen; known accounts are re-read only after a day (--fresh-h), so a run is a few dozen reads.
 [Timer]
 OnActiveSec=5min
-OnUnitActiveSec=1h
+OnUnitActiveSec=10min
 
 [Install]
 WantedBy=timers.target
