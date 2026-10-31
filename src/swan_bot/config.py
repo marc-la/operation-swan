@@ -588,7 +588,12 @@ PULSE_SILENT_S = 30 * 60            # the pulse thread (23 Oct) is not vital: si
 # Replies to citizens (STRONG_MODES) are drafted on these models, tried in THIS order (not the chain's), then the rest
 # of deploy/llm_chain.txt without REPLY_NEVER. 2026-10-22 overnight first-call pass: Kimi 89% (n=857), flash-lite 86%
 # (n=195), GLM-5 0 of 69 (not_specific 36, near_duplicate 28): GLM-5 drafts amplified posts only (AMP_MODELS).
-REPLY_MODELS = ("moonshotai.kimi-k2.5", "global.anthropic.claude-haiku-4-5-20251001-v1:0", "gemini-3.5-flash-lite")
+# 31 Oct (Marc): flash-lite left REPLY_MODELS, and so the overflow set (LLM_OVERFLOW_MODELS). It took 8% of our replies
+# (5-12% every hour, as overflow when Kimi and Haiku were both busy, never a budget park) at 2.01 visible points a write
+# against 2.84 for Kimi and 2.63 for Haiku (30-31 Oct, docs/06-strategy/rival-strategies-2026-10-31.md §3.5). A busy lead is
+# now waited for (a few seconds, LLM_MAX_WAIT_S at most). flash-lite stays in the chain behind them, so a reply still gets
+# a draft when both fail or the day's budget parks them.
+REPLY_MODELS = ("moonshotai.kimi-k2.5", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
 # High-value drafts (bot.high_value) try these first, then their usual order: amplified posts (AMP_MODELS leads with
 # Sonnet), journalist replies, replies to a citizen of a movable class (todo/25's lab order: the ones who can change
 # their mind) and to one who answered us before, and reply-backs. Sonnet beat Haiku only at the top end (model-test
@@ -981,7 +986,10 @@ VOICE_RUN_MAX = 4                   # a story run already in this many of the vo
                                     # (replay 26-28 Oct: 11% of drafts as written; 3 would be 15%, 30% with the case's words)
 CITIZEN_HISTORY_N = 2               # our latest texts to a citizen that the reply prompt quotes (any voice)
 CITIZEN_HISTORY_MAX = 3000          # citizens kept in state["citizen_sent"] (the least recent go; ~1 MB in the saved state)
-REPLY_QUESTION_SHARE = 0.10         # fixes blocks: replies that end on a question (base: about 40%)
+REPLY_QUESTION_SHARE = 0.40         # fixes blocks: replies that end on a question (base: about 40%)
+# 31 Oct (Marc): back to 0.40 from 0.10. The cut (28 Oct) was for stealth (citizens end on a question 1% of the time); 40-50%
+# of all bot replies to citizens end on one, and at our mix of depth, speed and citizen class those rival replies draw
+# 2.90 visible points a write against 2.33 without (docs/06-strategy/rival-strategies-2026-10-31.md §3.3).
 FIXES_REPLY_FLOOR = 40              # fixes blocks: a reply may be this short (quality.LENGTHS floor is 80; citizens' median 157)
 FREEZE_PIN["arm_style"] = "fixes"
 if STYLE_FIXES:
@@ -1147,9 +1155,17 @@ RECONTACT_GAP_S = (3600, 6 * 3600)
 # Never in reply-backs, second voices, off-topic or group replies; at most MENTIONS_PER_REPLY handles (the platform allows 3
 # in a reply); a mentioned citizen is not named again within MENTION_RECONTACT_S. MENTION_SHARE = 0 switches it off
 # without touching the blocks. Dial down on backlash: lower the share, or remove "mention" from ENG_ARMS.
-MENTION_SHARE = 0.5
-MENTIONS_PER_REPLY = 1
-MENTION_RECONTACT_S = 24 * 3600
+# 31 Oct (Marc; docs/06-strategy/rival-strategies-2026-10-31.md §3.2): name the citizens who are online NOW, the way the
+# rival replies that get answered do. A reply that OPENS with the handle of a citizen who posted in the last 5 minutes
+# was answered by them 5.9% of the time (and liked 11.9%) across 110 rival accounts. 5-15 minutes: 1.3%, older: 0%.
+# Ours (one handle, mid-sentence, third person, a queued citizen up to 2 h old, once a day) got 1.4%, on 6% of replies.
+# So: up to MENTIONS_PER_REPLY citizens from Latest posted within MENTION_FRESH_S (Targeter.fresh_pool), named at most once
+# per MENTION_RECONTACT_S, on every eligible first reply, the handles opening the reply (mention.LINES).
+MENTION_SHARE = 1.0                 # was 0.5
+MENTIONS_PER_REPLY = 2              # was 1; rivals: 5.4% a handle with two, 3.8% with one, 2.3% with three
+MENTION_RECONTACT_S = 3600          # was 24 h; ~126 citizens post in an hour, so a day-long rest emptied the pool
+MENTION_FRESH_S = 300               # the named citizen posted within this long (rivals: 90% of their picks)
+MENTION_POOL_KEEP_S = 900           # Targeter.fresh: citizens' Latest posts kept this long
 MENTION_MODES = ("reply",)
 # Late replies (todo/46 lever 3): citizens answer our posts hours later (7 in 10 after 6 h); when the voice that wrote the post is
 # suspended or parked its notifications cannot be read, so the reply-back path never saw them (48 a day aged out as

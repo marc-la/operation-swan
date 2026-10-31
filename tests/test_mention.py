@@ -39,46 +39,115 @@ def test_share_is_a_fraction_of_the_block(monkeypatch):
     assert 900 < n < 1100
 
 
-POOL = [dict(author_id=1, post_id=11, cls="conditions", age_min=5), dict(author_id=2, post_id=12, cls="unsure", age_min=30),
-        dict(author_id=3, post_id=13, cls="firm_yes", age_min=5), dict(author_id=4, post_id=14, cls="lean_no", age_min=5),
-        dict(author_id=5, post_id=15, cls="conditions", age_min=600), dict(author_id=500, post_id=16, cls="conditions", age_min=5),
-        dict(author_id=6, post_id=17, cls="yes_reason", age_min=5)]
+NOW = 1e9
+POOL = [dict(author_id=1, age_s=40, body="I could back it, but only if the venue list and an end date are written into the law first."),
+        dict(author_id=2, age_s=200, body="still unsure about this referendum, the pass sounds like a lot of hassle"),
+        dict(author_id=3, age_s=30, body="I'm voting yes, no question, the wards come first."),            # firm Yes
+        dict(author_id=4, age_s=20, body="Typical tourism board profits talk, you are all idiots"),          # angry
+        dict(author_id=5, age_s=600, body="the referendum pass is a blank cheque"),                          # not online
+        dict(author_id=500, age_s=10, body="Not sure how I'll vote on the referendum yet."),                 # the target
+        dict(author_id=6, age_s=10, body="fish curry and the sharks on tonight, good saturday"),             # off the vote
+        dict(author_id=7, age_s=15, body="the pass would hit the ferry crews hardest, the vote is close")]
 
 
-def test_pick_names_an_active_citizen_who_can_still_move_and_not_the_one_we_answer():
-    seen = {mention.pick(POOL, 500, {}, now=1e9, rng=random.Random(i)) for i in range(60)}
-    assert seen == {1, 2}                    # not firm Yes, lean No or Yes-with-reasons; not a stale post; not 500 itself
-    assert mention.pick(POOL, 500, {"1": 1e9 - 100, "2": 1e9 - 100}, now=1e9) is None          # named within a day
-    assert mention.pick(POOL, 500, {"1": 1e9 - 100}, now=1e9) == 2
-    assert mention.pick(POOL, 500, {"1": 1e9 - config.MENTION_RECONTACT_S - 1, "2": 1e9 - 5}, now=1e9) == 1
-    assert mention.pick([], 500, {}) is None
+def pick(**kw):
+    return mention.pick(POOL, 500, kw.pop("mentioned", {}), now=NOW, **kw)
 
 
-def test_gate_allows_the_one_planned_handle_and_nothing_else():
+def test_pick_names_citizens_online_now_on_the_vote_first_and_freshest_first():
+    assert pick(k=2) == [7, 1]                      # on the vote, freshest first; not 500, a firm Yes, an angry post, a stale one
+    assert pick(k=4) == [7, 1, 2, 6]                # then the rest of the vote posts, then off the vote
+    assert pick(k=1, skip={7}) == [1]               # never one of ours
+    assert pick(k=2, mentioned={"7": NOW - 100}) == [1, 2]                                    # named within the hour
+    assert pick(k=2, mentioned={"7": NOW - config.MENTION_RECONTACT_S - 1}) == [7, 1]
+    assert pick(k=0) == [] and mention.pick([], 500, {}) == []
+
+
+def test_gate_allows_the_planned_handles_and_nothing_else():
     text = "The pass is the easy part to say yes to; who checks the list, @tui_walker, and who can see it?"
     assert quality.check(text, "reply", mention="tui_walker")[1] != "forbidden_content"
     assert quality.check(text, "reply")[1] == "forbidden_content"                          # without a plan: as before
     assert quality.check(text.replace("tui_walker", "someone_else"), "reply", mention="tui_walker")[1] == "forbidden_content"
     two = text + " @another_one asked too."
     assert quality.check(two, "reply", mention="tui_walker")[1] == "forbidden_content"      # a second handle
+    assert quality.check(two, "reply", mention=["tui_walker", "another_one"])[1] != "forbidden_content"
+    again = text + " Right, @tui_walker?"
+    assert quality.check(again, "reply", mention=["tui_walker"])[1] == "forbidden_content"  # one handle twice
 
 
-def test_used_and_prompt_line():
+def test_a_reply_opening_with_its_handles_is_judged_on_the_rest():
+    body = ("Fair worry about the doors. The question names no end date and no list of places, so a Yes hands that to "
+            "the regulations after the vote. Would a written list change it for you?")
+    opened = "@emma.carter92 @Ladder_Jolly_Amira " + body
+    hs = ["emma.carter92", "Ladder_Jolly_Amira"]
+    assert quality.without_handles(opened, hs) == body
+    assert quality.check(opened, "reply", mention=hs) == (opened, None)      # judged as the body (no "number 92"), sent whole
+    assert quality.check(body, "reply") == (body, None)
+    recent = ["@someone_else Fair worry about the doors, honestly, nobody has said."]
+    assert quality.check(opened, "reply", recent, mention=hs)[1] == "same_opening"            # openings read without handles
+    long_body = ((body + " ") * 2)[:285].rsplit(" ", 1)[0] + "?"
+    why = quality.check("@emma.carter92 @Ladder_Jolly_Amira " + long_body, "reply", mention=hs)[1]
+    assert not (why or "").startswith("length_"), why          # the handles don't count against the reply's length
+
+
+def test_used_named_and_prompt_line():
     m = dict(author_id=7, username="Tui_Walker")
     assert mention.used("Fair point, @tui_walker, what do you think?", m) and not mention.used("Fair point, what do you think?", m)
     assert not mention.used("hello @tui_walkerx", m) and not mention.used("x", None)
     assert "@Tui_Walker" in mention.prompt_line(m)
+    two = [dict(author_id=7, username="tui_walker"), dict(author_id=8, username="emma.carter92")]
+    assert [x["author_id"] for x in mention.named("@emma.carter92 @tui_walker hi", two)] == [7, 8]
+    assert mention.named("@emma hi", [dict(author_id=9, username="emma")]) and \
+        not mention.named("@emma.carter92 hi", [dict(author_id=9, username="emma")])     # a dotted handle is not @emma
+    line = mention.prompt_line(two)
+    assert "@tui_walker @emma.carter92" in line
+    assert mention.handles(two) == ["tui_walker", "emma.carter92"] and mention.handles(None) == []
 
 
-def test_plan_never_raises_and_resolves_the_username(monkeypatch):
+def _targeter(pool=POOL, accounts=None, ours=()):
+    accounts = accounts or {}
+    return types.SimpleNamespace(fresh_pool=lambda now=None: pool, ours=lambda: [dict(account_id=a) for a in ours],
+                                 account=lambda i: accounts.get(i, {}))
+
+
+def test_plan_names_up_to_two_and_never_raises(monkeypatch):
     monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
     monkeypatch.setattr(config, "MENTION_SHARE", 1.0)
-    ok = types.SimpleNamespace(mention_pool=lambda: POOL[:1], social=types.SimpleNamespace(get_account=lambda i: {"username": "tui_walker"}))
-    assert mention.plan(job(), ok, {}, now=1e9) == dict(author_id=1, username="tui_walker")
-    boom = types.SimpleNamespace(mention_pool=lambda: POOL[:1], social=types.SimpleNamespace(get_account=lambda i: 1 / 0))
+    monkeypatch.setattr(config, "MENTIONS_PER_REPLY", 2)
+    names = {7: {"username": "ferry_kate"}, 1: {"username": "dorothy.cable"}, 2: {"username": "Best Pilot"},
+             6: {"username": "sharks_fan"}}
+    mention._held.clear()
+    assert mention.plan(job(), _targeter(accounts=names), {}, now=NOW) == [
+        dict(author_id=7, username="ferry_kate"), dict(author_id=1, username="dorothy.cable")]
+    assert mention.plan(job(), _targeter(accounts=names), {}, now=NOW + 5) == [
+        dict(author_id=6, username="sharks_fan")]                 # a draft in flight holds 7 and 1; 2's handle can't be named
+    later = mention.plan(job(), _targeter(accounts=names), {}, now=NOW + 5 + mention.HOLD_S + 1)
+    assert later[0]["author_id"] == 7                             # the holds run out
+    mention._held.clear()
+    assert mention.plan(job(), _targeter(accounts=names, ours={7}), {}, now=NOW) == [
+        dict(author_id=1, username="dorothy.cable")]                          # our own account is never named
+    mention._held.clear()
+    assert mention.plan(job(), _targeter(pool=[]), {}, now=NOW) is None
+    boom = types.SimpleNamespace(fresh_pool=lambda now=None: 1 / 0, ours=lambda: [], account=lambda i: {})
     assert mention.plan(job(), boom, {}) is None
-    odd = types.SimpleNamespace(mention_pool=lambda: POOL[:1], social=types.SimpleNamespace(get_account=lambda i: {"username": "a b"}))
-    assert mention.plan(job(), odd, {}) is None
+    odd = _targeter(pool=POOL[:1], accounts={1: {"username": "a b"}})
+    assert mention.plan(job(), odd, {}, now=NOW) is None
+
+
+def test_the_targeter_keeps_who_posted_lately(monkeypatch):
+    t = targeting.Targeter(None, log=lambda r: None)
+    now = dt.datetime.now(dt.timezone.utc)
+
+    def p(pid, author, s, kind="reply"):
+        return dict(post_id=pid, author_id=author, kind=kind, body=f"post {pid}", root_post_id=900,
+                    created_at=(now - dt.timedelta(seconds=s)).isoformat())
+    t._note_fresh([p(1, 100, 30), p(2, 100, 200), p(3, 101, 100), p(4, 102, 50, kind="repost"),
+                   p(5, 9999999, 20), p(6, 103, 400)])          # 9999999: not a citizen; 103: older than MENTION_FRESH_S
+    pool = {x["author_id"]: x for x in t.fresh_pool()}
+    assert set(pool) == {100, 101} and pool[100]["post_id"] == 1 and 25 <= pool[100]["age_s"] <= 40
+    assert 103 in t.fresh                                       # kept for MENTION_POOL_KEEP_S, offered only while fresh
+    t._note_fresh([p(7, 104, config.MENTION_POOL_KEEP_S + 60)])
+    assert 104 not in t.fresh
 
 
 def test_the_prompt_carries_the_mention_line_only_when_planned(monkeypatch):
@@ -107,6 +176,12 @@ def test_gate_in_the_bot_passes_a_reply_naming_the_planned_citizen(monkeypatch):
     raw = ("That worry is fair, and a pass at the shop door does not add a nurse. @tui_walker, would you want the list of "
            "places published before anyone votes?")
     text, why, _ = bot.gate(raw, j, "prompt", [])
+    assert why != "forbidden_content", why
+    j2 = job(mention=[dict(author_id=7, username="tui_walker"), dict(author_id=8, username="emma.carter92")])
+    bot.build_prompt(j2, types.SimpleNamespace(headline=None))
+    raw2 = ("@tui_walker @emma.carter92 That worry is fair, and a pass at the shop door does not add a nurse. Would you "
+            "want the list of places published before anyone votes?")
+    text, why, _ = bot.gate(raw2, j2, "prompt", [])
     assert why != "forbidden_content", why
 
 

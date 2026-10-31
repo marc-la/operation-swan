@@ -724,6 +724,23 @@ ECHO_OPEN = re.compile(r"^(?:you(?:'re| are)? (?:want|wanting|after|asking for|n
 VOICE_REPEAT = "voice_repeat_"
 
 
+LEADING_HANDLES = re.compile(r"^(?:@[\w.]+[,:]?\s*)+")
+
+
+def opening_words(text, n=4):
+    """The first n words of a text after any @handles it opens with: what same_opening compares (31 Oct: our sent
+    replies open with the citizens they name)."""
+    return " ".join(re.findall(r"[a-z']+", LEADING_HANDLES.sub("", (text or "").lower()))[:n])
+
+
+def without_handles(text, mention):
+    """text with each planned @handle (a username, or a list of them; todo/46) taken out once, with a comma or colon after
+    it. check() reads this for every test after the one for other @ names (31 Oct: the reply opens with them)."""
+    for h in ([mention] if isinstance(mention, str) else list(mention or ())):
+        text = re.sub(rf"@{re.escape(h)}(?!\w|\.\w)[,:]?\s*", "", text, count=1, flags=re.I)
+    return text.strip()
+
+
 def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(), closing_question=True, specific=True,
           same=(), phrase_texts=None, phrase_exempt=(), known_caps=(), mention=None, voice_texts=None, floor=None,
           echo_open=False):
@@ -735,7 +752,9 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
     specific=False: todo/23's off-topic reply: needn't name an in-world fact, OFF_TOPIC_LEN characters, and no talk
     of the vote (VOTE_TALK) unless the citizen's own post has some.
     known_caps: the capitalised words of the system prompt (the voice's own people), for invented_name.
-    mention: the one @username this reply is meant to name (todo/46, src/swan_bot/mention.py); that handle alone is allowed.
+    mention: the @username, or list of them, this reply is meant to name (todo/46, src/swan_bot/mention.py); those handles
+    alone are allowed, once each, and every check after that reads the text without them (31 Oct: the reply opens with
+    them; a handle is no number, name or opening).
     todo/50 (a fixes block): voice_texts: the writing voice's own latest texts (memory.voice_repeat); floor: a lower
     length floor for this kind; echo_open: reject an opening that restates their topic (ECHO_OPEN)."""
     t = normalise(text)
@@ -743,10 +762,12 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         t = TRAILING_TAGS.sub("", t).strip()
     if not t:
         return None, "empty"
-    if ARTEFACT_START.search(t) or ARTEFACTS.search(t):
+    bare = without_handles(t, mention)
+    if ARTEFACT_START.search(bare) or ARTEFACTS.search(t):
         return None, "llm_artefact"
-    if FORBIDDEN.search(re.sub(rf"@{re.escape(mention)}\b", "", t, count=1, flags=re.I) if mention else t):
+    if FORBIDDEN.search(bare):
         return None, "forbidden_content"
+    sent, t = t, bare                          # 31 Oct: everything below reads the reply without the handles it names
     if content.advocacy(t):                    # todo/20: no vaccine advocacy until organiser Q3 is answered
         return None, "vaccine_advocacy"
     if WRONG_LOGISTICS.search(HISTORY_DATES.sub("that day", t)):
@@ -812,8 +833,8 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
         return None, "copied_prompt"
     if target_text and similar(body, target_text, n=4) > 0.35:
         return None, "parrots_target"
-    opening = " ".join(re.findall(r"[a-z']+", t.lower())[:4])
-    if any(" ".join(re.findall(r"[a-z']+", o.lower())[:4]) == opening for o in list(recent_texts)[-30:]):
+    opening = opening_words(t)
+    if any(opening_words(o) == opening for o in list(recent_texts)[-30:]):
         return None, "same_opening"
     for m in STOCK.finditer(t):
         phrase = re.sub(r"\s+", " ", m.group(0).lower())
@@ -839,7 +860,7 @@ def check(text, kind, recent_texts=(), prompt_text="", target_text="", wants=(),
             if phrase_texts is not None and kind in PERSONAL_KINDS else [])
     if over:
         return None, PHRASE_PREFIX + "+".join(over)
-    return t, None
+    return (sent if mention else t), None
 
 
 # ---- code fixes (todo/20 G9: "we cannot afford a rejection"): a soft failure, or a made-up number, is fixed here with

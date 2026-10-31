@@ -1056,7 +1056,7 @@ def gate(raw, job, user, recent_texts, ledger=None):
               specific=job.get("group") != "off_topic", same=job.get("same_texts") or (),
               phrase_texts=job.get("phrase_texts"),
               phrase_exempt=("concede_open",) if job.get("style") == "mirror_concede" else (),   # firm_yes concedes
-              mention=(job.get("mention") or {}).get("username"),                                # todo/46: the one handle allowed
+              mention=mention.handles(job.get("mention")) or None,                               # todo/46: the handles allowed
               **(dict(voice_texts=(job.get("memory") or {}).get("voice_texts"), echo_open=True,  # todo/50: a fixes block
                       floor=config.FIXES_REPLY_FLOOR) if job.get("fixes") else {}))
     draft, fixes = raw, []
@@ -2151,7 +2151,7 @@ def main():
             text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode,
                                         target_text=(target or {}).get("body") if job.get("fixes") else None,
                                         mirror=bool(job.get("fixes")))                  # todo/50: their register
-            if mention.used(clean, job.get("mention")) and f"@{job['mention']['username']}" not in text:
+            if any(f"@{m['username']}" not in text for m in mention.named(clean, job.get("mention"))):
                 text, hand = clean, []             # the hand must not touch a handle: send the clean text
 
         # ---- send ----
@@ -2182,11 +2182,13 @@ def main():
         with mu:
             if target and mode in engage.FOLLOW_MODES + engage.LIKE_MODES:      # todo/33: the citizen's cell
                 engage.push(state, engage.plan(job, rec, target["author_id"], target["post_id"]))
-            if mention.used(text, job.get("mention")):     # todo/46: this citizen is named for MENTION_RECONTACT_S
+            names = mention.named(text, job.get("mention"))
+            if names:                                      # todo/46: these citizens are named for MENTION_RECONTACT_S
                 now_m = time.time()
                 state["mentioned"] = {k: v for k, v in (state.get("mentioned") or {}).items()
                                       if now_m - v < config.MENTION_RECONTACT_S}
-                state["mentioned"][str(job["mention"]["author_id"])] = now_m
+                for m in names:
+                    state["mentioned"][str(m["author_id"])] = now_m
             rec["last_write"], rec["writes"] = time.time(), rec.get("writes", 0) + 1
             stealth.on_write(rec, rec["last_write"])            # todo/31: its day's writes and its next gap
             if target:
@@ -2273,8 +2275,10 @@ def main():
              "arm": job.get("arm"), "priority": job.get("priority"), "group": job.get("group"),
              "net": job.get("net"),                       # todo/23: the arm it counts against (engaged + off_topic)
              "sv_delay": job.get("sv_delay"),
-             "mention": (job.get("mention") or {}).get("username") if mention.used(text, job.get("mention")) else None,
-             "mention_target": (job.get("mention") or {}).get("author_id"),     # todo/46: planned; `mention` says it was written
+             "mention": next((m["username"] for m in mention.named(text, job.get("mention"))), None),
+             "mention_target": next((m["author_id"] for m in mention.as_list(job.get("mention"))), None),   # todo/46: planned
+             "mentions": [m["username"] for m in mention.named(text, job.get("mention"))] or None,      # 31 Oct: all written
+             "mention_targets": [m["author_id"] for m in mention.as_list(job.get("mention"))] or None,  # ...and all planned
              **{k: job.get(k) for k in ("queue_arm", "ready_n", "ready_s")},    # 26 Oct: the send-queue arm, its depth, the draft's wait
              **{k: job.get(k) for k in ("ev", "arm_pick")},                     # todo/49: expected points at the pick, the pick arm
              "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen

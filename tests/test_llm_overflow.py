@@ -14,7 +14,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from swan_bot import bot, config, llm  # noqa: E402
 
-KIMI, HAIKU, LITE = config.REPLY_MODELS
+KIMI, HAIKU = config.REPLY_MODELS
+LITE = "gemini-3.5-flash-lite"                    # left REPLY_MODELS on 31 Oct; the mechanism tests keep it in their set
+LIVE_OVERFLOW = config.LLM_OVERFLOW_MODELS        # before the fixture swaps it
 GLM, FREE = "zai.glm-5", "openai/gpt-oss-120b"
 GAP, AT, MAXW = 0.5, 0.1, 0.8                     # seconds: shrunk from 6 s, 2.5 s and 20 s
 
@@ -31,6 +33,7 @@ def gen(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LLM_BUDGET_USD", 1000.0)
     monkeypatch.setattr(config, "LLM_OVERFLOW_AT_S", AT)
     monkeypatch.setattr(config, "LLM_MAX_WAIT_S", MAXW)
+    monkeypatch.setattr(config, "LLM_OVERFLOW_MODELS", (KIMI, HAIKU, LITE))       # the mechanism, on three models
     g = llm.Generator("unused")
     g.min_gap = GAP
     g.chain = [("gemini", LITE), ("bedrock", KIMI), ("bedrock", GLM), ("bedrock-converse", HAIKU), ("groq", FREE)]
@@ -47,7 +50,19 @@ def gen(tmp_path, monkeypatch):
     return g
 
 
-ORDER = [KIMI, HAIKU, LITE]                        # config.REPLY_MODELS order, the draft's own list
+ORDER = [KIMI, HAIKU, LITE]                        # the draft's own list (REPLY_MODELS, then flash-lite from the chain)
+
+
+def test_live_overflow_set_waits_for_kimi_or_haiku_and_keeps_flash_lite_as_the_last_resort(gen, monkeypatch):
+    """31 Oct (Marc): flash-lite out of REPLY_MODELS and so out of the overflow set: busy leads are waited for, and
+    flash-lite drafts only when both fail or are parked (the day's budget)."""
+    assert LITE not in config.REPLY_MODELS and LIVE_OVERFLOW == config.REPLY_MODELS
+    monkeypatch.setattr(config, "LLM_OVERFLOW_MODELS", LIVE_OVERFLOW)
+    gen.last_call.update({KIMI: time.time() + 0.3, HAIKU: time.time() + 0.3})
+    assert gen.complete_in_order("s", "u", ORDER)[1] == KIMI, "both busy: wait for the lead, not flash-lite"
+    assert LITE not in {m for m, _ in gen.sent}
+    gen.parked[KIMI] = gen.parked[HAIKU] = time.time() + 100
+    assert gen.complete_in_order("s", "u", ORDER)[1] == LITE, "both parked: flash-lite still drafts"
 
 
 def test_free_lead_model_is_used_and_nothing_overflows(gen):

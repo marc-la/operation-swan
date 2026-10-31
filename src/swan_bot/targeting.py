@@ -460,6 +460,7 @@ class Targeter:
         self._rl = None              # the rate limit as our last widen read saw it
         self._ours, self._ours_mtime = [], None
         self.npc_wait = {}           # todo/63: post_id -> Latest post whose author above 2343 waits for a first score
+        self.fresh = {}              # 31 Oct: citizen id -> their newest Latest post (t, post_id, root, body), mention.pick
         self.lock = threading.RLock()  # todo/22: the reader refreshes while the drafter and the writer use the queue
 
     # ---- saved across restarts (G3) ----------------------------------------------------------
@@ -571,13 +572,6 @@ class Targeter:
     def wait(self, post, why, source=None):
         """Still pending, for this reason (logged once per reason)."""
         self._end(post, "pending", why, source)
-
-    @locked
-    def mention_pool(self):
-        """[{author_id, post_id, cls, age_min}]: the citizens waiting in the queue, for mention.pick (todo/46). A copy, no
-        candidate is changed."""
-        return [dict(author_id=c["post"]["author_id"], post_id=pid, cls=c.get("target_class"), age_min=age_h(c["post"]) * 60)
-                for pid, c in self.candidates.items() if config.is_citizen(c["post"].get("author_id"))]
 
     @locked
     def answered(self, post, mode):
@@ -886,6 +880,7 @@ class Targeter:
         for p in latest["posts"]:
             self._consider(p, "latest")
         self._score_new(latest["posts"])              # todo/63: an author above 2343 not scored yet, then their posts
+        self._note_fresh(latest["posts"])             # 31 Oct: who is online now, for mention.pick (after the first-sight scores)
         trending = []
         if (self.refreshes - 1) % config.TRENDING_EVERY == 0 or not self.trending_posts:
             try:
@@ -965,6 +960,30 @@ class Targeter:
         self.bands = left
         rl = self.social.rate_limit
         return dict(posts=posts, pages=pages, gap=bool(left), error=error, remaining=rl.remaining if rl else None)
+
+    def _note_fresh(self, posts):
+        """31 Oct: each citizen's newest Latest post of the last MENTION_POOL_KEEP_S (likely citizens above 2343 too), so
+        mention.pick can name someone who is online now (docs/06-strategy/rival-strategies-2026-10-31.md §3.2)."""
+        now = time.time()
+        with self.lock:
+            for p in posts:
+                a = p.get("author_id")
+                if p.get("kind") == "repost" or not config.likely_citizen(a):
+                    continue
+                t = feeds.created_ts(p)
+                if t > self.fresh.get(a, {}).get("t", 0):
+                    self.fresh[a] = dict(t=t, post_id=p["post_id"], root=p.get("root_post_id") or p["post_id"],
+                                         body=(p.get("body") or "")[:400])
+            cut = now - config.MENTION_POOL_KEEP_S
+            for a in [a for a, v in self.fresh.items() if v["t"] < cut]:
+                del self.fresh[a]
+
+    @locked
+    def fresh_pool(self, now=None):
+        """[{author_id, post_id, root, age_s, body}]: citizens whose newest Latest post is under MENTION_FRESH_S old."""
+        now = time.time() if now is None else now
+        return [dict(author_id=a, post_id=v["post_id"], root=v["root"], age_s=now - v["t"], body=v["body"])
+                for a, v in self.fresh.items() if now - v["t"] <= config.MENTION_FRESH_S]
 
     def _snapshot(self, new_posts):
         """The Latest posts of the last few minutes and the last Trending read, for swan-blue (feeds.py)."""

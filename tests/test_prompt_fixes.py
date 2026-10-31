@@ -208,7 +208,7 @@ def test_the_rebuttal_is_conditional_in_a_fixes_block(monkeypatch):
 
 # ---- fix 4: shape, register and typing --------------------------------------------------------------------------------
 
-def test_fixes_replies_rarely_end_on_a_question_and_drop_the_echo_opener_and_lever():
+def test_fixes_replies_end_on_a_question_at_the_set_share_and_drop_the_echo_opener_and_lever():
     random.seed(3)
     fx = dict(colour=False, history=(0, []), register=register.read(SCEPTIC))
     asks, openers = [], set()
@@ -218,7 +218,8 @@ def test_fixes_replies_rarely_end_on_a_question_and_drop_the_echo_opener_and_lev
         asks.append(meta["ask_kind"] != "none")
         openers.add(meta["opener"])
         assert "Make it land through this" not in user and meta["lever"] is None
-    assert 0.04 < sum(asks) / len(asks) < 0.17
+    share = config.REPLY_QUESTION_SHARE           # 0.40 since 31 Oct (0.10 from 28 Oct; rival-strategies-2026-10-31 §3.3)
+    assert share - 0.08 < sum(asks) / len(asks) < share + 0.08
     assert openers <= set(content.FIXES_OPENERS) and not openers & set(content.OPENERS[:2])
 
 
