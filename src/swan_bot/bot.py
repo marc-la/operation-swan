@@ -2151,6 +2151,7 @@ def main():
                 return
         if mode in config.MENTION_MODES:
             text = mention.ensure(text, job.get("mention"))     # 31 Oct: a draft that dropped the handles opens with them
+            text, job["mention"] = mention.refresh(text, job, targeter, state.get("mentioned"))   # 1 Nov: the freshest at send
         clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
         if text and not args.no_humanize:
             text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode,
@@ -2284,6 +2285,7 @@ def main():
              "mention_target": next((m["author_id"] for m in mention.as_list(job.get("mention"))), None),   # todo/46: planned
              "mentions": [m["username"] for m in mention.named(text, job.get("mention"))] or None,      # 31 Oct: all written
              "mention_targets": [m["author_id"] for m in mention.as_list(job.get("mention"))] or None,  # ...and all planned
+             **{k: job.get(k) for k in ("mention_planned", "mention_swapped", "mention_ages")},   # 1 Nov: mention.refresh at send
              **{k: job.get(k) for k in ("queue_arm", "ready_n", "ready_s")},    # 26 Oct: the send-queue arm, its depth, the draft's wait
              **{k: job.get(k) for k in ("ev", "arm_pick")},                     # todo/49: expected points at the pick, the pick arm
              "touch_gap_h": job.get("touch_gap_h"),                             # todo/46: hours since we last wrote to this citizen

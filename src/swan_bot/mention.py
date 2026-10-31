@@ -90,15 +90,92 @@ def plan(job, targeter, mentioned, now=None):
             _held.pop(a, None)
         skip = {r["account_id"] for r in targeter.ours()} | set(_held)
         out = []
-        for who in pick(targeter.fresh_pool(now), target.get("author_id"), mentioned, now,
-                        k=config.MENTIONS_PER_REPLY, skip=skip):
+        pool = targeter.fresh_pool(now)
+        for who in pick(pool, target.get("author_id"), mentioned, now, k=config.MENTIONS_PER_REPLY, skip=skip):
             username = (targeter.account(who) or {}).get("username")
             if username and USERNAME.fullmatch(username):
                 out.append(dict(author_id=who, username=username))
                 _held[who] = t + HOLD_S
+        for who in pick(pool, target.get("author_id"), mentioned, now, k=config.MENTION_WARM,
+                        skip=skip | {x["author_id"] for x in out}):
+            targeter.account(who)            # cached for refresh(), which reads no username at send
         return out or None
     except Exception:           # never let the extra reach stop a write
         return None
+
+
+LEAD = re.compile(r"\s*((?:@[\w.]*\w[\s,]*)+)")
+
+
+def refresh(text, job, targeter, mentioned, now=None):
+    """(text, plan) at send. 1 Nov (docs/06-strategy/rival-strategies-2026-10-31.md §6): a named citizen answers 8.8% when
+    they posted under 10 s before, 5.7-6.6% at 10-30 s, 1.4% at 45-60 s (8,446 bot mentions, 30-31 Oct), and drafting
+    ages the planned ones ~9 s. So a planned handle whose citizen's newest post is MENTION_STALE_S old or more is swapped
+    for a fresher citizen not yet named, and a reply planned without any gets the fresh ones that came while it was
+    drafted. Only handles that OPEN the text and appear nowhere else are touched (prepended handles answer as well as
+    written ones: Kimi 6.8%, Haiku 6.0%). Usernames come from the cache only (plan() warms it): no read at send. Anything
+    that goes wrong returns the text and plan unchanged."""
+    m = as_list(job.get("mention"))
+    try:
+        if not text or not config.MENTION_SEND_REFRESH or not active(job):
+            return text, job.get("mention")
+        now = time.time() if now is None else now
+        lead = LEAD.match(text)
+        m = named(text, m)                                   # a planned handle the draft dropped is not in it
+        if m:
+            if not lead or {h.lower() for h in handles(m)} != {h.rstrip(".,").lstrip("@").lower()
+                                                               for h in lead.group(1).split()}:
+                return text, job.get("mention")              # handles written into the sentence: leave them
+            if any(re.search(rf"@{re.escape(h)}(?!\w|\.\w)", text[lead.end():], re.I) for h in handles(m)):
+                return text, job.get("mention")
+            rest = text[lead.end():]
+        elif lead:
+            return text, job.get("mention")                  # an @ at the start nobody planned: not ours to touch
+        else:
+            rest = text.lstrip()
+        pool = targeter.fresh_pool(now)
+        age = {p["author_id"]: p["age_s"] for p in pool}
+        ages = lambda xs: [round(age[x["author_id"]]) if x["author_id"] in age else None for x in xs] or None
+        job["mention_ages"] = ages(m)                        # seconds since each named citizen's newest post, at send
+        cached = getattr(targeter, "accounts", {}) or {}
+        target = (job.get("target") or {}).get("author_id")
+        keep = [x for x in m if age.get(x["author_id"], 1e9) < config.MENTION_STALE_S]
+        stale = [x for x in m if x not in keep]
+        want = len(stale) if m else config.MENTIONS_PER_REPLY
+        if not want:
+            return text, job.get("mention")
+        skip = ({r["account_id"] for r in targeter.ours()} | {a for a, until in _held.items() if until > now}
+                | {x["author_id"] for x in m})
+        stale.sort(key=lambda x: -age.get(x["author_id"], 1e9))       # the oldest go first
+        fresher = []
+        limit = min(config.MENTION_ADD_MAX_S, min((age.get(x["author_id"], 1e9) for x in stale), default=1e9)
+                    - config.MENTION_FRESHER_BY_S)
+        for p in sorted(pool, key=lambda p: p["age_s"]):
+            a = p["author_id"]
+            if len(fresher) >= want or p["age_s"] >= limit:
+                break
+            if a == target or a in skip or now - float((mentioned or {}).get(str(a), 0)) < config.MENTION_RECONTACT_S:
+                continue
+            body = p.get("body") or ""
+            if targeting.loud(body) or targeting.HOSTILE.search(body) or targeting.target_class(body) == "firm_yes":
+                continue
+            username = (cached.get(a) or {}).get("username")
+            if username and USERNAME.fullmatch(username):
+                fresher.append(dict(author_id=a, username=username))
+        if not fresher:
+            return text, job.get("mention")
+        dropped = stale[:len(fresher)]
+        new = keep + stale[len(fresher):] + fresher
+        for x in dropped:
+            _held.pop(x["author_id"], None)
+        for x in fresher:
+            _held[x["author_id"]] = now + HOLD_S
+        job["mention_planned"] = [x["author_id"] for x in as_list(job.get("mention"))] or None
+        job["mention_swapped"] = len(fresher)
+        job["mention_ages"] = ages(new)
+        return " ".join(f"@{x['username']}" for x in new) + " " + rest.lstrip(), new
+    except Exception:                # never let the extra reach stop a write
+        return text, job.get("mention")
 
 
 def prompt_line(m, rng=random):

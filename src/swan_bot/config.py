@@ -1173,6 +1173,15 @@ MENTION_RECONTACT_S = 3600          # was 24 h; ~126 citizens post in an hour, s
 MENTION_FRESH_S = 300               # the named citizen posted within this long (rivals: 90% of their picks)
 MENTION_POOL_KEEP_S = 900           # Targeter.fresh: citizens' Latest posts kept this long
 MENTION_MODES = ("reply",)
+# 1 Nov (Marc; rival-strategies-2026-10-31.md §6): the handles are chosen again at send (mention.refresh). Across 8,446 bot
+# mentions a citizen answered 8.8% when they had posted under 10 s before, 5.7-6.6% at 10-30 s and 1.4% at 45-60 s, and a
+# draft takes ~9 s. We already name nearly every citizen online (a 15-60 min recontact or a narrower window adds none), so
+# the age at send is the one lever left. Off: MENTION_SEND_REFRESH = False.
+MENTION_SEND_REFRESH = True
+MENTION_STALE_S = 20                # a planned citizen whose newest post is this old at send is swapped for a fresher one
+MENTION_FRESHER_BY_S = 10           # ...at least this much fresher
+MENTION_ADD_MAX_S = 60              # never adds anyone who posted longer ago than this (1.4% at 45-60 s, ~0 later)
+MENTION_WARM = 4                    # plan() also caches the usernames of this many more fresh citizens for refresh()
 # Late replies (todo/46 lever 3): citizens answer our posts hours later (7 in 10 after 6 h); when the voice that wrote the post is
 # suspended or parked its notifications cannot be read, so the reply-back path never saw them (48 a day aged out as
 # expired:reply_back, and replies read as off topic were skipped). With LATE_REPLY a citizen's reply to such a voice's post is

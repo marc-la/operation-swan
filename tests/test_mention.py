@@ -195,6 +195,84 @@ def test_gate_in_the_bot_passes_a_reply_naming_the_planned_citizen(monkeypatch):
     assert why != "forbidden_content", why
 
 
+REFRESH_POOL = [dict(author_id=7, age_s=35, body="the pass would hit the ferry crews hardest, the vote is close"),
+                dict(author_id=1, age_s=8, body="I could back it, but only if the venue list is written in first."),
+                dict(author_id=6, age_s=4, body="fish curry tonight, good saturday"),
+                dict(author_id=3, age_s=2, body="I'm voting yes, no question, the wards come first."),         # firm Yes
+                dict(author_id=500, age_s=1, body="Not sure how I'll vote on the referendum yet."),             # the target
+                dict(author_id=9, age_s=3, body="still unsure about the referendum"),                          # no username cached
+                dict(author_id=11, age_s=50, body="the referendum, hmm")]
+CACHED = {7: {"username": "ferry_kate"}, 1: {"username": "dorothy.cable"}, 6: {"username": "sharks_fan"},
+          3: {"username": "yes_yes"}, 11: {"username": "late_one"}}
+KATE, DOT = dict(author_id=7, username="ferry_kate"), dict(author_id=1, username="dorothy.cable")
+
+
+def _refresh(text, plan, pool=REFRESH_POOL, mentioned=None, ours=(), **kw):
+    t = types.SimpleNamespace(fresh_pool=lambda now=None: pool, ours=lambda: [dict(account_id=a) for a in ours],
+                              accounts=CACHED, account=lambda i: CACHED.get(i, {}))
+    j = dict(job(mention=plan), **kw)
+    return (*mention.refresh(text, j, t, mentioned or {}, now=NOW), j)
+
+
+def test_refresh_swaps_a_stale_opening_handle_for_the_freshest_citizen_not_yet_named(monkeypatch):
+    monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
+    mention._held.clear()
+    text, plan, j = _refresh("@ferry_kate The places get picked after.", [KATE])
+    assert text == "@sharks_fan The places get picked after." and plan == [dict(author_id=6, username="sharks_fan")]
+    assert j["mention_planned"] == [7] and j["mention_swapped"] == 1 and j["mention_ages"] == [4]
+    assert 6 in mention._held and 7 not in mention._held            # the new one is held, the old one free for another draft
+    mention._held.clear()
+    text, plan, _ = _refresh("@dorothy.cable @ferry_kate The places get picked after.", [DOT, KATE])
+    assert text == "@dorothy.cable @sharks_fan The places get picked after."     # 8 s old: kept; 35 s old: swapped
+    mention._held.clear()
+    text, plan, _ = _refresh("@ferry_kate The places.", [KATE], mentioned={"6": NOW - 60, "1": NOW - 60})
+    assert text == "@ferry_kate The places." and plan == [KATE]     # the fresher ones were named within the hour: as drafted
+    mention._held.clear()
+    _, plan, _ = _refresh("@ferry_kate The places.", [KATE], ours={6})
+    assert plan == [DOT]                                            # never one of ours; then the next freshest
+
+
+def test_refresh_adds_fresh_citizens_to_a_reply_planned_without_any(monkeypatch):
+    monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
+    mention._held.clear()
+    text, plan, j = _refresh("The places get picked after.", None)
+    assert text == "@sharks_fan @dorothy.cable The places get picked after."        # not the target, a firm Yes or uncached
+    assert j["mention_planned"] is None and j["mention_swapped"] == 2
+    mention._held.clear()
+    old = [dict(p, age_s=p["age_s"] + config.MENTION_ADD_MAX_S) for p in REFRESH_POOL]
+    assert _refresh("The places.", None, pool=old)[:2] == ("The places.", None)      # nobody under a minute: nothing added
+
+
+def test_refresh_leaves_handles_written_into_the_sentence_and_everything_else(monkeypatch):
+    monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
+    mention._held.clear()
+    mid = "Fair, @ferry_kate, the places get picked after."
+    assert _refresh(mid, [KATE])[:2] == (mid, [KATE])
+    twice = "@ferry_kate The places get picked after, right @ferry_kate?"
+    assert _refresh(twice, [KATE])[:2] == (twice, [KATE])
+    stray = "@someone The places."
+    assert _refresh(stray, None)[:2] == (stray, None)               # a handle nobody planned: not touched
+    assert _refresh("@ferry_kate The places.", [KATE], mode="reply_back")[:2] == ("@ferry_kate The places.", [KATE])
+    monkeypatch.setattr(config, "MENTION_SEND_REFRESH", False)
+    assert _refresh("@ferry_kate The places.", [KATE])[:2] == ("@ferry_kate The places.", [KATE])
+    monkeypatch.setattr(config, "MENTION_SEND_REFRESH", True)
+    boom = types.SimpleNamespace(fresh_pool=lambda now=None: 1 / 0, ours=lambda: [], accounts={})
+    assert mention.refresh("@ferry_kate The places.", job(mention=[KATE]), boom, {}, now=NOW) == ("@ferry_kate The places.", [KATE])
+    assert mention.refresh(None, job(mention=[KATE]), boom, {}) == (None, [KATE])
+
+
+def test_plan_caches_the_usernames_of_a_few_more_fresh_citizens(monkeypatch):
+    monkeypatch.setattr(config, "SWITCHBACK", MENTION_BLOCK)
+    monkeypatch.setattr(config, "MENTIONS_PER_REPLY", 2)
+    mention._held.clear()
+    seen = []
+    t = types.SimpleNamespace(fresh_pool=lambda now=None: POOL, ours=lambda: [],
+                              account=lambda i: seen.append(i) or {"username": f"user{i}"})
+    assert [m["author_id"] for m in mention.plan(job(), t, {}, now=NOW)] == [7, 1]
+    assert seen[:2] == [7, 1] and set(seen[2:]) == {2, 6}            # the rest of the fresh pool, for refresh() at send
+    mention._held.clear()
+
+
 def _post(pid, minutes, author):
     return dict(post_id=pid, author_id=author, body="the referendum",
                 created_at=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).isoformat())

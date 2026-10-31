@@ -177,3 +177,42 @@ write, and our first replies' citizen repliers per write.
 - questions: `REPLY_QUESTION_SHARE = 0.10`;
 - flash-lite: add `"gemini-3.5-flash-lite"` back to `REPLY_MODELS`;
 - or revert ec95655.
+
+## 6. The mention study and the send-time pick (31 Oct 16:00 UTC - 1 Nov; Marc approved)
+
+**What the change did (measured 31 Oct, 04:33-15:00 UTC against the same hours on 29-30 Oct).**
+- Portal base engagement per write: **7.57** after the change against 5.22 and 5.79 a day and two days earlier. The
+  morning before the change ran 7.27 against 6.70 and 7.07, so the gain is about **+30-35%** (writes matched to the
+  portal line of the same hour: that lines up better than a 1 h lag, correlation 0.49 against 0.38).
+- First replies, citizen replies and likes at +1.5 h: 2.37 visible points a write with no handle, 3.83 with one, 5.14 with
+  two. The person we answered replied as often as before (about 10%). Questions: no measurable effect. Kimi and Haiku:
+  the same within the noise.
+- Guardrails: away events 39 against 43 in the same hours a day earlier, no unfollows. Hidden: 6 of 679 replies with
+  handles against 1 of 455 without (not significant; recheck).
+
+**The study** (read-only: Latest 30 Oct 03:00 - 31 Oct 16:00 UTC, 142,000 posts, and the account list for usernames; ~690
+reads). 8,446 bot writes that name a citizen other than the one answered; answered = that citizen replied to it within 1 h.
+- Age of the citizen's newest post at the write: under 10 s 8.8%, 20-30 s 6.6%, 45-60 s 1.4%, 3-5 min 0.4%, older about 0.
+- Opening handle 5.3% against 1.7% mid-text. Two handles 6.7% each; **three: 0 of 66**.
+- Named by others 2 or more times in the 15 min before: 4%, 3 or more: 0. Second to name them within 2 min: about the
+  same as first (5.0% against 5.3%).
+- Answered a mention before: 17% (n 86). Replied to bots 6-10 times in the past day: 8.8% against 5.6% for none.
+- Ours: 6.1% against 5.0% for rivals; median 26 s at send, 88% under a minute. Prepended handles (Kimi, which drops them)
+  6.8%, written ones (Haiku) 6.0%.
+- **Supply is the limit.** About 130 citizens post an hour by day, 60-80 at night (11-19 UTC), in short sessions. Replaying
+  our picker over the real stream: today's rules give 0.89 handles a reply by day and 0.41 at night, as live. A 1-minute
+  window, a 30-minute recontact or 3 handles add nothing; a 15-minute recontact adds 0.05. So who we pick hardly matters:
+  we name nearly everyone online. Picking 5 s nearer the send gives +13% answers on the rivals' curve.
+- Bigger picture (Marc agreed): engagement per write is capped by citizens online; at night we have more writes than fresh
+  citizens, so night writes earn little whatever the wording.
+
+**Shipped:** `mention.refresh` at send (`bot.py`, after `mention.ensure`):
+- a planned opening handle whose citizen posted `MENTION_STALE_S` (20 s) ago or more is swapped for the freshest citizen
+  not yet named, at least `MENTION_FRESHER_BY_S` (10 s) fresher and under `MENTION_ADD_MAX_S` (60 s);
+- a reply planned without handles gets the fresh ones that arrived while it was drafted;
+- handles written into the sentence, reply-backs and anything else are untouched; the same exclusions as `pick`; usernames
+  from the cache only (`plan` warms `MENTION_WARM` = 4 more), so no read at send;
+- logged: `mention_planned`, `mention_swapped`, `mention_ages` (seconds since each named citizen's newest post, at send).
+
+Expected +5-13% on mention answers, about +2-3% engagement. **Read it** on `mention_ages` (should fall from a 26 s median)
+and the named citizens' answer rate. **Back out:** `MENTION_SEND_REFRESH = False`.
