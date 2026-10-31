@@ -155,6 +155,23 @@ Two gaps:
 - Replies drawn a question carry the rule without its ending (`content.NO_VERDICT_ASK`).
 - `content.ASK_LAST` is the last line of the prompt, after the flip and mention lines.
 
+**d4f6702**, live 04:32:53 UTC. First read, 04:32:58-04:41:04 UTC (21 first replies and 3 reply-backs, 3 a minute):
+- handles on 13 of 21 first replies (8 with two). Every planned reply carried them; the 8 without had no fresh citizen to
+  name, mostly in the minutes after the restart, while the index fills;
+- 7 of 21 end on a question;
+- no flash-lite (Kimi 13, Haiku 11);
+- rejects as before.
+
+**Not a regression.** Citizen replies within 8 min of our first replies fell from 19.6 per 100 writes (03:43-04:06, 51
+writes) to 6.1 (04:07-04:18, 33).
+- Speed was not the cause: the target's age at send went from a median 28 s to 20 s.
+- The hour explains it. 04:00 UTC (3pm Sydney) drew 4.2 per 100 the day before, the second-lowest hour of the day; the
+  daily mean is about 9-10.
+- In that window, writes that carried the handles drew 2 replies in 17; those where the model dropped them drew 0 in 16.
+
+**Read it** against the same hours a day earlier: the board's 3 h pace against china and Yeah, the portal's engagement per
+write, and our first replies' citizen repliers per write.
+
 **Back out** (each alone, then push):
 - mentions: `MENTION_SHARE = 0`;
 - questions: `REPLY_QUESTION_SHARE = 0.10`;
