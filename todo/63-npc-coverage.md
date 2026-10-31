@@ -57,6 +57,19 @@ Labelled by hand (Claude):
 - Light-read skips (`act: skip`, `why: read`): 0 in the 24 h before. A rise means small talk getting through.
 - Engagement per write on the portal, the hours against the same hours a day earlier.
 
+**First read, 02:37-02:51 UTC (14 min, Claude).**
+- Every write came from 0c08db3, at 2.71 a minute (2.67 in the hour before). No errors in the journal.
+- The scan ran at 02:36 and 02:46, about a minute each; the next was due at 02:56.
+- off_topic skips: 65 an hour, against 167 in the hour before. No light-read skips.
+- First sight: 15 accounts read, 9 scoring 0.9+, 5 private.
+  - Their 10 posts reached the queue 1-10 s after posting, like everyone's (median 5 s).
+  - None was answered yet. Every pick in their first 2 minutes went to a newer post (newest first); none was skipped
+    by a filter.
+  - In the same minutes: 23% of seeded citizens' posts answered, 44% of file-scored extra citizens'. Read the share
+    again after a few hours.
+- 2 of 40 first replies went to posts the old rule skipped as off topic. Both sat in threads on the rules and
+  gatekeeping, the light read called both lean_no, and our replies stayed on the vote.
+
 ## 5. Off switches
 - First sight: `SWAN_NPC_LIVE_SCORE=0` in `.env`, then restart.
 - The scan: back to `OnUnitActiveSec=1h`, then push.
