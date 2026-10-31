@@ -1499,7 +1499,9 @@ def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen
     Each step between lines is scaled to the Red multiplier in force at `end` (MULTIPLIERS, by the time it was earned:
     the portal books an hour that straddles a change at both): on 31 Oct 15:00 UTC the 24 h column was 22 h at x2 and 2 h
     at x4, half everyone's real rate (Marc, 31 Oct). The scale is applied to the whole change, Moderation points too.
-    {span: hours the reference is back, as_of: when the current scores showed, per_hour: {team: points an hour}, mult:
+    {span: hours the reference is back, window: `hours`, the column's label (the hourly lines rarely sit exactly `hours`
+    back: 24.6 h showed as "25 h", Marc 1 Nov; per_hour divides by the real span), as_of: when the current scores showed,
+    per_hour: {team: points an hour}, mult:
     the multiplier the pace is in, scaled: whether any of the window was earned at another} or None when no line is old
     enough."""
     end = seen or now
@@ -1527,7 +1529,7 @@ def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen
             total += (s - prev) * mult / mean_multiplier(prev_t, u)
             prev_t, prev = u, s
         per_hour[r["team"]] = round(total / span)
-    return dict(span=span, as_of=end, per_hour=per_hour, mult=mult, scaled=mean_multiplier(t, end) != mult)
+    return dict(span=span, window=hours, as_of=end, per_hour=per_hour, mult=mult, scaled=mean_multiplier(t, end) != mult)
 
 
 def multiplier_at(t):

@@ -406,6 +406,7 @@ def test_team_pace_uses_the_line_nearest_24_h_back_and_needs_one_six_hours_old()
              dict(ts=at(NOW, 1), scores=dict(A=129_000, B=69_000)), {"junk": 1}, dict(ts="bad", scores={})]
     got = build.team_pace(lines, rows, NOW)
     assert round(got["span"], 1) == 24.5 and got["per_hour"] == {"A": 1224, "B": 980}      # New is not in the line: no pace
+    assert got["window"] == 24                         # the label: 24.5 h read "25 h" (Marc, 1 Nov); the rate uses the real span
     young = build.team_pace(lines[1:3], rows, NOW)                                         # only a 6 h line is old enough
     assert young["span"] == 6 and young["per_hour"] == {"A": 1000, "B": 1000}
     assert build.team_pace(lines[2:3], rows, NOW) is None and build.team_pace([], rows, NOW) is None
