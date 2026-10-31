@@ -422,6 +422,20 @@ def test_team_pace_does_not_move_between_board_changes_and_counts_from_when_scor
     assert after["span"] == 24 and after["as_of"] > runs[0]["as_of"]                          # a board change moves it a whole hour
 
 
+def test_team_pace_scales_hours_before_a_multiplier_change_to_the_one_in_force():
+    switch = dt.datetime(2026, 10, 31, 13, tzinfo=dt.timezone.utc)              # 1 Nov 00:00 Sydney: x2 -> x4
+    end = switch + dt.timedelta(hours=2)
+    lines = [dict(ts=at(end, h), scores=dict(A=100_000 + (24 - h) * 2_000 + max(0, 2 - h) * 2_000)) for h in range(24, 0, -1)]
+    rows = [dict(team="A", score=100_000 + 24 * 2_000 + 2 * 2_000)]              # 2,000 an hour at x2, 4,000 at x4
+    got = build.team_pace(lines, rows, end)
+    assert got["span"] == 24 and got["mult"] == 4 and got["scaled"] and got["per_hour"] == {"A": 4000}
+    hour = build.team_pace([dict(ts=at(switch, 0.5), scores=dict(A=0))], [dict(team="A", score=3_000)],
+                           switch + dt.timedelta(minutes=30), min_hours=1)        # half at x2, half at x4: a mean of x3
+    assert hour["per_hour"] == {"A": 4000}
+    before = build.team_pace(lines[:10], [dict(team="A", score=lines[9]["scores"]["A"] + 2_000)], switch - dt.timedelta(hours=12))
+    assert not before["scaled"] and before["mult"] == 2 and before["per_hour"] == {"A": 2000}      # no change in the window
+
+
 def test_leaderboard_shows_each_teams_pace_and_who_is_gaining_on_us(tmp_path):
     full = dict(leaderboard_portal(), rows=leaderboard_portal()["top"] + [
         dict(rank=9, team="Nine", score=33_000), dict(rank=10, team="Operation Swan", score=32_000),

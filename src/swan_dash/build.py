@@ -1496,19 +1496,56 @@ def team_pace(lines, rows, now, hours=PACE_HOURS, min_hours=PACE_MIN_HOURS, seen
     older than that (so a gap in the series cannot turn a 3 h column into a 24 h one). A 24 h window
     spans a whole Sydney day, so the daily rhythm of citizens does not show as a change of pace; a 6 h one would, and a 6,000
     poll award inside it would look like 1,000 an hour. A team not in the reference line (new, or renamed) has no pace.
-    {span: hours the reference is back, as_of: when the current scores showed, per_hour: {team: points an hour}} or None
-    when no line is old enough."""
+    Each step between lines is scaled to the Red multiplier in force at `end` (MULTIPLIERS, by the time it was earned:
+    the portal books an hour that straddles a change at both): on 31 Oct 15:00 UTC the 24 h column was 22 h at x2 and 2 h
+    at x4, half everyone's real rate (Marc, 31 Oct). The scale is applied to the whole change, Moderation points too.
+    {span: hours the reference is back, as_of: when the current scores showed, per_hour: {team: points an hour}, mult:
+    the multiplier the pace is in, scaled: whether any of the window was earned at another} or None when no line is old
+    enough."""
     end = seen or now
-    old = [(t, r) for t, r in ((ts(r.get("seen")) or ts(r.get("ts")), r) for r in lines)
-           if t and isinstance(r.get("scores"), dict) and min_hours * 3600 <= (end - t).total_seconds() <= (max_hours or math.inf) * 3600]
+    dated = [(t, r) for t, r in ((ts(r.get("seen")) or ts(r.get("ts")), r) for r in lines)
+             if t and isinstance(r.get("scores"), dict) and t < end]
+    old = [(t, r) for t, r in dated if min_hours * 3600 <= (end - t).total_seconds() <= (max_hours or math.inf) * 3600]
     if not old:
         return None
     want = end - dt.timedelta(hours=hours)
     t, ref = min(old, key=lambda p: abs((p[0] - want).total_seconds()))
     span = (end - t).total_seconds() / 3600
-    return dict(span=span, as_of=end,
-                per_hour={r["team"]: round((r["score"] - ref["scores"][r["team"]]) / span)
-                          for r in rows if _num(ref["scores"].get(r["team"])) is not None})
+    mult = multiplier_at(end)
+    steps = sorted(((u, r["scores"]) for u, r in dated if u > t), key=lambda p: p[0])
+    steps.append((end, {r["team"]: r["score"] for r in rows}))
+    per_hour = {}
+    for r in rows:
+        prev_t, prev = t, _num(ref["scores"].get(r["team"]))
+        if prev is None:
+            continue
+        total = 0.0
+        for u, scores in steps:
+            s = _num(scores.get(r["team"]))
+            if s is None:
+                continue                       # a line without the team: its change counts in the next step that has it
+            total += (s - prev) * mult / mean_multiplier(prev_t, u)
+            prev_t, prev = u, s
+        per_hour[r["team"]] = round(total / span)
+    return dict(span=span, as_of=end, per_hour=per_hour, mult=mult, scaled=mean_multiplier(t, end) != mult)
+
+
+def multiplier_at(t):
+    """The Red multiplier in force at time t (MULTIPLIERS, by Sydney day)."""
+    day = t.astimezone(SYDNEY).date()
+    return next((m for d, m in reversed(MULTIPLIERS) if d <= day), 1)
+
+
+def mean_multiplier(a, b):
+    """The time-weighted Red multiplier over (a, b], split at Sydney midnights; multiplier_at(b) when b is not after a."""
+    if b <= a:
+        return multiplier_at(b)
+    total, x = 0.0, a
+    while x < b:
+        nxt = min(b, sydney_midnight(x.astimezone(SYDNEY).date() + dt.timedelta(days=1)))
+        total += multiplier_at(x) * (nxt - x).total_seconds()
+        x = nxt
+    return total / (b - a).total_seconds()
 
 
 def sig3(x):
