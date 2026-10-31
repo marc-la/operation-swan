@@ -279,9 +279,9 @@ frames = ["F6_islands", "F7_livelihoods"]
 [first_case_confirmed]
 text = "The first H2D2 case in Kingstonia is an imported traveller currently in isolation, with no evidence of community transmission."
 note = "imported case"
-status = "active"
+status = "paused"
 source = "daily-kingstonia/first-h2d2-case-confirmed-in-kingstonia-via-international-traveller"
-checked = 2026-10-26T01:50:06+00:00
+checked = 2026-10-31T00:55:39+00:00
 numbers = []
 says = []
 frames = []
@@ -534,9 +534,9 @@ frames = []
 [wastewater_inconclusive]
 text = "A weak, inconclusive H2D2 signal turned up in routine wastewater testing in Crown Harbour; repeat testing is underway, and no clinical cases or community transmission are linked to it."
 note = "routine monitoring found a weak signal, now being retested; not linked to any case"
-status = "active"
+status = "paused"
 source = "kingstonia-herald/weak-h2d2-wastewater-signal-detected-in-crown-harbour"
-checked = 2026-10-29T11:00:00Z
+checked = 2026-10-31T00:55:39+00:00
 added = 2026-10-29T11:00:00Z
 numbers = []
 says = []
@@ -565,3 +565,40 @@ added = 2026-10-30T16:41:44+00:00
 numbers = []
 says = []
 frames = ["F10_staff_and_livelihoods"]
+
+# replaces wastewater_inconclusive (contradicted: fact desk proposal 120, autopilot 31 Oct 00:57 UTC; mirrored here by Claude for Marc)
+[wastewater_inconclusive_1031]
+text = "Routine wastewater testing in Crown Harbour initially showed a weak H2D2 signal, but repeat testing confirmed it was a false alarm caused by laboratory contamination."
+note = "Crown Harbour wastewater signal confirmed as false alarm from lab contamination."
+status = "active"
+source = "daily-kingstonia/crown-harbour-wastewater-h2d2-signal-confirmed-as-false-alarm"
+checked = 2026-10-31T00:55:39+00:00
+added = 2026-10-31T00:55:39+00:00
+numbers = []
+says = []
+frames = []
+
+# replaces first_case_confirmed (contradicted: fact desk proposal 121, autopilot 31 Oct 00:57 UTC; mirrored here by Claude for Marc)
+[first_case_confirmed_1031]
+text = "The first H2D2 case in Kingstonia was an imported traveller who has fully recovered, with no evidence of community transmission."
+note = "First imported H2D2 case has fully recovered."
+status = "active"
+source = "kingstonia-herald/crown-harbour-wastewater-h2d2-signal-ruled-a-false-alarm"
+checked = 2026-10-31T00:55:39+00:00
+added = 2026-10-31T00:55:39+00:00
+numbers = []
+says = []
+frames = []
+
+# fact desk proposal 122, autopilot 31 Oct 00:57 UTC (mirrored here by Claude for Marc). A Yes-leaning warning: nothing in
+# the code names it, so it reaches no prompt
+[cmo_health_system_vulnerable]
+text = "Chief Medical Officer Dr. Eleanor Whitlock warned that Kingstonia's small health system remains vulnerable to the virus even without active community spread."
+note = "CMO warns health system remains vulnerable even without community spread."
+status = "active"
+source = "kingstonia-herald/crown-harbour-wastewater-h2d2-signal-ruled-a-false-alarm"
+checked = 2026-10-31T00:55:39+00:00
+added = 2026-10-31T00:55:39+00:00
+numbers = []
+says = []
+frames = []

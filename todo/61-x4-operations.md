@@ -91,6 +91,22 @@ so 31 Oct may spend everything that's left. Only the normal rate protects the la
   and uncomment the block ([situation §13c](../docs/06-strategy/situation-2026-10-29.md#13c-read-the-room-live-todo52-29-oct-1200-1330-utc)).
   Watchers should know how (`scripts/news_story.py SITE SLUG`).
 
+**First live run, 31 Oct 00:55 UTC.**
+- **The story.** Both papers ran the Crown Harbour retest at 00:00 UTC: "false alarm caused by laboratory contamination",
+  and the first case has recovered.
+- **What the desk did.** The autopilot's scoped run took about 1.5 minutes (00:55:39 → 00:57:05) and applied three
+  decisions:
+  - #120: `wastewater_inconclusive` → `wastewater_inconclusive_1031`;
+  - #121: `first_case_confirmed` → `first_case_confirmed_1031`;
+  - #122: `cmo_health_system_vulnerable`, a Yes-leaning warning that no code names.
+- **What it left dark.** The retirements turned off the flip's two most-used proofs (`wastewater_caught`, `contained_case`),
+  the `no_proof` turn and the lead news story `health_handled`, until a human pointed them at the new keys.
+- **Fixed in the next push** (Claude for Marc):
+  - the new facts mirrored into `content/facts.toml`;
+  - the items re-pointed and reworded for a false alarm and a recovered case;
+  - `health_handled` updated, and published moved to 31 Oct so it doesn't age out in ×4;
+  - the staged `wastewater_retest_clear` story live.
+
 ## 5. Pushes during ×4 (a rule, no code)
 - **The last deploy is 06:00 UTC on 31 Oct** (2pm Perth) as planned. After that, only kill switches (`.env` and a restart)
   and fixes for something broken.

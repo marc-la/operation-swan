@@ -130,18 +130,20 @@ core = ["A No isn't doing nothing: the testing, the tracing and the free vaccine
         "A No keeps every protection that's working now, and asks nobody to take a new rule on trust."]
 
 [evidence.wastewater_caught]
-requires = ["wastewater_inconclusive"]
+requires = ["wastewater_inconclusive_1031"]
 # 29 Oct: no case clause. "isn't linked to any case" came back as "no cases linked" in 44 drafts in two hours, which the
 # gate refuses (there has been a case since 21 Oct): every one a repair call or a lost citizen
-line = ["routine wastewater testing picked up a weak signal early, and it's being retested to check it",
-        "routine testing of the wastewater caught a faint signal early, and a retest is already under way"]
-keywords = ['wastewater', 'sewage', '\bsignal\b', '\btest']
+# 31 Oct (the papers, 00:00 UTC): the retest found no trace; the weak signal was a false alarm from lab contamination
+line = ["routine wastewater testing flagged a weak signal, the retest found no trace of it, and the system checked and cleared it without anyone showing a pass",
+        "the weak wastewater signal in Crown Harbour was retested and turned out to be a false alarm from lab contamination: caught, checked and cleared by routine testing"]
+keywords = ['wastewater', 'sewage', '\bsignal\b', '\btest', 'false alarm', '\bretest', 'contaminat', 'all clear']
 weight = 3.0
 
 [evidence.contained_case]
-requires = ["first_case_confirmed", "contacts_negative_results", "no_spread"]
-line = ["the first case, a traveller, was isolated and every close contact tested negative",
-        "the first case, a traveller, was isolated at once and every one of their close contacts came back negative"]
+requires = ["first_case_confirmed_1031", "contacts_negative_results", "no_spread"]
+# 31 Oct (the papers): the first case has fully recovered
+line = ["the first case, a traveller, was isolated, every close contact tested negative, and they've since fully recovered",
+        "the first case, a traveller, was isolated at once, every one of their close contacts came back negative, and they've fully recovered"]
 keywords = ['\bcases?\b', 'contacts?', 'isolat', 'traveller', '\bspread', 'transmission']
 weight = 2.0
 
@@ -248,7 +250,7 @@ weight = 1.5
 # todo/52: "if a pass makes a clear difference, show us"
 [pivot.no_proof]
 own_only = true
-requires = ["wastewater_inconclusive", "contacts_negative_results"]
+requires = ["wastewater_inconclusive_1031", "contacts_negative_results"]
 line = ["nobody has shown what a pass check adds to the testing and tracing that caught this early",
         "what's been shown to work here is the testing and the tracing, and nobody has shown a check at the door adds to them"]
 keywords = ['show (us|me)', '\bevidence\b', '\bproof\b', '\bprove', 'clear difference', 'makes? a (real |clear )?difference', 'does (it|a pass) (actually )?(work|stop)']

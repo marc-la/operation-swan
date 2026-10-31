@@ -50,13 +50,25 @@ keywords = ['\bdoses?\b', '\bshipment\b', '\barrived\b', '\bvoluntary\b', '\brol
 
 # 29 Oct (Marc): the lead story, the flip (content/flip.toml) for the replies whose post voices no fear. Yes wins on the
 # health news; this is the same news read for a No.
+# 31 Oct (the papers, 00:00 UTC): the wastewater signal was a false alarm (lab contamination) and the first case has
+# recovered; the facts it rested on were retired for the _1031 ones (fact desk #120, #121), and its line says so. Published
+# moves to the update, so the lead story doesn't age out (MAX_AGE_H 72) in the middle of x4.
 [health_handled]
-published = 2026-10-29T10:00:00Z
+published = 2026-10-31T00:00:00Z
 impact = 4
-requires = ["first_case_confirmed", "contacts_negative_results", "emergency_services_maintained", "first_shipment_voluntary", "wastewater_inconclusive", "free_either_way", "list_later", "no_end", "first_doses", "no_spread"]
-line = "This fortnight's health news: the first case was isolated and every close contact tested negative, the hospitals ran a surge drill without dropping a service, the first doses went by choice to the people most at risk, and routine wastewater testing caught a weak signal early."
-reading = "The protection is already working without a pass, and a No keeps every bit of it; what a Yes adds is a check at the door, with no list of doors and no end date."
+requires = ["first_case_confirmed_1031", "contacts_negative_results", "emergency_services_maintained", "first_shipment_voluntary", "wastewater_inconclusive_1031", "free_either_way", "list_later", "no_end", "first_doses", "no_spread"]
+line = "This fortnight's health news: the first case was isolated, every close contact tested negative and the traveller has recovered, the hospitals ran a surge drill without dropping a service, the first doses went by choice to the people most at risk, and the weak wastewater signal was retested and ruled a false alarm."
+reading = "The protection is already working without a pass, and a No keeps every bit of it; what a Yes adds is a pass check, with no list of places and no end date."
 keywords = ['hospital', '\bwards?\b', '\bsurges?\b', 'outbreak', 'wastewater', '\bsignal\b', '\bcases?\b', '\bprotect', '\bsafe', '\brisk', 'vulnerable', 'lockdown', 'act (now|early)', 'the virus']
+
+# The Crown Harbour wastewater retest came back clear (both papers, 31 Oct 00:00 UTC; written ahead on 29 Oct, live 31 Oct).
+[wastewater_retest_clear]
+published = 2026-10-31T00:00:00Z
+impact = 3
+requires = ["wastewater_inconclusive_1031"]
+line = "The repeat wastewater tests in Crown Harbour found no trace of the virus: the weak signal was a false alarm caused by lab contamination."
+reading = "A false alarm, caught and checked: the system works without a pass, and a No keeps it working."
+keywords = ['wastewater', 'sewage', '\bsignal\b', '\bretest', 'all clear', 'false alarm', 'crown harbour', 'contaminat']
 
 # ---- staged (todo/52 WS5, 29 Oct): stories the papers are likely to run, written ahead and commented out ----
 # To use one: the fact desk adds the article's fact (or add it by hand to content/facts.toml); point `requires` at it in
@@ -64,24 +76,7 @@ keywords = ['hospital', '\bwards?\b', '\bsurges?\b', 'outbreak', 'wastewater', '
 # uncomment; run scripts/t.sh; commit and push. A reading never denies what the paper reports, and never names a day,
 # a date or how to vote.
 #
-# The Crown Harbour wastewater retest (repeat testing under way since 29 Oct), if it comes back clear:
-# [wastewater_retest_clear]
-# published = 2026-10-30T00:00:00Z
-# impact = 3
-# requires = ["RETEST_FACT"]
-# line = "The repeat wastewater tests in Crown Harbour came back clear: the weak signal was checked and nothing was found."
-# reading = "A false alarm, caught and checked: the system works without a pass, and a No keeps it working."
-# keywords = ['wastewater', 'sewage', '\bsignal\b', '\bretest', 'all clear', 'false alarm', 'crown harbour']
-#
-# ...if it confirms the signal. Inoculation: the reading names the Yes argument before it lands and answers it, and
-# never plays the signal down:
-# [wastewater_retest_confirmed]
-# published = 2026-10-30T00:00:00Z
-# impact = 4
-# requires = ["RETEST_FACT", "first_shipment_voluntary", "first_doses"]
-# line = "The repeat wastewater tests in Crown Harbour confirmed the H2D2 signal."
-# reading = "A confirmed signal is what routine testing is for: catch it early, trace it, and get the first doses to the people most at risk. The Yes side will say it proves we need a pass, but a check at the shop door caught none of it and adds nothing to any of that."
-# keywords = ['wastewater', 'sewage', '\bsignal\b', '\bretest', '\bconfirm', 'crown harbour']
+# (31 Oct: the retest came back clear, so the "if it confirms the signal" story staged here was dropped.)
 #
 # The campaigns' last pitches before the campaign silence (it begins at midnight before polling day: setting.md):
 # [campaign_close]

@@ -72,6 +72,7 @@ def test_a_block_whose_words_state_a_fact_it_doesn_t_rest_on_fails():
 
 def test_staged_blocks_are_commented_out_and_pass_once_filled():
     staged = [line for line in news.FILE.read_text().splitlines() if line.startswith("# [")]
-    assert len(staged) >= 3, "the staged stories: the retest either way, the campaign's close"
+    assert staged == ["# [campaign_close]", "# [final_poll]"], "the staged stories still waiting for their news"
     keys = set(news.stories())
     assert not any(line[3:-1] in keys for line in staged)                   # none live
+    assert "wastewater_retest_clear" in keys          # 31 Oct: the retest came back clear (both papers, 00:00 UTC): live

@@ -58,9 +58,9 @@ def test_every_line_passes_the_gate_and_names_no_voting_logistics():
 def test_the_fact_desk_counts_the_flip_facts_as_named():
     from swan_bot import factdesk
     table = dict(fact_store.TABLE)
-    table.pop("wastewater_inconclusive")
-    assert "[wastewater_inconclusive] named in content.py but missing" in factdesk.validate(table)
-    assert "flip evidence wastewater_caught" in content.requiring("wastewater_inconclusive")
+    table.pop("wastewater_inconclusive_1031")                      # 31 Oct: the false-alarm fact (#120) replaced it
+    assert "[wastewater_inconclusive_1031] named in content.py but missing" in factdesk.validate(table)
+    assert "flip evidence wastewater_caught" in content.requiring("wastewater_inconclusive_1031")
 
 
 # ---- which fear, which proof, which turn -----------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_the_same_post_always_gets_the_same_choice():
 
 def test_a_paused_fact_drops_its_item(monkeypatch):
     real = fact_store.ok
-    monkeypatch.setattr(fact_store, "ok", lambda keys: "wastewater_inconclusive" not in keys and real(keys))
+    monkeypatch.setattr(fact_store, "ok", lambda keys: "wastewater_inconclusive_1031" not in keys and real(keys))
     assert all(flip.choose(t)["evidence"]["key"] != "wastewater_caught" for t in variants(WASTEWATER))
 
 
