@@ -1012,6 +1012,9 @@ def build_prompt(job, targeter, recent_shapes=(), pulse_now=None, ledger=None, r
     if job.get("mention") and mode == "reply" and job.get("style") != "off_topic":     # todo/46: name one other citizen
         line = mention.prompt_line(job["mention"])
         user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job.get("read") else f"{user} {line}"
+    if mode == "reply" and job.get("style") != "off_topic" and meta.get("ask_kind") not in (None, "none"):
+        line = content.ASK_LAST                                   # 31 Oct: the question is the last word, after flip and mention
+        user = user.replace("\n\nFirst read them", f" {line}\n\nFirst read them", 1) if job.get("read") else f"{user} {line}"
     if lean:
         system = content.lean_system_prompt(persona, job["frame"], meta=meta, fixes=fx,
                                             pulse=pulse_now if parts else None, pulse_parts=parts)
@@ -2146,6 +2149,8 @@ def main():
                      **{k: (job.get("meta") or {}).get(k) for k in REJECT_ARMS}})
                 print(f"  dropped at send [{mode}] ({why}): {text[:160]!r}")
                 return
+        if mode in config.MENTION_MODES:
+            text = mention.ensure(text, job.get("mention"))     # 31 Oct: a draft that dropped the handles opens with them
         clean, hand = text, []                    # the gate checked the clean draft; the persona types it out
         if text and not args.no_humanize:
             text, hand = humanize.apply(text, persona.get("hand", persona["key"]), mode,

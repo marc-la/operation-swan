@@ -104,6 +104,16 @@ def test_used_named_and_prompt_line():
     assert mention.handles(two) == ["tui_walker", "emma.carter92"] and mention.handles(None) == []
 
 
+def test_a_draft_that_dropped_its_handles_opens_with_them():
+    two = [dict(author_id=7, username="tui_walker"), dict(author_id=8, username="emma.carter92")]
+    assert mention.ensure("The places get picked after.", two) == "@tui_walker @emma.carter92 The places get picked after."
+    kept = "@emma.carter92 The places get picked after."
+    assert mention.ensure(kept, two) == kept                    # one of them kept: as drafted
+    assert mention.ensure("No plan.", None) == "No plan." and mention.ensure(None, two) is None
+    sent = mention.ensure("The places get picked after.", two)
+    assert quality.check(sent, "reply", mention=mention.handles(two))[1] == quality.check("The places get picked after.", "reply")[1]
+
+
 def _targeter(pool=POOL, accounts=None, ours=()):
     accounts = accounts or {}
     return types.SimpleNamespace(fresh_pool=lambda now=None: pool, ours=lambda: [dict(account_id=a) for a in ours],

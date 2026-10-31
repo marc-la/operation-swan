@@ -21,6 +21,11 @@ Designs for [todo/53](53-the-last-three-days.md)'s nine problems, one file each 
   5. [63](63-npc-coverage.md) (0c08db3, live 31 Oct 02:36 UTC): who we can see. The citizen scan every 10 min (was 1 h); the
      bot scores a new author above id 2343 on first sight (42% of the 2,594 likely citizens had ever had a write); and
      on-vote posts skipped as off topic come back (replay: 53% of off_topic skips, ~96% precision held out).
+  6. ec95655 (live 04:06 UTC) and a follow-up push: from the rival read ([rival-strategies-2026-10-31](../docs/06-strategy/rival-strategies-2026-10-31.md),
+     Marc asked 31 Oct). @mentions the way the answered rival replies do them: up to 2 citizens who posted in the last
+     5 min, opening the reply. Closing questions back to 40%. flash-lite out of replies except as the last resort.
+     First 13 min: handles on 50% of first replies (was 14%), no flash-lite. The follow-up opens a draft with its
+     handles when the model dropped them, and puts the question ask after the flip and no-verdict lines.
 - **Not done, by Marc's call:** 61 item 1 (no webhook: the dashboard is watched live everywhere); [55](55-persuasion-and-the-pool.md)'s
   questions (not posted; we assume "neither side" changes don't count toward the pool).
 - **No change, closed with reasons:** [56](56-backfire.md), [57](57-one-voice.md), [62](62-the-rivals.md).

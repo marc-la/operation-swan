@@ -113,3 +113,12 @@ def named(text, m):
 def used(text, m):
     """True when the sent text names any planned citizen."""
     return bool(named(text, m))
+
+
+def ensure(text, m):
+    """The text to send: as drafted when it names a planned citizen, else opening with every planned handle. 31 Oct: Kimi
+    dropped them from 9 of 12 first drafts (Haiku 0 of 5), and the rivals' answered replies are the ones that OPEN with
+    the handles, whatever follows. The gate judged the text without its handles, so its verdict stands."""
+    if not text or not as_list(m) or named(text, m):
+        return text
+    return " ".join(f"@{u}" for u in handles(m)) + " " + text

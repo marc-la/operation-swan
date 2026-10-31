@@ -120,3 +120,43 @@ A mention notifies the citizen named; that is the only channel besides a reply t
 
 Marc's final-days rule (no new switchback arms) applies. Items 1-2 are changes to live behaviour, not arms. Judge them on the
 portal: citizen replies a write against the same hours a day earlier.
+
+## 5. Shipped (31 Oct, Marc approved 1-3)
+
+**ec95655**, pushed 04:03 UTC, live 04:06:49 UTC:
+- **Mentions** (`mention.py`, `Targeter.fresh_pool`, `quality.check`):
+  - up to 2 citizens whose newest Latest post is under 5 min old (likely citizens too), posts on the vote first;
+  - never the target, ours, a firm Yes or an angry post; once an hour, with a 2-minute hold so drafts in flight don't share
+    them;
+  - every eligible first reply; the handles open the reply; dotted usernames allowed;
+  - the gate judges the reply without its planned handles.
+- **Questions:** `REPLY_QUESTION_SHARE` 0.40.
+- **Models:** `REPLY_MODELS` Kimi, Haiku. flash-lite drafts only when both fail or park.
+
+**First live read, 04:06:53-04:19:52 UTC** (38 first replies, 2.9 a minute):
+
+| | 03:30-04:00 (before) | after |
+|---|---|---|
+| first replies with handles | 10 of 73 (14%) | **19 of 38 (50%)**, 14 of them with two |
+| replies opening with the handles | 1 | **19** |
+| flash-lite drafts | 6 of 86 | **0** (Kimi 19, Haiku 19) |
+| ending on a question | 4 of 73 | 2 of 38 |
+
+Two gaps:
+- **Planned handles were dropped.** 34 replies had a plan, and 15 of the drafts dropped the handles. Kimi did so on 9 of 12
+  first drafts; Haiku on 0 of 5.
+- **The question share did not take.** 45% of replies were drawn a closing question, but the draft ended on one 1 time in
+  10. `NO_VERDICT_RULE` ("End on their point or on your reason") and the flip's three moves came after the ask in the
+  prompt.
+
+**Follow-up push** (same day): fixes both gaps.
+- A draft that dropped every planned handle opens with them (`mention.ensure`). The gate's verdict stands, since it reads
+  the reply without its handles.
+- Replies drawn a question carry the rule without its ending (`content.NO_VERDICT_ASK`).
+- `content.ASK_LAST` is the last line of the prompt, after the flip and mention lines.
+
+**Back out** (each alone, then push):
+- mentions: `MENTION_SHARE = 0`;
+- questions: `REPLY_QUESTION_SHARE = 0.10`;
+- flash-lite: add `"gemini-3.5-flash-lite"` back to `REPLY_MODELS`;
+- or revert ec95655.

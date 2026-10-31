@@ -987,6 +987,13 @@ WORN_PHRASES = ("binds us", "no review", "end date", "venue list", "list of plac
 # a reply's ask_kind "none" ends on the reason, not on experiment.ASK_KINDS' "plain statement of your No" (posts keep it)
 REPLY_ASK_NONE = "End on your reason, said plainly, with no question at all (this replaces any instruction above to " \
                  "finish on a question)."
+# 31 Oct: a reply drawn a closing question kept losing it. NO_VERDICT_RULE ("End on their point or on your reason") and the
+# flip's three moves come after the ask, so 1 in 10 such drafts ended on one (04:06-04:13 UTC). These replies carry the
+# rule without its ending, and ASK_LAST closes the prompt (bot.build_prompt), after the flip, news and mention lines.
+NO_VERDICT_ASK = ("Don't state your own vote anywhere: no 'I'm voting No', 'I'm a No', 'so I'm voting No' or the like; "
+                  "your reason already shows where you stand.")
+ASK_LAST = ("Keep the point short so the question fits: your last sentence is the one real question asked for above, put "
+            "to them in your own words, with nothing after it.")
 
 
 _WORD = re.compile(r"[a-z]{4,}")
@@ -1408,7 +1415,8 @@ def reply_prompt(target_text, frame_key, wants, context=None, opener=None, meta=
         f"{opener} {FULL_SENTENCE_OPEN if fx else ''}{middle}; the point: {point}. "
         f"{land}{theme_line(theme) + ' ' if theme else ''}"
         f"{REPLY_ASK_NONE if ask_kind == 'none' else experiment.ASK_KINDS[ask_kind]} "
-        f"{_reply_voice(persona, fx)}{FIRST_CALL_RULES} {avoid_line(recent)}{NO_VERDICT_RULE} {worn_line(target_text, spent)}"
+        f"{_reply_voice(persona, fx)}{FIRST_CALL_RULES} {avoid_line(recent)}"
+        f"{NO_VERDICT_RULE if ask_kind == 'none' else NO_VERDICT_ASK} {worn_line(target_text, spent)}"
         f"{REPLY_RULES}" + (f" {STRANGER_RULE}" if fx else "") + (read_block(hint) if read else "")
     )
 

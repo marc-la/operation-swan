@@ -223,6 +223,29 @@ def test_fixes_replies_end_on_a_question_at_the_set_share_and_drop_the_echo_open
     assert openers <= set(content.FIXES_OPENERS) and not openers & set(content.OPENERS[:2])
 
 
+def test_a_reply_drawn_a_question_closes_on_it_after_the_flip_and_mention_lines(monkeypatch, fixes_on):
+    """31 Oct: NO_VERDICT_RULE ("End on their point or on your reason") and the flip came after the ask, and 1 in 10 such
+    drafts ended on a question. Those replies carry NO_VERDICT_ASK, and ASK_LAST is the last word before the read block."""
+    import types
+    monkeypatch.setattr(config, "SWITCHBACK", config.SWITCHBACK + [("arm_eng", ["mention"], 7200)])
+
+    def built(share, **kw):
+        monkeypatch.setattr(config, "REPLY_QUESTION_SHARE", share)
+        j = dict(mode="reply", rec=dict(persona="lani"), frame=None, arm=None, wants=[], context=None, read=False,
+                 meta={}, target=dict(post_id=5, author_id=500, body="I'd back it with a firm end date and a list of places."),
+                 **kw)
+        user = bot.build_prompt(j, types.SimpleNamespace(headline=None))[2]
+        assert j["fixes"]
+        return j, user.split("\n\nFirst read them")[0]
+    j, body = built(1.0, mention=[dict(author_id=7, username="tui_walker")])
+    assert j["meta"]["ask_kind"] != "none" and body.endswith(content.ASK_LAST)
+    assert body.index("@tui_walker") < body.index(content.ASK_LAST)
+    assert "End on their point or on your reason" not in body and content.NO_VERDICT_ASK in body
+    j, body = built(0.0)
+    assert j["meta"]["ask_kind"] == "none" and content.ASK_LAST not in body
+    assert "End on their point or on your reason" in body
+
+
 def test_fixes_length_follows_what_they_wrote():
     assert content.fixes_length("short one")[3] == 120
     assert content.fixes_length("x" * 600)[3] == content.CHAR_CAP["reply"]

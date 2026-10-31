@@ -99,7 +99,7 @@ def test_replies_no_longer_state_our_vote_and_keep_off_worn_phrases():
     prompts += [content.second_voice_prompt(body, "F6_islands", [], persona=content.PERSONAS[1]),
                 content.reply_back_prompt("ours", body), content.reply_back_prompt("ours", body, style="mirror_concede")]
     for p in prompts:
-        assert content.NO_VERDICT_RULE in p and "say plainly that you're voting No" not in p.lower()
+        assert (content.NO_VERDICT_RULE in p or content.NO_VERDICT_ASK in p) and "say plainly that you're voting No" not in p.lower()
         assert "'end date'" in p and "'sunset'" not in p                    # the citizen said sunset first
     assert "plain statement of your No" not in "".join(prompts)
     assert content.worn_line(" ".join(content.WORN_PHRASES)) == ""
