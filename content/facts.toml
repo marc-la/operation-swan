@@ -602,3 +602,22 @@ added = 2026-10-31T00:55:39+00:00
 numbers = []
 says = []
 frames = []
+
+# added by hand 2026-11-01 (Marc + Claude). The Yes side's "30 Oct draft" (an end date, a list of places, a privacy app,
+# a panel, grants) is in no article of either paper: every article of both read on 1 Nov, and setting.md says only that a
+# Yes comes in "by regulation, in stages". content/flip.toml's no_draft turn rests on it. If a paper reports draft
+# regulations, pause this fact (the turn goes with it).
+[no_draft_reported]
+text = "Neither paper has reported any draft regulations for the H2D2 requirement: no published end date, list of places, oversight panel or grants."
+note = "no draft rules in either paper: no end date, venue list or oversight panel published"
+status = "active"
+source = "daily-kingstonia and kingstonia-herald, every article read on the morning of 1 Nov: none reports a draft"
+checked = 2026-11-01T04:20:00Z
+added = 2026-11-01T05:00:00Z
+numbers = []
+says = [
+    '\b(neither|either) paper\b',
+    '\bno paper (has|reported|published|ran)\b',
+    '\b(that|the|this) draft\b[^.?!]{0,60}\b(hasn.?t|has not|never|isn.?t|is not)\b[^.?!]{0,30}\b(published|reported|appeared|anywhere)',
+]
+frames = []

@@ -17,6 +17,9 @@ todo/52 (29 Oct): the room lifts what citizens are raising now. An evidence or t
 (room.lift: its share of the last 3 h twice the day before's) weighs x config.ROOM_LIFT; the lifted items of a choice
 are logged as `flip_lift`. An evidence or turn line may be a list of wordings, drawn after the items, so the 80% of
 replies that carry a flip don't all say the big turns alike.
+
+1 Nov (Marc): a turn marked `context = true` (no_draft: the "30 Oct draft" neither paper has reported) is also their own
+when the post they answer names it (choose's context: the job's parent text). config.DRAFT_CALLOUT_ON takes it out.
 """
 import random
 import re
@@ -89,10 +92,11 @@ def fear_of(text, d=None):
     return None
 
 
-def choose(text, fallback=None):
+def choose(text, fallback=None, context=None):
     """{fear, core, evidence, pivot, lifted, fallback} for a reply to this post, or None: FLIP_ON off, no fear voiced, or
     nothing it would say rests on live facts. fallback: the key of a fear to use when the post voices none (todo/54: a
-    lean-No reply gets "no_firm"); its facts must be live too, and the choice then carries fallback=True."""
+    lean-No reply gets "no_firm"); its facts must be live too, and the choice then carries fallback=True. context: the
+    post this one answers; a turn marked `context = true` (no_draft, 1 Nov) is their own when either names it."""
     if not config.FLIP_ON:
         return None
     d = data()
@@ -105,13 +109,14 @@ def choose(text, fallback=None):
     if not fear:
         return None
     evidence = [d["evidence"][k] for k in fear["evidence"] if fact_store.ok(d["evidence"][k]["requires"])]
-    pivots = [p for p in d["pivot"].values() if fact_store.ok(p["requires"])]
+    pivots = [p for p in d["pivot"].values() if fact_store.ok(p["requires"])
+              and (config.DRAFT_CALLOUT_ON or p["key"] != "no_draft")]
     if not evidence or not pivots:
         return None
     rng = random.Random(zlib.crc32((text or "").encode()))
     ew = [e["weight"] * (KEYWORD_GAIN if hits(e, text) else 1) * (FIRST_GAIN if i == 0 else 1)
           * room.lift("evidence", e["key"]) for i, e in enumerate(evidence)]
-    own = [p for p in pivots if hits(p, text)]                   # their own "but" is the turn when they name one
+    own = [p for p in pivots if hits(p, text) or (p.get("context") and hits(p, context))]   # their own "but" is the turn
     pivots = own or [p for p in pivots if not p.get("own_only")]   # else a general one (todo/52 audit)
     pw = [p["weight"] * room.lift("pivot", p["key"]) for p in pivots]
     out = dict(fear=fear, core=rng.choice(as_list(fear["core"])), evidence=rng.choices(evidence, weights=ew)[0],

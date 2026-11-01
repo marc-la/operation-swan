@@ -108,7 +108,7 @@ core = ["Doing our part is the jab if you want it and staying home when you're s
 [fear.conditional_yes]
 fallback = true
 label = "that a Yes with conditions feels safer than a No"
-keywords = ['sunset', 'end date', 'end point', 'expir', '\btemporary\b', 'time.limit', '\breview', 'which (places|venues|spaces)', '\bvenues?\b', '\blist\b', 'designated', 'safeguard', 'in writing', 'written (into|in)', 'guarantee', 'ironclad', 'privacy', 'exemption', 'oversight', 'phased', 'in stages', 'only if', 'as long as', '\bregs\b', 'regulations', 'show (us|me) (the )?(evidence|data|proof)', 'clear difference', 'two.tier', 'nobody (is )?(shut|left) out']
+keywords = ['sunset', 'end date', 'end point', 'expir', '\btemporary\b', 'time.limit', '\breview', 'which (places|venues|spaces)', '\bvenues?\b', '\blist\b', 'designated', 'safeguard', 'in writing', 'written (into|in)', 'guarantee', 'ironclad', 'privacy', 'exemption', 'oversight', 'phased', 'in stages', 'only if', 'as long as', '\bregs\b', 'regulations', 'show (us|me) (the )?(evidence|data|proof)', 'clear difference', 'two.tier', 'nobody (is )?(shut|left) out', '\bdraft\b', '31 may', '\b2027\b', 'never list']
 evidence = ["contained_case", "wastewater_caught", "surge_drill", "voluntary_doses"]
 requires = ["free_either_way"]
 core = ["A No isn't doing nothing: the testing, the tracing and the free vaccine all carry on whatever the result, and the safeguards they want aren't in the question.",
@@ -255,3 +255,19 @@ line = ["nobody has shown what a pass check adds to the testing and tracing that
         "what's been shown to work here is the testing and the tracing, and nobody has shown a check at the door adds to them"]
 keywords = ['show (us|me)', '\bevidence\b', '\bproof\b', '\bprove', 'clear difference', 'makes? a (real |clear )?difference', 'does (it|a pass) (actually )?(work|stop)']
 weight = 1.0
+
+# 1 Nov (Marc): the Yes side's "30 Oct draft" (an end date, a list of places that leaves out the everyday ones, a privacy
+# app, a panel, grants, free letters) is in neither paper (no_draft_reported), yet it fills Trending, and in the Sydney
+# morning of 1 Nov 3-5% of citizen posts quoted it ("that makes yes workable for me"). When the post, or the post it
+# answers (context = true: job["context"]), cites it, this is the turn: its weight makes it nearly always the one drawn.
+# config.DRAFT_CALLOUT_ON = False takes it out. No figure, date or paper name in a line (the number gate,
+# WRONG_LOGISTICS, invented_name).
+[pivot.no_draft]
+own_only = true
+context = true
+requires = ["no_draft_reported", "no_end", "list_later"]
+line = ["neither paper has reported any such draft, so it's a promise nobody can check, and the question they'd actually vote on has no end date",
+        "no paper has published that draft, so it's a promise, not a rule, and the question on the ballot has no end date and no list of places",
+        "that draft isn't in either paper, so nobody can hold anyone to it, and what a Yes binds is the question, which has no end date"]
+keywords = ['\bdraft\b', '31 may', '\b2027\b', 'section (8|12)\b', 'schedule 2', 'tick and (a |your )?name', 'k\$ ?500', 'never list', 'independent panel', 'paid leave', '14.page', 'privacy commissioner audits']
+weight = 60.0

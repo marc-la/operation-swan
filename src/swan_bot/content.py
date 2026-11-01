@@ -1060,9 +1060,11 @@ def flip_turn_words(choice):
 def flip_line(choice):
     """The fear behind a Yes, flipped (swan_bot/flip.py, 29 Oct): a No is not doing nothing, the protection is already
     working without a pass, and what a Yes adds is the check (FLIP_TURN_WORDS), which nobody manages."""
+    draft = (" Don't describe what that draft is said to contain."          # 1 Nov: the no_draft turn (content/flip.toml)
+             if choice["pivot"].get("key") == "no_draft" else "")
     return (f"Their worry underneath is {choice['fear']['label']}. Answer it with this one point, in plain words: "
             f"{choice['core']} Show it with what's already happening ({choice['evidence']['line']}), then say "
-            f"what a Yes adds is {flip_turn_words(choice)}, and {choice['pivot']['line']}."
+            f"what a Yes adds is {flip_turn_words(choice)}, and {choice['pivot']['line']}.{draft}"
             f"{FLIP_FEAR_LINES.get(config.FLIP_FEAR, FLIP_FEAR_LINES[1])} Don't open by agreeing, don't "
             f"lecture and don't label the parts: their worry in their words, then the point in yours. Add no date, time, "
             f"place or figure that isn't in these notes.")

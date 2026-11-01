@@ -444,6 +444,25 @@ FLIP_FEAR = 1
 # firmer No instead of "every No counts" (echo doesn't persuade, scoring §2; the campaign silence from 1 Nov). 47% of
 # turnout replies already carried a flip (29-30 Oct). Off: SWAN_FLIP_TURNOUT=0 (+ restart): turnout replies flip only on a fear.
 FLIP_TURNOUT = True
+# 1 Nov (Marc): the Yes side's "30 Oct draft" (an end date, a list of places, a privacy app, a panel, grants) fills
+# Trending, and neither paper has reported it (facts: no_draft_reported). A post that cites it, or answers a post that
+# does, gets the no_draft turn (content/flip.toml). Off: SWAN_DRAFT_CALLOUT_ON=0 (+ restart).
+DRAFT_CALLOUT_ON = True
+# 1 Nov (Marc): julio_morales's two Herald columns argue our case (no sunset clause; promises are not guardrails), and the
+# Yes side links articles on a third of its Trending posts. OPED_LINK_SHARE of the first replies whose turn is in
+# OPED_PIVOTS end with a link to one of them, which the platform shows as an article card (swan_bot/oped.py; added at
+# send, after the gate, which refuses links in drafts); a no_draft reply that doesn't ask the columnist always does.
+# Off: SWAN_OPED_LINK_ON=0 (+ restart).
+OPED_LINK_ON = True
+OPED_LINK_SHARE = 0.35
+OPED_PIVOTS = ("no_draft", "no_end", "promises", "regs_later", "no_list", "phased_later")
+# 1 Nov (Marc): he writes from what he reads on Legit Social ("I spent my morning scrolling through ... the trending
+# feeds", 31 Oct). A first reply whose turn is no_draft also asks him about the draft, at most JOURNALIST_TAG_PER_H an
+# hour and JOURNALIST_TAG_GAP_S apart. Off: SWAN_JOURNALIST_TAG_ON=0 (+ restart).
+JOURNALIST_TAG_ON = True
+JOURNALIST_TAG = "julio_morales"
+JOURNALIST_TAG_PER_H = 3
+JOURNALIST_TAG_GAP_S = 15 * 60
 # ---- the room (todo/52 WS1, 29 Oct, Marc; swan_bot/room.py, content/room.toml) ----
 # Every citizen post on the vote the targeter judges is counted by driver (their conditions, their fears, the No case)
 # and stance, with its phrases: data/room.json every ROOM_EVERY_S, the dashboard's Room tile. Read-only but for the lift:
@@ -714,7 +733,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "ROOM_LIFT_ON", "PULSE_CITIZENS",                                # todo/52: SWAN_ROOM_LIFT_ON=0 stops the room lifting flip items; SWAN_PULSE_CITIZENS=0 the worries
                "JIT_LEAD_S", "QUEUE_SHALLOW_AHEAD", "REFRESH_S", "TRENDING_EVERY",   # todo/58: SWAN_JIT_LEAD_S=0 + SWAN_QUEUE_SHALLOW_AHEAD=2 undo the slot pick
                "LEAD_HAIKU_SHARE",                                              # todo/61: SWAN_LEAD_HAIKU_SHARE=0.3 if the LLM budget runs short (Kimi is cheaper)
-               "FLIP_TURNOUT")                                                  # todo/54: SWAN_FLIP_TURNOUT=0 stops the lean-No fallback flip
+               "FLIP_TURNOUT",                                                  # todo/54: SWAN_FLIP_TURNOUT=0 stops the lean-No fallback flip
+               "DRAFT_CALLOUT_ON", "OPED_LINK_ON", "OPED_LINK_SHARE", "JOURNALIST_TAG_ON")   # 1 Nov: the draft, the columns, the columnist
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance

@@ -37,7 +37,7 @@ import urllib.error
 
 import openai
 import capturethenarrative as ctn
-from . import batch, config, content, engage, experiment, feeds, flip, humanize, memory, mention, news, pool_runner, pulse, quality, register, room, stealth, themes, watch
+from . import batch, config, content, engage, experiment, feeds, flip, humanize, memory, mention, news, oped, pool_runner, pulse, quality, register, room, stealth, themes, watch
 from . import batch, config, content, engage, experiment, feeds, humanize, mention, pool_runner, pulse, quality, stealth, themes, watch
 from .amplify import Amplifier
 from .analysis import ts_of
@@ -875,7 +875,8 @@ def flip_choice(job, body, meta):
     voices no fear gets the no_firm fear (config.FLIP_TURNOUT), logged as flip_fallback."""
     if job.get("style") == "off_topic" or content.opposes_pass(body):
         return None
-    choice = flip.choose(body, fallback="no_firm" if config.FLIP_TURNOUT and job.get("group") == "turnout" else None)
+    choice = flip.choose(body, fallback="no_firm" if config.FLIP_TURNOUT and job.get("group") == "turnout" else None,
+                         context=job.get("context"))                     # 1 Nov: the post they answer (no_draft)
     if choice:
         meta.update(flip=flip.key(choice), flip_fear=config.FLIP_FEAR, flip_lift=",".join(choice["lifted"]) or None,
                     **({"flip_fallback": True} if choice.get("fallback") else {}))
@@ -2159,6 +2160,13 @@ def main():
                                         mirror=bool(job.get("fixes")))                  # todo/50: their register
             if any(f"@{m['username']}" not in text for m in mention.named(clean, job.get("mention"))):
                 text, hand = clean, []             # the hand must not touch a handle: send the clean text
+        if mode == "reply" and job.get("style") != "off_topic" and text:      # 1 Nov (Marc): the Herald columnist's ask
+            with mu:                                                           # or one of his columns (swan_bot/oped.py)
+                asks = state.get("journalist_asks") or []
+                text, extra = oped.finish(text, (job.get("meta") or {}).get("flip"), asks, time.time(), random)
+                if "journalist_tag" in extra:
+                    state["journalist_asks"] = (asks + [time.time()])[-20:]
+            job.setdefault("meta", {}).update(extra)
 
         # ---- send ----
         post_id = None
@@ -2274,6 +2282,7 @@ def main():
              **{k: meta.get(k) for k in ("shape", "hook", "voice", "pillar", "tag", "now", "storyline", "opener",
                                          "pulse", "pulse_news", "theme", "theme_level_drawn", "slogan")},
              **{k: meta.get(k) for k in ARMS}, **experiment_fields(target, job.get("target_class")),
+             **{k: meta.get(k) for k in ("oped", "journalist_tag")},                  # 1 Nov: swan_bot/oped.py at send
              **{k: job.get(k) for k in ("priority", "arm", "engaged", "lead")},       # todo/21; lead: the model tried first
              "eng_cell": engage.cell(target["author_id"]) if target and mode in stealth.CITIZEN_MODES else None,
              "length": len(clean or ""), **{k: meta.get(k) for k in ("llm_calls", "repairs", "fixes")},  # G9
