@@ -944,9 +944,9 @@ HIDE_TARGET = getattr(bot_config, "HIDE_RATE_TARGET", 0.014)   # hidden text pos
 HIDE_WINDOW_H = 24             # trailing window of writes for the hide rate
 HIDE_CENSOR_H = 3.6            # a hide takes ~3.3 h to show: only writes at least this old are counted (hide-risk analysis)
 HIDE_MIN_N = 300               # fewer text writes than this and the rate is shown grey with its n
-ROLL_HOURS = 24                # writes per ban = text writes ÷ bans over this window (the headline and the forecast)
-ROLL_SHORT_H, ROLL_LONG_H = 6, 72   # the same ratio over a shorter and a longer window, in the detail, to see which way it moves
-ROLL_MIN_BANS = 5              # fewer bans than this in the headline window: the ratio is noise, the default writes per ban is used
+ROLL_MIN_BANS = 5              # writes per ban = text writes ÷ bans since the last this many bans (the headline and the forecast):
+ROLL_MAX_H = 7 * 24            # under 5 bans a day a fixed 24 h window was mostly empty (Marc, 1 Nov); counted back no further than this
+ROLL_HOURS, ROLL_LONG_H = 24, 72   # the same ratio over fixed windows, in the detail, to see which way it moves
 FORECAST_FROM = dt.date(2026, 10, 24)    # the forecast table starts here (todo/39); earlier days are history only
 BAN_TOL_SIGMA = 1.5            # net (actual - forecast) is inside the tolerance up to this many sqrt(forecast), at least 2
 TEXT_WRITES = frozenset(WRITES) - {"repost"}   # replies, posts, threads: what a hide is counted against (not reposts)
@@ -980,8 +980,8 @@ LIGHT_TIPS = dict(      # the hover text on each tile: plain tolerances, no jarg
             f"Pattern score (scripts/pattern_audit.py): how much our writes read like a rota, 0-100. In the detail, not counted in the colour (Marc, 24 Oct).",
     hide=f"Hide rate: hidden text posts / text writes, last {HIDE_WINDOW_H} h, counting writes at least {HIDE_CENSOR_H:g} h old (a hide takes about 3.3 h to show), 95% interval.\n"
          f"Green when the interval is under the {HIDE_TARGET:.1%} target, red when over, amber when it straddles; grey under {HIDE_MIN_N} writes.",
-    life=f"Writes per ban: text writes ÷ accounts banned, last {ROLL_HOURS} h. Higher is better. The bans forecast divides planned writes by it.\n"
-         f"Under {ROLL_MIN_BANS} bans in the window it is too noisy: the forecast uses the default instead. Not graded.",
+    life=f"Writes per ban: text writes ÷ accounts banned, over the time the last {ROLL_MIN_BANS} bans took (at most {ROLL_MAX_H // 24} days). Higher is better. The bans forecast divides planned writes by it.\n"
+         f"Under {ROLL_MIN_BANS} bans in {ROLL_MAX_H // 24} days it is too noisy: the forecast uses the default instead. Not graded.",
     accounts=f"Accounts: voices writing now, then accounts alive (at most {LIVE_CAP} at once) and registered (at most {TOTAL_CAP} in all).\n"
              f"Amber: fewer than {VOICES_MIN} voices, or the pool is sagging. Red: the pool is low. A dry-run pool never colours it.\n"
              f"Hot mode (SWAN_HOT_VOICES): one voice writes on purpose, so the count is not graded. Green: one writing and a spare waiting · amber: no spare left · red: none left, the bot is idle.",
@@ -1410,6 +1410,15 @@ def writes_per_ban(life, log, now, hours):
     return dict(hours=hours, writes=writes, bans=bans, wpb=writes / bans if bans else None)
 
 
+def last_bans_hours(log, now, n=ROLL_MIN_BANS, cap=ROLL_MAX_H):
+    """Hours back to the account_log counts row before the last `n` bans (so bans_since over them counts at least n), at
+    most `cap`."""
+    rows = sorted((ts(c["ts"]), c["banned"]) for c in (log or {}).get("counts") or []
+                  if ts(c.get("ts")) and isinstance(c.get("banned"), int) and ts(c["ts"]) <= now)
+    back = [t for t, b in rows if b <= rows[-1][1] - n] if rows else []
+    return min(cap, (now - back[-1]).total_seconds() / 3600) if back else cap
+
+
 def engagement_window(points, slots, end, hours=ENG_WINDOW_H):
     """Engagement per write over the `hours` before `end`: {hours, points, writes, lines, rate, parts}. points: base points
     of the NPC engagement the portal booked in those hours (likes, reposts, replies, follows less unfollows, at base: counts
@@ -1608,7 +1617,7 @@ def ban_forecast(days, writes_by_day, roll, log, now):
     path = _cfg("BAN_PATH", {}) or {}
     by_date, first = {d["date"]: d for d in days}, dt.date.fromisoformat(days[-1]["date"])
     start, one = min(FORECAST_FROM, today), dt.timedelta(days=1)
-    med = (roll or {}).get("wpb") if ((roll or {}).get("bans") or 0) >= ROLL_MIN_BANS else None
+    med = (roll or {}).get("wpb") if ((roll or {}).get("bans") or 0) >= ROLL_MIN_BANS else None     # roll: the last ROLL_MIN_BANS bans
     wpb = med or _cfg("WRITES_PER_BAN_DEFAULT", 145)
     recent = [writes_by_day[k] for k in sorted(writes_by_day) if k < today.isoformat() and writes_by_day[k] > 0][-3:]
     average = sum(recent) / len(recent) if recent else None
@@ -1704,7 +1713,7 @@ def ban_forecast(days, writes_by_day, roll, log, now):
         f"left {left_now}" if left_now is not None else None,
         (f"{label}: {status['left_on_day']:.0f} left vs {goal:g} wanted ({signed(status['delta'])})" if ok is not None
          else f"{label} goal: day passed" if dt.date.fromisoformat(gday) < today else None)) if x)
-    return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src=f"last {ROLL_HOURS} h" if med else "default",
+    return dict(rows=out, summary=summary, alerts=alerts, wpb=wpb, wpb_src=f"last {roll['bans']} bans, {roll['hours']:.0f} h" if med else "default",
                 goal=goal, goal_day=label, status=status, days_left=left_days, runway=runway, per_day=per_day,
                 planned_today=now_row["planned"] if now_row else None, left_now=left_now, banned_now=banned_now,
                 spare=TOTAL_CAP - latest["registered"] if latest else None, path_end=path_end, path_now=path_now, over_now=over_now,
@@ -1716,7 +1725,7 @@ def stealth_rates(logs, log, acct_days, now, points=()):
     tiles print): hide rate with its interval, hides per banned voice, writes per ban, runway, and the bans-against-plan line. "Hidden posts never colour stealth" (Marc, 23 Oct) holds for
     the count row; the hide RATE may colour it (a rate with an interval, 24 Oct). The rest is grey: the Pool line and the
     forecast alert carry the account-budget alarm."""
-    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=max(HIDE_WINDOW_H + 1, ROLL_LONG_H, 3 * ENG_WINDOW_H + ENG_LAG_H)))
+    life = life_scan(logs / "swan_actions.jsonl", now - dt.timedelta(hours=max(HIDE_WINDOW_H + 1, ROLL_MAX_H, 3 * ENG_WINDOW_H + ENG_LAG_H)))
     hidden = hidden_posts(logs)
     banned_at = dict(life["dead"])
     for x in (log or {}).get("suspended") or []:
@@ -1740,14 +1749,16 @@ def stealth_rates(logs, log, acct_days, now, points=()):
     if hp:
         rows.append(grey("Hides before a ban", f"median {hp['median']:g} per banned voice · {hp['with_hide']} of {hp['n']} had one",
                          "a lower bound: the watch stops once a voice is suspended", "hide"))
-    rolls = {h: writes_per_ban(life, log, now, h) for h in (ROLL_HOURS, ROLL_SHORT_H, ROLL_LONG_H)}
-    forecast = ban_forecast(acct_days, life["day_writes"], rolls[ROLL_HOURS], log, now)
-    for h in (ROLL_HOURS, ROLL_SHORT_H, ROLL_LONG_H):
+    rolls = {h: writes_per_ban(life, log, now, h) for h in (ROLL_HOURS, ROLL_LONG_H)}
+    rolls["bans"] = last = writes_per_ban(life, log, now, last_bans_hours(log, now))
+    forecast = ban_forecast(acct_days, life["day_writes"], last, log, now)
+    few = last["bans"] < ROLL_MIN_BANS
+    rows.append(grey(f"Last {ROLL_MIN_BANS} bans", f"{last['wpb']:.0f}" if last["wpb"] is not None else "no bans",
+                     f"{last['writes']:,} writes ÷ {last['bans']} bans over {last['hours']:.0f} h"
+                     + (f" · under {ROLL_MIN_BANS} bans in {ROLL_MAX_H // 24} days, plan uses {forecast['wpb']:.0f}" if few and forecast else ""), "life"))
+    for h in (ROLL_HOURS, ROLL_LONG_H):
         r = rolls[h]
-        few = h == ROLL_HOURS and r["bans"] < ROLL_MIN_BANS
-        rows.append(grey(f"Last {h} h", f"{r['wpb']:.0f}" if r["wpb"] is not None else "no bans",
-                         f"{r['writes']:,} writes ÷ {r['bans']} bans" + (f" · under {ROLL_MIN_BANS} bans, plan uses {forecast['wpb']:.0f}" if few and forecast else ""),
-                         "life"))
+        rows.append(grey(f"Last {h} h", f"{r['wpb']:.0f}" if r["wpb"] is not None else "no bans", f"{r['writes']:,} writes ÷ {r['bans']} bans", "life"))
     if forecast:
         rows.append(grey("Time left", f"{forecast['days_left']:.1f} d", f"to the end of 2 Nov Sydney = {BUDGET_END_PERTH}", "left"))
         if forecast["per_day"] is not None:
@@ -1893,13 +1904,13 @@ def cost_tiles(srows, bans, ban_no, forecast, figs, extra_rows, reach_rows, pool
                 sub=(f"target {HIDE_TARGET:.1%} · {hr['k']} of {hr['n']}" + (f" (n under {HIDE_MIN_N})" if hr["n"] < HIDE_MIN_N else "")) if hr["n"]
                 else f"target {HIDE_TARGET:.1%} · no writes old enough")
     # ---- writes per ban ----
-    r24 = figs["roll"][ROLL_HOURS]
-    enough = r24["bans"] >= ROLL_MIN_BANS
+    rb = figs["roll"]["bans"]
+    enough = rb["bans"] >= ROLL_MIN_BANS
     life_rows = by("life")
     life = dict(key="life", name="Writes per ban", rows=life_rows, tip=LIGHT_TIPS["life"], light="grey",
-                head=f"{r24['wpb']:.0f}" if enough else "—",
-                sub=f"writes ÷ bans, rolling {ROLL_HOURS} h" if enough
-                else f"under {ROLL_MIN_BANS} bans in {ROLL_HOURS} h" + (f" · plan uses {f['wpb']:.0f}" if f else ""))
+                head=f"{rb['wpb']:.0f}" if enough else "—",
+                sub=f"last {rb['bans']} bans, over {rb['hours']:.0f} h" if enough
+                else f"under {ROLL_MIN_BANS} bans in {ROLL_MAX_H // 24} days" + (f" · plan uses {f['wpb']:.0f}" if f else ""))
     # ---- accounts: how many are writing ----
     acc = status.get("accounts") or {}
     voices = acc.get("voices")

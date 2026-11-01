@@ -172,26 +172,36 @@ def test_writes_per_ban_is_text_writes_over_bans_in_the_window(tmp_path):
     assert build.writes_per_ban(life, dict(counts=[]), NOW, 24)["wpb"] is None     # no bans: no ratio, no division
 
 
-def test_writes_per_ban_tile_row_and_the_forecast_use_the_24_h_ratio_once_there_are_enough_bans(tmp_path, monkeypatch):
+def test_writes_per_ban_tile_row_and_the_forecast_use_the_last_five_bans(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "ROLL_MIN_BANS", 5)
-    rows = [text_write(T24, 20 + i / 100, 10_000 + i) for i in range(200)]
-    counts = [dict(ts=at(T24, 30), registered=60, banned=20), dict(ts=at(T24, 1), registered=70, banned=28)]    # 8 bans in 24 h
+    rows = [text_write(T24, 20 + i / 100, 10_000 + i) for i in range(200)] + [text_write(T24, 50, 20_000 + i) for i in range(100)]
+    counts = [dict(ts=at(T24, 60), registered=60, banned=18), dict(ts=at(T24, 30), registered=60, banned=20),
+              dict(ts=at(T24, 1), registered=70, banned=28)]     # the last 5 bans came after the 30 h row: 8 bans, 200 writes
     ctx, html = gather(build_root(tmp_path, T24, rows, counts), T24)
     t = tile(ctx, "life")
-    assert (t["head"], t["sub"]) == ("25", "writes ÷ bans, rolling 24 h")
-    assert stealth_row(ctx, "Last 24 h")["now"] == "25" and stealth_row(ctx, "Last 24 h")["target"] == "200 writes ÷ 8 bans"
-    assert ctx["forecast"]["wpb"] == 25 and ctx["forecast"]["wpb_src"] == "last 24 h"
+    assert (t["head"], t["sub"]) == ("25", "last 8 bans, over 30 h")
+    assert stealth_row(ctx, "Last 5 bans")["now"] == "25" and stealth_row(ctx, "Last 5 bans")["target"] == "200 writes ÷ 8 bans over 30 h"
+    assert ctx["forecast"]["wpb"] == 25 and ctx["forecast"]["wpb_src"] == "last 8 bans, 30 h"
     assert next(r for r in ctx["forecast"]["rows"] if r["date"] == "2026-10-24")["forecast"] == pytest.approx(2320 / 25)
+
+
+def test_few_bans_a_day_count_back_to_the_fifth_last_ban():
+    log = dict(counts=[dict(ts=at(NOW, 100), registered=50, banned=10), dict(ts=at(NOW, 70), registered=50, banned=12),
+                       dict(ts=at(NOW, 40), registered=52, banned=14), dict(ts=at(NOW, 2), registered=53, banned=16)])
+    assert build.last_bans_hours(log, NOW, 5) == pytest.approx(100)      # 16 - 5 = 11: back to the row at 10
+    assert build.last_bans_hours(log, NOW, 4) == pytest.approx(70)
+    assert build.last_bans_hours(log, NOW, 9) == build.ROLL_MAX_H        # not that many bans: the cap
+    assert build.last_bans_hours(dict(counts=[]), NOW, 5) == build.ROLL_MAX_H
 
 
 def test_default_writes_per_ban_below_five_bans(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "ROLL_MIN_BANS", 5)
-    counts = [dict(ts=at(T24, 30), registered=60, banned=20), dict(ts=at(T24, 1), registered=62, banned=23)]       # 3 bans in 24 h
+    counts = [dict(ts=at(T24, 200), registered=60, banned=20), dict(ts=at(T24, 1), registered=62, banned=23)]      # 3 bans in 7 days
     ctx, _ = gather(build_root(tmp_path, T24, [text_write(T24, 6, 1)], counts), T24)
     assert ctx["forecast"]["wpb"] == 145 and ctx["forecast"]["wpb_src"] == "default"
     t = tile(ctx, "life")
-    assert t["head"] == "—" and t["sub"] == "under 5 bans in 24 h · plan uses 145"
-    assert "plan uses 145" in stealth_row(ctx, "Last 24 h")["target"]
+    assert t["head"] == "—" and t["sub"] == "under 5 bans in 7 days · plan uses 145"
+    assert "plan uses 145" in stealth_row(ctx, "Last 5 bans")["target"]
 
 
 # ---- one bans number ----
