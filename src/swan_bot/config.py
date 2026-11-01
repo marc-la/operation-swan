@@ -448,14 +448,16 @@ FLIP_TURNOUT = True
 # Trending, and neither paper has reported it (facts: no_draft_reported). A post that cites it, or answers a post that
 # does, gets the no_draft turn (content/flip.toml). Off: SWAN_DRAFT_CALLOUT_ON=0 (+ restart).
 DRAFT_CALLOUT_ON = True
-# 1 Nov (Marc): julio_morales's two Herald columns argue our case (no sunset clause; promises are not guardrails), and the
-# Yes side links articles on a third of its Trending posts. OPED_LINK_SHARE of the first replies whose turn is in
-# OPED_PIVOTS end with a link to one of them, which the platform shows as an article card (swan_bot/oped.py; added at
-# send, after the gate, which refuses links in drafts); a no_draft reply that doesn't ask the columnist always does.
-# Off: SWAN_OPED_LINK_ON=0 (+ restart).
+# 1 Nov (Marc): the papers' columns argue our case (no sunset clause; promises are not guardrails; the list after the vote;
+# who checks; the outer islands; the ID card), and the Yes side links articles on a third of its Trending posts.
+# OPED_LINK_SHARE of the first replies whose turn is in OPED_PIVOTS end with a link to one of the turn's columns
+# (oped.FOR_PIVOT), which the platform shows as an article card (swan_bot/oped.py; added at send, after the gate, which
+# refuses links in drafts); a no_draft reply that doesn't ask the columnist always does. Replies with a link, 1 Nov
+# 04:40-12:00 UTC: 0.23-0.26 citizen likes each, against 0.20 without (the same turns, 662 replies). Who checks and the
+# islands added 1 Nov evening, with five more columns. Off: SWAN_OPED_LINK_ON=0 (+ restart).
 OPED_LINK_ON = True
 OPED_LINK_SHARE = 0.35
-OPED_PIVOTS = ("no_draft", "no_end", "promises", "regs_later", "no_list", "phased_later")
+OPED_PIVOTS = ("no_draft", "no_end", "promises", "regs_later", "no_list", "phased_later", "who_checks", "islands")
 # 1 Nov (Marc): he writes from what he reads on Legit Social ("I spent my morning scrolling through ... the trending
 # feeds", 31 Oct). A first reply whose turn is no_draft also asks him about the draft, at most JOURNALIST_TAG_PER_H an
 # hour and JOURNALIST_TAG_GAP_S apart. Off: SWAN_JOURNALIST_TAG_ON=0 (+ restart).
@@ -954,6 +956,14 @@ JIT_LEAD_S = 7
 # three together: -1.9); 2-3 minutes of the age curve (<2 min 10.5%, 2-5 min 7.1%). Off: DOWNRANK_MIN = 0.
 DOWNRANK_CLASSES = ("unclear", "unsure", "off_topic")
 DOWNRANK_MIN = 2.5
+# 1 Nov (Marc; No-side census): a citizen with BUSY_POSTS+ Latest posts in the BUSY_WINDOW_S before the target post answers
+# less: ours -1.54 +/- 0.41 visible points a reply (31 Oct) and -1.96 +/- 0.71 (1 Nov), with handles, latency, Sydney hour
+# and target class held; No rivals -0.47 and -0.80. Half our replies went to them, 61% with a fresh first-of-session post
+# waiting. In the newest-first pick their post counts as BUSY_LATE_MIN minutes older (20 s: no more, as each later latency
+# band costs 0.3-0.5). Off: BUSY_LATE_MIN = 0.
+BUSY_POSTS = 3
+BUSY_WINDOW_S = 1800
+BUSY_LATE_MIN = 20 / 60
 QUEUE_PICK_NEWEST = True            # fresh and shallow blocks also pick the newest post under FRESH_MIN first (targeting.next_target)
 QUEUE_MAX_WAIT_S = 150              # a ready draft older than this goes first whatever its target's age (no starvation)
 QUEUE_LATE_S = 8                    # a send this many seconds after its slot opened counts as late

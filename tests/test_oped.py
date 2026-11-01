@@ -147,7 +147,10 @@ def test_the_columns_go_with_the_end_date_turns(monkeypatch):
     text, extra = oped.finish(REPLY, "x/y/no_end", [], NOW, Fixed(0.0))
     assert text == f"{REPLY} {oped.COLUMNS['blank_cheque']}" and extra == {"oped": "blank_cheque"}
     assert oped.finish(REPLY, "x/y/no_draft", [], NOW, Fixed(0.0))[1] == {"oped": "blank_cheque"}
-    assert oped.finish(REPLY, "x/y/promises", [], NOW, Fixed(0.0))[1] == {"oped": sorted(oped.COLUMNS)[0]}
+    assert oped.finish(REPLY, "x/y/promises", [], NOW, Fixed(0.0))[1] == {"oped": "perpetual_emergency"}
+    assert oped.finish(REPLY, "x/y/no_list", [], NOW, Fixed(0.0))[1] == {"oped": "voting_in_the_dark"}
+    assert oped.finish(REPLY, "x/y/who_checks", [], NOW, Fixed(0.0))[1] == {"oped": "good_intentions"}
+    assert oped.finish(REPLY, "x/y/islands", [], NOW, Fixed(0.0))[1] == {"oped": "guardrails"}
     assert oped.finish(REPLY, "x/y/no_end", [], NOW, Fixed(config.OPED_LINK_SHARE)) == (REPLY, {})    # the share
     assert oped.finish(REPLY, "x/y/no_staff", [], NOW, Fixed(0.0)) == (REPLY, {})     # a turn the columns don't make
     assert oped.finish(REPLY, None, [], NOW, Fixed(0.0)) == (REPLY, {})               # no flip
@@ -159,7 +162,12 @@ def test_the_switches(monkeypatch):
     assert oped.finish(REPLY, "x/y/no_draft", [], NOW, Fixed(0.0)) == (REPLY, {})
 
 
-def test_the_asks_state_no_figure_and_the_links_are_the_herald_columns():
+def test_the_asks_state_no_figure_and_the_links_are_the_papers_columns():
     for ask in oped.ASKS:
         assert not any(ch.isdigit() for ch in ask) and ask.startswith("@{h},")
-    assert all(u.startswith("https://sites.legitreal.com/kingstonia-herald/articles/") for u in oped.COLUMNS.values())
+    assert all(u.startswith((oped.HERALD, oped.DAILY)) for u in oped.COLUMNS.values())
+
+
+def test_every_linked_turn_has_its_columns_and_every_column_a_turn():
+    assert set(config.OPED_PIVOTS) <= set(oped.FOR_PIVOT)
+    assert {k for keys in oped.FOR_PIVOT.values() for k in keys} == set(oped.COLUMNS)
