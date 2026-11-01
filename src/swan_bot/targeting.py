@@ -461,6 +461,7 @@ class Targeter:
         self._ours, self._ours_mtime = [], None
         self.npc_wait = {}           # todo/63: post_id -> Latest post whose author above 2343 waits for a first score
         self.fresh = {}              # 31 Oct: citizen id -> their newest Latest post (t, post_id, root, body), mention.pick
+        self.post_times = {}         # 1 Nov: citizen id -> {post_id: created} of their Latest posts, last BUSY_WINDOW_S (busy)
         self.lock = threading.RLock()  # todo/22: the reader refreshes while the drafter and the writer use the queue
 
     # ---- saved across restarts (G3) ----------------------------------------------------------
@@ -971,12 +972,24 @@ class Targeter:
                 if p.get("kind") == "repost" or not config.likely_citizen(a):
                     continue
                 t = feeds.created_ts(p)
+                self.post_times.setdefault(a, {})[p["post_id"]] = t
                 if t > self.fresh.get(a, {}).get("t", 0):
                     self.fresh[a] = dict(t=t, post_id=p["post_id"], root=p.get("root_post_id") or p["post_id"],
                                          body=(p.get("body") or "")[:400])
             cut = now - config.MENTION_POOL_KEEP_S
             for a in [a for a, v in self.fresh.items() if v["t"] < cut]:
                 del self.fresh[a]
+            cut = now - config.BUSY_WINDOW_S
+            for a in list(self.post_times):
+                self.post_times[a] = {pid: t for pid, t in self.post_times[a].items() if t >= cut}
+                if not self.post_times[a]:
+                    del self.post_times[a]
+
+    def busy(self, post):
+        """1 Nov: the author posted BUSY_POSTS+ times on Latest in the BUSY_WINDOW_S before this post (config.BUSY_POSTS)."""
+        t = feeds.created_ts(post)
+        times = self.post_times.get(post.get("author_id"), {})
+        return sum(1 for x in times.values() if t - config.BUSY_WINDOW_S <= x < t) >= config.BUSY_POSTS
 
     @locked
     def fresh_pool(self, now=None):
@@ -1251,6 +1264,7 @@ class Targeter:
 
         def newest_key(c):                            # todo/47: the weak classes count as DOWNRANK_MIN minutes older
             late = config.DOWNRANK_MIN if c.get("target_class") in config.DOWNRANK_CLASSES else 0.0
+            late += config.BUSY_LATE_MIN if config.BUSY_LATE_MIN and self.busy(c["post"]) else 0.0   # 1 Nov: heavy posters
             return min(age_h(c["post"]) * 60 + late, config.FRESH_MIN) if newest else 0.0
 
         # todo/49: in a value block (VALUE_PICK, arm_pick) a candidate a whole VALUE_STEP of expected points at landing ahead

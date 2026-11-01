@@ -145,8 +145,9 @@ def test_the_arm_is_logged_on_every_send():
 
 
 # ---- the pick: the newest post under FRESH_MIN first in the fresh and shallow blocks (26 Oct) ----
-def _pick_order(monkeypatch, arm, ages_min, scores=None, classes=None):
-    """Post ids in the order next_target hands them out, for posts of these ages (minutes), queued oldest first."""
+def _pick_order(monkeypatch, arm, ages_min, scores=None, classes=None, history=None):
+    """Post ids in the order next_target hands them out, for posts of these ages (minutes), queued oldest first.
+    history: {post_id: [minutes ago]} earlier Latest posts by that post's author (Targeter.busy)."""
     import datetime as dt
     from swan_bot import targeting
     monkeypatch.setattr(config, "SWITCHBACK", [("arm_queue", [arm], BLOCK)] if arm else [])
@@ -158,6 +159,9 @@ def _pick_order(monkeypatch, arm, ages_min, scores=None, classes=None):
         t._queue(dict(post_id=pid, author_id=1000 + pid, body="the referendum", created_at=created), "latest", None, None, 0,
                  (classes or {}).get(pid, "conditions"))
         t.candidates[pid]["score"] = (scores or {}).get(pid, 8.0)           # equal scores: priority ties at the fresh bonus
+    t._note_fresh([dict(post_id=100 * pid + i, author_id=1000 + pid, body="earlier",
+                        created_at=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=m)).isoformat())
+                   for pid, ms in (history or {}).items() for i, m in enumerate(ms)])
     out = []
     while (c := t.next_target(set(), set(), {}, set())):
         out.append(c["post"]["post_id"])
@@ -204,3 +208,33 @@ def test_a_much_newer_weak_post_still_beats_an_older_strong_one(monkeypatch):
 def test_downrank_off_restores_newest_first(monkeypatch):
     monkeypatch.setattr(config, "DOWNRANK_MIN", 0)
     assert _pick_order(monkeypatch, "shallow", [2, 1], classes={2: "unclear"}) == [2, 1]
+
+
+# ---- 1 Nov (No-side census): a citizen with BUSY_POSTS+ posts in the last BUSY_WINDOW_S counts as BUSY_LATE_MIN older ----
+def test_a_first_post_goes_before_a_slightly_newer_post_by_a_busy_citizen(monkeypatch):
+    assert config.BUSY_POSTS == 3 and config.BUSY_WINDOW_S == 1800 and abs(config.BUSY_LATE_MIN * 60 - 20) < 1e-9
+    assert _pick_order(monkeypatch, "shallow", [1.0, 0.9], history={2: [5, 10, 15]}) == [1, 2]
+
+
+def test_busy_costs_no_more_than_20_seconds(monkeypatch):
+    assert _pick_order(monkeypatch, "shallow", [1.0, 0.5], history={2: [5, 10, 15]}) == [2, 1]
+
+
+def test_two_earlier_posts_or_posts_outside_the_window_are_not_busy(monkeypatch):
+    assert _pick_order(monkeypatch, "shallow", [1.0, 0.9], history={2: [5, 10]}) == [2, 1]
+    assert _pick_order(monkeypatch, "shallow", [1.0, 0.9], history={2: [5, 10, 40]}) == [2, 1]
+
+
+def test_busy_off_restores_newest_first(monkeypatch):
+    monkeypatch.setattr(config, "BUSY_LATE_MIN", 0)
+    assert _pick_order(monkeypatch, "shallow", [1.0, 0.9], history={2: [5, 10, 15]}) == [2, 1]
+
+
+def test_post_times_keep_only_the_busy_window(monkeypatch):
+    import datetime as dt
+    from swan_bot import targeting
+    t = targeting.Targeter(None, log=lambda r: None)
+    now = dt.datetime.now(dt.timezone.utc)
+    t._note_fresh([dict(post_id=i, author_id=1500, body="x", created_at=(now - dt.timedelta(minutes=m)).isoformat())
+                   for i, m in enumerate([5, 45])])
+    assert list(t.post_times[1500]) == [0]
