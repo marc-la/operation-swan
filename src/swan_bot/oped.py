@@ -49,6 +49,9 @@ def finish(text, flip_key, asks, now, rng):
     """(text, fields to log) for a first reply about to be sent: the ask, a column's link, or the text as it was.
     asks: times of the earlier asks (the caller adds now to them when the ask is made)."""
     turn = pivot_of(flip_key)
+    text = text.rstrip()
+    if text and text[-1] not in ".!?":
+        text += "."               # 1 Nov, first live ask: "...That's the change @julio_morales, has anyone..."
     if (config.JOURNALIST_TAG_ON and turn == "no_draft" and len(HANDLE.findall(text)) < MAX_HANDLES
             and may_ask(asks, now)):
         i = rng.randrange(len(ASKS))

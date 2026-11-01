@@ -125,6 +125,12 @@ def test_the_ask_waits_its_turn(monkeypatch):
     assert oped.finish(REPLY, "x/y/no_end", [NOW - 60], NOW, Fixed(0.99)) == (REPLY, {})   # other turns: the share
 
 
+def test_the_ask_and_the_link_follow_a_finished_sentence():
+    text, _ = oped.finish("That's the change", "x/y/no_draft", [], NOW, Fixed(0.9))
+    assert text.startswith("That's the change. @julio_morales, ")
+    assert oped.finish("Fair enough?", "x/y/no_end", [], NOW, Fixed(0.0))[0].startswith("Fair enough? https://")
+
+
 def test_no_ask_on_a_reply_that_already_names_three():
     three = "@a1 @b2 @c3 " + REPLY[7:]
     text, extra = oped.finish(three, "x/y/no_draft", [], NOW, Fixed(0.0))
@@ -133,7 +139,7 @@ def test_no_ask_on_a_reply_that_already_names_three():
 
 def test_no_ask_or_link_past_the_length_limit():
     long = "x" * 470
-    assert oped.finish(long, "x/y/no_draft", [], NOW, Fixed(0.0)) == (long, {})
+    assert oped.finish(long, "x/y/no_draft", [], NOW, Fixed(0.0)) == (long + ".", {})
 
 
 def test_the_columns_go_with_the_end_date_turns(monkeypatch):
