@@ -36,6 +36,7 @@ from swan_bot import amplify, bot, config, content, facts, feeds, pulse, watch  
 from swan_bot import targeting  # noqa: E402
 
 GAP = 0.3                 # pace_gap in these runs (s)
+CATCHUP = 0.1             # config.WRITE_CATCHUP_S in these runs (s): a late slot is caught up by this much at most
 VOICE_GAP = 0.5           # ACCOUNT_MIN_GAP_S
 REPOST_GAP = 0.2          # REPOST_MIN_GAP_S
 REPLY_BACK_GAP = 0.4      # bot.REPLY_BACK_GAP_S
@@ -306,6 +307,7 @@ def setup_world(mp, tmp, split, amp_off=False):
     mp.setattr(bot, "JOIN_S", 3.0)
     mp.setattr(bot, "WAIT_S", dict(no_voice=0.2, nothing=0.2, priority=0.2))
     mp.setattr(bot, "pace_gap", lambda per_min: GAP)
+    mp.setattr(config, "WRITE_CATCHUP_S", CATCHUP)
     mp.setattr(bot, "Generator", FakeGen)
     mp.setattr(bot, "draft_checked", fake_draft_checked)
     mp.setattr(ctn, "LegitSocial", lambda *a, **kw: FakeSocial(world))
@@ -447,7 +449,12 @@ def test_only_the_writer_writes(run):
 def test_pacing_never_faster_and_backs_off_on_429(run):
     sends = [w for w in run["world"].writes if w["kind"] in ("post", "reply", "repost", "429")]
     gaps = [b["t"] - a["t"] for a, b in zip(sends, sends[1:])]
-    assert gaps and min(gaps) >= GAP - 0.02, f"two writes {min(gaps):.3f} s apart (pace_gap {GAP})"
+    assert gaps and min(gaps) >= GAP - CATCHUP - 0.02, f"two writes {min(gaps):.3f} s apart (pace_gap {GAP})"
+    # 1 Nov (next_slot): k writes after any write are never sooner than k pace gaps less the catch-up
+    worst, peak = math.inf, -math.inf
+    for k, w in enumerate(sends):
+        worst, peak = min(worst, w["t"] - k * GAP - peak), max(peak, w["t"] - k * GAP)
+    assert worst >= -CATCHUP - 0.02, f"faster than pace_gap over a run of writes ({worst:.3f} s)"
     hit = next(i for i, w in enumerate(sends) if w["kind"] == "429")
     assert sends[hit + 1]["t"] - sends[hit]["t"] >= RETRY_AFTER, "a 429 waits its Retry-After before the next write"
 

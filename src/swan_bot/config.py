@@ -674,6 +674,12 @@ LLM_MODEL_RPM = {SONNET: 6}              # Sonnet 4.6's Bedrock quota is 10 a mi
 MAX_PER_MIN = 3.0
 WRITE_MARGIN = 0                    # 25 Oct: was 1, kept for the swarm's reposts; they are off (SWARM_REPOSTS_PER_SCAN 0) and the team sat at 2.85/min, not 3.0
 WRITE_JITTER = (0.85, 1.15)         # pace gap = 60 / per_min times this (mean 1.0)
+# 1 Nov (Marc): the next slot is counted from the slot just used, not from when its send returned (bot.next_slot). At
+# 20.96 s a write (172 an hour, 31 Oct-1 Nov; 176-178 on 25-30 Oct; 180 is the limit) the state save at the slot (~0.45 s,
+# often twice) and the send itself (~0.3 s) pushed every later slot back. A slot more than WRITE_CATCHUP_S old (a
+# hand-over, a late draft) counts from now minus this, so a pause is never caught up in a burst. The headers still bind
+# (header_gap). 0 = counted from the send, as before: SWAN_WRITE_CATCHUP_S=0 and a restart.
+WRITE_CATCHUP_S = 5
 # Lighter refresh (approved 22 Oct): the replies under the papers' article posts are read every 30 min, not every
 # refresh (2 min): 0 citizen replies under the post-launch paper posts. The papers' own posts (headlines for the pulse
 # and persona posts) are still read every refresh.
@@ -736,7 +742,8 @@ STEALTH_ENV = ("VOICE_DAY_CAP", "VOICE_WRITES_PER_DAY", "VOICE_CITIZEN_RESERVE",
                "JIT_LEAD_S", "QUEUE_SHALLOW_AHEAD", "REFRESH_S", "TRENDING_EVERY",   # todo/58: SWAN_JIT_LEAD_S=0 + SWAN_QUEUE_SHALLOW_AHEAD=2 undo the slot pick
                "LEAD_HAIKU_SHARE",                                              # todo/61: SWAN_LEAD_HAIKU_SHARE=0.3 if the LLM budget runs short (Kimi is cheaper)
                "FLIP_TURNOUT",                                                  # todo/54: SWAN_FLIP_TURNOUT=0 stops the lean-No fallback flip
-               "DRAFT_CALLOUT_ON", "OPED_LINK_ON", "OPED_LINK_SHARE", "JOURNALIST_TAG_ON")   # 1 Nov: the draft, the columns, the columnist
+               "DRAFT_CALLOUT_ON", "OPED_LINK_ON", "OPED_LINK_SHARE", "JOURNALIST_TAG_ON",   # 1 Nov: the draft, the columns, the columnist
+               "WRITE_CATCHUP_S")                                               # 1 Nov: SWAN_WRITE_CATCHUP_S=0 counts the next slot from the send again
 
 # ---- hot account (24 Oct, Marc; trial): all writing through ONE voice at a time ----
 # Rivals' reports are per author and sweeps hit a voice once (86 of 87 cases, ctn-1c's census of our hides), and the chance

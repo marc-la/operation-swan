@@ -122,6 +122,7 @@ def reply_back_gap():
     return config.HOT_GAP_S if config.HOT_VOICES else REPLY_BACK_GAP_S
 WAIT_S = dict(no_voice=30, nothing=45, priority=15)   # a loop with nothing to do waits this long (s)
 IDLE_S = 1.0                  # split loop: the writer looks for a ready draft this often (s)
+SLOT_CHORES_S = 2.0           # 1 Nov: with a draft ready and its slot this close, the writer's chores (state save, likes) wait for the send
 PULSE_POLL_S = 30.0           # split loop: the pulse thread looks whether a refresh is due at least this often (s)
 JOIN_S = 10.0                 # split loop: on a stop, how long the writer waits for the other threads (s)
 # No model answered a draft (every free model parked, the paid ones kept back for amplified posts or over budget): the
@@ -202,6 +203,14 @@ def write_gap(rl, per_min):
     """Seconds from this write to our next: never faster than pace_gap(per_min) on average, and never before the
     headers say the budget is back above the margin (header_gap). A 429 still waits its Retry-After (handle())."""
     return max(pace_gap(per_min), header_gap(rl))
+
+
+def next_slot(slot, now, rl, per_min):
+    """1 Nov (Marc): when the writer may send next, counted from the slot this write used (the writer's next_write), not
+    from when its send returned, so the time spent at the slot and in the send no longer pushes every later slot back.
+    A slot more than WRITE_CATCHUP_S old counts from now minus that (no burst after a pause), and never before the
+    headers' gap (header_gap); a 429 still waits its Retry-After. WRITE_CATCHUP_S 0: now + write_gap, as before."""
+    return max(max(slot, now - config.WRITE_CATCHUP_S) + pace_gap(per_min), now + header_gap(rl))
 
 
 def alert(msg):
@@ -1762,7 +1771,8 @@ def main():
             print("status.json not written:", e)
 
     def pause(seconds):
-        """Sleep, but keep the amplifier's likes and views going meanwhile."""
+        """Sleep, but keep the amplifier's likes and views going meanwhile. 1 Nov: none as the sleep ends, when the
+        writer's slot is due (they go after the send)."""
         until = time.time() + seconds
         while True:
             beats["writer"] = time.time()
@@ -1774,6 +1784,9 @@ def main():
             if left <= 0 or stop.is_set():
                 return
             time.sleep(min(2.0, left))
+            if time.time() >= until:
+                beats["writer"] = time.time()
+                return
 
     if args.live:
         lock = social.feed_lock()
@@ -2209,7 +2222,7 @@ def main():
                 stealth.record(state, target, persona["key"], mode)     # todo/31: this voice has the citizen today
             accounts.save()
             if args.live:
-                next_write = time.time() + write_gap(write_rl[0], per_min)      # todo/24: from the headers
+                next_write = next_slot(next_write, time.time(), write_rl[0], per_min)   # todo/24, 1 Nov: from the slot and the headers
             stats["accepted"] += 1
             stats["by_mode"][mode] = stats["by_mode"].get(mode, 0) + 1
             state["modes"] = (state["modes"] + [mode])[-20:]
@@ -2616,15 +2629,18 @@ def main():
             portal_sync()
             job = None
             try:
-                register()
-                if save_due.is_set():
-                    save_due.clear()
-                    save_state()
-                with mu:
-                    own_likes(state, accounts, args.live)
-                    engage_actions(state, accounts, args.live)
-                    if amp:
-                        amp.tick()
+                # 1 Nov: a draft ready at its slot goes first; the chores (the state save ~0.45 s, likes, follows) run
+                # after the send, with the next slot ~20 s away. A slot past QUEUE_LATE_S runs them again
+                if not (ready and -config.QUEUE_LATE_S < next_write - time.time() < SLOT_CHORES_S):
+                    register()
+                    if save_due.is_set():
+                        save_due.clear()
+                        save_state()
+                    with mu:
+                        own_likes(state, accounts, args.live)
+                        engage_actions(state, accounts, args.live)
+                        if amp:
+                            amp.tick()
                 wait = next_write - time.time()
                 if wait > 0:
                     pause(min(wait, 30))

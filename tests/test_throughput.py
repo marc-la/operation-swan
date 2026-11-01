@@ -115,6 +115,56 @@ def test_steady_state_rate_with_the_swarm_off():
     assert rate >= 2.9, rate
 
 
+# ---- 1 Nov (Marc): the next slot from the slot just used (bot.next_slot) ---------------------------------------------
+def test_next_slot_counts_from_the_slot_not_the_send(monkeypatch):
+    monkeypatch.setattr(bot.random, "uniform", lambda a, b: (a + b) / 2)       # pace gap 20 s at 3.0
+    ok = RL(3, 2, 20)
+    assert bot.next_slot(100.0, 100.8, ok, 3.0) == 120.0, "the 0.8 s at the slot and in the send are not added"
+    assert bot.next_slot(100.0, 160.0, ok, 3.0) == 160.0 - config.WRITE_CATCHUP_S + 20, "an old slot: from now - catch-up"
+    assert bot.next_slot(0.0, 50.0, ok, 3.0) == 50.0 - config.WRITE_CATCHUP_S + 20, "the first write after a start"
+    assert bot.next_slot(100.0, 100.8, RL(3, 0, 60), 3.0) == 120.8, "0 left: the headers' 20 s from now"
+    monkeypatch.setattr(config, "WRITE_CATCHUP_S", 0)
+    assert bot.next_slot(100.0, 100.8, ok, 3.0) == 100.8 + bot.write_gap(ok, 3.0), "catch-up 0: from the send, as before"
+
+
+def _simulate_slots(slot_fn, delay, hours=4):
+    """Continuous time: the bucket (3, one back every 20 s; headers as the server gives them: whole writes left and the
+    seconds until whole, rounded) and a writer whose sends leave delay(rng) s after their slot (live 31 Oct-1 Nov: the
+    state save at the slot, ~0.45 s and sometimes twice, and 3% late drafts) and return 0.3 s later, when slot_fn(slot,
+    now, rl) sets the next slot. Returns (writes a minute, sends the bucket would have refused with a 429)."""
+    import random
+    random.seed(4)
+    rng = random.Random(11)
+    limit, refill, http = 3, 20.0, 0.3
+    tokens, last, slot, back, n, refused = 3.0, 0.0, 0.0, 0.0, 0, 0
+    while True:
+        sent = max(slot, back) + delay(rng)
+        if sent > hours * 3600:
+            return n / (hours * 60), refused
+        tokens, last = min(limit, tokens + (sent - last) / refill), sent
+        if tokens < 1:
+            refused += 1
+        else:
+            tokens, n = tokens - 1, n + 1
+        back = sent + http
+        slot = slot_fn(slot, back, RL(limit, int(tokens), round((limit - tokens) * refill)))
+
+
+def _live_delay(rng):
+    return 0.45 + (0.45 if rng.random() < 0.4 else 0) + (rng.uniform(1, 8) if rng.random() < 0.03 else 0)
+
+
+def test_slots_from_the_slot_reach_the_limit_without_a_429():
+    """The live delays cost ~4% at 3.0 counted from the send (2.85-2.87 a minute: 171-172 an hour, as live 31 Oct-1 Nov);
+    counted from the slot they cost nothing, and the headers still keep every send inside the bucket."""
+    old, old_refused = _simulate_slots(lambda slot, now, rl: now + bot.write_gap(rl, 3.0), _live_delay)
+    new, new_refused = _simulate_slots(lambda slot, now, rl: bot.next_slot(slot, now, rl, 3.0), _live_delay)
+    assert old < 2.90 and new >= 2.97, (old, new)
+    assert old_refused == new_refused == 0
+    still, refused = _simulate_slots(lambda slot, now, rl: bot.next_slot(slot, now, rl, 3.0), lambda rng: 0.0)
+    assert still >= 2.97 and refused == 0, (still, refused)
+
+
 
 
 # ---- 3. near-duplicates: strict to the same citizen or thread, looser across citizens --------------------------------
