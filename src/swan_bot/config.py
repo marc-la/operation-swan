@@ -519,12 +519,14 @@ FOLLOWUP_MAX_READS = 600               # per run (every 30 min); the read budget
 # and then repairs with the exact problem. A model that failed twice is left out of the next call (Kimi -> flash-lite ->
 # the next in the chain; todo/24). Code fixes (quality.fix: trim, drop a sentence) cost no call. Other modes: 2.
 GATE_TRIES = {"reply": 4, "reply_back": 4, "second_voice": 3}
-# G7 conversation turns: a citizen who answers us is looked for this often (was 5 min, then 60 s), and gets our
-# reply-backs at most this many times in one session, never once their reply sits this deep in a thread (citizens stop
-# there). 15 s since 1 Nov (Marc): the target answers a reply-back 15.7% of the time when we send it within 20 s, and
-# 7.1% at 60-90 s (30 Oct-31 Oct, n 587), while 57% of ours took 45 s or more. Only unparked voices are read: in hot
-# mode, the one voice, so 4 notification reads a minute.
-NOTIF_EVERY_S = 15
+# G7 conversation turns: a citizen who answers us is looked for this often (was 5 min, then 60 s, then 15 s), and gets
+# our reply-backs at most this many times in one session, never once their reply sits this deep in a thread (citizens
+# stop there). 15 s since 1 Nov (Marc): the target answers a reply-back 15.7% of the time when we send it within 20 s,
+# and 7.1% at 60-90 s (30 Oct-31 Oct, n 587), while 57% of ours took 45 s or more. 5 s since later on 1 Nov (Marc): the
+# 15 s poll halved the median delay (54 s to 28 s; 45 s or more went from 63% to 9%) and targets answering within 3 h
+# went from 7% to 12% (n 194 and 128); 5 s matches the Latest read (REFRESH_S) and takes about 5 s more off. Only
+# unparked voices are read: in hot mode, the one voice, so 12 notification reads a minute.
+NOTIF_EVERY_S = 5
 TURNS_PER_SESSION = 3
 TURN_SESSION_S = 30 * 60
 THREAD_MAX_DEPTH = 8
