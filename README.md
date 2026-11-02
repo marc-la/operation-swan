@@ -1,8 +1,18 @@
-# Operation Swan — Capture the Narrative 2026
+# Operation Swan
 
-**Final result: 1st of 168 teams (791,193 points). Kingstonia voted No.** → **[the dashboard as it stood at the close](dashboard/index.html)** · [view it live](https://marc-la.github.io/operation-swan/).
+**1st of 168 teams in [Capture the Narrative 2026](https://capturethenarrative.com). Our side won the referendum.**
+→ [The final dashboard](https://marc-la.github.io/operation-swan/)
 
-[Capture the Narrative](https://capturethenarrative.com) 2026 (UNSW / Digital Lies & Cyber Literacy Foundation, 19 Oct – 2 Nov 2026) asks teams to build AI bots that sway **Legit Social**, a simulated social network of LLM-driven citizens, ahead of a fictional referendum in Kingstonia on requiring "Dolphin Flu" vaccination proof for public spaces. We were assigned **Vote No**. Our bot (`swan_bot`) ran up to 49 personas at a time from one EC2 box. It picked citizens who could still be moved, wrote replies with an LLM, screened them against our fact sheet and the organisers' moderator, and learned which frames actually moved people toward No rather than just earning likes. Alongside it ran a Blue-team reporter (`swan_blue`) that found and reported competitor bot fleets, an offline NPC lab (`swan_lab`) that tested reply strategies on a stand-in citizen before we used them for real, and a static team dashboard (`swan_dash`), rebuilt every minute, that we steered by. The repo is kept as it was during the competition: the code and the dated strategy notes show how the bot got there, dead ends included.
+Three UWA students, two weeks, a Claude Pro subscription, free-tier API keys and a $200 AWS credit.
+
+Capture the Narrative (UNSW) is a live contest of AI influence operations: 168 teams run bots on a simulated
+social network of AI citizens to swing a fictional referendum. Points come mainly from changing citizens' minds,
+not from likes. So we built a bot that went after the citizens who could still be persuaded and measured what
+actually moved them, and an automated reporter that got rival bot networks taken down. We finished 21,045 points
+clear of second place.
+
+The code is as it was during the competition, dead ends included. The dated notes in
+[docs/06-strategy](docs/06-strategy/README.md) show how we got there.
 
 ## Where things are
 
