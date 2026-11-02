@@ -300,9 +300,13 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% endif %}
 {% endmacro %}
 
-<header><b>SWAN</b>
+{% set done = fin and fin.state == 'final' %}
+<header><b>SWAN</b>{% if done %}<span class="sub">final · 2 Nov 2026</span></header>
+<div class="sub" style="text-align:right">bot stopped {{ fin.stopped }} Perth{% if fin.posted %} · final scores posted {{ fin.posted }}{% endif %}</div>
+{% else %}
   <span class="chips"><span class="chip {{ banner.level }}" title="Red track: the bot">Red</span><span class="chip {{ blue_banner.level }}" title="Blue track: reporting">Blue</span>{% if running %}<span class="chip {{ running.light }}" title="running version, deployed {{ running.when }}">{{ running.sha }} · {{ running.when }}</span>{% endif %}</span></header>
 <div class="sub" style="text-align:right">as of {{ now }} Perth</div>
+{% endif %}
 <div class="alerts">
   {% if fin %}<p class="green"><b>Final</b> · {{ fin.text }}</p>{% elif final %}<p class="green"><b>Final</b> · {{ banner.text }}</p>{% endif %}
   {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
@@ -328,13 +332,20 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     <div class="val">{{ ('#' ~ score.rank) if score and score.rank else '—' }}</div>
     <div class="sub">{% if score and score.teams %}of {{ score.teams }}{% endif %}{% if board and board.above %} · {{ (board.above.score - board.score) | n }} behind #{{ board.above.rank }}{% endif %}</div></div>
   {% endif %}
+  {% if done and fin.lead %}
+  <div class="kpi"><div class="label">{{ 'Lead' if fin.lead.ahead else 'Behind #1' }}</div>
+    <div class="val {{ 'up' if fin.lead.ahead else 'down' }}">{{ '+' if fin.lead.ahead else '−' }}{{ fin.lead.points | n }}</div>
+    <div class="sub">{{ 'over' if fin.lead.ahead else 'to' }} {{ fin.lead.other }}</div></div>
+  {% else %}
   <div class="kpi"><div class="label">Today</div>
     {% if score and score.delta is not none %}
     <div class="val {{ 'up' if score.delta >= 0 else 'down' }}">{{ '+' if score.delta >= 0 else '' }}{{ score.delta | n }}</div>
     <div class="sub">{% if score.last_hour is not none %}{{ '%+d' % score.last_hour }} at {{ score.last_hour_at }}{% elif score.per_hour is not none %}≈ {{ score.per_hour | n }} pts/hour{% endif %} · since {{ day_start }}</div>
     {% else %}<div class="val">—</div><div class="sub">since {{ day_start }}</div>{% endif %}</div>
+  {% endif %}
 </div>
 
+{% macro bot_tiles() %}
 <div class="lights">
 {% for i in reach.lights %}
   <div class="light {{ i.light }}{{ ' blue-tile' if i.key == 'blue' }}" title="{{ i.tip }}"><div class="label">{{ i.name }}</div><div class="val">{{ i.head }}</div><div class="sub">{{ i.sub }}</div>{% if i.fill is not none and i.key == 'blue' %}<div class="bar"><i style="width:{{ (i.fill * 100) | round | int }}%"></i></div>{% endif %}</div>
@@ -353,10 +364,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   </div>
   {% for x in reach.extra %}<p class="sub" style="margin:0 12px 8px">{{ x }}</p>{% endfor %}
 </details>
+{% endmacro %}
+{% if not done %}{{ bot_tiles() }}{% endif %}
 
 {% macro tone(d) %}{{ 'down' if d and d > 0 else 'up' if d and d < 0 }}{% endmacro %}
 {% macro pace(r) %}{% if board.pace %}<td class="num pace {{ tone(r.pace_vs_us) }}">{{ r.pace | rate }}</td>{% endif %}{% if board.pace_now %}<td class="num pace {{ tone(r.pace_now_vs_us) }}">{{ r.pace_now | rate }}</td>{% endif %}{% endmacro %}
-{% macro ref(r) %}{% if board.get('final') %}<td class="num"{% if r.was_score is not none %} title="{{ r.was_score | n }} at {{ fin.stopped }}"{% endif %}>{% if r.gain is not none %}{{ '+' if r.gain > 0 }}{{ r.gain | n }}{% else %}—{% endif %}</td>{% endif %}{% endmacro %}
+{% macro ref(r) %}{% if board.get('final') %}<td class="num"{% if r.was_score is not none %} title="{{ r.was_score | n }} at {{ fin.stopped }}"{% endif %}>{% if r.gain %}{{ '≈' if r.approx }}{{ '+' if r.gain > 0 }}{{ r.gain | n }}{% else %}—{% endif %}</td>{% endif %}{% endmacro %}
 {% macro cols() %}<colgroup><col class="c-rk"><col><col class="c-score">{% if board.get('final') %}<col class="c-ref">{% endif %}{% if board.pace %}<col class="c-pace">{% endif %}{% if board.pace_now %}<col class="c-pace">{% endif %}</colgroup>{% endmacro %}
 {% macro row(r) %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ ref(r) }}{{ pace(r) }}</tr>{% endmacro %}
 {% if board %}
@@ -373,11 +386,12 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
     {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ ref(r) }}{{ pace(r) }}</tr>
     {% endfor %}
     {% if board.fourth %}{{ row(board.fourth) }}{% endif %}
-    {% if board.rest %}<tr class="gap"><td colspan="{{ width }}"><details id="lb-rest"><summary>#{{ board.rest[0].rank }}{% if board.rest | length > 1 %}–#{{ board.rest[-1].rank }}{% endif %}</summary>
+    {% if board.rest %}<tr class="gap"><td colspan="{{ width }}"><details id="lb-rest"{% if done %} open{% endif %}><summary>#{{ board.rest[0].rank }}{% if board.rest | length > 1 %}–#{{ board.rest[-1].rank }}{% endif %}</summary>
       <table class="board">{{ cols() }}{% for r in board.rest %}{{ row(r) }}{% endfor %}</table></details></td></tr>{% endif %}
   </table>
 </div>
 {% endif %}
+{% if done %}<details id="atstop"><summary><b>The bot at the stop</b><span class="sub">{{ fin.stopped }} Perth · speed, volume, conversion, bans, Blue</span></summary><div>{{ bot_tiles() }}</div></details>{% endif %}
 
 <details id="activity"><summary><b>Activity</b><span class="sub">{{ activity | length }}{% if older %} + {{ older | length }} older critical{% endif %} · newest {{ activity[0].time if activity and activity[0].time }}</span></summary>
 <ol class="activity">
@@ -515,11 +529,11 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   {% endif %}
 </div></details>
 
-<p class="sub" id="pulse">Trending pulse (what the bot's amplified posts lean on):
+{% if not done %}<p class="sub" id="pulse">Trending pulse (what the bot's amplified posts lean on):
   {% if pulse %}<span class="{{ 'warn' if pulse.stale else '' }}">updated {{ pulse.ago }}{% if pulse.stale %} (too old: not used){% endif %}</span>, from Trending #{{ pulse.id }}: {{ pulse.hooks | length }} hook{{ 's' if pulse.hooks | length != 1 }}, {{ pulse.no_shapes | length }} for No, {{ pulse.yes_lines | length }} Yes line{{ 's' if pulse.yes_lines | length != 1 }}, {{ pulse.avoid | length }} overused{% if pulse.hooks %}; first hook “{{ pulse.hooks[0] | short(80) }}”{% endif %}.{% if pulse.worries %} From {{ pulse.citizens }} citizen posts, their worries: {% for w in pulse.worries %}{{ '; ' if not loop.first }}“{{ w }}”{% endfor %}{% if pulse.rising %}; rising: {% for r in pulse.rising %}{{ ', ' if not loop.first }}“{{ r }}”{% endfor %}{% endif %}.{% endif %}
-  {% else %}none logged yet.{% endif %}</p>
+  {% else %}none logged yet.{% endif %}</p>{% endif %}
 
-<footer>Times are Perth (AWST). The competition day rolls over at {{ day_start }} Perth. Page built {{ built }}, refreshes every minute.</footer>
+<footer>{% if done %}Final scores as the portal posted them. Referendum: the award alone (≈ where the portal's board after the award was not saved). 24 h and 3 h: points an hour of play up to the end. Bot figures as at the stop, {{ fin.stopped }} Perth. Times are Perth (AWST).{% else %}Times are Perth (AWST). The competition day rolls over at {{ day_start }} Perth. Page built {{ built }}, refreshes every minute.{% endif %}</footer>
 
 </main>
 </body>

@@ -1119,3 +1119,16 @@ def test_last_hour_of_play_is_added_beside_the_lockout_board_not_into_it(tmp_pat
     assert board.index(">A<") < board.index(">B<") if ">A<" in board else True  # still the lockout order
     assert "1,050" not in page and "Referendum" not in board
     assert "last hour of play posted 15:47 (+50)" in page
+
+
+def test_award_is_the_step_alone_from_a_saved_partial_board_and_the_losers_get_none():
+    end = {"Operation Swan": 1100, "A": 950, "B": 900}
+    final = {"Operation Swan": 31300, "A": 26150, "B": 1200}          # +200 / +200 / +300 of play after the award
+    portal = dict(scores_ts="2026-11-02T08:32:00+00:00",
+                  rows=[dict(rank=1, team="Operation Swan", score=31300), dict(rank=2, team="A", score=26150), dict(rank=3, team="B", score=1200)])
+    saved = dict(seen="2026-11-02T08:15:00+00:00", scores={"Operation Swan": 31100})   # the board after the award: only us
+    fin = build.final_board(LOCK, [_line("2026-11-02T07:47:00+00:00", end)], portal, [], SIDES, saved)
+    assert fin["state"] == "final" and fin["winner"] == "no"
+    assert fin["gain"] == {"Operation Swan": 30000, "A": 25200, "B": 0} and fin["approx"] == {"A"}
+    rates = {r["team"]: r["score"] for r in fin["end_board"]["rows"]}
+    assert rates == {"Operation Swan": 1300, "A": 950, "B": 1200}       # the play after the award stays in the rates
