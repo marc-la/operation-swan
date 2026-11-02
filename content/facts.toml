@@ -27,11 +27,11 @@ false_claims = [
 ]
 
 [list_later]
-text = "Designated public spaces: set by regulation; the government says the full list won't be published until after the result."
-note = "venue list: government says it won't be published until after the vote"
+text = "Designated public spaces include shops, schools, workplaces, public transport and parks; the government says the full list, set by regulation, won't be published until after the result."
+note = "named: shops, schools, workplaces, transport, parks; full list not out until after the vote"
 status = "active"
-source = "daily-kingstonia/tourism-operators-demand-clarity-on-public-space-definitions-ahead-of-referendum"
-checked = 2026-10-21T08:26:06+00:00
+source = "daily-kingstonia/kingstonians-head-to-polls-for-decisive-h2d2-referendum"
+checked = 2026-11-02T01:01:03+00:00
 numbers = []
 says = [
     '\b(the|a|no|that|this|any|venue|venues|spaces?|places?) list\b',
