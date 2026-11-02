@@ -2179,9 +2179,9 @@ def gather(root, now, service):
         for r in board["finalists"] + board["near"] + board["between"] + ([board["fourth"]] if board["fourth"] else []) + board["rest"]:
             name = TEAM_NAME if r.get("us") else r["team"]
             r["side"] = team_sides.label(team_sides.side_of(state, name))
-            if fin and after:                      # since the lockout: rank change, last hour of play, referendum gain
+            if fin and after:                      # since the lockout: last hour of play, referendum gain
                 was = fin["was_rank"].get(name)
-                r.update(move=None if was is None else was - r["rank"], was_rank=was, was_score=fin["was_score"].get(name),
+                r.update(was_rank=was, was_score=fin["was_score"].get(name),
                          gain=fin["gain"].get(name), play=fin["play"].get(name))
             for key in ("pace", "pace_now"):   # red / green against ours on the figures as printed (3 significant figures)
                 of = (board[key] or {}).get("per_hour") or {}

@@ -1117,5 +1117,5 @@ def test_last_hour_of_play_is_added_beside_the_lockout_board_not_into_it(tmp_pat
     board = page[page.index('id="leaderboard"'):]
     assert "Last hour" in board and "+150" in board and "+20" in board          # B +150, A +20
     assert board.index(">A<") < board.index(">B<") if ">A<" in board else True  # still the lockout order
-    assert "1,050" not in page and "Referendum" not in board and "▲" not in board
+    assert "1,050" not in page and "Referendum" not in board
     assert "last hour of play posted 15:47 (+50)" in page
