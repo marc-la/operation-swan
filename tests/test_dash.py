@@ -1041,3 +1041,54 @@ def test_hot_status_odd_values_do_not_break_the_page(tmp_path):
     for junk in ({"active": 5, "spares": "x", "lost": None}, [], "hot", {}):
         ctx, html = page(make_root(tmp_path / str(abs(hash(str(junk)))), FULL, status={"hot": junk}))
         assert "Swan" in html
+
+
+# ---- final mode (2 Nov lockout): the page as of the FINAL time, the referendum on its own ----
+LOCK = dict(scores_ts="2026-11-02T06:47:00+00:00",
+            rows=[dict(rank=1, team="Operation Swan", score=1000), dict(rank=2, team="A", score=900), dict(rank=3, team="B", score=800)])
+SIDES = {"teams": {"A": {"side": "no"}, "B": {"side": "yes"}}}
+
+
+def _line(seen, scores):
+    return dict(ts=seen, seen=seen, scores=scores)
+
+
+def _ev(t, points, msg):
+    return dict(ts=t, _t=build.ts(t), points=points, message=msg)
+
+
+def test_final_board_counting_until_a_team_jumps():
+    play = {"Operation Swan": 1100, "A": 950, "B": 900}           # the last hour of play only: small steps
+    fin = build.final_board(LOCK, [_line("2026-11-02T07:19:00+00:00", play)], dict(rows=[]), [], SIDES)
+    assert fin["state"] == "counting" and fin["gain"] == {}
+
+
+def test_final_board_splits_play_from_the_award_and_reads_the_winner():
+    play = {"Operation Swan": 1100, "A": 950, "B": 900}
+    final = {"Operation Swan": 31100, "A": 25950, "B": 900}
+    portal = dict(rows=[dict(rank=1, team="Operation Swan", score=31100), dict(rank=2, team="A", score=25950), dict(rank=3, team="B", score=900)])
+    late = [_ev("2026-11-02T07:19:00+00:00", 100, "NPC engagement (×4 points): 9 views"),
+            _ev("2026-11-02T07:44:00+00:00", 30000, "Referendum: your side won")]
+    fin = build.final_board(LOCK, [_line("2026-11-02T07:19:00+00:00", play), _line("2026-11-02T07:45:00+00:00", final)], portal, late, SIDES)
+    assert fin["state"] == "final" and not fin["combined"]
+    assert fin["gain"] == {"Operation Swan": 30000, "A": 25000, "B": 0}
+    assert fin["play"] == {"Operation Swan": 100, "A": 50, "B": 100}
+    assert fin["award"] == 30000 and fin["winner"] == "no"
+
+
+def test_final_board_one_step_keeps_our_award_exact_and_infers_a_loss_from_the_sides():
+    portal = dict(rows=[dict(rank=1, team="B", score=30900), dict(rank=2, team="Operation Swan", score=1100), dict(rank=3, team="A", score=950)])
+    late = [_ev("2026-11-02T07:44:00+00:00", 100, "NPC engagement: 9 views")]
+    fin = build.final_board(LOCK, [], portal, late, SIDES)
+    assert fin["state"] == "final" and fin["combined"]
+    assert fin["gain"]["B"] == 30100 and fin["award"] is None and fin["winner"] == "yes"
+
+
+def test_final_page_is_built_as_of_the_lockout_and_shows_the_counting_line(tmp_path):
+    root = make_root(tmp_path)
+    (root / "FINAL").write_text("2026-11-02T07:00:00Z")
+    assert build.final_time(root) == dt.datetime(2026, 11, 2, 7, 0, tzinfo=dt.timezone.utc)
+    (root / "data" / "portal.json").write_text(json.dumps(dict(LOCK, rank=1, score=1000, teams=3, events=[])))
+    (root / "data" / "portal_lockout.json").write_text(json.dumps(dict(LOCK, rank=1, score=1000, teams=3, events=[])))
+    page = build.render(build.gather(root, build.final_time(root), "inactive"))
+    assert "Swan · FINAL" in page and "referendum count under way" in page and "DOWN" not in page.split("<main")[0]

@@ -2024,6 +2024,11 @@ def gather(root, now, service):
     portal_t = ts(portal.get("ts"))
     points = [dict(e, _t=ts(e["ts"])) for e in portal.get("events") or []
               if ts(e.get("ts")) and e.get("points") is not None]
+    lock_t = final_time(root)
+    lock = (read_json(data / "portal_lockout.json") or None) if lock_t else None
+    late = [e for e in points if lock_t and e["_t"] > lock_t]
+    if lock_t:                                 # final mode: every tile as it was at the lockout; the count has its own (final_board)
+        points = [e for e in points if e["_t"] <= lock_t]
     actions = [a for a in tail_jsonl(logs / "swan_actions.jsonl") if ts(a.get("ts"))]
     for a in actions:
         a["_t"] = ts(a["ts"])
@@ -2118,7 +2123,7 @@ def gather(root, now, service):
         draft_banner = dict(draft_banner, level="green")
 
     # ---- score (typed in by hand: scripts/score.sh) ----
-    entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts"))]
+    entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts")) and not (lock_t and ts(e["ts"]) > lock_t)]
     score = None
     if entries:
         e = entries[-1]
@@ -2134,24 +2139,31 @@ def gather(root, now, service):
             score["delta"] = sum(e["points"] for e in points if e["_t"] >= day_start)
             score["last_hour"] = sum(e["points"] for e in points if (newest - e["_t"]).total_seconds() < 600)
             score["last_hour_at"] = hm(newest)
-    board = dict(leader=portal.get("leader"), above=portal.get("above"), below=portal.get("below"),
-                 rank=portal.get("rank"), score=portal.get("score"),
-                 **leaderboard_rows(portal)) if portal.get("rank") else None
+    fin = None
+    if lock:
+        fin = final_board(lock, tail_jsonl(data / "team_scores.jsonl", 400_000), portal, late,
+                          read_json(data / team_sides.SIDES_FILE) or {})
+        board_src, pace_src = (portal if fin["state"] == "final" else lock), lock
+    else:
+        board_src = pace_src = portal
+    board = dict(leader=board_src.get("leader"), above=board_src.get("above"), below=board_src.get("below"),
+                 rank=board_src.get("rank"), score=board_src.get("score"),
+                 **leaderboard_rows(board_src)) if board_src.get("rank") else None
     if board:
         board["trend"] = None
     if board and board["cutoff"] is not None:      # behind 3rd: is the gap closing? (data/leaderboard.jsonl, hourly, from the portal poll)
         third = next(r for r in board["finalists"] if r["rank"] == 3)
-        board["trend"] = gap_trend(tail_jsonl(data / "leaderboard.jsonl", 500_000), now, board["score"], third["score"])
+        board["trend"] = None if fin else gap_trend(tail_jsonl(data / "leaderboard.jsonl", 500_000), now, board["score"], third["score"])
     if board:                                  # every team's points an hour (data/team_scores.jsonl, ~5 KB a line: 400 KB is about 3 days),
-        lines, seen = tail_jsonl(data / "team_scores.jsonl", 400_000), ts(portal.get("scores_ts"))    # over a day and the last 3 h
+        lines, seen = tail_jsonl(data / "team_scores.jsonl", 400_000), ts(pace_src.get("scores_ts"))    # over a day and the last 3 h
         for key, hours, least, most in (("pace", PACE_HOURS, PACE_MIN_HOURS, None),
                                         ("pace_now", PACE_NOW_HOURS, PACE_NOW_MIN_HOURS, PACE_NOW_MAX_HOURS)):
-            board[key] = team_pace(lines, portal.get("rows") or [], now, hours=hours, min_hours=least, seen=seen, max_hours=most)
+            board[key] = team_pace(lines, pace_src.get("rows") or [], now, hours=hours, min_hours=least, seen=seen, max_hours=most)
             if board[key]:
                 board[key]["as_of_label"] = hm(board[key]["as_of"])
     if board:                                  # Yes / No / ? after each name (data/team_sides.json, from the polls' awards: swan_dash/sides.py)
         state = read_json(data / team_sides.SIDES_FILE) or {}
-        rows_all = portal.get("rows") or []
+        rows_all = board_src.get("rows") or []
         shown = {r["rank"] for r in board["finalists"] + board["near"]}
         board["fourth"] = next((dict(r) for r in rows_all if r["rank"] == 4 and r["rank"] not in shown), None) if board["rank"] <= 3 else None
         last = max(shown | {board["fourth"]["rank"] if board["fourth"] else 0})
@@ -2159,10 +2171,32 @@ def gather(root, now, service):
         for r in board["finalists"] + board["near"] + board["between"] + ([board["fourth"]] if board["fourth"] else []) + board["rest"]:
             name = TEAM_NAME if r.get("us") else r["team"]
             r["side"] = team_sides.label(team_sides.side_of(state, name))
+            if fin and fin["state"] == "final":    # the count: rank change since the lockout and the referendum gain
+                was = fin["was_rank"].get(name)
+                r.update(move=None if was is None else was - r["rank"], was_rank=was, was_score=fin["was_score"].get(name),
+                         gain=fin["gain"].get(name), play=fin["play"].get(name))
             for key in ("pace", "pace_now"):   # red / green against ours on the figures as printed (3 significant figures)
                 of = (board[key] or {}).get("per_hour") or {}
                 r[key], ours = sig3(of.get(name)), sig3(of.get(TEAM_NAME))
                 r[key + "_vs_us"] = None if r[key] is None or ours is None or r.get("us") else r[key] - ours
+    if fin:                                    # the Final line, the Score / Rank tiles and the Referendum block
+        if board:
+            board["final"] = fin["state"] == "final"
+            board["combined"] = fin["combined"]
+        us_was, us_score = fin["was_rank"].get(TEAM_NAME), fin["was_score"].get(TEAM_NAME)
+        fin.update(stopped=hm_day(lock_t, now), us_was=us_was, us_was_score=us_score,
+                   rank=portal.get("rank") if fin["state"] == "final" else us_was,
+                   score=portal.get("score") if fin["state"] == "final" else us_score,
+                   us_gain=fin["gain"].get(TEAM_NAME), us_play=fin["play"].get(TEAM_NAME),
+                   teams=portal.get("teams") or fin["teams"])
+        if fin["state"] == "final":
+            side = (fin["winner"] or "").upper()
+            fin["text"] = ((f"Kingstonia voted {side}: " + ("our side won" if fin["winner"] == team_sides.OUR_SIDE else "the other side won")
+                            if side else "referendum counted")
+                           + f" · Operation Swan finished #{fin['rank']} of {fin['teams']}"
+                           + (f" (#{us_was} at {hm(lock_t)})" if us_was else ""))
+        else:
+            fin["text"] = f"competition over at {hm(lock_t)} Perth · referendum count under way, final scores to come"
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
         return tuple(sum(1 for a in live_writes if a.get("act") == k and lo < a["_t"] <= hi) for k in ("reply", "reply_back"))
     history = [dict(time=perth(ts(x["ts"])).strftime("%a %H:%M"), score=x["score"], rank=x.get("rank"),
@@ -2281,7 +2315,7 @@ def gather(root, now, service):
         now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,
         bans=ban_no, forecast=forecast,
         worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
-        status_word="FINAL" if final else STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], final=final, score=score, history=history, board=board, milestone=milestone,
+        fin=fin, status_word="FINAL" if final else STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], final=final, score=score, history=history, board=board, milestone=milestone,
         multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),
         portal_checked=ago(now - portal_t) if portal_t else None,
         day_start=perth(day_start).strftime("%-I%p").lower(),
@@ -2312,6 +2346,57 @@ def write_atomic(path, text):
     tmp.write_text(text)
     os.chmod(tmp, 0o644)
     os.replace(tmp, path)
+
+
+REF_MIN_STEP = 15_000          # one board step this big for any team after the lockout is the referendum award (20,000 at least;
+                               # an hour of play at ×4 was ~7,000 for the leaders)
+PLAY_LINES = ("NPC engagement", "Moderation")   # points-log lines of play; any other line after the lockout is the referendum
+
+
+def final_board(lock, lines, portal, late, sides):
+    """Final mode: what the referendum count did to the board, against the lockout board (data/portal_lockout.json, saved
+    at the stop). The scores move twice after the lockout: the last hour of play (the portal posts it at ~:19) and the
+    referendum award (winning side only). The first board step where a team gains REF_MIN_STEP or more is the award and
+    the board before it is the end of play; when both land in one step the gain is everything after the lockout
+    (`combined`), except ours, which our own points-log lines split exactly. `lines`: data/team_scores.jsonl;
+    `late`: our points-log lines after the lockout. state 'counting' until the award shows."""
+    lock_rows = lock.get("rows") or []
+    lock_scores = {r["team"]: r["score"] for r in lock_rows}
+    seen = ts(lock.get("scores_ts"))
+    boards = [r["scores"] for r in lines if isinstance(r.get("scores"), dict)
+              and seen and (ts(r.get("seen")) or ts(r.get("ts")) or seen) > seen]
+    boards.append({r["team"]: r["score"] for r in portal.get("rows") or []})
+    prev = end_play = lock_scores
+    step = None
+    for b in boards:
+        if b == prev:
+            continue
+        if max((v - prev[k] for k, v in b.items() if k in prev), default=0) >= REF_MIN_STEP:
+            step = b
+            break
+        end_play = prev = b
+    ours = [e for e in late if not (e.get("message") or "").startswith(PLAY_LINES)]
+    award = sum(e["points"] for e in ours)
+    out = dict(state="counting" if step is None else "final", award=award if ours else None,
+               notes=[dict(time=hm(e["_t"]), points=e["points"], text=e.get("message") or "") for e in ours],
+               was_rank={r["team"]: r["rank"] for r in lock_rows}, was_score=lock_scores,
+               teams=len(lock_rows) or None, winner=None, gain={}, play={}, combined=False)
+    if step is None:
+        return out
+    final = boards[-1]
+    combined = end_play is lock_scores
+    gain = {t: v - end_play[t] for t, v in final.items() if t in end_play}
+    if combined and ours:
+        gain[TEAM_NAME] = award
+    play = {t: final[t] - lock_scores[t] - gain[t] for t in gain if t in lock_scores}
+    if ours and award > 0:                     # the award goes to the winning side only, and we know ours
+        winner = team_sides.OUR_SIDE
+    else:
+        votes = collections.Counter(team_sides.side_of(sides, t) for t, g in gain.items() if g >= REF_MIN_STEP)
+        votes.pop(None, None)
+        winner = votes.most_common(1)[0][0] if votes else None
+    out.update(gain=gain, play=play, combined=combined, winner=winner)
+    return out
 
 
 def final_time(root):

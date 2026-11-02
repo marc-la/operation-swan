@@ -99,8 +99,9 @@ details.reach[open] .cols { margin-top: 6px; padding: 8px 14px 6px; background: 
 .lb table { font-size: 14px; margin-top: 2px; }
 .lb td { padding: 2px 8px 2px 0; }
 .lb table.board { table-layout: fixed; width: 100%; }
+.lb .c-mv { width: 2.6em; } .lb .c-ref { width: 5.5em; } table.board td.mv { font-size: 13px; text-align: center; }
 .lb .c-rk { width: 2.6em; } .lb .c-score { width: 5.5em; } .lb .c-pace { width: 3.8em; }
-.lb table.board td:nth-child(2) { overflow-wrap: anywhere; }     /* a name with no spaces (I.use.arc.by.the.way) ran into its score */
+.lb table.board td:nth-child(2), table.board td.mv + td { overflow-wrap: anywhere; }     /* a name with no spaces (I.use.arc.by.the.way) ran into its score */
 .lb tr:first-child td { border-top: 0; }
 @media (max-width: 560px) { .lights { grid-template-columns: repeat(2, 1fr); } .lights > .light.blue-tile, .lights > .light:last-child { grid-column: 1 / -1; } }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
@@ -298,7 +299,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <span class="chips"><span class="chip {{ banner.level }}" title="Red track: the bot">Red</span><span class="chip {{ blue_banner.level }}" title="Blue track: reporting">Blue</span>{% if running %}<span class="chip {{ running.light }}" title="running version, deployed {{ running.when }}">{{ running.sha }} · {{ running.when }}</span>{% endif %}</span></header>
 <div class="sub" style="text-align:right">as of {{ now }} Perth</div>
 <div class="alerts">
-  {% if final %}<p class="green"><b>Final</b> · {{ banner.text }} · scores as the portal posted them</p>{% endif %}
+  {% if fin %}<p class="green"><b>Final</b> · {{ fin.text }}</p>{% elif final %}<p class="green"><b>Final</b> · {{ banner.text }}</p>{% endif %}
   {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
   {% if blue_banner.level != 'green' %}<p class="{{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</p>{% endif %}
   {% if draft_banner.level != 'green' %}<details class="{{ draft_banner.level }}"><summary><b>Drafting</b> · {{ draft_banner.summary }}</summary>{% for l in draft_banner.detail %}<div>{{ l }}</div>{% endfor %}</details>{% endif %}
@@ -307,12 +308,21 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 {% if rollback %}<div class="ver red">Roll back to the last stable version (pauses auto-deploy; restart it with <code>sudo systemctl start swan-update.timer</code> after pushing a fix):<code class="cmd">{{ rollback }}</code></div>{% endif %}
 
 <div class="kpis">
+  {% if fin %}
+  <div class="kpi"><div class="label">{{ 'Final score' if fin.state == 'final' else 'Score' }}</div>
+    <div class="val">{{ fin.score | n if fin.score is not none else '—' }}</div>
+    <div class="sub">{% if fin.state == 'final' %}{{ fin.us_was_score | n }} at {{ fin.stopped }}{% if fin.us_gain %} · <span class="up">+{{ fin.us_gain | n }} referendum</span>{% endif %}{% else %}at {{ fin.stopped }} · count under way{% endif %}</div></div>
+  <div class="kpi"><div class="label">{{ 'Final rank' if fin.state == 'final' else 'Rank' }}</div>
+    <div class="val">{{ ('#' ~ fin.rank) if fin.rank else '—' }}</div>
+    <div class="sub">{% if fin.teams %}of {{ fin.teams }}{% endif %}{% if fin.state == 'final' and fin.us_was %} · #{{ fin.us_was }} at {{ fin.stopped }}{% endif %}</div></div>
+  {% else %}
   <div class="kpi"><div class="label">Score</div>
     <div class="val">{{ score.points | n if score else '—' }}</div>
     <div class="sub">{% if not score %}not entered yet{% elif score.by == 'portal' and portal_checked %}portal · checked {{ portal_checked }}{% else %}entered {{ score.ago }}{% endif %}</div></div>
   <div class="kpi"><div class="label">Rank</div>
     <div class="val">{{ ('#' ~ score.rank) if score and score.rank else '—' }}</div>
     <div class="sub">{% if score and score.teams %}of {{ score.teams }}{% endif %}{% if board and board.above %} · {{ (board.above.score - board.score) | n }} behind #{{ board.above.rank }}{% endif %}</div></div>
+  {% endif %}
   <div class="kpi"><div class="label">Today</div>
     {% if score and score.delta is not none %}
     <div class="val {{ 'up' if score.delta >= 0 else 'down' }}">{{ '+' if score.delta >= 0 else '' }}{{ score.delta | n }}</div>
@@ -341,20 +351,22 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
 
 {% macro tone(d) %}{{ 'down' if d and d > 0 else 'up' if d and d < 0 }}{% endmacro %}
 {% macro pace(r) %}{% if board.pace %}<td class="num pace {{ tone(r.pace_vs_us) }}">{{ r.pace | rate }}</td>{% endif %}{% if board.pace_now %}<td class="num pace {{ tone(r.pace_now_vs_us) }}">{{ r.pace_now | rate }}</td>{% endif %}{% endmacro %}
-{% macro cols() %}<colgroup><col class="c-rk"><col><col class="c-score">{% if board.pace %}<col class="c-pace">{% endif %}{% if board.pace_now %}<col class="c-pace">{% endif %}</colgroup>{% endmacro %}
-{% macro row(r) %}<tr><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>{% endmacro %}
+{% macro mv(r) %}{% if board.get('final') %}<td class="mv {{ 'up' if r.move and r.move > 0 else 'down' if r.move and r.move < 0 else 'sub' }}"{% if r.was_rank %} title="#{{ r.was_rank }} at {{ fin.stopped }}"{% endif %}>{{ ('▲%d' % r.move) if r.move and r.move > 0 else ('▼%d' % -r.move) if r.move and r.move < 0 else '–' }}</td>{% endif %}{% endmacro %}
+{% macro ref(r) %}{% if board.get('final') %}<td class="num"{% if r.was_score is not none %} title="{{ r.was_score | n }} at {{ fin.stopped }}{% if r.play %} · {{ '%+d' % r.play }} last hour of play{% endif %}"{% endif %}>{% if r.gain is not none %}{{ '+' if r.gain > 0 }}{{ r.gain | n }}{% else %}—{% endif %}</td>{% endif %}{% endmacro %}
+{% macro cols() %}<colgroup><col class="c-rk">{% if board.get('final') %}<col class="c-mv">{% endif %}<col><col class="c-score">{% if board.get('final') %}<col class="c-ref">{% endif %}{% if board.pace %}<col class="c-pace">{% endif %}{% if board.pace_now %}<col class="c-pace">{% endif %}</colgroup>{% endmacro %}
+{% macro row(r) %}<tr><td class="rk">#{{ r.rank }}</td>{{ mv(r) }}<td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ ref(r) }}{{ pace(r) }}</tr>{% endmacro %}
 {% if board %}
-{% set width = 3 + (1 if board.pace else 0) + (1 if board.pace_now else 0) %}
+{% set width = 3 + (2 if board.get('final') else 0) + (1 if board.pace else 0) + (1 if board.pace_now else 0) %}
 <div class="lb" id="leaderboard">
   <div class="head"><span class="label">Leaderboard</span>
     <span class="sub">{% if board.cutoff is not none %}{{ board.cutoff | n }} behind #3{% elif board.rank <= 3 %}<span class="up">in the top three</span>{% endif %} · top 3 go to Sydney{% if board.trend %} · {% if board.trend.windows %}{% for w in board.trend.windows %}{{ ' · ' if not loop.first }}<span class="{{ 'up' if w.change < 0 else 'down' if w.change > 0 }}" title="us {{ '{:+,d}'.format(w.us) }}, #3 {{ '{:+,d}'.format(w.them) }} in {{ w.hours }} h">{{ 'closing' if w.change < 0 else 'widening' if w.change > 0 else 'level' }}{% if w.change %} {{ w.change | abs | n }}{% endif %} in {{ w.hours }} h</span>{% endfor %}{% else %}gap history building ({{ board.trend.points }} point{{ 's' if board.trend.points != 1 }}){% endif %}{% endif %}</span></div>
   <table class="board">{{ cols() }}
-    {% if board.pace or board.pace_now %}<tr class="sub"><td colspan="3" class="num">pts/h, last</td>{% for p in (board.pace, board.pace_now) if p %}<td class="num" title="points an hour over the last {{ '%.1f' % p.span }} h (the hourly line nearest {{ p.window }} h back), up to the board change at {{ p.as_of_label }}{% if p.scaled %}, the hours earned at a lower multiplier scaled up to the ×{{ p.mult }} in force now{% endif %}; red = gaining on us, green = we are gaining on them">{{ p.window }} h{% if p.scaled %} (×{{ p.mult }}){% endif %}</td>{% endfor %}</tr>{% endif %}
-    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team if not r.us else 'Operation Swan (us)' }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
+    {% if board.pace or board.pace_now %}<tr class="sub">{% if board.get('final') %}<td colspan="3"></td><td class="num">Final</td><td class="num" title="{{ 'the referendum award: final score less the board before it' if not board.get('combined') else 'the last hour of play and the referendum award posted together, so this is everything after ' ~ fin.stopped ~ ' (ours is the award alone)' }}">{{ 'after ' ~ fin.stopped if board.get('combined') else 'Referendum' }}</td>{% else %}<td colspan="3" class="num">pts/h, last</td>{% endif %}{% for p in (board.pace, board.pace_now) if p %}<td class="num" title="points an hour over the last {{ '%.1f' % p.span }} h (the hourly line nearest {{ p.window }} h back), up to the board change at {{ p.as_of_label }}{% if p.scaled %}, the hours earned at a lower multiplier scaled up to the ×{{ p.mult }} in force now{% endif %}; red = gaining on us, green = we are gaining on them">{{ p.window }} h{% if p.scaled %} (×{{ p.mult }}){% endif %}</td>{% endfor %}</tr>{% endif %}
+    {% for r in board.finalists %}<tr class="{{ 'us' if r.us }}{{ ' cut' if loop.last }}"><td class="rk">#{{ r.rank }}</td>{{ mv(r) }}<td>{{ r.team if not r.us else 'Operation Swan (us)' }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ ref(r) }}{{ pace(r) }}</tr>
     {% endfor %}
     {% if board.gap %}<tr class="gap"><td colspan="{{ width }}">{% if board.between %}<details><summary>{{ board.between | length }} more team{{ 's' if board.between | length > 1 }}</summary>
       <table class="board">{{ cols() }}{% for r in board.between %}{{ row(r) }}{% endfor %}</table></details>{% else %}<span class="sub">…</span>{% endif %}</td></tr>{% endif %}
-    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td><td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ pace(r) }}</tr>
+    {% for r in board.near %}<tr class="{{ 'us' if r.us }}"><td class="rk">#{{ r.rank }}</td>{{ mv(r) }}<td>{{ r.team }} <span class="side">{{ r.side }}</span></td><td class="num">{{ r.score | n }}</td>{{ ref(r) }}{{ pace(r) }}</tr>
     {% endfor %}
     {% if board.fourth %}{{ row(board.fourth) }}{% endif %}
     {% if board.rest %}<tr class="gap"><td colspan="{{ width }}"><details id="lb-rest"><summary>#{{ board.rest[0].rank }}{% if board.rest | length > 1 %}–#{{ board.rest[-1].rank }}{% endif %}</summary>
@@ -433,6 +445,10 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <h3>Points since {{ day_start }}</h3>
   <div class="kpis tiles">{% for k in score_lines.tiles %}<div class="kpi"><div class="label">{{ k.name }}</div>
     <div class="val {{ 'up' if k.points > 0 else ('down' if k.points < 0 else '') }}">{{ '≈' if k.mixed }}{{ '+' if k.points > 0 }}{{ k.points | n }}</div></div>{% endfor %}</div>
+  {% if fin and fin.state == 'final' %}<h3>Referendum</h3>
+  <p>{% if fin.award is not none %}Our award: <b class="up">+{{ fin.award | n }}</b>{% else %}No referendum award for us{% endif %}{% if fin.us_play %} · last hour of play {{ '%+d' % fin.us_play }}{% endif %} · final {{ fin.score | n }}, #{{ fin.rank }} of {{ fin.teams }}.</p>
+  {% for x in fin.notes %}<p class="sub">{{ x.time }} · {{ '%+d' % x.points }} · {{ x.text }}</p>{% endfor %}
+  {% endif %}
   {% if score_lines.rows %}<p class="sub">Total {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }}, from the portal's log. It gives one total an hour; where an hour mixes kinds the split (≈) is ours: Blue by its report counts, the rest by the scoring guide's values.</p>{% endif %}
   {% if milestone %}<p>{{ milestone.name }} ({{ milestone.date }}): leading-side teams with at least {{ milestone.need | n }} points get the award.</p>{% endif %}
   <p>Red multiplier ×{{ multiplier.now }}{% if multiplier.next %}, ×{{ multiplier.next }} from {{ multiplier.date }} (in {{ multiplier.left }}; our estimate, not confirmed){% endif %}.</p>
