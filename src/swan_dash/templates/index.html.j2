@@ -452,7 +452,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <div class="kpis tiles">{% for k in score_lines.tiles %}<div class="kpi"><div class="label">{{ k.name }}</div>
     <div class="val {{ 'up' if k.points > 0 else ('down' if k.points < 0 else '') }}">{{ '≈' if k.mixed }}{{ '+' if k.points > 0 }}{{ k.points | n }}</div></div>{% endfor %}</div>
   {% if fin and fin.state == 'final' %}<h3>Referendum</h3>
-  <p>{% if fin.award is not none %}Our award: <b class="up">+{{ fin.award | n }}</b>{% else %}No referendum award for us{% endif %}{% if fin.us_play %} · last hour of play {{ '%+d' % fin.us_play }}{% endif %} · final {{ fin.score | n }}, #{{ fin.rank }} of {{ fin.teams }}.</p>
+  <p>{% if fin.award is not none %}Our award: <b class="up">+{{ fin.award | n }}</b>{% elif fin.us_gain %}Our award: <b class="up">+{{ fin.us_gain | n }}</b> (from the board; the portal's log line for it hasn't arrived yet){% else %}No referendum award for us{% endif %}{% if fin.us_play %} · last hour of play {{ '+' if fin.us_play > 0 }}{{ fin.us_play | n }}{% endif %} · final {{ fin.score | n }}, #{{ fin.rank }} of {{ fin.teams }}.</p>
   {% for x in fin.notes %}<p class="sub">{{ x.time }} · {{ '%+d' % x.points }} · {{ x.text }}</p>{% endfor %}
   {% endif %}
   {% if score_lines.rows %}<p class="sub">Total {{ '+' if score_lines.total >= 0 }}{{ score_lines.total | n }}, from the portal's log. It gives one total an hour; where an hour mixes kinds the split (≈) is ours: Blue by its report counts, the rest by the scoring guide's values.</p>{% endif %}
