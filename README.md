@@ -36,6 +36,6 @@ This code was built for a sanctioned, logged educational competition against a *
 
 ## Credits
 
-Team **Operation Swan** (University of Western Australia): Marc Labouchardiere, Hoang Minh Nguyen and two more teammates. Built with [Claude Code](https://claude.com/claude-code).
+Team **Operation Swan** (University of Western Australia): Hoang Minh Nguyen (team leader), Hok Yin Chan and Marc Francis Labouchardiere. Built with [Claude Code](https://claude.com/claude-code).
 
 Capture the Narrative, Legit Social, Kingstonia and the [`capturethenarrative`](https://github.com/capturethenarrative/pypi-capturethenarrative) client are the organisers'. Our summaries of their rules and briefings in `docs/01-competition` and `docs/02-rules` are for reference; the official versions prevail. Our own code is under the [MIT licence](LICENSE).
