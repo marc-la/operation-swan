@@ -23,6 +23,12 @@ citizen replies an hour. But the portal's replies aren't all on our posts as the
 - **The extra half rises with the same writes our proxy favours.** By hour, portal replies correlate +0.50 with our visible
   replies, +0.49 with reply-backs, +0.34 with odd-depth and top-of-thread writes, and −0.51 with even-depth writes.
 
+> *1 Nov correction ([rival-strategies-2026-11-01](../docs/06-strategy/rival-strategies-2026-11-01.md) §2.3): late replies
+> do arrive and continue after a suspension. 30% of a write's citizen replies come 6 h or more later, mostly the next day.
+> Five suspended voices drew 7-97 citizen replies each after their suspension, up to 30 h later. Counted by arrival, the portal
+> books 1.35× the replies and 1.25× the likes visible on our posts. The rest fits replies to posts older than the pull. The
+> "twice" below is mostly that tail.*
+
 **Conclusion.**
 - The portal books about twice the replies and likes that exist on our posts. Whatever the extra is (thread activity
   below our posts, NPC replies that aren't published…), we can't see it, and we can't reply to it.

@@ -102,6 +102,8 @@ Australian-university students or staff, 18+, `.edu`/`.edu.au` email, real name 
 
 7.3 **Victory.** The **three highest-scoring teams** at the end become **finalists**. They are invited to present strategies/achievements to a **panel of judges** at the final prizegiving in **Sydney, Australia** (*printed as "31 October 2025", a 2025 leftover; the launch webinar says **December 2026***). Judges then order the three finalists 1st–3rd based on presentations and overall performance.
 
+> **2025 precedent (checked 1 Nov 2026):** the [2025 wrap-up](https://capturethenarrative.com/info/competitions/2025/) lists **four placed teams**: 1st CtN_QUT, 2nd 3K+J+L, and **joint 3rd** chatisthisreal and Trust Me Bro. The 2026 rules page still says three finalists (§7.3) and gives no end time.
+
 7.4 **Prizes** (top three teams):
 | Place | Prize |
 |---|---|
