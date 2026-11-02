@@ -2111,10 +2111,9 @@ def gather(root, now, service):
         blue_banner = dict(level="green", text="running" + (f" · {blue_pending(blue['pending'], blue['cap'] or blue['pending'])[1]}" if blue["pending"] else ""))
 
     draft_banner = drafting_state(actions, data, now)
-    final = (root / FINAL_FILE).is_file()
+    final = final_time(root) is not None
     if final:                                  # competition over: the stopped services are not an incident
-        when = dt.datetime.fromtimestamp((root / FINAL_FILE).stat().st_mtime, dt.timezone.utc)
-        banner = dict(level="green", text=f"competition over · bot stopped {hm_day(when, now)} Perth")
+        banner = dict(level="green", text=f"competition over · bot stopped {hm_day(final_time(root), now)} Perth")
         blue_banner = dict(level="green", text="stopped")
         draft_banner = dict(draft_banner, level="green")
 
@@ -2315,12 +2314,21 @@ def write_atomic(path, text):
     os.replace(tmp, path)
 
 
+def final_time(root):
+    """The lockout time when FINAL is there: its content (ISO time) or else its mtime; None while the competition runs.
+    The page is then built as of that moment, so every rolling window shows what it showed at the stop."""
+    path = root / FINAL_FILE
+    if not path.is_file():
+        return None
+    return ts(path.read_text().strip()) or dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=pathlib.Path, required=True, help="directory nginx serves")
     ap.add_argument("--root", type=pathlib.Path, default=ROOT, help="repo checkout with logs/ and data/")
     args = ap.parse_args()
-    now = dt.datetime.now(dt.timezone.utc)
+    now = final_time(args.root) or dt.datetime.now(dt.timezone.utc)
     html = render(gather(args.root, now, service_state()))
     args.out.mkdir(parents=True, exist_ok=True)
     write_atomic(args.out / "index.html", html)
