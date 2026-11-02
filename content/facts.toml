@@ -63,11 +63,11 @@ says = [
 ]
 
 [phased]
-text = "After a Yes: requirement brought in by regulation, in stages."
-note = "brought in by regulation, in stages"
+text = "After a Yes: requirement brought in by regulation, in stages, once vaccination access is widely available."
+note = "Yes: phased in by regulation once access is 'widely available'"
 status = "active"
-source = "setting.md"
-checked = 2026-10-21
+source = "daily-kingstonia/kingstonians-head-to-polls-for-decisive-h2d2-referendum"
+checked = 2026-11-02T01:14:02+00:00
 numbers = []
 says = ['\bin stages\b', '\bphased\b']
 

@@ -175,9 +175,9 @@ weight = 2.0
 
 [pivot.no_list]
 requires = ["list_later"]
-line = ["nobody can say which places the check covers, because the list of places comes after the result",
+line = ["shops, schools, workplaces, buses and parks are named, but the full list of places only comes out after the result",
         "the question doesn't say which places it covers: that's set by regulation after the result, not on the ballot",
-        "they'd be voting for a check at doors nobody has named yet, because the list only comes out after the result"]
+        "if the government knows which places the check covers, why won't it publish the list until after we've voted?"]
 keywords = ['which (places|venues|spaces|doors)', '\bvenues?\b', '\blist\b', 'designated', '\bshops?\b', '\bschools?\b', '\bbuses\b', 'workplaces?', '\bgyms?\b', '\bparks?\b', 'publish']
 weight = 3.0
 
