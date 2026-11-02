@@ -298,6 +298,7 @@ code.cmd { display: block; margin: 4px 0; padding: 5px 8px; background: var(--bg
   <span class="chips"><span class="chip {{ banner.level }}" title="Red track: the bot">Red</span><span class="chip {{ blue_banner.level }}" title="Blue track: reporting">Blue</span>{% if running %}<span class="chip {{ running.light }}" title="running version, deployed {{ running.when }}">{{ running.sha }} · {{ running.when }}</span>{% endif %}</span></header>
 <div class="sub" style="text-align:right">as of {{ now }} Perth</div>
 <div class="alerts">
+  {% if final %}<p class="green"><b>Final</b> · {{ banner.text }} · scores as the portal posted them</p>{% endif %}
   {% if banner.level != 'green' %}<p class="{{ banner.level }}"><b>Red</b> · {{ banner.text }}</p>{% endif %}
   {% if blue_banner.level != 'green' %}<p class="{{ blue_banner.level }}"><b>Blue</b> · {{ blue_banner.text }}</p>{% endif %}
   {% if draft_banner.level != 'green' %}<details class="{{ draft_banner.level }}"><summary><b>Drafting</b> · {{ draft_banner.summary }}</summary>{% for l in draft_banner.detail %}<div>{{ l }}</div>{% endfor %}</details>{% endif %}

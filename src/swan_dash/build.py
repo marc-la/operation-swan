@@ -39,7 +39,8 @@ TEAM_CAP_PER_MIN = 3                           # posts + replies + reposts, team
 LIVE_CAP, TOTAL_CAP = 50, 200                  # accounts alive at once / ever
 WRITES = {"post": "post", "reply": "1st reply", "second_voice": "2nd voice", "reply_back": "2nd reply",
           "journalist": "journalist", "thread": "own thread", "thread_answer": "thread answer", "repost": "repost"}
-STATUS_WORD = {"green": "RUNNING", "amber": "ALERT", "red": "DOWN"}   # browser tab title (a colour word clashes with the Red track)
+STATUS_WORD = {"green": "RUNNING", "amber": "ALERT", "red": "DOWN"}
+FINAL_FILE = "FINAL"           # touched on the box at the 2 Nov 18:00 AEDT lockout: bot and Blue stopped on purpose, page word FINAL   # browser tab title (a colour word clashes with the Red track)
 # poll awards and Red multiplier changes, as Sydney calendar dates (docs/01-competition/schedule.md)
 POLLS = [(dt.date(2026, 10, 21), "Poll 1", 1), (dt.date(2026, 10, 25), "Poll 2", 7000),   # 7,000 since 20 Oct
          (dt.date(2026, 10, 29), "Poll 3", 7000)]
@@ -2110,6 +2111,12 @@ def gather(root, now, service):
         blue_banner = dict(level="green", text="running" + (f" · {blue_pending(blue['pending'], blue['cap'] or blue['pending'])[1]}" if blue["pending"] else ""))
 
     draft_banner = drafting_state(actions, data, now)
+    final = (root / FINAL_FILE).is_file()
+    if final:                                  # competition over: the stopped services are not an incident
+        when = dt.datetime.fromtimestamp((root / FINAL_FILE).stat().st_mtime, dt.timezone.utc)
+        banner = dict(level="green", text=f"competition over · bot stopped {hm_day(when, now)} Perth")
+        blue_banner = dict(level="green", text="stopped")
+        draft_banner = dict(draft_banner, level="green")
 
     # ---- score (typed in by hand: scripts/score.sh) ----
     entries = [e for e in (read_json(data / "score.json") or []) if ts(e.get("ts"))]
@@ -2275,7 +2282,7 @@ def gather(root, now, service):
         now=hm(now), banner=banner, blue_banner=blue_banner, draft_banner=draft_banner, acct_days=acct_days, banned_list=banned_list,
         bans=ban_no, forecast=forecast,
         worst="red" if "red" in levels else "amber" if "amber" in levels else "green",
-        status_word=STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], score=score, history=history, board=board, milestone=milestone,
+        status_word="FINAL" if final else STATUS_WORD["red" if "red" in levels else "amber" if "amber" in levels else "green"], final=final, score=score, history=history, board=board, milestone=milestone,
         multiplier=multiplier, portal_accounts=portal.get("accounts"), score_lines=score_lines(points, day_start),
         portal_checked=ago(now - portal_t) if portal_t else None,
         day_start=perth(day_start).strftime("%-I%p").lower(),
