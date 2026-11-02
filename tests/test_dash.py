@@ -1104,3 +1104,18 @@ def test_final_tiles_keep_to_the_lockout_lines_even_when_a_late_line_is_stamped_
     (root / "data" / "portal.json").write_text(json.dumps(dict(lock, events=[lagged, old])))
     page = build.render(build.gather(root, build.final_time(root), "inactive"))
     assert "6,295" in page and "5,048" not in page and "11,343" not in page
+
+
+def test_last_hour_of_play_is_added_beside_the_lockout_board_not_into_it(tmp_path):
+    root = make_root(tmp_path)
+    (root / "FINAL").write_text("2026-11-02T07:00:00Z")
+    lock = dict(LOCK, rank=1, score=1000, teams=3, events=[])
+    moved = [dict(rank=1, team="Operation Swan", score=1050), dict(rank=2, team="B", score=950), dict(rank=3, team="A", score=920)]
+    (root / "data" / "portal_lockout.json").write_text(json.dumps(lock))
+    (root / "data" / "portal.json").write_text(json.dumps(dict(lock, rows=moved, score=1050, scores_ts="2026-11-02T07:47:00+00:00")))
+    page = build.render(build.gather(root, build.final_time(root), "inactive"))
+    board = page[page.index('id="leaderboard"'):]
+    assert "Last hour" in board and "+150" in board and "+20" in board          # B +150, A +20
+    assert board.index(">A<") < board.index(">B<") if ">A<" in board else True  # still the lockout order
+    assert "1,050" not in page and "Referendum" not in board and "▲" not in board
+    assert "last hour of play posted 15:47 (+50)" in page

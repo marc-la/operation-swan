@@ -2148,6 +2148,9 @@ def gather(root, now, service):
     if lock:
         fin = final_board(lock, tail_jsonl(data / "team_scores.jsonl", 400_000), portal, late,
                           read_json(data / team_sides.SIDES_FILE) or {})
+        after = fin["state"] == "final" or fin["played"]      # the board has moved since the lockout
+        # Until the referendum lands the board stays the lockout's (ranks and scores as at the stop) and the last hour of
+        # play is only added beside it (Marc, 2 Nov: "only the final hour points is the new element")
         board_src, pace_src = (portal if fin["state"] == "final" else lock), lock
     else:
         board_src = pace_src = portal
@@ -2176,7 +2179,7 @@ def gather(root, now, service):
         for r in board["finalists"] + board["near"] + board["between"] + ([board["fourth"]] if board["fourth"] else []) + board["rest"]:
             name = TEAM_NAME if r.get("us") else r["team"]
             r["side"] = team_sides.label(team_sides.side_of(state, name))
-            if fin and fin["state"] == "final":    # the count: rank change since the lockout and the referendum gain
+            if fin and after:                      # since the lockout: rank change, last hour of play, referendum gain
                 was = fin["was_rank"].get(name)
                 r.update(move=None if was is None else was - r["rank"], was_rank=was, was_score=fin["was_score"].get(name),
                          gain=fin["gain"].get(name), play=fin["play"].get(name))
@@ -2187,11 +2190,13 @@ def gather(root, now, service):
     if fin:                                    # the Final line, the Score / Rank tiles and the Referendum block
         if board:
             board["final"] = fin["state"] == "final"
+            board["after"] = after
             board["combined"] = fin["combined"]
         us_was, us_score = fin["was_rank"].get(TEAM_NAME), fin["was_score"].get(TEAM_NAME)
         fin.update(stopped=hm_day(lock_t, now), us_was=us_was, us_was_score=us_score,
                    rank=portal.get("rank") if fin["state"] == "final" else us_was,
                    score=portal.get("score") if fin["state"] == "final" else us_score,
+                   posted=hm(ts(portal.get("scores_ts"))) if after and ts(portal.get("scores_ts")) else None,
                    us_gain=fin["gain"].get(TEAM_NAME), us_play=fin["play"].get(TEAM_NAME),
                    teams=portal.get("teams") or fin["teams"])
         if fin["state"] == "final":
@@ -2200,6 +2205,10 @@ def gather(root, now, service):
                             if side else "referendum counted")
                            + f" · Operation Swan finished #{fin['rank']} of {fin['teams']}"
                            + (f" (#{us_was} at {hm(lock_t)})" if us_was else ""))
+        elif fin["played"]:
+            fin["text"] = (f"competition over at {hm(lock_t)} Perth · last hour of play posted {fin['posted']}"
+                           + (f" ({fin['us_play']:+,})" if fin["us_play"] is not None else "")
+                           + " · referendum count under way")
         else:
             fin["text"] = f"competition over at {hm(lock_t)} Perth · referendum count under way, final scores to come"
     def replies_between(lo, hi):               # our 1st / 2nd replies in a window: counts only, the portal's points are not split by kind
@@ -2364,7 +2373,8 @@ def final_board(lock, lines, portal, late, sides):
     referendum award (winning side only). The first board step where a team gains REF_MIN_STEP or more is the award and
     the board before it is the end of play; when both land in one step the gain is everything after the lockout
     (`combined`), except ours, which our own points-log lines split exactly. `lines`: data/team_scores.jsonl;
-    `late`: our points-log lines after the lockout. state 'counting' until the award shows."""
+    `late`: our points-log lines after the lockout. state 'counting' until the award shows; `played` once the last hour
+    of play has moved the board (Marc, 2 Nov: show it while the count goes on), with `play` the gain since the lockout."""
     lock_rows = lock.get("rows") or []
     lock_scores = {r["team"]: r["score"] for r in lock_rows}
     seen = ts(lock.get("scores_ts"))
@@ -2385,8 +2395,10 @@ def final_board(lock, lines, portal, late, sides):
     out = dict(state="counting" if step is None else "final", award=award if ours else None,
                notes=[dict(time=hm(e["_t"]), points=e["points"], text=e.get("message") or "") for e in ours],
                was_rank={r["team"]: r["rank"] for r in lock_rows}, was_score=lock_scores,
-               teams=len(lock_rows) or None, winner=None, gain={}, play={}, combined=False)
+               teams=len(lock_rows) or None, winner=None, gain={}, play={}, combined=False,
+               played=end_play is not lock_scores)
     if step is None:
+        out["play"] = {t: v - lock_scores[t] for t, v in end_play.items() if t in lock_scores}
         return out
     final = boards[-1]
     combined = end_play is lock_scores
