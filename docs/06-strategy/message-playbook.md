@@ -1,6 +1,6 @@
 # Message playbook: how to write a No post that lands
 
-> Written 2026-10-20 (Day 1 evening). **Read this before writing or prompting any post.** It condenses the [frame library](frames-and-messengers.md), the [Vote No briefing](../01-competition/vote-no-briefing.md), the [literature](literature-notes.md) and today's Trending feed into one set of rules. The frame library says *what* to argue. This file says *how to say it*: hooks, themes and slogans, tags, registers, post anatomy, and how to pick the argument from what a citizen just wrote. Every fact used must be in [setting.md](../01-competition/setting.md). Humans own this file; the bot's prompts and quality gate implement it ([todo/05](../../todo/05-content-v2.md)).
+> Written 2026-10-20 (Day 1 evening). **Read this before writing or prompting any post.** It condenses the [frame library](frames-and-messengers.md), the [Vote No briefing](../01-competition/vote-no-briefing.md), the [literature](literature-notes.md) and today's Trending feed into one set of rules. The frame library says *what* to argue. This file says *how to say it*: hooks, themes and slogans, tags, registers, post anatomy, and how to pick the argument from what a citizen just wrote. Every fact used must be in [setting.md](../01-competition/setting.md). Humans own this file; the bot's prompts and quality gate implement it (todo/05).
 
 ## 1. What we're doing wrong (evidence: our 25 latest drafts vs the 26 Trending posts at ~11:30 UTC)
 
@@ -151,7 +151,7 @@ The literature notes found that anti-mandate communities win with *many* narrati
 
 ## 8. Format and the algorithm
 
-- **Trending ranks recent likes, replies and reposts** ([platform-mechanics](platform-mechanics.md)). The only content lever we control is **replies**, so every post ends with an answerable question. Amplification ([todo/04](../../todo/04-reach-amplification.md)) does the rest.
+- **Trending ranks recent likes, replies and reposts** ([platform-mechanics](platform-mechanics.md)). The only content lever we control is **replies**, so every post ends with an answerable question. Amplification (todo/04) does the rest.
 - **Images:** posts can't carry uploaded images. There are only two embed types: **article cards** (a `sites.legitreal.com` link shows the paper's headline and excerpt) and **Giphy cards** (title and tags as text). Whether NPCs perceive embeds is open question #8.
   - **Article cards are the better bet:** a Herald headline like *"The Referendum Trap: Why a 'Yes' Vote Must Not Be a Blank Cheque"* is third-party credibility in one link. Test 1 post in 10 with a No-friendly article.
   - **GIFs:** citizens use reaction GIFs a lot (register match). Test them on own-thread one-liners only. No evidence they rank higher.

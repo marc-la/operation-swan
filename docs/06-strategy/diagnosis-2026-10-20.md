@@ -1,6 +1,6 @@
 # Diagnosis: why Operation Swan is 25th (2026-10-20, Day 1)
 
-> Measured 2026-10-20 ~09:50 UTC (20:50 Perth) with read-only API calls: Trending (35 posts), Latest (300 posts), likers and replies of every Trending post, and counters/likers/replies for half of our 314 live writes. Method: account created before launch (19 Oct 07:00 UTC) and not verified = citizen; created after = team ([platform-mechanics](platform-mechanics.md)). Work items that follow from this: [`todo/`](../../todo/README.md).
+> Measured 2026-10-20 ~09:50 UTC (20:50 Perth) with read-only API calls: Trending (35 posts), Latest (300 posts), likers and replies of every Trending post, and counters/likers/replies for half of our 314 live writes. Method: account created before launch (19 Oct 07:00 UTC) and not verified = citizen; created after = team ([platform-mechanics](platform-mechanics.md)). Work items that follow from this: `todo/`.
 
 ## Scoreboard
 Leader Vertex_CTN 28,192; top 5 all above 17,000; us **1,236** (25th of 146). In about 27 hours we made 314 writes for roughly 4 points each.
@@ -32,16 +32,16 @@ Compared with 2025: the 2025 winners (CtN_QUT; QUT leads again as Vertex_CTN) fo
 |---|---|---|---|
 | **Reach** | Replies in threads nobody reads; no amplification | 1.3 views/write | Live 2026-10-20: [amplification](amplification.md) |
 | **Throughput** | 11% of write budget used; likes, follows and views almost unused | 20 writes/h; hard cap 2/min in code | Done 2026-10-20: cap 2.5/min, voice gap 4 min, amplification uses likes/follows/views |
-| **LLM supply** | Free-tier Gemini quotas park the bot | `llm.py` parks models for hours on a daily 429 | Done 2026-10-20: paid Gemini Tier 1 + ranked chain (`deploy/llm_chain.txt`); batching: [todo/12](../../todo/12-batched-drafting.md) |
+| **LLM supply** | Free-tier Gemini quotas park the bot | `llm.py` parks models for hours on a daily 429 | Done 2026-10-20: paid Gemini Tier 1 + ranked chain (`deploy/llm_chain.txt`); batching: todo/12 |
 | **Targets** | Reply targeting starves: citizens rarely post | 0 citizen news-thread replies/hour in recent refreshes; 0/300 Latest posts by citizens | [amplification](amplification.md) (originals instead of starved replies) |
 | **Content** | Calm, consoling, process-heavy ("blank cheque", "list nobody's seen") | Rejects dominated by near-duplicate/same-opening; trending No posts are emotive stories | content v2 (old todo/05, done); old todo/06 dropped 2026-10-21 |
-| **Blue track** | Not used at all, while the organisers just made it cheaper (cap 25 pending, 3 h base timer) | 0 reports filed | [07](../../todo/07-blue-reporting.md) |
-| **Infra** | Laptop + tmux; no auto-deploy; no shared picture | WSL sleeps; teammates can't see state | Done 2026-10-20: [hosting](../04-technical/hosting.md). Dashboard: [09](../../todo/09-dashboard-cop.md) |
+| **Blue track** | Not used at all, while the organisers just made it cheaper (cap 25 pending, 3 h base timer) | 0 reports filed | 07 |
+| **Infra** | Laptop + tmux; no auto-deploy; no shared picture | WSL sleeps; teammates can't see state | Done 2026-10-20: [hosting](../04-technical/hosting.md). Dashboard: 09 |
 | **Data** | No snapshots of the platform; no team clusters; per-post metrics only on demand | `swan_measure.py` is manual; Mongo holds only our own log | old todo/08 (dropped 2026-10-21) |
 
 ## Rules check (needs a ruling before we copy it)
 
-Own-team likes and replies on our own posts is what the leaders do. In-game rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and our open question #4 ([open questions](../05-reference/discrepancies-and-open-questions.md)) is still unanswered. The organisers' 20 Oct announcement treats this as the Red game and Blue reporting as the counter ("every team only gets a finite number of bots"). That suggests it is an in-game risk (reports, hides, suspensions), not a competition-rule breach. **Still ask in `#questions` first** (CLAUDE.md rule 7; draft in [todo/10](../../todo/10-organiser-questions.md)). Build it behind a flag that is off by default.
+Own-team likes and replies on our own posts is what the leaders do. In-game rule **LS.5.3** names "coordinated inauthentic behaviour" and "reaction farming", and our open question #4 ([open questions](../05-reference/discrepancies-and-open-questions.md)) is still unanswered. The organisers' 20 Oct announcement treats this as the Red game and Blue reporting as the counter ("every team only gets a finite number of bots"). That suggests it is an in-game risk (reports, hides, suspensions), not a competition-rule breach. **Still ask in `#questions` first** (CLAUDE.md rule 7; draft in todo/10). Build it behind a flag that is off by default.
 
 ## Blue track estimate (after the 20 Oct rule change)
 

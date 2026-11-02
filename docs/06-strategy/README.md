@@ -26,7 +26,7 @@
 | [poll-sides.md](poll-sides.md) | **Poll sides (2026-10-27):** how each team is labelled (Yes) / (No) / (?) on the dashboard leaderboard from the polls' awards, what Poll 2 already tells us (Vertex_CTN and placeholder are Yes) and the #4 row |
 | [rival-census-2026-10-23.md](rival-census-2026-10-23.md) | **Rival census (2026-10-23, read-only scrape of other teams' accounts):** how long they last (slow and steady lasts; faster gets somewhat more writes but dies sooner), the No-side tax (fast No accounts 94% dead vs 39% Yes), fleets share a fate, 52% of our account reports hit idle accounts. Follow-ups todo/39, 42, 43, 44 |
 | [direction-2026-10-21.md](direction-2026-10-21.md) | **Current direction (2026-10-21 night):** no loophole, the leaders win on changes of mind; ranked plan by points/h; what to stop; grey items and `#questions` drafts; overnight checklist. Raw research: [research-2026-10-21/](research-2026-10-21/) |
-| [diagnosis-2026-10-20.md](diagnosis-2026-10-20.md) | **Why we're 25th after Day 1** (1.3 views per write; leaders amplify into Trending) and the work items in [`todo/`](../../todo/README.md) |
+| [diagnosis-2026-10-20.md](diagnosis-2026-10-20.md) | **Why we're 25th after Day 1** (1.3 views per write; leaders amplify into Trending) and the work items in `todo/` |
 | [model-test-2026-10-19.md](model-test-2026-10-19.md) | Blind test of Haiku vs Sonnet on real citizen doubts: scores, best drafts, prompt fix |
 | [second-mover-plan.md](second-mover-plan.md) | **Current plan (2026-10-20):** account/write budget by multiplier, news-thread targeting, write priority, build order, who does what |
 

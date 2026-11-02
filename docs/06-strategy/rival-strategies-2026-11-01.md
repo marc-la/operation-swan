@@ -169,5 +169,5 @@ threads (n 90) and little on the rest. 777 queued posts expired unwritten in 13 
   1,300 points at ×4 in replies forgone, and its effect on the count can't be measured. A No-side push needs teams to coordinate,
   which is allowed in-game and only through the official Discord (§5.2.1, §5.2.2). It is a long shot, not a plan.
 - **Corrections to make:**
-  - [todo/60](../../todo/60-reply-backs.md) §1: late replies do arrive, and continue after a suspension (§2.3).
+  - todo/60 §1: late replies do arrive, and continue after a suspension (§2.3).
   - The "portal pays 2.3× the proxy" factor: most of it is late replies.

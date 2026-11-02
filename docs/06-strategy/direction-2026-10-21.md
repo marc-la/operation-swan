@@ -32,7 +32,7 @@ The leaders' points are changes of mind at volume. That needs three things, in t
 
 | Layer | Where | What | Target |
 |---|---|---|---|
-| Volume | [todo/19](../../todo/README.md) (shipped), todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c) | Read Latest every 2 min; fresh posts first; hard-skip only non-citizens, off-topic, hostile and replied posts; the stance sets priority; per-post and per-session limits, not 72 h per author; citizen replies count as targets too | ≥ 80% of citizen items answered; 40–55 citizen-facing writes/h at peak |
+| Volume | todo/19 (shipped), todo/21 (shipped 2026-10-21: 8446cbf, a035e4f, c35ac3c) | Read Latest every 2 min; fresh posts first; hard-skip only non-citizens, off-topic, hostile and replied posts; the stance sets priority; per-post and per-session limits, not 72 h per author; citizen replies count as targets too | ≥ 80% of citizen items answered; 40–55 citizen-facing writes/h at peak |
 | The light read | todo/20 step 2 | One drafting call returns stance, doubt, frame and reply (or skip); the stance picks the approach; logged | Calibrated against the regex class in a day |
 | Conversion | todo/20 steps 3–8 | Concede-and-anchor style A/B; weak frames out; no vaccine advocacy; reply-backs within minutes, up to 3 turns; a second voice inside the session; one own like A/B | "Towards your side" per 100 citizen-facing writes > "away" + "neither" |
 | Feedback | todo/20 step 1 | Portal hourly events joined to writes; per-class and per-arm reply rates; skip reasons; followup re-reads | A daily read-out, then winners become defaults |
