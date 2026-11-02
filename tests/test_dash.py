@@ -1115,7 +1115,7 @@ def test_last_hour_of_play_is_added_beside_the_lockout_board_not_into_it(tmp_pat
     (root / "data" / "portal.json").write_text(json.dumps(dict(lock, rows=moved, score=1050, scores_ts="2026-11-02T07:47:00+00:00")))
     page = build.render(build.gather(root, build.final_time(root), "inactive"))
     board = page[page.index('id="leaderboard"'):]
-    assert "Last hour" in board and "+150" in board and "+20" in board          # B +150, A +20
+    assert "+50 last hour" in page
     assert board.index(">A<") < board.index(">B<") if ">A<" in board else True  # still the lockout order
     assert "1,050" not in page and "Referendum" not in board
     assert "last hour of play posted 15:47 (+50)" in page

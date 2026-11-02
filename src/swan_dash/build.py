@@ -2151,7 +2151,7 @@ def gather(root, now, service):
         after = fin["state"] == "final" or fin["played"]      # the board has moved since the lockout
         # Until the referendum lands the board stays the lockout's (ranks and scores as at the stop) and the last hour of
         # play is only added beside it (Marc, 2 Nov: "only the final hour points is the new element")
-        board_src, pace_src = (portal if fin["state"] == "final" else lock), lock
+        board_src, pace_src = (portal if fin["state"] == "final" else lock), fin["end_board"]
     else:
         board_src = pace_src = portal
     board = dict(leader=board_src.get("leader"), above=board_src.get("above"), below=board_src.get("below"),
@@ -2378,34 +2378,40 @@ def final_board(lock, lines, portal, late, sides):
     lock_rows = lock.get("rows") or []
     lock_scores = {r["team"]: r["score"] for r in lock_rows}
     seen = ts(lock.get("scores_ts"))
-    boards = [r["scores"] for r in lines if isinstance(r.get("scores"), dict)
+    boards = [((ts(r.get("seen")) or ts(r.get("ts"))), r["scores"]) for r in lines if isinstance(r.get("scores"), dict)
               and seen and (ts(r.get("seen")) or ts(r.get("ts")) or seen) > seen]
-    boards.append({r["team"]: r["score"] for r in portal.get("rows") or []})
+    boards.append((ts(portal.get("scores_ts")), {r["team"]: r["score"] for r in portal.get("rows") or []}))
     prev = end_play = lock_scores
-    step = None
-    for b in boards:
+    end_seen, step = seen, None
+    for t, b in boards:
         if b == prev:
             continue
         if max((v - prev[k] for k, v in b.items() if k in prev), default=0) >= REF_MIN_STEP:
             step = b
             break
         end_play = prev = b
+        end_seen = t or end_seen
     ours = [e for e in late if not (e.get("message") or "").startswith(PLAY_LINES)]
     award = sum(e["points"] for e in ours)
     out = dict(state="counting" if step is None else "final", award=award if ours else None,
                notes=[dict(time=hm(e["_t"]), points=e["points"], text=e.get("message") or "") for e in ours],
                was_rank={r["team"]: r["rank"] for r in lock_rows}, was_score=lock_scores,
                teams=len(lock_rows) or None, winner=None, gain={}, play={}, combined=False,
-               played=end_play is not lock_scores)
+               played=end_play is not lock_scores,
+               # the board less the award, for the 24 h / 3 h rates (Marc, 2 Nov: the last hour of play goes into them)
+               end_board=dict(scores_ts=end_seen.isoformat() if end_seen else None,
+                              rows=[dict(team=t, score=v) for t, v in end_play.items()]))
     if step is None:
         out["play"] = {t: v - lock_scores[t] for t, v in end_play.items() if t in lock_scores}
         return out
-    final = boards[-1]
+    final_t, final = boards[-1]
     combined = end_play is lock_scores
-    gain = {t: v - end_play[t] for t, v in final.items() if t in end_play}
-    if combined and ours:
+    gain = {t: v - end_play[t] for t, v in step.items() if t in end_play}     # the award step alone: the portal keeps
+    if combined and ours:                      # scoring engagement after it (2 Nov, 08:32: +2,280 us, +3,392 Yeah, no award)
         gain[TEAM_NAME] = award
-    play = {t: final[t] - lock_scores[t] - gain[t] for t in gain if t in lock_scores}
+    play = {t: final[t] - lock_scores[t] - gain[t] for t in gain if t in lock_scores and t in final}
+    out["end_board"] = dict(scores_ts=final_t.isoformat() if final_t else None,      # every play point, for the rates
+                            rows=[dict(team=t, score=v - gain.get(t, 0)) for t, v in final.items()])
     if ours and award > 0:                     # the award goes to the winning side only, and we know ours
         winner = team_sides.OUR_SIDE
     else:
