@@ -39,7 +39,7 @@ points.
 - the dashboard's BUDGET LOW banner, which with no reserve warns at under half the day's share;
 - the `ctn-gross-usage-170` budget e-mail, which fires at $170 by design.
 
-Stop the instance and release the Elastic IP right after the end.
+Stop the instance and release the Elastic IP right after the end. Done 2026-11-02: instance terminated, Elastic IP released, no volumes or snapshots left ([hosting](hosting.md)).
 
 ## Daily floor (23 Oct)
 `config.LLM_DAILY_FLOOR_USD` = $12 ledger dollars a day: the allowance through any budget day is never below 12 x days so far, still capped by `LLM_BUDGET_USD`. The bot spends ~$6-9 a day, and the old weighted share ($6.80 for 21-25 Oct) left no margin: on 23 Oct Kimi was walled off from ~06:30 Sydney, Gemini was out of quota, and drafts found no model for ~7 h (hourly live writes fell from ~130 to 4-8). Worst case at the floor every day: 13 x 12 = $156 ledger, about $128 billed.

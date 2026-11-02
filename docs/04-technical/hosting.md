@@ -1,5 +1,7 @@
 # Hosting: the EC2 box that runs swan_bot (set up 2026-10-20)
 
+> **Shut down 2026-11-02 (Marc).** The bot and Blue stopped gracefully at the 18:00 AEDT lockout (exit 0, state saved); the dashboard was frozen on the final results (final mode in `src/swan_dash/build.py`: `FINAL` file, `data/portal_lockout.json`, `data/portal_award_board.json`, `data/portal_final.json`). `data/`, `logs/` and `secrets/` were copied to Marc's laptop and checksummed against the box (0 differences); the box's `.env`, the final backup tarball, the frozen page and the nginx config are in `ec2-final/` (gitignored). Then instance `i-06471b75b0166b3c7` was terminated (its 8 GB disk with it; no snapshots), Elastic IP 13.210.120.238 released (the `13-210-120-238.sslip.io` dashboard address is gone) and the GitHub deploy key 167049318 deleted. Everything below is the history of how it ran.
+
 The bot moved from Marc's laptop (tmux) to EC2 on 2026-10-20 at 10:17 UTC. **It is the team's only live writer**, so never start another `--live` run anywhere else.
 
 ## The box

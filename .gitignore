@@ -27,3 +27,7 @@ AMPLIFY_OFF
 
 # Claude Code agent worktrees (local only)
 .claude/worktrees/
+
+# End of competition (2 Nov): the EC2 box copied down (backups, its .env, the frozen page); never commit
+ec2-final/
+FINAL
