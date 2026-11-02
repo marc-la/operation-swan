@@ -1092,3 +1092,15 @@ def test_final_page_is_built_as_of_the_lockout_and_shows_the_counting_line(tmp_p
     (root / "data" / "portal_lockout.json").write_text(json.dumps(dict(LOCK, rank=1, score=1000, teams=3, events=[])))
     page = build.render(build.gather(root, build.final_time(root), "inactive"))
     assert "Swan · FINAL" in page and "referendum count under way" in page and "DOWN" not in page.split("<main")[0]
+
+
+def test_final_tiles_keep_to_the_lockout_lines_even_when_a_late_line_is_stamped_before_it(tmp_path):
+    root = make_root(tmp_path)
+    (root / "FINAL").write_text("2026-11-02T07:00:00Z")
+    old = dict(ts="2026-11-02T05:46:06+00:00", type="SCORE_NARRATIVE", points=6295, message="NPC engagement (×4 points): 71 likes")
+    lagged = dict(ts="2026-11-02T06:46:06+00:00", type="SCORE_NARRATIVE", points=5048, message="NPC engagement (×4 points): 60 likes")
+    lock = dict(LOCK, rank=1, score=1000, teams=3, events=[old])
+    (root / "data" / "portal_lockout.json").write_text(json.dumps(lock))
+    (root / "data" / "portal.json").write_text(json.dumps(dict(lock, events=[lagged, old])))
+    page = build.render(build.gather(root, build.final_time(root), "inactive"))
+    assert "6,295" in page and "5,048" not in page and "11,343" not in page

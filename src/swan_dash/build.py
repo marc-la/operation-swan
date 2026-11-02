@@ -2026,9 +2026,14 @@ def gather(root, now, service):
               if ts(e.get("ts")) and e.get("points") is not None]
     lock_t = final_time(root)
     lock = (read_json(data / "portal_lockout.json") or None) if lock_t else None
-    late = [e for e in points if lock_t and e["_t"] > lock_t]
-    if lock_t:                                 # final mode: every tile as it was at the lockout; the count has its own (final_board)
-        points = [e for e in points if e["_t"] <= lock_t]
+    if lock_t:                                 # final mode: every tile as it was at the lockout; the count has its own (final_board).
+        # By the lines the lockout snapshot had, not by time: the portal's log lags its board by an hour or more, so a
+        # line stamped before the lockout can arrive after it (2 Nov: at 07:47 the newest line was still 05:46).
+        seen_lines = {(e.get("ts"), e.get("points"), e.get("message")) for e in (lock or {}).get("events") or []}
+        late = [e for e in points if (e.get("ts"), e.get("points"), e.get("message")) not in seen_lines]
+        points = [e for e in points if (e.get("ts"), e.get("points"), e.get("message")) in seen_lines]
+    else:
+        late = []
     actions = [a for a in tail_jsonl(logs / "swan_actions.jsonl") if ts(a.get("ts"))]
     for a in actions:
         a["_t"] = ts(a["ts"])
