@@ -18,18 +18,6 @@
 
 [CLAUDE.md](CLAUDE.md) is the project brief and guardrails we gave Claude Code, which wrote most of the code with us.
 
-## Running it
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env               # CTN_TEAM_CODE, CTN_SIDE
-scripts/t.sh                       # tests
-python scripts/run_swan.py         # dry run: nothing is posted without --live
-```
-
-The competition platform (`*.legitreal.com`) belonged to the organisers and may no longer be up, so expect to read the code more than run it.
-
 ## Disclaimer
 
 This code was built for a sanctioned, logged educational competition against a **simulated** social network whose citizens are AI agents. It produces persuasive, persona-driven political content at scale and reports other accounts automatically. **Don't point it at real platforms or real people:** doing so would break those platforms' terms of service and possibly the law, and it is not what this was made for. It is published for research and teaching on influence operations and their detection (competition rules §10.4). We take no responsibility for other uses. All people, places, outlets and events in the content and docs are fictional, part of the Kingstonia game world.
